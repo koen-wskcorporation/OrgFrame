@@ -4,6 +4,9 @@
 
 :root {
   --primary-header-height: 65px;
+  --org-header-height: 0px;
+  --org-header-bottom: 0px;
+  --org-header-sticky-offset: 12px;
   --panel-width: 325px;
   --app-accent: 185 100% 50%;
   --app-accent-foreground: 220 35% 10%;
@@ -91,6 +94,12 @@ body.panel-open .org-layout-root {
 @media (max-width: 1023px) {
   body.panel-open .org-layout-root {
     margin-right: 0;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --org-header-sticky-offset: 16px;
   }
 }
 

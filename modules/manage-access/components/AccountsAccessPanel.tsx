@@ -533,7 +533,7 @@ export function AccountsAccessPanel({
             renderRowActions={renderMemberRowActions}
             rowActionsLabel="Quick actions"
             rowKey={(member) => member.membershipId}
-            searchPlaceholder="Search by user, role, or status..."
+            searchPlaceholder="Search"
             selectedRowKey={selectedMembershipId}
             storageKey={`accounts-access-table:${orgSlug}`}
           />

@@ -11,6 +11,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { CalendarPicker } from "@/components/ui/calendar-picker";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Chip } from "@/components/ui/chip";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
@@ -1283,11 +1284,11 @@ export function ProgramEditorPanel({
             <Input onChange={(event) => setEditingCapacity(event.target.value)} type="number" value={editingCapacity} />
           </FormField>
           <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
-            <input checked={editingWaitlistEnabled} onChange={(event) => setEditingWaitlistEnabled(event.target.checked)} type="checkbox" />
+            <Checkbox checked={editingWaitlistEnabled} onChange={(event) => setEditingWaitlistEnabled(event.target.checked)} />
             Waitlist enabled
           </label>
           <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
-            <input checked={editingPublished} onChange={(event) => setEditingPublished(event.target.checked)} type="checkbox" />
+            <Checkbox checked={editingPublished} onChange={(event) => setEditingPublished(event.target.checked)} />
             Published
           </label>
         </form>
@@ -1334,7 +1335,7 @@ export function ProgramEditorPanel({
             <Input onChange={(event) => setCapacity(event.target.value)} type="number" value={capacity} />
           </FormField>
           <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
-            <input checked={waitlistEnabled} onChange={(event) => setWaitlistEnabled(event.target.checked)} type="checkbox" />
+            <Checkbox checked={waitlistEnabled} onChange={(event) => setWaitlistEnabled(event.target.checked)} />
             Waitlist enabled
           </label>
         </form>

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { Plus, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { createDefaultRuntimeBlock, getRuntimeBlockDefinition } from "@/modules/site-builder/blocks/runtime-registry";
@@ -326,12 +327,11 @@ export function OrgSitePage({
         value={draftTitle}
       />
       <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-1.5 text-sm">
-        <input
+        <Checkbox
           checked={draftIsPublished}
           onChange={(event) => {
             setDraftIsPublished(event.target.checked);
           }}
-          type="checkbox"
         />
         Published
       </label>

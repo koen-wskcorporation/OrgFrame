@@ -6,6 +6,7 @@ import { LinkPickerDialog } from "@/components/editor/buttons/LinkPickerDialog";
 import { buttonVariantOptions, type ButtonConfig } from "@/components/editor/buttons/types";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -208,7 +209,7 @@ export function ButtonConfigDialog({
 
         <FormField label="Open in new tab">
           <label className="inline-flex h-10 items-center gap-2 rounded-control border bg-surface px-3 text-sm">
-            <input
+            <Checkbox
               checked={Boolean(draft.newTab)}
               onChange={(event) => {
                 const checked = event.target.checked;
@@ -217,7 +218,6 @@ export function ButtonConfigDialog({
                   newTab: checked
                 }));
               }}
-              type="checkbox"
             />
             Open link in a new browser tab
           </label>

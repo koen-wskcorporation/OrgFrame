@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -217,11 +218,10 @@ export function FormSettingsPanel({ orgSlug, form, programs, programNodes, open 
               </FormField>
             ) : null}
             <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text md:col-span-2">
-              <input
+              <Checkbox
                 checked={allowMultiplePlayers}
                 disabled={!canWrite}
                 onChange={(event) => setAllowMultiplePlayers(event.target.checked)}
-                type="checkbox"
               />
               Allow multiple players per submission
             </label>
@@ -229,11 +229,10 @@ export function FormSettingsPanel({ orgSlug, form, programs, programNodes, open 
         ) : null}
 
         <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text md:col-span-2">
-          <input
+          <Checkbox
             checked={requireSignIn}
             disabled={!canWrite}
             onChange={(event) => setRequireSignIn(event.target.checked)}
-            type="checkbox"
           />
           Require sign-in to submit
         </label>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { ButtonListEditor } from "@/components/editor/buttons/ButtonListEditor";
 import { Alert } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
@@ -276,12 +277,11 @@ export function EventsBlockEditor({ block, onChange, context }: BlockEditorProps
       </FormField>
 
       <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
-        <input
+        <Checkbox
           checked={block.config.showPastEvents}
           onChange={(event) => {
             updateConfig({ showPastEvents: event.target.checked });
           }}
-          type="checkbox"
         />
         Include past events
       </label>

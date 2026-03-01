@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Building2,
   CalendarDays,
@@ -23,6 +23,7 @@ import {
 import { SortableCanvas, type SortableRenderMeta } from "@/components/editor/SortableCanvas";
 import { EditorSettingsDialog } from "@/components/shared/EditorSettingsDialog";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { NavItem } from "@/components/ui/nav-item";
 import { PublishStatusIcon } from "@/components/ui/publish-status-icon";
@@ -170,7 +171,7 @@ function EditableMenuItem({
         <SlidersHorizontal className="h-4 w-4" />
       </Button>
 
-      <Button className="h-8 w-8 p-0" disabled={isSaving} onClick={() => onOpenEditor(href)} size="sm" title="Edit page" variant="secondary">
+      <Button className="h-8 w-8 p-0" disabled={isSaving} onClick={() => onOpenEditor(href)} size="sm" title="Edit page" variant="ghost">
         <Pencil className="h-4 w-4" />
       </Button>
     </div>
@@ -178,6 +179,7 @@ function EditableMenuItem({
 }
 
 export function OrgHeader({ orgSlug, orgName, orgLogoUrl, governingBodyLogoUrl, governingBodyName, canManageOrg, canEditPages, pages }: OrgHeaderProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
@@ -416,8 +418,39 @@ export function OrgHeader({ orgSlug, orgName, orgLogoUrl, governingBodyLogoUrl, 
 
   const hasHeaderActions = canEditPages || canManageOrg;
 
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const syncHeight = () => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      const nextHeight = Math.max(0, Math.round(rect?.height ?? 0));
+      const nextBottom = Math.max(0, Math.round(rect?.bottom ?? 0));
+      document.documentElement.style.setProperty("--org-header-height", `${nextHeight}px`);
+      document.documentElement.style.setProperty("--org-header-bottom", `${nextBottom}px`);
+    };
+
+    syncHeight();
+    const raf = window.requestAnimationFrame(syncHeight);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined" && rootRef.current) {
+      observer = new ResizeObserver(() => syncHeight());
+      observer.observe(rootRef.current);
+    }
+    window.addEventListener("resize", syncHeight);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      observer?.disconnect();
+      window.removeEventListener("resize", syncHeight);
+      document.documentElement.style.setProperty("--org-header-height", "0px");
+      document.documentElement.style.setProperty("--org-header-bottom", "0px");
+    };
+  }, []);
+
   return (
-    <div className="app-container sticky top-0 z-40 pb-4 pt-0">
+    <div className="app-container sticky top-3 z-40 pb-4 pt-0 md:top-4" ref={rootRef}>
       <div className={cn("rounded-card border bg-surface shadow-floating transition-shadow", isScrolled ? "shadow-lg" : "") }>
         <div className="flex min-h-[64px] items-center gap-3 px-3 py-3 md:px-[18px]">
           <div className="shrink-0 self-stretch">
@@ -525,7 +558,7 @@ export function OrgHeader({ orgSlug, orgName, orgLogoUrl, governingBodyLogoUrl, 
             ) : null}
 
             {canEditCurrentPage && !hasInlineEditingActive ? (
-              <button className={buttonVariants({ size: "sm", variant: "secondary" })} onClick={() => openEditorOnPath(currentPathname || orgBasePath)} type="button">
+              <button className={buttonVariants({ size: "sm", variant: "ghost" })} onClick={() => openEditorOnPath(currentPathname || orgBasePath)} type="button">
                 <Pencil className="h-4 w-4" />
                 Edit page
               </button>
@@ -533,7 +566,7 @@ export function OrgHeader({ orgSlug, orgName, orgLogoUrl, governingBodyLogoUrl, 
 
             {canEditPages && !hasInlineEditingActive ? (
               <button
-                className={buttonVariants({ size: "sm", variant: "secondary" })}
+                className={buttonVariants({ size: "sm", variant: "ghost" })}
                 onClick={() => {
                   setIsMenuEditMode(true);
                   setCreateDialogOpen(false);
@@ -710,12 +743,11 @@ export function OrgHeader({ orgSlug, orgName, orgLogoUrl, governingBodyLogoUrl, 
           <Input onChange={(event) => setCreateTitle(event.target.value)} placeholder="Page title" value={createTitle} />
           <Input onChange={(event) => setCreateSlug(event.target.value)} placeholder="URL slug (optional)" value={createSlug} />
           <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm">
-            <input
+            <Checkbox
               checked={createPublished}
               onChange={(event) => {
                 setCreatePublished(event.target.checked);
               }}
-              type="checkbox"
             />
             Visible in menu
           </label>
@@ -786,13 +818,12 @@ export function OrgHeader({ orgSlug, orgName, orgLogoUrl, governingBodyLogoUrl, 
             value={settingsSlug}
           />
           <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm">
-            <input
+            <Checkbox
               checked={settingsPublished}
               disabled={selectedSettingsPage?.slug === "home"}
               onChange={(event) => {
                 setSettingsPublished(event.target.checked);
               }}
-              type="checkbox"
             />
             Visible in menu
           </label>

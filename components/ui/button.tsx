@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Loader2 } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
+import { SpinnerIcon } from "@/components/ui/spinner-icon";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
@@ -10,7 +10,7 @@ const buttonVariants = cva(
       variant: {
         primary: "bg-accent text-accent-foreground hover:bg-accent/90",
         secondary: "border-border bg-surface-muted text-text hover:bg-surface",
-        ghost: "bg-transparent text-text hover:bg-surface-muted",
+        ghost: "border-0 bg-transparent text-text hover:bg-transparent active:bg-transparent",
         link: "border-transparent bg-transparent px-0 text-accent underline-offset-4 hover:underline",
         destructive: "bg-destructive text-canvas hover:bg-destructive/90"
       },
@@ -44,7 +44,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         type={type}
         {...props}
       >
-        {loading ? <Loader2 aria-hidden className="h-4 w-4 shrink-0 animate-spin" /> : null}
+        {loading ? <SpinnerIcon className="h-4 w-4" /> : null}
         <span className={cn("inline-flex items-center gap-2", loading ? "[&_svg]:opacity-0" : undefined)}>{children}</span>
       </button>
     );

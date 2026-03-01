@@ -22,24 +22,25 @@ import {
   Hash,
   List,
   Mail,
-  Pencil,
   Phone,
   Plus,
   Settings2,
   Trash2,
   Type
 } from "lucide-react";
-import { SortableCanvas, type SortableRenderMeta } from "@/components/editor/SortableCanvas";
+import { SortableCanvas } from "@/components/editor/SortableCanvas";
 import { ButtonListEditor } from "@/components/editor/buttons/ButtonListEditor";
-import { useEffect, useMemo, useState, type ComponentType, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type ButtonHTMLAttributes, type ComponentType, type CSSProperties } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { FormBuilderNavItem } from "@/modules/forms/components/FormBuilderNavItem";
 import { InlineEditableText } from "@/modules/forms/components/InlineEditableText";
 import { REGISTRATION_PAGE_KEYS } from "@/modules/forms/types";
 import type { FormField as FormFieldDefinition, FormFieldOption, FormFieldType, FormKind, FormPage, FormSchema } from "@/modules/forms/types";
@@ -265,7 +266,7 @@ function renderPreviewField(field: FormFieldDefinition) {
     return (
       <div className="space-y-1" key={field.id}>
         <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
-          <input disabled type="checkbox" />
+          <Checkbox disabled />
           {label}
         </label>
         {field.helpText ? <p className="text-xs text-text-muted">{field.helpText}</p> : null}
@@ -353,60 +354,6 @@ function PaletteItem({ config, disabled, onAdd }: { config: PaletteFieldConfig; 
   );
 }
 
-function SortablePageNavItem({
-  page,
-  isActive,
-  disabled,
-  canMove,
-  canDelete,
-  onSelect,
-  onDelete,
-  meta
-}: {
-  page: FormPage;
-  isActive: boolean;
-  disabled: boolean;
-  canMove: boolean;
-  canDelete: boolean;
-  onSelect: (pageId: string) => void;
-  onDelete: (pageId: string) => void;
-  meta: SortableRenderMeta;
-}) {
-  return (
-    <div
-      className={cn(
-        "inline-flex w-fit max-w-full items-center gap-2 rounded-control border bg-surface px-2 py-1.5",
-        isActive ? "border-accent/60 bg-accent/10" : "border-border",
-        meta.isDragging ? "shadow-card" : "shadow-none"
-      )}
-    >
-      <button
-        aria-label={`Drag ${page.title || "page"}`}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-text-muted hover:text-text disabled:cursor-not-allowed disabled:text-text-muted/60"
-        disabled={disabled || !canMove}
-        suppressHydrationWarning
-        type="button"
-        {...(canMove ? meta.handleProps.attributes : {})}
-        {...(canMove ? meta.handleProps.listeners : {})}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-
-      <button className="min-w-0 max-w-[220px] text-left text-xs font-semibold text-text" onClick={() => onSelect(page.id)} type="button">
-        <span className="truncate">{page.title || "Untitled page"}</span>
-      </button>
-
-      <Button className="h-8 w-8 p-0" disabled={disabled} onClick={() => onSelect(page.id)} size="sm" title="Edit page" variant="secondary">
-        <Pencil className="h-4 w-4" />
-      </Button>
-
-      <Button className="h-8 w-8 p-0" disabled={disabled || !canDelete} onClick={() => onDelete(page.id)} size="sm" title="Delete page" variant="secondary">
-        <Trash2 className="h-4 w-4" />
-      </Button>
-    </div>
-  );
-}
-
 function SortableCanvasField({
   field,
   selected,
@@ -478,12 +425,11 @@ function SortableCanvasField({
           </div>
 
           <label className="inline-flex h-8 items-center gap-1 rounded-control border bg-surface-muted px-2 text-xs text-text">
-            <input
+            <Checkbox
               checked={field.required}
               disabled={disabled}
               onChange={(event) => onToggleRequired(field.id, event.target.checked)}
               onClick={(event) => event.stopPropagation()}
-              type="checkbox"
             />
             Required
           </label>
@@ -900,19 +846,33 @@ export function FormFieldsVisualEditor({ orgSlug, formName, formDescription, for
             items={pages}
             onReorder={reorderPages}
             renderItem={(page, meta) => (
-              <SortablePageNavItem
-                canDelete={!isRegistration && !page.locked && pages.length > 1}
-                canMove={!isRegistration && !page.locked}
-                disabled={disabled}
-                isActive={page.id === activePage?.id}
-                meta={meta}
-                onDelete={deletePage}
-                onSelect={(pageId) => {
-                  setActivePageId(pageId);
-                  setSelectedFieldId(null);
-                }}
-                page={page}
-              />
+              <div className={cn(meta.isDragging ? "shadow-card" : "shadow-none")}>
+                <FormBuilderNavItem
+                  canDelete={!isRegistration && !page.locked && pages.length > 1}
+                  canMove={!isRegistration && !page.locked}
+                  disabled={disabled}
+                  dragAriaLabel={`Drag ${page.title || "page"}`}
+                  dragHandleProps={
+                    (!isRegistration && !page.locked
+                      ? {
+                          ...meta.handleProps.attributes,
+                          ...meta.handleProps.listeners
+                        }
+                      : undefined) as ButtonHTMLAttributes<HTMLButtonElement> | undefined
+                  }
+                  isActive={page.id === activePage?.id}
+                  label={page.title || "Untitled page"}
+                  onDelete={() => deletePage(page.id)}
+                  onEdit={() => {
+                    setActivePageId(page.id);
+                    setSelectedFieldId(null);
+                  }}
+                  onSelect={() => {
+                    setActivePageId(page.id);
+                    setSelectedFieldId(null);
+                  }}
+                />
+              </div>
             )}
             sortingStrategy="horizontal"
           />
@@ -954,7 +914,7 @@ export function FormFieldsVisualEditor({ orgSlug, formName, formDescription, for
           {activePage.pageKey === "generic_success" || activePage.pageKey === REGISTRATION_PAGE_KEYS.success ? (
             <div className="space-y-3 rounded-control border bg-surface-muted/40 p-3 md:col-span-2">
               <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
-                <input
+                <Checkbox
                   checked={activePage.showSubmitAnotherResponseButton}
                   disabled={disabled}
                   onChange={(event) => {
@@ -963,7 +923,6 @@ export function FormFieldsVisualEditor({ orgSlug, formName, formDescription, for
                       showSubmitAnotherResponseButton: event.target.checked
                     }));
                   }}
-                  type="checkbox"
                 />
                 Show "Submit another response" button
               </label>
@@ -1215,7 +1174,7 @@ export function FormFieldsVisualEditor({ orgSlug, formName, formDescription, for
             </FormField>
 
             <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
-              <input
+              <Checkbox
                 checked={selectedField.required}
                 disabled={disabled}
                 onChange={(event) => {
@@ -1224,7 +1183,6 @@ export function FormFieldsVisualEditor({ orgSlug, formName, formDescription, for
                     required: event.target.checked
                   }));
                 }}
-                type="checkbox"
               />
               Required field
             </label>
@@ -1272,7 +1230,7 @@ export function FormFieldsVisualEditor({ orgSlug, formName, formDescription, for
 
                           return (
                             <label className="flex items-center gap-2 text-sm text-text" key={node.id}>
-                              <input
+                              <Checkbox
                                 checked={isChecked}
                                 disabled={disabled}
                                 onChange={(event) => {
@@ -1284,7 +1242,6 @@ export function FormFieldsVisualEditor({ orgSlug, formName, formDescription, for
                                       : field.targetNodeIds.filter((targetId) => targetId !== node.id)
                                   }));
                                 }}
-                                type="checkbox"
                               />
                               {getNodeLabel(node)}
                             </label>
@@ -1294,7 +1251,7 @@ export function FormFieldsVisualEditor({ orgSlug, formName, formDescription, for
                     ) : null}
 
                     <label className="inline-flex items-center gap-2 text-sm text-text">
-                      <input
+                      <Checkbox
                         checked={selectedField.includeDescendants}
                         disabled={disabled}
                         onChange={(event) => {
@@ -1303,7 +1260,6 @@ export function FormFieldsVisualEditor({ orgSlug, formName, formDescription, for
                             includeDescendants: event.target.checked
                           }));
                         }}
-                        type="checkbox"
                       />
                       Include child nodes
                     </label>

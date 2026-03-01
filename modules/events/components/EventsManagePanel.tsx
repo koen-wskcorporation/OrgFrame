@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/alert";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -465,7 +466,7 @@ export function EventsManagePanel({ orgSlug, events, canWrite = true }: EventsMa
           </FormField>
 
           <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
-            <input
+            <Checkbox
               checked={draft.isAllDay}
               disabled={!canWrite}
               onChange={(event) =>
@@ -474,7 +475,6 @@ export function EventsManagePanel({ orgSlug, events, canWrite = true }: EventsMa
                   isAllDay: event.target.checked
                 }))
               }
-              type="checkbox"
             />
             All-day event
           </label>

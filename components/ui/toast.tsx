@@ -210,7 +210,7 @@ export function useToast() {
 
 function ToastViewport({ toasts }: { toasts: ToastItem[] }) {
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[min(92vw,420px)] flex-col gap-2 sm:bottom-6 sm:right-6">
+    <div className="pointer-events-none fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[60] flex flex-col gap-2 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-[min(92vw,420px)]">
       {toasts.map((item) => {
         const variant = item.variant ?? "info";
         const variantStyle = variantStyles[variant];
@@ -234,9 +234,10 @@ function ToastViewport({ toasts }: { toasts: ToastItem[] }) {
                 {item.description ? <p className="text-sm text-text-muted">{item.description}</p> : null}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
                 {item.actionLabel && item.onAction ? (
                   <Button
+                    className="w-full sm:w-auto"
                     onClick={() => {
                       item.onAction?.();
                       dismissToast(item.id);
@@ -248,7 +249,7 @@ function ToastViewport({ toasts }: { toasts: ToastItem[] }) {
                   </Button>
                 ) : null}
 
-                <Button className="ml-auto" onClick={() => dismissToast(item.id)} size="sm" variant="ghost">
+                <Button className="w-full sm:ml-auto sm:w-auto" onClick={() => dismissToast(item.id)} size="sm" variant="ghost">
                   Dismiss
                 </Button>
               </div>

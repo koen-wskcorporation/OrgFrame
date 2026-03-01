@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -173,7 +174,7 @@ export function RuleBuilderPanel({ draft, nodes: _nodes, canWrite, isSaving, onC
         ) : null}
 
         <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
-          <input
+          <Checkbox
             checked={draft.repeatEnabled}
             disabled={!canWrite}
             onChange={(event) =>
@@ -182,7 +183,6 @@ export function RuleBuilderPanel({ draft, nodes: _nodes, canWrite, isSaving, onC
                 repeatEnabled: event.target.checked
               })
             }
-            type="checkbox"
           />
           Repeat this pattern
         </label>

@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { CalendarPicker } from "@/components/ui/calendar-picker";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -27,6 +28,21 @@ type RegistrationFormClientProps = {
   programNodes: ProgramNode[];
 };
 
+const FORM_PROGRESS_STORAGE_VERSION = 1;
+const FORM_PROGRESS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+type StoredFormProgress = {
+  version: number;
+  savedAt: number;
+  expiresAt: number;
+  formUpdatedAt: string;
+  currentPageIndex: number;
+  genericAnswers: Record<string, unknown>;
+  answersByPlayerId: Record<string, Record<string, unknown>>;
+  selectedPlayerIds: string[];
+  selectedNodeByPlayerId: Record<string, string>;
+};
+
 type RuleState = {
   hiddenFieldNames: Set<string>;
   requiredFieldNames: Set<string>;
@@ -42,6 +58,34 @@ function asString(value: unknown) {
   }
 
   return "";
+}
+
+function hasMeaningfulInput(value: unknown): boolean {
+  if (value === undefined || value === null) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).some((item) => hasMeaningfulInput(item));
+  }
+
+  return false;
 }
 
 function digitsOnly(value: string) {
@@ -189,6 +233,67 @@ function getPageTitle(page: FormPage | undefined, fallback: string) {
   return page.title || fallback;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseStoredFormProgress(raw: string): StoredFormProgress | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (!isRecord(parsed)) {
+      return null;
+    }
+
+    if (parsed.version !== FORM_PROGRESS_STORAGE_VERSION) {
+      return null;
+    }
+
+    if (typeof parsed.savedAt !== "number" || typeof parsed.expiresAt !== "number" || typeof parsed.formUpdatedAt !== "string") {
+      return null;
+    }
+
+    if (typeof parsed.currentPageIndex !== "number" || !Number.isFinite(parsed.currentPageIndex) || parsed.currentPageIndex < 0) {
+      return null;
+    }
+
+    if (!isRecord(parsed.genericAnswers) || !isRecord(parsed.answersByPlayerId) || !isRecord(parsed.selectedNodeByPlayerId)) {
+      return null;
+    }
+
+    if (!Array.isArray(parsed.selectedPlayerIds) || parsed.selectedPlayerIds.some((item) => typeof item !== "string")) {
+      return null;
+    }
+
+    const answersByPlayerId = Object.fromEntries(
+      Object.entries(parsed.answersByPlayerId).filter((entry): entry is [string, Record<string, unknown>] => {
+        const [playerId, answers] = entry;
+        return typeof playerId === "string" && isRecord(answers);
+      })
+    );
+
+    const selectedNodeByPlayerId = Object.fromEntries(
+      Object.entries(parsed.selectedNodeByPlayerId).filter(
+        (entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string"
+      )
+    );
+
+    return {
+      version: FORM_PROGRESS_STORAGE_VERSION,
+      savedAt: parsed.savedAt,
+      expiresAt: parsed.expiresAt,
+      formUpdatedAt: parsed.formUpdatedAt,
+      currentPageIndex: parsed.currentPageIndex,
+      genericAnswers: parsed.genericAnswers,
+      answersByPlayerId,
+      selectedPlayerIds: parsed.selectedPlayerIds,
+      selectedNodeByPlayerId
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function RegistrationFormClient({ orgSlug, formSlug, form, players, programNodes }: RegistrationFormClientProps) {
   const { toast } = useToast();
 
@@ -216,13 +321,111 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
   const [newPlayerDob, setNewPlayerDob] = useState("");
   const [newPlayerGender, setNewPlayerGender] = useState("");
   const [newPlayerGenderMode, setNewPlayerGenderMode] = useState("");
+  const [hasHydratedProgress, setHasHydratedProgress] = useState(false);
+
+  const progressStorageKey = useMemo(() => `sports-saas:form-progress:${orgSlug}:${formSlug}`, [formSlug, orgSlug]);
 
   const currentPage = flowPages[currentPageIndex];
   const isLastPage = currentPageIndex === flowPages.length - 1;
+  const hasStartedForm = useMemo(() => {
+    if (selectedPlayerIds.length > 0) {
+      return true;
+    }
+
+    if (Object.values(selectedNodeByPlayerId).some((value) => hasMeaningfulInput(value))) {
+      return true;
+    }
+
+    if (Object.values(genericAnswers).some((value) => hasMeaningfulInput(value))) {
+      return true;
+    }
+
+    return Object.values(answersByPlayerId).some((playerAnswers) =>
+      Object.values(playerAnswers ?? {}).some((value) => hasMeaningfulInput(value))
+    );
+  }, [answersByPlayerId, genericAnswers, selectedNodeByPlayerId, selectedPlayerIds]);
+  const progressPercent = hasStartedForm && flowPages.length > 0 ? ((currentPageIndex + 1) / (flowPages.length + 1)) * 100 : 0;
 
   const registrationPlayerPage = flowPages.find((page) => page.pageKey === REGISTRATION_PAGE_KEYS.player);
   const registrationDivisionPage = flowPages.find((page) => page.pageKey === REGISTRATION_PAGE_KEYS.divisionQuestions);
   const registrationPaymentPage = flowPages.find((page) => page.pageKey === REGISTRATION_PAGE_KEYS.payment);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const raw = window.localStorage.getItem(progressStorageKey);
+
+    if (!raw) {
+      setHasHydratedProgress(true);
+      return;
+    }
+
+    const storedProgress = parseStoredFormProgress(raw);
+    const now = Date.now();
+
+    if (!storedProgress || storedProgress.expiresAt <= now || storedProgress.formUpdatedAt !== form.updatedAt) {
+      window.localStorage.removeItem(progressStorageKey);
+      setHasHydratedProgress(true);
+      return;
+    }
+
+    const knownPlayerIds = new Set(players.map((player) => player.id));
+    const restoredSelectedPlayerIds = storedProgress.selectedPlayerIds.filter((playerId) => knownPlayerIds.has(playerId));
+    const restoredAnswersByPlayerId = Object.fromEntries(
+      Object.entries(storedProgress.answersByPlayerId).filter(([playerId]) => knownPlayerIds.has(playerId))
+    );
+    const restoredSelectedNodeByPlayerId = Object.fromEntries(
+      Object.entries(storedProgress.selectedNodeByPlayerId).filter(([playerId]) => knownPlayerIds.has(playerId))
+    );
+
+    setCurrentPageIndex(Math.min(storedProgress.currentPageIndex, Math.max(flowPages.length - 1, 0)));
+    setGenericAnswers(storedProgress.genericAnswers);
+    setAnswersByPlayerId(restoredAnswersByPlayerId);
+    setSelectedPlayerIds(restoredSelectedPlayerIds);
+    setSelectedNodeByPlayerId(restoredSelectedNodeByPlayerId);
+    setHasHydratedProgress(true);
+  }, [flowPages.length, form.updatedAt, players, progressStorageKey]);
+
+  useEffect(() => {
+    if (!hasHydratedProgress || successState || typeof window === "undefined") {
+      return;
+    }
+
+    const now = Date.now();
+    const payload: StoredFormProgress = {
+      version: FORM_PROGRESS_STORAGE_VERSION,
+      savedAt: now,
+      expiresAt: now + FORM_PROGRESS_TTL_MS,
+      formUpdatedAt: form.updatedAt,
+      currentPageIndex,
+      genericAnswers,
+      answersByPlayerId,
+      selectedPlayerIds,
+      selectedNodeByPlayerId
+    };
+
+    window.localStorage.setItem(progressStorageKey, JSON.stringify(payload));
+  }, [
+    answersByPlayerId,
+    currentPageIndex,
+    form.updatedAt,
+    genericAnswers,
+    hasHydratedProgress,
+    progressStorageKey,
+    selectedNodeByPlayerId,
+    selectedPlayerIds,
+    successState
+  ]);
+
+  function clearSavedProgress() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.removeItem(progressStorageKey);
+  }
 
   function getEffectiveNodeIdForPlayer(playerId: string): string | null {
     if (form.targetMode === "locked") {
@@ -429,6 +632,18 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
     setCurrentPageIndex((index) => Math.max(index - 1, 0));
   }
 
+  function handleNextClick(event: React.MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    moveToNextPage();
+  }
+
+  function handleBackClick(event: React.MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    moveToPreviousPage();
+  }
+
   function handleCreatePlayer(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -473,6 +688,12 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null;
+    const isFinalSubmit = submitter?.getAttribute("data-form-submit") === "final";
+
+    if (!isLastPage || !isFinalSubmit) {
+      return;
+    }
 
     const validationError = validateBeforeSubmit();
     if (validationError) {
@@ -514,6 +735,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
         submissionId: result.data.submissionId,
         status: result.data.status
       });
+      clearSavedProgress();
       toast({
         title: requiresPlayers ? "Registration submitted" : "Form submitted",
         variant: "success"
@@ -522,6 +744,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
   }
 
   function handleSubmitAnotherResponse() {
+    clearSavedProgress();
     setSuccessState(null);
     setCurrentPageIndex(0);
     setGenericAnswers({});
@@ -570,10 +793,9 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
     if (field.type === "checkbox") {
       return (
         <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text" key={`${keyPrefix}-${field.id}`}>
-          <input
+          <Checkbox
             checked={value === true || value === "true" || value === "on"}
             onChange={(event) => onChange(field.name, event.target.checked)}
-            type="checkbox"
           />
           {fieldLabel}
         </label>
@@ -651,8 +873,21 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
   return (
     <div className="space-y-4">
       {flowPages.length > 1 ? (
-        <div className="rounded-control border bg-surface px-3 py-2 text-sm text-text-muted">
-          Step {currentPageIndex + 1} of {flowPages.length}: {currentPage?.title ?? "Form"}
+        <div className="space-y-2 rounded-card border bg-surface px-4 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-text">{currentPage?.title ?? "Form"}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+              Step {currentPageIndex + 1} of {flowPages.length}
+            </p>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
+            <div
+              className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out"
+              style={{
+                width: `${progressPercent}%`
+              }}
+            />
+          </div>
         </div>
       ) : null}
 
@@ -663,17 +898,19 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
               <h3 className="font-semibold text-text">{currentPage.title}</h3>
               {currentPage.description ? <p className="text-sm text-text-muted">{currentPage.description}</p> : null}
             </div>
-            {currentPage.fields
-              .filter((field) => !genericCurrentRuleState?.hiddenFieldNames.has(field.name))
-              .map((field) =>
-                renderField(
-                  field,
-                  genericAnswers[field.name],
-                  Boolean(genericCurrentRuleState?.requiredFieldNames.has(field.name)),
-                  updateGenericAnswer,
-                  currentPage.id
-                )
-              )}
+            <div className="grid gap-3 md:grid-cols-3">
+              {currentPage.fields
+                .filter((field) => !genericCurrentRuleState?.hiddenFieldNames.has(field.name))
+                .map((field) =>
+                  renderField(
+                    field,
+                    genericAnswers[field.name],
+                    Boolean(genericCurrentRuleState?.requiredFieldNames.has(field.name)),
+                    updateGenericAnswer,
+                    currentPage.id
+                  )
+                )}
+            </div>
           </div>
         ) : null}
 
@@ -701,7 +938,11 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
                         <span className="font-medium">{player.label}</span>
                         {player.subtitle ? <span className="ml-2 text-text-muted">{player.subtitle}</span> : null}
                       </span>
-                      <input checked={checked} onChange={() => togglePlayer(player.id)} type={allowMultiplePlayers ? "checkbox" : "radio"} />
+                      {allowMultiplePlayers ? (
+                        <Checkbox checked={checked} onChange={() => togglePlayer(player.id)} />
+                      ) : (
+                        <input checked={checked} onChange={() => togglePlayer(player.id)} type="radio" />
+                      )}
                     </label>
                   </div>
                 );
@@ -758,20 +999,22 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
                     </p>
                   ) : null}
 
-                  {targetedFields
-                    .filter((field) => !ruleState.hiddenFieldNames.has(field.name))
-                    .map((field) => (
-                      <div className="space-y-1" key={`${playerId}-${field.id}`}>
-                        {renderField(
-                          field,
-                          playerAnswers[field.name],
-                          ruleState.requiredFieldNames.has(field.name),
-                          (fieldName, nextValue) => updatePlayerAnswer(playerId, fieldName, nextValue),
-                          playerId
-                        )}
-                        <p className="text-[11px] text-text-muted">Applies to: {getFieldTargetDescription(field, programNodes)}</p>
-                      </div>
-                    ))}
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {targetedFields
+                      .filter((field) => !ruleState.hiddenFieldNames.has(field.name))
+                      .map((field) => (
+                        <div className="space-y-1" key={`${playerId}-${field.id}`}>
+                          {renderField(
+                            field,
+                            playerAnswers[field.name],
+                            ruleState.requiredFieldNames.has(field.name),
+                            (fieldName, nextValue) => updatePlayerAnswer(playerId, fieldName, nextValue),
+                            playerId
+                          )}
+                          <p className="text-[11px] text-text-muted">Applies to: {getFieldTargetDescription(field, programNodes)}</p>
+                        </div>
+                      ))}
+                  </div>
 
                   {targetedFields.filter((field) => !ruleState.hiddenFieldNames.has(field.name)).length === 0 ? (
                     <Alert variant="info">No questions apply to this player/node combination.</Alert>
@@ -807,16 +1050,16 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
         ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={currentPageIndex === 0} onClick={moveToPreviousPage} type="button" variant="secondary">
+          <Button disabled={currentPageIndex === 0} onClick={handleBackClick} type="button" variant="secondary">
             Back
           </Button>
 
           {!isLastPage ? (
-            <Button onClick={moveToNextPage} type="button">
+            <Button onClick={handleNextClick} type="button">
               Next
             </Button>
           ) : (
-            <Button disabled={isSubmitting} loading={isSubmitting} type="submit">
+            <Button data-form-submit="final" disabled={isSubmitting} loading={isSubmitting} type="submit">
               {isSubmitting ? "Submitting..." : requiresPlayers ? "Submit registration" : "Submit"}
             </Button>
           )}

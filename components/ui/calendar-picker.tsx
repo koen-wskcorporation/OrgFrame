@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type CalendarPickerProps = {
@@ -52,6 +52,51 @@ function toIsoDate(value: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function isoToUsDigits(value: string) {
+  const parsed = parseIsoDate(value);
+
+  if (!parsed) {
+    return "";
+  }
+
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const year = String(parsed.getFullYear()).padStart(4, "0");
+  return `${month}${day}${year}`;
+}
+
+function usDigitsToMaskedValue(digits: string) {
+  const safeDigits = digits.replace(/\D/g, "").slice(0, 8);
+  const month = safeDigits.slice(0, 2).padEnd(2, "_");
+  const day = safeDigits.slice(2, 4).padEnd(2, "_");
+  const year = safeDigits.slice(4, 8).padEnd(4, "_");
+  return `${month}/${day}/${year}`;
+}
+
+function usDigitsToIsoDate(digits: string) {
+  const safeDigits = digits.replace(/\D/g, "").slice(0, 8);
+
+  if (safeDigits.length !== 8) {
+    return null;
+  }
+
+  const month = Number.parseInt(safeDigits.slice(0, 2), 10);
+  const day = Number.parseInt(safeDigits.slice(2, 4), 10);
+  const year = Number.parseInt(safeDigits.slice(4, 8), 10);
+
+  if (!Number.isInteger(month) || !Number.isInteger(day) || !Number.isInteger(year)) {
+    return null;
+  }
+
+  const next = new Date(year, month - 1, day);
+
+  if (next.getFullYear() !== year || next.getMonth() !== month - 1 || next.getDate() !== day) {
+    return null;
+  }
+
+  return toIsoDate(next);
+}
+
 function todayIsoDate() {
   return toIsoDate(new Date());
 }
@@ -95,11 +140,30 @@ function isOutsideBounds(dateIso: string, min?: string, max?: string) {
 
 export function CalendarPicker({ value, onChange, disabled, placeholder = "Select date", id, name, min, max, className }: CalendarPickerProps) {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
   const selectedDate = parseIsoDate(value);
   const [open, setOpen] = React.useState(false);
+  const [inputDigits, setInputDigits] = React.useState(() => isoToUsDigits(value));
   const [visibleMonth, setVisibleMonth] = React.useState<Date>(() => startOfMonth(selectedDate ?? new Date()));
-  const selectedLabel = formatSelectedLabel(value);
   const today = todayIsoDate();
+
+  React.useEffect(() => {
+    setInputDigits(isoToUsDigits(value));
+  }, [value]);
+
+  function placeCaretAtDigit(digitIndex: number) {
+    const target = inputRef.current;
+    if (!target) {
+      return;
+    }
+
+    const positions = [0, 1, 3, 4, 6, 7, 8, 9];
+    const safeIndex = Math.max(0, Math.min(positions.length - 1, digitIndex));
+    const caretPosition = positions[safeIndex] ?? 0;
+    requestAnimationFrame(() => {
+      target.setSelectionRange(caretPosition, caretPosition);
+    });
+  }
 
   React.useEffect(() => {
     if (!open) {
@@ -154,43 +218,136 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
 
   return (
     <div className={cn("relative", className)} ref={rootRef}>
-      <input name={name} type="hidden" value={value} />
-      <button
-        aria-disabled={disabled || undefined}
-        aria-expanded={open}
+      <div
         className={cn(
-          "flex h-10 w-full items-center justify-between rounded-control border bg-surface px-3 py-2 text-left text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-55",
-          !selectedLabel ? "text-text-muted" : null
+          "flex h-10 w-full items-center gap-1 rounded-control border bg-surface px-1 py-1 text-sm text-text focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-canvas",
+          disabled ? "opacity-55" : null
         )}
-        disabled={disabled}
-        id={id}
-        onClick={() => setOpen((current) => !current)}
-        type="button"
       >
-        <span>{selectedLabel || placeholder}</span>
-        <CalendarDays aria-hidden className="h-4 w-4 shrink-0" />
-      </button>
+        <input
+          className="h-full min-w-0 flex-1 bg-transparent px-2 text-sm text-text outline-none placeholder:text-text-muted disabled:cursor-not-allowed"
+          disabled={disabled}
+          id={id}
+          inputMode="numeric"
+          name={name}
+          onBlur={() => {
+            if (inputDigits.length === 0) {
+              return;
+            }
+
+            const nextIso = usDigitsToIsoDate(inputDigits);
+            if (!nextIso || isOutsideBounds(nextIso, min, max)) {
+              setInputDigits(isoToUsDigits(value));
+            }
+          }}
+          onClick={(event) => {
+            event.preventDefault();
+            placeCaretAtDigit(inputDigits.length >= 8 ? 7 : inputDigits.length);
+          }}
+          onFocus={() => {
+            placeCaretAtDigit(inputDigits.length >= 8 ? 7 : inputDigits.length);
+          }}
+          onChange={() => {
+            // Input is keyboard-managed via onKeyDown; keep a no-op handler to satisfy controlled input expectations.
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Tab") {
+              return;
+            }
+
+            event.preventDefault();
+
+            if (event.key === "Backspace" || event.key === "Delete") {
+              if (inputDigits.length === 0) {
+                return;
+              }
+
+              const nextDigits = inputDigits.slice(0, -1);
+              setInputDigits(nextDigits);
+              if (nextDigits.length === 0) {
+                onChange("");
+              }
+              placeCaretAtDigit(nextDigits.length >= 8 ? 7 : nextDigits.length);
+              return;
+            }
+
+            if (!/^\d$/.test(event.key)) {
+              return;
+            }
+
+            if (inputDigits.length >= 8) {
+              return;
+            }
+
+            const nextDigits = `${inputDigits}${event.key}`;
+            setInputDigits(nextDigits);
+
+            const nextIso = usDigitsToIsoDate(nextDigits);
+            if (nextIso && !isOutsideBounds(nextIso, min, max)) {
+              onChange(nextIso);
+            }
+
+            placeCaretAtDigit(nextDigits.length >= 8 ? 7 : nextDigits.length);
+          }}
+          placeholder={placeholder === "Select date" ? "MM/DD/YYYY" : placeholder}
+          readOnly
+          ref={inputRef}
+          type="text"
+          value={usDigitsToMaskedValue(inputDigits)}
+        />
+        <button
+          aria-disabled={disabled || undefined}
+          aria-expanded={open}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted disabled:cursor-not-allowed"
+          disabled={disabled}
+          onClick={() => setOpen((current) => !current)}
+          type="button"
+        >
+          <CalendarDays aria-hidden className="h-4 w-4 shrink-0" />
+          <span className="sr-only">Open calendar</span>
+        </button>
+      </div>
 
       {open ? (
         <div className="absolute z-50 mt-2 w-[18rem] rounded-card border bg-surface p-3 shadow-card">
           <div className="mb-3 flex items-center justify-between">
-            <button
-              className="inline-flex h-8 w-8 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted"
-              onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
-              type="button"
-            >
-              <ChevronLeft aria-hidden className="h-4 w-4" />
-              <span className="sr-only">Previous month</span>
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                className="inline-flex h-8 w-8 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted"
+                onClick={() => setVisibleMonth((current) => new Date(current.getFullYear() - 1, current.getMonth(), 1))}
+                type="button"
+              >
+                <ChevronsLeft aria-hidden className="h-4 w-4" />
+                <span className="sr-only">Previous year</span>
+              </button>
+              <button
+                className="inline-flex h-8 w-8 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted"
+                onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+                type="button"
+              >
+                <ChevronLeft aria-hidden className="h-4 w-4" />
+                <span className="sr-only">Previous month</span>
+              </button>
+            </div>
             <p className="text-sm font-semibold text-text">{formatMonthLabel(monthStart)}</p>
-            <button
-              className="inline-flex h-8 w-8 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted"
-              onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
-              type="button"
-            >
-              <ChevronRight aria-hidden className="h-4 w-4" />
-              <span className="sr-only">Next month</span>
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                className="inline-flex h-8 w-8 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted"
+                onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+                type="button"
+              >
+                <ChevronRight aria-hidden className="h-4 w-4" />
+                <span className="sr-only">Next month</span>
+              </button>
+              <button
+                className="inline-flex h-8 w-8 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted"
+                onClick={() => setVisibleMonth((current) => new Date(current.getFullYear() + 1, current.getMonth(), 1))}
+                type="button"
+              >
+                <ChevronsRight aria-hidden className="h-4 w-4" />
+                <span className="sr-only">Next year</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-7 gap-1">
@@ -220,6 +377,7 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
                   key={iso}
                   onClick={() => {
                     onChange(iso);
+                    setInputDigits(isoToUsDigits(iso));
                     setOpen(false);
                   }}
                   type="button"
@@ -235,6 +393,7 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
               className="text-xs text-text-muted underline-offset-4 hover:underline"
               onClick={() => {
                 onChange("");
+                setInputDigits("");
                 setOpen(false);
               }}
               type="button"
@@ -247,6 +406,7 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
                 const next = todayIsoDate();
                 if (!isOutsideBounds(next, min, max)) {
                   onChange(next);
+                  setInputDigits(isoToUsDigits(next));
                 }
                 setOpen(false);
               }}

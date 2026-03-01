@@ -2,6 +2,7 @@
 
 import { AssetTile } from "@/components/ui/asset-tile";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ButtonListEditor } from "@/components/editor/buttons/ButtonListEditor";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
@@ -44,12 +45,11 @@ export function CtaCardBlockEditorClient({ block, onChange, context }: BlockEdit
 
       <FormField label="Accent highlight">
         <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm">
-          <input
+          <Checkbox
             checked={block.config.accentHighlight}
             onChange={(event) => {
               updateConfig({ accentHighlight: event.target.checked });
             }}
-            type="checkbox"
           />
           Highlight this card
         </label>

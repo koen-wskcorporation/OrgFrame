@@ -149,3 +149,32 @@ export type RegistrationPlayerEntryInput = {
   programNodeId: string | null;
   answers: Record<string, unknown>;
 };
+
+export type FormSubmissionViewVisibilityScope = "private" | "forms_readers" | "specific_admin";
+
+export type FormSubmissionViewConfig = {
+  visibleColumnKeys?: string[];
+  columnOrderKeys?: string[];
+  pinnedLeftColumnKeys?: string[];
+  pinnedRightColumnKeys?: string[];
+  columnWidthsByKey?: Record<string, number>;
+  sort?: {
+    columnKey: string | null;
+    direction: "asc" | "desc";
+  };
+  searchQuery?: string;
+};
+
+export type OrgFormSubmissionView = {
+  id: string;
+  orgId: string;
+  formId: string;
+  name: string;
+  sortIndex: number;
+  visibilityScope: FormSubmissionViewVisibilityScope;
+  targetUserId: string | null;
+  configJson: FormSubmissionViewConfig;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+};

@@ -36,6 +36,7 @@ export function FormPageTabs({ orgSlug, formId, active }: FormPageTabsProps) {
               )}
               href={item.href}
               key={item.key}
+              prefetch={false}
             >
               <span className="flex flex-1 items-center justify-center px-3 text-center">{item.label}</span>
               <span

@@ -5,6 +5,7 @@ import type {
   FormSubmissionEntry,
   FormSubmissionWithEntries,
   OrgForm,
+  OrgFormSubmissionView,
   OrgFormVersion,
   SubmissionStatus,
   TargetMode,
@@ -18,6 +19,8 @@ const versionSelect = "id, org_id, form_id, version_number, snapshot_json, publi
 const submissionSelect =
   "id, org_id, form_id, version_id, submitted_by_user_id, status, answers_json, metadata_json, created_at, updated_at";
 const submissionEntrySelect = "id, submission_id, player_id, program_node_id, answers_json, created_at";
+const submissionViewSelect =
+  "id, org_id, form_id, name, sort_index, visibility_scope, target_user_id, config_json, created_by_user_id, created_at, updated_at";
 
 type OrgFormRow = {
   id: string;
@@ -69,6 +72,20 @@ type SubmissionEntryRow = {
   program_node_id: string | null;
   answers_json: unknown;
   created_at: string;
+};
+
+type SubmissionViewRow = {
+  id: string;
+  org_id: string;
+  form_id: string;
+  name: string;
+  sort_index: number;
+  visibility_scope: "private" | "forms_readers" | "specific_admin";
+  target_user_id: string | null;
+  config_json: unknown;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
 };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -136,6 +153,22 @@ function mapSubmissionEntry(row: SubmissionEntryRow): FormSubmissionEntry {
     programNodeId: row.program_node_id,
     answersJson: asObject(row.answers_json),
     createdAt: row.created_at
+  };
+}
+
+function mapSubmissionView(row: SubmissionViewRow): OrgFormSubmissionView {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    formId: row.form_id,
+    name: row.name,
+    sortIndex: row.sort_index,
+    visibilityScope: row.visibility_scope,
+    targetUserId: row.target_user_id,
+    configJson: asObject(row.config_json),
+    createdByUserId: row.created_by_user_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 
@@ -420,6 +453,62 @@ export async function setFormSubmissionStatus(input: { orgId: string; submission
   return mapSubmission(data as SubmissionRow);
 }
 
+export async function deleteFormSubmissionRecord(input: { orgId: string; formId: string; submissionId: string }) {
+  const supabase = await createSupabaseServer();
+  const { error, count } = await supabase
+    .from("org_form_submissions")
+    .delete({ count: "exact" })
+    .eq("org_id", input.orgId)
+    .eq("form_id", input.formId)
+    .eq("id", input.submissionId);
+
+  if (error) {
+    throw new Error(`Failed to delete submission: ${error.message}`);
+  }
+
+  return (count ?? 0) > 0;
+}
+
+export async function updateFormSubmissionAnswersJson(input: {
+  orgId: string;
+  submissionId: string;
+  answersJson: Record<string, unknown>;
+}) {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_form_submissions")
+    .update({ answers_json: input.answersJson })
+    .eq("org_id", input.orgId)
+    .eq("id", input.submissionId)
+    .select(submissionSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update submission answers: ${error.message}`);
+  }
+
+  return mapSubmission(data as SubmissionRow);
+}
+
+export async function updateFormSubmissionEntryAnswersJson(input: {
+  submissionEntryId: string;
+  answersJson: Record<string, unknown>;
+}) {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_form_submission_entries")
+    .update({ answers_json: input.answersJson })
+    .eq("id", input.submissionEntryId)
+    .select(submissionEntrySelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update submission entry answers: ${error.message}`);
+  }
+
+  return mapSubmissionEntry(data as SubmissionEntryRow);
+}
+
 export async function listPublishedFormsForProgram(orgId: string, programId: string): Promise<OrgForm[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
@@ -451,4 +540,145 @@ export async function listPublishedFormsForOrg(orgId: string): Promise<OrgForm[]
   }
 
   return (data ?? []).map((row) => mapForm(row as OrgFormRow));
+}
+
+export async function listFormSubmissionViews(orgId: string, formId: string): Promise<OrgFormSubmissionView[]> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_form_submission_views")
+    .select(submissionViewSelect)
+    .eq("org_id", orgId)
+    .eq("form_id", formId)
+    .order("sort_index", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to list submission views: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => mapSubmissionView(row as SubmissionViewRow));
+}
+
+export async function createFormSubmissionViewRecord(input: {
+  orgId: string;
+  formId: string;
+  name: string;
+  visibilityScope: "private" | "forms_readers" | "specific_admin";
+  targetUserId: string | null;
+  sortIndex?: number;
+  configJson: Record<string, unknown>;
+  createdByUserId: string;
+}): Promise<OrgFormSubmissionView> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_form_submission_views")
+    .insert({
+      org_id: input.orgId,
+      form_id: input.formId,
+      name: input.name,
+      visibility_scope: input.visibilityScope,
+      target_user_id: input.targetUserId,
+      sort_index: typeof input.sortIndex === "number" ? input.sortIndex : undefined,
+      config_json: input.configJson,
+      created_by_user_id: input.createdByUserId
+    })
+    .select(submissionViewSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create submission view: ${error.message}`);
+  }
+
+  return mapSubmissionView(data as SubmissionViewRow);
+}
+
+export async function updateFormSubmissionViewConfigRecord(input: {
+  orgId: string;
+  formId: string;
+  viewId: string;
+  configJson: Record<string, unknown>;
+}): Promise<OrgFormSubmissionView> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_form_submission_views")
+    .update({
+      config_json: input.configJson
+    })
+    .eq("org_id", input.orgId)
+    .eq("form_id", input.formId)
+    .eq("id", input.viewId)
+    .select(submissionViewSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update submission view: ${error.message}`);
+  }
+
+  return mapSubmissionView(data as SubmissionViewRow);
+}
+
+export async function updateFormSubmissionViewRecord(input: {
+  orgId: string;
+  formId: string;
+  viewId: string;
+  name: string;
+  visibilityScope: "private" | "forms_readers" | "specific_admin";
+  targetUserId: string | null;
+  sortIndex?: number;
+}): Promise<OrgFormSubmissionView> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_form_submission_views")
+    .update({
+      name: input.name,
+      sort_index: typeof input.sortIndex === "number" ? input.sortIndex : undefined,
+      visibility_scope: input.visibilityScope,
+      target_user_id: input.targetUserId
+    })
+    .eq("org_id", input.orgId)
+    .eq("form_id", input.formId)
+    .eq("id", input.viewId)
+    .select(submissionViewSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update submission view: ${error.message}`);
+  }
+
+  return mapSubmissionView(data as SubmissionViewRow);
+}
+
+export async function deleteFormSubmissionViewRecord(input: { orgId: string; formId: string; viewId: string }): Promise<void> {
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase
+    .from("org_form_submission_views")
+    .delete()
+    .eq("org_id", input.orgId)
+    .eq("form_id", input.formId)
+    .eq("id", input.viewId);
+
+  if (error) {
+    throw new Error(`Failed to delete submission view: ${error.message}`);
+  }
+}
+
+export async function updateFormSubmissionViewsOrderRecord(input: {
+  orgId: string;
+  formId: string;
+  viewOrder: string[];
+}): Promise<void> {
+  const supabase = await createSupabaseServer();
+
+  for (const [index, viewId] of input.viewOrder.entries()) {
+    const { error } = await supabase
+      .from("org_form_submission_views")
+      .update({ sort_index: index })
+      .eq("org_id", input.orgId)
+      .eq("form_id", input.formId)
+      .eq("id", viewId);
+
+    if (error) {
+      throw new Error(`Failed to reorder submission views: ${error.message}`);
+    }
+  }
 }

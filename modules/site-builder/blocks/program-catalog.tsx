@@ -2,6 +2,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { ButtonListEditor } from "@/components/editor/buttons/ButtonListEditor";
 import { Alert } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -171,23 +172,21 @@ export function ProgramCatalogBlockEditor({ block, onChange, context }: BlockEdi
       </FormField>
 
       <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
-        <input
+        <Checkbox
           checked={block.config.showDates}
           onChange={(event) => {
             updateConfig({ showDates: event.target.checked });
           }}
-          type="checkbox"
         />
         Show date ranges
       </label>
 
       <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
-        <input
+        <Checkbox
           checked={block.config.showType}
           onChange={(event) => {
             updateConfig({ showType: event.target.checked });
           }}
-          type="checkbox"
         />
         Show program type
       </label>

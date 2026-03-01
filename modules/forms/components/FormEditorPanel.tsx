@@ -1,14 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ExternalLink, Eye, Pencil, Settings2 } from "lucide-react";
+import { Eye, Pencil, Settings2, Share2 } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { saveFormDraftAction } from "@/modules/forms/actions";
 import { FormFieldsVisualEditor } from "@/modules/forms/components/FormFieldsVisualEditor";
+import { FormSharingPanel } from "@/modules/forms/components/FormSharingPanel";
 import { FormSettingsPanel } from "@/modules/forms/components/FormSettingsPanel";
 import type { FormSchema, OrgForm } from "@/modules/forms/types";
 import type { Program, ProgramNode } from "@/modules/programs/types";
@@ -28,6 +28,7 @@ export function FormEditorPanel({ orgSlug, form, programs, programNodes, canWrit
   const [builderView, setBuilderView] = useState<"editor" | "preview">("editor");
   const [formSchema, setFormSchema] = useState<FormSchema>(form.schemaJson);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sharingOpen, setSharingOpen] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("panel") === "settings") {
@@ -89,10 +90,10 @@ export function FormEditorPanel({ orgSlug, form, programs, programNodes, canWrit
               <CardDescription>Build and preview your form pages and fields visually.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Link className={buttonVariants({ variant: "secondary" })} href={`/${orgSlug}/register/${form.slug}`} rel="noopener noreferrer" target="_blank">
-                <ExternalLink className="h-4 w-4" />
-                Open Public Form
-              </Link>
+              <Button onClick={() => setSharingOpen(true)} type="button" variant="secondary">
+                <Share2 className="h-4 w-4" />
+                Sharing
+              </Button>
               <Button onClick={() => setBuilderView((current) => (current === "editor" ? "preview" : "editor"))} type="button" variant="secondary">
                 {builderView === "editor" ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
                 {builderView === "editor" ? "Live preview" : "Editor"}
@@ -130,6 +131,7 @@ export function FormEditorPanel({ orgSlug, form, programs, programNodes, canWrit
         programNodes={programNodes}
         programs={programs}
       />
+      <FormSharingPanel formId={form.id} formSlug={form.slug} onClose={() => setSharingOpen(false)} open={sharingOpen} orgSlug={orgSlug} />
     </div>
   );
 }
