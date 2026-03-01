@@ -1,5 +1,60 @@
-import { redirect } from "next/navigation";
+import Link from "next/link";
+import type { Metadata } from "next";
+import { CreateOrganizationDialog } from "@/components/dashboard/CreateOrganizationDialog";
+import { DashboardSection, DashboardShell } from "@/components/dashboard/DashboardShell";
+import { EmptyState } from "@/components/dashboard/EmptyState";
+import { OrgCard } from "@/components/dashboard/OrgCard";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { buttonVariants } from "@/components/ui/button";
+import { signOutAction } from "@/app/auth/actions";
+import { getDashboardContext } from "@/lib/dashboard/getDashboardContext";
+import { AiAssistantLauncher } from "@/modules/ai/components/AiAssistantLauncher";
 
-export default function HomePage() {
-  redirect("/app");
+export const metadata: Metadata = {
+  title: "Dashboard"
+};
+
+export default async function HomePage() {
+  const { organizations } = await getDashboardContext();
+
+  return (
+    <DashboardShell
+      actions={
+        <>
+          <AiAssistantLauncher askOnly buttonLabel="AI Assistant" buttonVariant="secondary" />
+          <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/account">
+            Account
+          </Link>
+          <form action={signOutAction}>
+            <SubmitButton size="sm" variant="ghost">
+              Sign out
+            </SubmitButton>
+          </form>
+        </>
+      }
+      subtitle="Your sports in one place."
+      title="Dashboard"
+    >
+      <DashboardSection
+        actions={<CreateOrganizationDialog />}
+        description="Open an organization to view its public site and manage core settings."
+        title="Organizations"
+      >
+        {organizations.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-3">
+            {organizations.map((organization) => (
+              <OrgCard
+                iconUrl={organization.iconUrl}
+                key={organization.orgId}
+                orgName={organization.orgName}
+                orgSlug={organization.orgSlug}
+              />
+            ))}
+          </div>
+        )}
+      </DashboardSection>
+    </DashboardShell>
+  );
 }

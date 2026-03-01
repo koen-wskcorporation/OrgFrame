@@ -1,5 +1,5 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getSessionUser } from "@/lib/auth/getSessionUser";
+import { createSupabaseServer } from "@/lib/supabase/server";
+import { getSessionUser, type SessionUser } from "@/lib/auth/getSessionUser";
 import { getSignedProfileAvatarUrl } from "@/lib/account/getSignedProfileAvatarUrl";
 
 export type CurrentUser = {
@@ -11,14 +11,18 @@ export type CurrentUser = {
   avatarUrl: string | null;
 };
 
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+type GetCurrentUserOptions = {
+  sessionUser?: SessionUser | null;
+};
+
+export async function getCurrentUser(options?: GetCurrentUserOptions): Promise<CurrentUser | null> {
   try {
-    const sessionUser = await getSessionUser();
+    const sessionUser = options?.sessionUser ?? (await getSessionUser());
     if (!sessionUser) {
       return null;
     }
 
-    const supabase = await createSupabaseServerClient();
+    const supabase = await createSupabaseServer();
     const { data: profile } = await supabase
       .from("user_profiles")
       .select("first_name, last_name, avatar_path")

@@ -1,49 +1,70 @@
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import type { NextRequest, NextResponse } from "next/server";
+import { getSupabasePublicConfig } from "@/lib/supabase/config";
+import { normalizeSupabaseCookieOptions, type SupabaseCookieToSet } from "@/lib/supabase/cookies";
 
-type CookieToSet = {
-  name: string;
-  value: string;
-  options?: {
-    domain?: string;
-    expires?: Date;
-    httpOnly?: boolean;
-    maxAge?: number;
-    path?: string;
-    sameSite?: "lax" | "strict" | "none";
-    secure?: boolean;
-  };
-};
+function isHttpsFromHeaders(headerStore: Headers) {
+  const forwardedProto = headerStore.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
 
-function getSupabaseKeys() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+  if (forwardedProto === "https") {
+    return true;
   }
 
-  return { supabaseUrl, supabaseAnonKey };
+  const origin = headerStore.get("origin");
+  return typeof origin === "string" && origin.startsWith("https://");
 }
 
-export async function createSupabaseServerClient() {
+export async function createSupabaseServer() {
   const cookieStore = await cookies();
-  const { supabaseUrl, supabaseAnonKey } = getSupabaseKeys();
+  const headerStore = await headers();
+  const isHttps = isHttpsFromHeaders(headerStore);
+  const { supabaseUrl, supabasePublishableKey } = getSupabasePublicConfig();
 
-  return createServerClient<any>(supabaseUrl, supabaseAnonKey, {
+  return createServerClient<any>(supabaseUrl, supabasePublishableKey, {
+    cookieOptions: {
+      path: "/",
+      sameSite: "lax"
+    },
     cookies: {
       getAll() {
         return cookieStore.getAll();
       },
-      setAll(cookiesToSet: CookieToSet[]) {
+      setAll(cookiesToSet: SupabaseCookieToSet[]) {
         try {
           cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
+            cookieStore.set(name, value, normalizeSupabaseCookieOptions(options, isHttps));
           });
         } catch {
-          // No-op in RSC where cookies are immutable.
+          // Server Components can read cookies but cannot always mutate them.
+          // Middleware handles refresh writes in those cases.
         }
       }
     }
   });
 }
+
+export function createSupabaseServerForRequest(request: NextRequest, response: NextResponse) {
+  const { supabaseUrl, supabasePublishableKey } = getSupabasePublicConfig();
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  const isHttps = forwardedProto === "https" || request.nextUrl.protocol === "https:";
+
+  return createServerClient<any>(supabaseUrl, supabasePublishableKey, {
+    cookieOptions: {
+      path: "/",
+      sameSite: "lax"
+    },
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet: SupabaseCookieToSet[]) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, normalizeSupabaseCookieOptions(options, isHttps));
+        });
+      }
+    }
+  });
+}
+
+export const createSupabaseServerClient = createSupabaseServer;

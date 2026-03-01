@@ -1,14 +1,14 @@
 import { cache } from "react";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServer } from "@/lib/supabase/server";
 
 export type SessionUser = {
   id: string;
   email: string | null;
 };
 
-export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
+const getSessionUserCached = cache(async (): Promise<SessionUser | null> => {
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await createSupabaseServer();
     const {
       data: { user },
       error
@@ -26,3 +26,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     return null;
   }
 });
+
+export async function getSessionUser(): Promise<SessionUser | null> {
+  return getSessionUserCached();
+}

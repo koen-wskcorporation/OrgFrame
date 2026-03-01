@@ -2,7 +2,6 @@ alter table public.orgs
   add column if not exists logo_path text,
   add column if not exists icon_path text,
   add column if not exists brand_primary text,
-  add column if not exists brand_secondary text,
   add column if not exists updated_at timestamptz not null default now();
 
 -- Ensure orgs updated_at is maintained on updates.

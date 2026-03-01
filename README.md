@@ -1,82 +1,140 @@
-# Sports SaaS Platform Foundation
+# Sports SaaS
 
-This repository is scaffolded as a **multi-tenant platform**, with Sponsorships implemented as the first tool module.
+Early-stage Next.js App Router project for multi-tenant sports organizations.
+
+## Temporary Auth Verification (Production)
+
+1. Deploy.
+2. Visit `/api/auth/debug` before login. `hasSbCookies` should be `false`.
+3. Login via the `/auth/login` form (server action).
+4. Open `/api/auth/debug` after login and verify:
+   - `hasSbCookies` is `true`
+   - `sbCookieNames` contains `sb-*`
+   - `getUserSucceeded` is `true`
+   - `supabaseUserId` is non-null
+5. If any check fails, use `host` and `x-forwarded-proto` from `/api/auth/debug` (and `/debug/headers` if needed) to diagnose proxy/protocol cookie handling.
+
+## Supabase Auth Redirect Checklist
+
+- In Supabase Dashboard, include exact redirect URLs for every environment:
+  - `https://<production-domain>/auth/callback`
+  - `http://localhost:3000/auth/callback`
+- Ensure Site URL matches your production app origin.
+- Keep auth cookies on app domain defaults (no custom cookie domain override in app code).
 
 ## Stack
 
-- Next.js App Router + TypeScript
-- Tailwind CSS with shared design tokens
-- Supabase (Postgres + Auth + Storage)
+- Next.js + TypeScript
+- Tailwind CSS semantic tokens
+- Supabase (Auth, Postgres, Storage)
 
-## Platform-first architecture
+## Canonical Routes
 
-### Tool system
+Global routes:
 
-- Registry: `modules/core/tools/registry.ts`
-- Permission model: `modules/core/tools/access.ts`
-- App shell navigation is rendered from the tool registry (`components/shared/AppShell.tsx`)
+- `/`
+- `/auth/login`
+- `/auth/logout`
+- `/auth/reset`
+- `/auth/callback`
+- `/account`
+- `/account/players`
+- `/forbidden`
+- `/api/auth/debug`
 
-Add a new tool by:
+Org routes (`orgSlug` is always first segment):
 
-1. Creating `modules/{toolName}`
-2. Adding a registry entry
-3. Adding routes under `/app/org/[orgSlug]/{toolName}`
+- `/[orgSlug]`
+- `/[orgSlug]/[pageSlug]`
+- `/[orgSlug]/icon`
+- `/[orgSlug]/manage`
+- `/[orgSlug]/manage/site`
+- `/[orgSlug]/manage/info`
+- `/[orgSlug]/manage/branding`
+- `/[orgSlug]/manage/access`
+- `/[orgSlug]/manage/billing`
+- `/[orgSlug]/manage/programs`
+- `/[orgSlug]/manage/programs/[programId]`
+- `/[orgSlug]/manage/forms`
+- `/[orgSlug]/manage/forms/[formId]`
+- `/[orgSlug]/manage/forms/[formId]/submissions`
+- `/[orgSlug]/programs`
+- `/[orgSlug]/programs/[programSlug]`
+- `/[orgSlug]/register/[formSlug]`
 
-### Tenancy
+## Branding Model
 
-- Org resolution: `lib/tenancy/resolveOrg.ts`
-- Org role guards: `lib/tenancy/requireOrgRole.ts`
-- Shared org-scoped shell layout: `app/app/org/[orgSlug]/layout.tsx`
+- App default accent: `#00EAFF`
+- Org override: accent only (`brand_primary` in DB)
+- Org accent is scoped inside org layout only
 
-### Cross-tool event stream
+## Development
 
-- Global events table: `org_events`
-- Event emitter utility: `lib/events/emitOrgEvent.ts`
-- Sponsors module emitters: `modules/sponsors/events.ts`
+```bash
+npm install
+npm run dev
+```
 
-### Sponsorship module
+Quality checks:
 
-- Module root: `modules/sponsors`
-- Includes types, DB queries, components, page components, actions, and event emitters
+```bash
+npm run typecheck
+npm run lint
+```
 
-## Routes
+## AI Assistant
 
-### Public
+Environment variables:
 
-- `/org/[orgSlug]/sponsor`
-- `/org/[orgSlug]/sponsor/success`
+- `OPENAI_API_KEY` (required, server-only)
+- `OPENAI_MODEL` (optional, defaults to `gpt-4.1-mini`)
 
-### Authenticated platform
+API contract:
 
-- `/app`
-- `/app/org/[orgSlug]`
-- `/app/org/[orgSlug]/sponsors`
-- `/app/org/[orgSlug]/sponsors/[id]`
+- `POST /api/ai`
+- Request body:
+  - `orgSlug?: string`
+  - `userMessage: string`
+  - `mode: "ask" | "act"`
+  - `conversation: { role: "user" | "assistant"; content: string }[]`
+  - `phase?: "plan" | "confirm" | "cancel"`
+  - `proposalId?: string`
+  - `entitySelections?: Record<string, string>`
+- Response is SSE with events:
+  - `assistant.delta`
+  - `assistant.done`
+  - `tool.call`
+  - `tool.result`
+  - `proposal.ready`
+  - `execution.result`
+  - `error`
 
-## Database and RLS
+Execution model:
 
-- Migration: `supabase/migrations/202602110001_platform_foundation.sql`
-- Includes:
-  - `orgs`, `org_memberships`
-  - `org_tool_settings`
-  - `org_events`
-  - `sponsor_submissions`
-  - RLS policies for tenant separation
-  - Storage bucket/policies for sponsor assets
+1. User requests action in `act` mode.
+2. Assistant resolves entities and produces a dry-run proposal + changeset.
+3. UI shows **Confirm & Run**.
+4. Server executes only after explicit confirm (`phase="confirm"`).
+5. All act interactions are written to `audit_logs`.
 
-## Local setup
+### Adding a new AI Tool/Intent
 
-1. Copy `.env.example` to `.env.local` and fill in keys.
-2. Install dependencies:
+1. Add a Zod input schema in [`modules/ai/schemas.ts`](/Users/koenstewart/Documents/Sports SaaS/modules/ai/schemas.ts).
+2. Implement tool handler in [`modules/ai/tools/`](/Users/koenstewart/Documents/Sports SaaS/modules/ai/tools).
+3. Define required permission(s), dry-run behavior, and execute behavior.
+4. Register in [`modules/ai/tools/registry.ts`](/Users/koenstewart/Documents/Sports SaaS/modules/ai/tools/registry.ts) and expose JSON schema for OpenAI tool calling.
+5. For executable actions, emit a versioned `AiChangesetV1` and wire confirm-time execution through `execute_changes`.
+6. Add/extend migrations or RPCs as needed for transactional writes and stale-precondition checks.
 
-   ```bash
-   npm install
-   ```
+## Site Management
 
-3. Run Next.js:
+- Use `/{orgSlug}/manage/site` to manage pages and navigation.
+- Page content is powered by `org_pages` + `org_page_blocks`.
+- Navigation is powered by `org_nav_items`.
 
-   ```bash
-   npm run dev
-   ```
+## Programs + Forms Architecture
 
-4. Apply Supabase migration in your Supabase project.
+- Programs data lives in `programs`, `program_nodes`, and `program_schedule_blocks`.
+- Forms data lives in `org_forms`, `org_form_versions`, `org_form_submissions`, and `org_form_submission_entries`.
+- Registration links forms to players and capacity via `program_registrations` and `submit_form_response(...)`.
+- Public discovery and registration routes are canonical at `/{orgSlug}/programs` and `/{orgSlug}/register/{formSlug}`.

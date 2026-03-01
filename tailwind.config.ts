@@ -10,38 +10,31 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        surface: "hsl(var(--surface))",
-        surfaceAlt: "hsl(var(--surface-alt))",
-        foreground: "hsl(var(--foreground))",
-        muted: "hsl(var(--muted))",
-        mutedForeground: "hsl(var(--muted-foreground))",
+        canvas: "hsl(var(--canvas))",
+        surface: {
+          DEFAULT: "hsl(var(--surface))",
+          muted: "hsl(var(--surface-muted))"
+        },
         border: "hsl(var(--border))",
+        text: {
+          DEFAULT: "hsl(var(--text))",
+          muted: "hsl(var(--text-muted))"
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))"
+        },
         ring: "hsl(var(--ring))",
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))"
-        },
-        secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))"
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))"
-        },
-        success: {
-          DEFAULT: "hsl(var(--success))",
-          foreground: "hsl(var(--success-foreground))"
-        }
-      },
-      fontFamily: {
-        sans: ["var(--font-body)", "ui-sans-serif", "system-ui", "sans-serif"],
-        display: ["var(--font-display)", "ui-sans-serif", "system-ui", "sans-serif"]
+        destructive: "hsl(var(--destructive))",
+        success: "hsl(var(--success))"
       },
       borderRadius: {
-        lg: "var(--radius-lg)",
-        md: "var(--radius-md)",
-        sm: "var(--radius-sm)"
+        card: "var(--radius)",
+        control: "calc(var(--radius) - 4px)"
+      },
+      boxShadow: {
+        card: "var(--shadow)",
+        floating: "var(--shadow)"
       }
     }
   },
