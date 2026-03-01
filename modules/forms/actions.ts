@@ -17,9 +17,11 @@ import {
   createFormRecord,
   deleteFormSubmissionRecord,
   deleteFormSubmissionViewRecord,
+  getFormGoogleSheetIntegration,
   getFormById,
   getFormBySlug,
   getLatestFormVersion,
+  listRecentFormGoogleSheetSyncRuns,
   listFormSubmissionViews,
   listFormSubmissions,
   listFormSubmissionsWithEntries,
@@ -30,11 +32,26 @@ import {
   updateFormSubmissionViewConfigRecord,
   updateFormSubmissionViewRecord,
   updateFormSubmissionViewsOrderRecord,
+  updateFormSubmissionAdminNotes,
   updateFormSubmissionAnswersJson,
   updateFormSubmissionEntryAnswersJson,
+  updateFormGoogleSheetIntegrationRecord,
   updateFormRecord
 } from "@/modules/forms/db/queries";
-import type { RegistrationPlayerEntryInput, SubmissionStatus } from "@/modules/forms/types";
+import {
+  connectFormToGoogleSheet,
+  disableFormGoogleSheetIntegration,
+  queueGoogleSheetSyncForForm,
+  runGoogleSheetSyncForForm
+} from "@/modules/forms/integrations/google-sheets/sync";
+import type {
+  OrgFormGoogleSheetIntegration,
+  OrgFormGoogleSheetSyncRun,
+  FormSubmissionViewSummaryCard,
+  FormSubmissionViewFilters,
+  RegistrationPlayerEntryInput,
+  SubmissionStatus
+} from "@/modules/forms/types";
 import { getProgramById } from "@/modules/programs/db/queries";
 
 const textSchema = z.string().trim();
@@ -120,6 +137,13 @@ const updateSubmissionAnswerSchema = z.object({
   value: z.unknown()
 });
 
+const updateSubmissionAdminNotesSchema = z.object({
+  orgSlug: textSchema.min(1),
+  formId: z.string().uuid(),
+  submissionId: z.string().uuid(),
+  adminNotes: z.string().max(4000).nullable().optional()
+});
+
 const submissionViewConfigSchema = z.object({
   visibleColumnKeys: z.array(z.string().trim().min(1)).optional().default([]),
   columnOrderKeys: z.array(z.string().trim().min(1)).optional().default([]),
@@ -132,7 +156,60 @@ const submissionViewConfigSchema = z.object({
       direction: z.enum(["asc", "desc"]).default("asc")
     })
     .optional(),
-  searchQuery: z.string().optional().default("")
+  searchQuery: z.string().optional().default(""),
+  filters: z
+    .object({
+      logic: z.enum(["all", "any"]).default("all"),
+      rules: z
+        .array(
+          z.object({
+            id: z.string().trim().min(1).max(80),
+            fieldKey: z.string().trim().min(1).max(120),
+            operator: z.enum([
+              "equals",
+              "not_equals",
+              "contains",
+              "not_contains",
+              "is_true",
+              "is_false",
+              "on_or_before",
+              "on_or_after",
+              "greater_or_equal",
+              "less_or_equal",
+              "is_empty",
+              "is_not_empty"
+            ]),
+            value: z.string().optional().default("")
+          })
+        )
+        .max(40)
+        .default([])
+    })
+    .optional()
+    .default({
+      logic: "all",
+      rules: []
+    }),
+  summaryCards: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1).max(80),
+        label: z.string().trim().min(1).max(80),
+        metricKey: z.enum([
+          "total_submissions",
+          "total_players",
+          "status_submitted",
+          "status_in_review",
+          "status_approved",
+          "status_rejected",
+          "status_waitlisted",
+          "status_cancelled"
+        ])
+      })
+    )
+    .max(5)
+    .optional()
+    .default([])
 });
 
 const createSubmissionViewSchema = z.object({
@@ -152,8 +229,25 @@ const updateSubmissionViewLayoutSchema = z.object({
   columnOrderKeys: z.array(z.string().trim().min(1)).default([]),
   pinnedLeftColumnKeys: z.array(z.string().trim().min(1)).default([]),
   pinnedRightColumnKeys: z.array(z.string().trim().min(1)).default([]),
-  columnWidthsByKey: z.record(z.string().trim().min(1), z.number().finite().positive()).default({})
+  columnWidthsByKey: z.record(z.string().trim().min(1), z.number().finite().positive()).default({}),
+  filters: submissionViewConfigSchema.shape.filters,
+  summaryCards: submissionViewConfigSchema.shape.summaryCards
 });
+
+function normalizeSubmissionViewFilters(
+  filters: z.infer<typeof submissionViewConfigSchema>["filters"] | undefined
+): FormSubmissionViewFilters {
+  return filters ?? {
+    logic: "all",
+    rules: []
+  };
+}
+
+function normalizeSubmissionViewSummaryCards(
+  summaryCards: z.infer<typeof submissionViewConfigSchema>["summaryCards"] | undefined
+): FormSubmissionViewSummaryCard[] {
+  return summaryCards ?? [];
+}
 
 const updateSubmissionViewSettingsSchema = z.object({
   orgSlug: textSchema.min(1),
@@ -174,6 +268,11 @@ const reorderSubmissionViewsSchema = z.object({
   orgSlug: textSchema.min(1),
   formId: z.string().uuid(),
   viewOrder: z.array(z.string().uuid()).min(1)
+});
+
+const googleSheetIntegrationSchema = z.object({
+  orgSlug: textSchema.min(1),
+  formId: z.string().uuid()
 });
 
 export type FormsActionResult<TData = undefined> =
@@ -279,6 +378,17 @@ async function requireFormsReadOrWrite(orgSlug: string) {
   }
 
   return orgContext;
+}
+
+async function triggerGoogleSheetSyncBestEffort(orgId: string, formId: string) {
+  try {
+    await queueGoogleSheetSyncForForm({
+      orgId,
+      formId
+    });
+  } catch {
+    // Do not fail user actions when sheet sync is unavailable.
+  }
 }
 
 export async function getFormsManagePageData(orgSlug: string) {
@@ -541,6 +651,7 @@ export async function setSubmissionStatusAction(input: z.input<typeof submission
     });
 
     revalidatePath(`/${org.orgSlug}/tools/forms/${payload.formId}/submissions`);
+    await triggerGoogleSheetSyncBestEffort(org.orgId, payload.formId);
 
     return {
       ok: true,
@@ -551,6 +662,39 @@ export async function setSubmissionStatusAction(input: z.input<typeof submission
   } catch (error) {
     rethrowIfNavigationError(error);
     return asError("Unable to update submission status right now.");
+  }
+}
+
+export async function updateSubmissionAdminNotesAction(
+  input: z.input<typeof updateSubmissionAdminNotesSchema>
+): Promise<FormsActionResult<{ submissionId: string; adminNotes: string | null }>> {
+  const parsed = updateSubmissionAdminNotesSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid notes update.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireOrgPermission(payload.orgSlug, "forms.write");
+    const updated = await updateFormSubmissionAdminNotes({
+      orgId: org.orgId,
+      submissionId: payload.submissionId,
+      adminNotes: normalizeOptional(payload.adminNotes ?? null)
+    });
+
+    revalidatePath(`/${org.orgSlug}/tools/forms/${payload.formId}/submissions`);
+    await triggerGoogleSheetSyncBestEffort(org.orgId, payload.formId);
+
+    return {
+      ok: true,
+      data: {
+        submissionId: updated.id,
+        adminNotes: updated.adminNotes
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to update submission notes right now.");
   }
 }
 
@@ -576,6 +720,7 @@ export async function deleteFormSubmissionAction(
     }
 
     revalidatePath(`/${org.orgSlug}/tools/forms/${payload.formId}/submissions`);
+    await triggerGoogleSheetSyncBestEffort(org.orgId, payload.formId);
     return {
       ok: true,
       data: {
@@ -680,6 +825,7 @@ export async function updateSubmissionAnswerAction(
       });
 
       revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+      await triggerGoogleSheetSyncBestEffort(org.orgId, form.id);
       return {
         ok: true,
         data: {
@@ -705,6 +851,7 @@ export async function updateSubmissionAnswerAction(
     });
 
     revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+    await triggerGoogleSheetSyncBestEffort(org.orgId, form.id);
     return {
       ok: true,
       data: {
@@ -767,6 +914,7 @@ export async function submitFormResponseAction(input: z.input<typeof submitFormS
     }
 
     revalidatePath(`/${payload.orgSlug}/register/${payload.formSlug}`);
+    await triggerGoogleSheetSyncBestEffort(org.orgId, form.id);
 
     return {
       ok: true,
@@ -990,7 +1138,9 @@ export async function createFormSubmissionViewAction(
         pinnedRightColumnKeys: payload.config.pinnedRightColumnKeys,
         columnWidthsByKey: payload.config.columnWidthsByKey,
         sort: payload.config.sort ?? null,
-        searchQuery: payload.config.searchQuery ?? ""
+        searchQuery: payload.config.searchQuery ?? "",
+        filters: normalizeSubmissionViewFilters(payload.config.filters),
+        summaryCards: normalizeSubmissionViewSummaryCards(payload.config.summaryCards)
       },
       createdByUserId: org.userId
     });
@@ -1042,7 +1192,9 @@ export async function updateFormSubmissionViewLayoutAction(
         columnOrderKeys: payload.columnOrderKeys,
         pinnedLeftColumnKeys: payload.pinnedLeftColumnKeys,
         pinnedRightColumnKeys: payload.pinnedRightColumnKeys,
-        columnWidthsByKey: payload.columnWidthsByKey
+        columnWidthsByKey: payload.columnWidthsByKey,
+        filters: normalizeSubmissionViewFilters(payload.filters),
+        summaryCards: normalizeSubmissionViewSummaryCards(payload.summaryCards)
       }
     });
 
@@ -1218,6 +1370,189 @@ export async function reorderFormSubmissionViewsAction(
   } catch (error) {
     rethrowIfNavigationError(error);
     return asError("Unable to reorder views right now.");
+  }
+}
+
+export type FormGoogleSheetIntegrationData = {
+  integration: OrgFormGoogleSheetIntegration | null;
+  recentRuns: OrgFormGoogleSheetSyncRun[];
+  configured: boolean;
+};
+
+export async function getFormGoogleSheetIntegrationAction(
+  input: z.input<typeof googleSheetIntegrationSchema>
+): Promise<FormsActionResult<FormGoogleSheetIntegrationData>> {
+  const parsed = googleSheetIntegrationSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid Google Sheets integration request.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireOrgPermission(payload.orgSlug, "forms.write");
+    const form = await getFormById(org.orgId, payload.formId);
+    if (!form) {
+      return asError("Form not found.");
+    }
+
+    const [integration, recentRuns] = await Promise.all([
+      getFormGoogleSheetIntegration(org.orgId, form.id),
+      listRecentFormGoogleSheetSyncRuns(org.orgId, form.id, {
+        limit: 10
+      })
+    ]);
+
+    return {
+      ok: true,
+      data: {
+        integration,
+        recentRuns,
+        configured: Boolean(
+          process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL &&
+            process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY &&
+            process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_CLIENT_ID
+        )
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to load Google Sheets integration right now.");
+  }
+}
+
+export async function connectFormGoogleSheetAction(
+  input: z.input<typeof googleSheetIntegrationSchema>
+): Promise<FormsActionResult<{ integration: OrgFormGoogleSheetIntegration }>> {
+  const parsed = googleSheetIntegrationSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid Google Sheets connect request.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireOrgPermission(payload.orgSlug, "forms.write");
+    const form = await getFormById(org.orgId, payload.formId);
+    if (!form) {
+      return asError("Form not found.");
+    }
+
+    const user = await getSessionUser();
+    await connectFormToGoogleSheet({
+      orgId: org.orgId,
+      formId: form.id,
+      formName: form.name,
+      formKind: form.formKind,
+      createdByUserId: org.userId,
+      shareWithEmail: user?.email ?? null
+    });
+
+    try {
+      await runGoogleSheetSyncForForm({
+        orgId: org.orgId,
+        formId: form.id,
+        trigger: "manual",
+        allowInbound: true,
+        allowOutbound: true
+      });
+    } catch {
+      // Integration row still exists. UI reads latest error from sync status.
+    }
+
+    const integration = await getFormGoogleSheetIntegration(org.orgId, form.id);
+    if (!integration) {
+      return asError("Google Sheets integration was not saved.");
+    }
+
+    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+
+    return {
+      ok: true,
+      data: {
+        integration
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to connect Google Sheets right now.");
+  }
+}
+
+export async function disconnectFormGoogleSheetAction(
+  input: z.input<typeof googleSheetIntegrationSchema>
+): Promise<FormsActionResult<{ formId: string }>> {
+  const parsed = googleSheetIntegrationSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid Google Sheets disconnect request.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireOrgPermission(payload.orgSlug, "forms.write");
+    const form = await getFormById(org.orgId, payload.formId);
+    if (!form) {
+      return asError("Form not found.");
+    }
+
+    await disableFormGoogleSheetIntegration({
+      orgId: org.orgId,
+      formId: form.id
+    });
+
+    await updateFormGoogleSheetIntegrationRecord({
+      orgId: org.orgId,
+      formId: form.id,
+      lastError: null
+    });
+
+    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+
+    return {
+      ok: true,
+      data: {
+        formId: form.id
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to disconnect Google Sheets right now.");
+  }
+}
+
+export async function syncFormGoogleSheetNowAction(
+  input: z.input<typeof googleSheetIntegrationSchema>
+): Promise<FormsActionResult<{ formId: string }>> {
+  const parsed = googleSheetIntegrationSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid Google Sheets sync request.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireOrgPermission(payload.orgSlug, "forms.write");
+    const form = await getFormById(org.orgId, payload.formId);
+    if (!form) {
+      return asError("Form not found.");
+    }
+
+    await runGoogleSheetSyncForForm({
+      orgId: org.orgId,
+      formId: form.id,
+      trigger: "manual",
+      allowInbound: true,
+      allowOutbound: true
+    });
+
+    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+
+    return {
+      ok: true,
+      data: {
+        formId: form.id
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to sync Google Sheets right now.");
   }
 }
 

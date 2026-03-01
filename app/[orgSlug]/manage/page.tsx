@@ -27,6 +27,13 @@ export default async function OrgManageOverviewPage({ params }: { params: Promis
       enabled: canManageOrg
     },
     {
+      title: "Custom Domains",
+      description: "Connect your own domain and review DNS setup requirements.",
+      href: `/${orgSlug}/tools/manage/domains`,
+      cta: "Open Domains",
+      enabled: canManageOrg
+    },
+    {
       title: "Branding",
       description: "Update logo, icon, and organization accent color.",
       href: `/${orgSlug}/tools/manage/branding`,

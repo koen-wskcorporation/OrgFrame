@@ -30,6 +30,8 @@ export default async function OrgLayout({
   children: React.ReactNode;
   params: Promise<{ orgSlug: string }>;
 }) {
+  const gitBranch = process.env.VERCEL_GIT_COMMIT_REF ?? process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF;
+  const showChrome = process.env.NODE_ENV !== "production" || gitBranch === "testing";
   const { orgSlug } = await params;
   const orgRequest = await getOrgRequestContext(orgSlug);
   const canEditPages = orgRequest.capabilities?.pages.canWrite ?? false;
@@ -62,6 +64,18 @@ export default async function OrgLayout({
         orgName={orgRequest.org.orgName}
         orgSlug={orgRequest.org.orgSlug}
       />
+      {showChrome ? (
+        <OrgHeader
+          canEditPages={canEditPages}
+          canManageOrg={canManageOrg}
+          governingBodyLogoUrl={orgRequest.org.governingBody?.logoUrl ?? null}
+          governingBodyName={orgRequest.org.governingBody?.name ?? null}
+          pages={pages}
+          orgLogoUrl={orgLogoUrl}
+          orgName={orgRequest.org.orgName}
+          orgSlug={orgRequest.org.orgSlug}
+        />
+      ) : null}
       {children}
     </div>
   );

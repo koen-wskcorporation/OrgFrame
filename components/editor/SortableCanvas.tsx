@@ -2,7 +2,8 @@
 
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DraggableAttributes } from "@dnd-kit/core";
 import { arrayMove, SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useId, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 export type SortableHandleProps = {
   attributes: DraggableAttributes;
@@ -32,6 +33,7 @@ type SortableCanvasProps<TItem> = {
   renderItem: (item: TItem, meta: SortableRenderMeta) => ReactNode;
   renderOverlay?: (item: TItem) => ReactNode;
   className?: string;
+  itemClassName?: string;
   sortingStrategy?: "vertical" | "horizontal";
 };
 
@@ -47,12 +49,14 @@ function SortableCanvasItem<TItem>({
   item,
   itemId,
   activeId,
-  renderItem
+  renderItem,
+  itemClassName
 }: {
   item: TItem;
   itemId: string;
   activeId: string | null;
   renderItem: SortableCanvasProps<TItem>["renderItem"];
+  itemClassName?: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: itemId });
 
@@ -63,7 +67,7 @@ function SortableCanvasItem<TItem>({
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div className={cn(itemClassName)} ref={setNodeRef} style={style}>
       {renderItem(item, {
         handleProps: {
           attributes,
@@ -84,8 +88,10 @@ export function SortableCanvas<TItem>({
   renderItem,
   renderOverlay,
   className,
+  itemClassName,
   sortingStrategy = "vertical"
 }: SortableCanvasProps<TItem>) {
+  const dndContextId = useId();
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -112,6 +118,7 @@ export function SortableCanvas<TItem>({
   return (
     <DndContext
       collisionDetection={closestCenter}
+      id={dndContextId}
       onDragCancel={() => {
         setActiveId(null);
       }}
@@ -158,7 +165,16 @@ export function SortableCanvas<TItem>({
           {items.map((item) => {
             const itemId = getId(item);
 
-            return <SortableCanvasItem activeId={activeId} item={item} itemId={itemId} key={itemId} renderItem={renderItem} />;
+            return (
+              <SortableCanvasItem
+                activeId={activeId}
+                item={item}
+                itemClassName={itemClassName}
+                itemId={itemId}
+                key={itemId}
+                renderItem={renderItem}
+              />
+            );
           })}
         </div>
       </SortableContext>

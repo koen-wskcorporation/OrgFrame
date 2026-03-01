@@ -2,6 +2,7 @@ export type OrgAdminNavIcon =
   | "wrench"
   | "settings"
   | "building"
+  | "globe"
   | "palette"
   | "users"
   | "credit-card"
@@ -36,6 +37,15 @@ export function getOrgAdminNavItems(orgSlug: string): OrgAdminNavItem[] {
       href: `/${orgSlug}/tools/manage/info`,
       description: "View organization metadata and governing body settings.",
       icon: "building",
+      parentKey: "manage",
+      showInHome: false
+    },
+    {
+      key: "manage-domains",
+      label: "Domains",
+      href: `/${orgSlug}/tools/manage/domains`,
+      description: "Connect and manage your custom organization domain.",
+      icon: "globe",
       parentKey: "manage",
       showInHome: false
     },

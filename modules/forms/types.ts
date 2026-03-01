@@ -113,6 +113,8 @@ export type FormSubmission = {
   versionId: string;
   submittedByUserId: string | null;
   status: SubmissionStatus;
+  adminNotes: string | null;
+  syncRev: number;
   answersJson: Record<string, unknown>;
   metadataJson: Record<string, unknown>;
   createdAt: string;
@@ -152,6 +154,50 @@ export type RegistrationPlayerEntryInput = {
 
 export type FormSubmissionViewVisibilityScope = "private" | "forms_readers" | "specific_admin";
 
+export type FormSubmissionViewFilterLogic = "all" | "any";
+
+export type FormSubmissionViewFilterOperator =
+  | "equals"
+  | "not_equals"
+  | "contains"
+  | "not_contains"
+  | "is_true"
+  | "is_false"
+  | "on_or_before"
+  | "on_or_after"
+  | "greater_or_equal"
+  | "less_or_equal"
+  | "is_empty"
+  | "is_not_empty";
+
+export type FormSubmissionViewFilterRule = {
+  id: string;
+  fieldKey: string;
+  operator: FormSubmissionViewFilterOperator;
+  value?: string;
+};
+
+export type FormSubmissionViewFilters = {
+  logic: FormSubmissionViewFilterLogic;
+  rules: FormSubmissionViewFilterRule[];
+};
+
+export type FormSubmissionViewSummaryMetricKey =
+  | "total_submissions"
+  | "total_players"
+  | "status_submitted"
+  | "status_in_review"
+  | "status_approved"
+  | "status_rejected"
+  | "status_waitlisted"
+  | "status_cancelled";
+
+export type FormSubmissionViewSummaryCard = {
+  id: string;
+  label: string;
+  metricKey: FormSubmissionViewSummaryMetricKey;
+};
+
 export type FormSubmissionViewConfig = {
   visibleColumnKeys?: string[];
   columnOrderKeys?: string[];
@@ -163,6 +209,8 @@ export type FormSubmissionViewConfig = {
     direction: "asc" | "desc";
   };
   searchQuery?: string;
+  filters?: FormSubmissionViewFilters;
+  summaryCards?: FormSubmissionViewSummaryCard[];
 };
 
 export type OrgFormSubmissionView = {
@@ -177,4 +225,40 @@ export type OrgFormSubmissionView = {
   createdByUserId: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type FormGoogleSheetIntegrationStatus = "active" | "disabled" | "error";
+
+export type OrgFormGoogleSheetIntegration = {
+  id: string;
+  orgId: string;
+  formId: string;
+  spreadsheetId: string;
+  spreadsheetUrl: string;
+  status: FormGoogleSheetIntegrationStatus;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrgFormGoogleSheetSyncRunStatus = "running" | "ok" | "failed" | "partial";
+
+export type OrgFormGoogleSheetSyncRun = {
+  id: number;
+  orgId: string;
+  formId: string;
+  integrationId: string | null;
+  triggerSource: "manual" | "webhook" | "cron" | "outbox";
+  status: OrgFormGoogleSheetSyncRunStatus;
+  inboundUpdatesCount: number;
+  inboundCreatesCount: number;
+  outboundRowsCount: number;
+  conflictsCount: number;
+  errorCount: number;
+  notes: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  createdAt: string;
 };

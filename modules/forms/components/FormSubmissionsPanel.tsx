@@ -1,6 +1,7 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
+import { Filter, GripVertical, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/alert";
 import { CalendarPicker } from "@/components/ui/calendar-picker";
@@ -10,17 +11,23 @@ import { SortableCanvas } from "@/components/editor/SortableCanvas";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import {
+  connectFormGoogleSheetAction,
   createFormSubmissionViewAction,
   deleteFormSubmissionAction,
   deleteFormSubmissionViewAction,
+  disconnectFormGoogleSheetAction,
+  getFormGoogleSheetIntegrationAction,
   reorderFormSubmissionViewsAction,
   setSubmissionStatusAction,
+  syncFormGoogleSheetNowAction,
+  updateSubmissionAdminNotesAction,
   updateFormSubmissionViewLayoutAction,
   updateFormSubmissionViewSettingsAction,
   updateSubmissionAnswerAction,
@@ -31,7 +38,15 @@ import type {
   FormField as FormFieldDefinition,
   FormKind,
   FormSchema,
+  FormSubmissionViewFilterLogic,
+  FormSubmissionViewFilterOperator,
+  FormSubmissionViewFilterRule,
+  FormSubmissionViewFilters,
+  FormSubmissionViewSummaryCard,
+  FormSubmissionViewSummaryMetricKey,
   FormSubmissionViewVisibilityScope,
+  OrgFormGoogleSheetIntegration,
+  OrgFormGoogleSheetSyncRun,
   FormSubmissionWithEntries,
   OrgFormSubmissionView,
   SubmissionStatus
@@ -45,6 +60,9 @@ type FormSubmissionsPanelProps = {
   submissions: FormSubmissionWithEntries[];
   views: OrgFormSubmissionView[];
   viewAdminAccounts: FormSubmissionViewAdminAccount[];
+  googleSheetIntegration: OrgFormGoogleSheetIntegration | null;
+  googleSheetRecentRuns: OrgFormGoogleSheetSyncRun[];
+  googleSheetConfigured: boolean;
   canWrite?: boolean;
 };
 
@@ -180,6 +198,186 @@ type EditableTarget = {
   value: unknown;
 };
 
+type SubmissionFilterFieldType = "status" | "datetime" | "number" | "text" | "date" | "select" | "checkbox";
+
+type SubmissionFilterFieldOption = {
+  key: string;
+  label: string;
+  type: SubmissionFilterFieldType;
+  options?: Array<{ value: string; label: string }>;
+};
+
+type SubmissionSummaryMetricOption = {
+  value: FormSubmissionViewSummaryMetricKey;
+  label: string;
+  description: string;
+};
+
+const DEFAULT_VIEW_FILTERS: FormSubmissionViewFilters = {
+  logic: "all",
+  rules: []
+};
+
+const DEFAULT_SUMMARY_CARDS: FormSubmissionViewSummaryCard[] = [
+  {
+    id: "total-submissions",
+    label: "Total items",
+    metricKey: "total_submissions"
+  },
+  {
+    id: "approved-submissions",
+    label: "Approved",
+    metricKey: "status_approved"
+  },
+  {
+    id: "in-review-submissions",
+    label: "In review",
+    metricKey: "status_in_review"
+  }
+];
+
+const SUMMARY_METRIC_OPTIONS: SubmissionSummaryMetricOption[] = [
+  { value: "total_submissions", label: "Total items", description: "Count of submissions in this view." },
+  { value: "total_players", label: "Total players", description: "Sum of player entries across this view." },
+  { value: "status_submitted", label: "Submitted", description: "Submissions currently marked Submitted." },
+  { value: "status_in_review", label: "In review", description: "Submissions currently marked In review." },
+  { value: "status_approved", label: "Approved", description: "Submissions currently marked Approved." },
+  { value: "status_rejected", label: "Rejected", description: "Submissions currently marked Rejected." },
+  { value: "status_waitlisted", label: "Waitlisted", description: "Submissions currently marked Waitlisted." },
+  { value: "status_cancelled", label: "Cancelled", description: "Submissions currently marked Cancelled." }
+];
+
+const FILTER_OPERATORS = new Set<FormSubmissionViewFilterOperator>([
+  "equals",
+  "not_equals",
+  "contains",
+  "not_contains",
+  "is_true",
+  "is_false",
+  "on_or_before",
+  "on_or_after",
+  "greater_or_equal",
+  "less_or_equal",
+  "is_empty",
+  "is_not_empty"
+]);
+
+function createFilterRuleId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `rule-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
+}
+
+function normalizeFilterValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value).trim().toLowerCase();
+}
+
+function parseNumberValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function parseDateValue(value: unknown) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+  const parsed = new Date(value);
+  const timestamp = parsed.getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function normalizeViewFilters(rawValue: unknown): FormSubmissionViewFilters {
+  if (!rawValue || typeof rawValue !== "object" || Array.isArray(rawValue)) {
+    return DEFAULT_VIEW_FILTERS;
+  }
+
+  const candidate = rawValue as Partial<FormSubmissionViewFilters>;
+  const logic: FormSubmissionViewFilterLogic = candidate.logic === "any" ? "any" : "all";
+  const rules: FormSubmissionViewFilterRule[] = [];
+  if (Array.isArray(candidate.rules)) {
+    candidate.rules.forEach((rule) => {
+      if (!rule || typeof rule !== "object" || Array.isArray(rule)) {
+        return;
+      }
+
+      const next = rule as Partial<FormSubmissionViewFilterRule>;
+      if (typeof next.fieldKey !== "string" || next.fieldKey.trim().length === 0) {
+        return;
+      }
+      if (typeof next.operator !== "string" || !FILTER_OPERATORS.has(next.operator as FormSubmissionViewFilterOperator)) {
+        return;
+      }
+
+      rules.push({
+        id: typeof next.id === "string" && next.id.trim().length > 0 ? next.id : createFilterRuleId(),
+        fieldKey: next.fieldKey,
+        operator: next.operator as FormSubmissionViewFilterOperator,
+        value: typeof next.value === "string" ? next.value : ""
+      });
+    });
+  }
+
+  return {
+    logic,
+    rules
+  };
+}
+
+function normalizeSummaryCards(rawValue: unknown): FormSubmissionViewSummaryCard[] {
+  if (!Array.isArray(rawValue)) {
+    return DEFAULT_SUMMARY_CARDS;
+  }
+
+  const metricKeys = new Set<FormSubmissionViewSummaryMetricKey>(SUMMARY_METRIC_OPTIONS.map((option) => option.value));
+  const normalized: FormSubmissionViewSummaryCard[] = [];
+  rawValue.forEach((item) => {
+    if (normalized.length >= 5) {
+      return;
+    }
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return;
+    }
+
+    const candidate = item as Partial<FormSubmissionViewSummaryCard>;
+    if (typeof candidate.metricKey !== "string" || !metricKeys.has(candidate.metricKey as FormSubmissionViewSummaryMetricKey)) {
+      return;
+    }
+
+    const id = typeof candidate.id === "string" && candidate.id.trim().length > 0 ? candidate.id : createFilterRuleId();
+    const label = typeof candidate.label === "string" && candidate.label.trim().length > 0
+      ? candidate.label.trim()
+      : SUMMARY_METRIC_OPTIONS.find((option) => option.value === candidate.metricKey)?.label ?? "Metric";
+
+    normalized.push({
+      id,
+      label,
+      metricKey: candidate.metricKey as FormSubmissionViewSummaryMetricKey
+    });
+  });
+
+  return normalized.length > 0 ? normalized : DEFAULT_SUMMARY_CARDS;
+}
+
+function toSummaryCardsForSave(cards: FormSubmissionViewSummaryCard[]) {
+  return cards.slice(0, 5).map((card) => {
+    const fallbackLabel = SUMMARY_METRIC_OPTIONS.find((option) => option.value === card.metricKey)?.label ?? "Metric";
+    return {
+      ...card,
+      label: card.label.trim().length > 0 ? card.label.trim() : fallbackLabel
+    };
+  });
+}
+
 function AnswersList({
   answers,
   emptyLabel,
@@ -274,6 +472,120 @@ function getSubmissionFieldResponse(
   return target?.value;
 }
 
+function getOperatorOptions(fieldType: SubmissionFilterFieldType) {
+  switch (fieldType) {
+    case "status":
+    case "select":
+      return [
+        { value: "equals", label: "is" },
+        { value: "not_equals", label: "is not" }
+      ] satisfies Array<{ value: FormSubmissionViewFilterOperator; label: string }>;
+    case "checkbox":
+      return [
+        { value: "is_true", label: "is checked" },
+        { value: "is_false", label: "is not checked" }
+      ] satisfies Array<{ value: FormSubmissionViewFilterOperator; label: string }>;
+    case "datetime":
+    case "date":
+      return [
+        { value: "on_or_after", label: "on or after" },
+        { value: "on_or_before", label: "on or before" },
+        { value: "equals", label: "on" }
+      ] satisfies Array<{ value: FormSubmissionViewFilterOperator; label: string }>;
+    case "number":
+      return [
+        { value: "equals", label: "equals" },
+        { value: "greater_or_equal", label: "at least" },
+        { value: "less_or_equal", label: "at most" }
+      ] satisfies Array<{ value: FormSubmissionViewFilterOperator; label: string }>;
+    default:
+      return [
+        { value: "contains", label: "contains" },
+        { value: "not_contains", label: "does not contain" },
+        { value: "equals", label: "equals" },
+        { value: "not_equals", label: "does not equal" },
+        { value: "is_empty", label: "is empty" },
+        { value: "is_not_empty", label: "is not empty" }
+      ] satisfies Array<{ value: FormSubmissionViewFilterOperator; label: string }>;
+  }
+}
+
+function matchesFilterRule(rule: FormSubmissionViewFilterRule, value: unknown, fieldType: SubmissionFilterFieldType) {
+  if (rule.operator === "is_empty") {
+    return normalizeFilterValue(value).length === 0;
+  }
+  if (rule.operator === "is_not_empty") {
+    return normalizeFilterValue(value).length > 0;
+  }
+
+  if (fieldType === "checkbox") {
+    const boolValue = value === true || value === "true" || value === "on" || value === 1 || value === "1";
+    if (rule.operator === "is_true") {
+      return boolValue;
+    }
+    if (rule.operator === "is_false") {
+      return !boolValue;
+    }
+  }
+
+  if (fieldType === "number") {
+    const left = parseNumberValue(value);
+    const right = parseNumberValue(rule.value);
+    if (left === null || right === null) {
+      return false;
+    }
+    if (rule.operator === "greater_or_equal") {
+      return left >= right;
+    }
+    if (rule.operator === "less_or_equal") {
+      return left <= right;
+    }
+    if (rule.operator === "equals") {
+      return left === right;
+    }
+    if (rule.operator === "not_equals") {
+      return left !== right;
+    }
+    return false;
+  }
+
+  if (fieldType === "datetime" || fieldType === "date") {
+    const left = parseDateValue(value);
+    const right = parseDateValue(rule.value);
+    if (left === null || right === null) {
+      return false;
+    }
+    if (rule.operator === "on_or_after") {
+      return left >= right;
+    }
+    if (rule.operator === "on_or_before") {
+      return left <= right;
+    }
+    if (rule.operator === "equals") {
+      const leftDate = new Date(left);
+      const rightDate = new Date(right);
+      return leftDate.toDateString() === rightDate.toDateString();
+    }
+    return false;
+  }
+
+  const left = normalizeFilterValue(value);
+  const right = normalizeFilterValue(rule.value);
+  if (rule.operator === "contains") {
+    return left.includes(right);
+  }
+  if (rule.operator === "not_contains") {
+    return !left.includes(right);
+  }
+  if (rule.operator === "equals") {
+    return left === right;
+  }
+  if (rule.operator === "not_equals") {
+    return left !== right;
+  }
+  return false;
+}
+
 function normalizeColumnOrderKeys(rawValue: unknown, allColumnKeys: string[]) {
   if (!Array.isArray(rawValue)) {
     return allColumnKeys;
@@ -356,9 +668,15 @@ export function FormSubmissionsPanel({
   submissions,
   views,
   viewAdminAccounts,
+  googleSheetIntegration,
+  googleSheetRecentRuns,
+  googleSheetConfigured,
   canWrite = true
 }: FormSubmissionsPanelProps) {
+  const showGoogleSheetsUi = false;
+  const router = useRouter();
   const { toast } = useToast();
+  const [isRefreshingSubmissions, startRefreshingSubmissions] = useTransition();
   const [isSaving, startSaving] = useTransition();
   const [isDeletingSubmissions, startDeletingSubmissions] = useTransition();
   const [submissionRows, setSubmissionRows] = useState<FormSubmissionWithEntries[]>(submissions);
@@ -381,6 +699,18 @@ export function FormSubmissionsPanel({
       return draft;
     }, {})
   );
+  const [adminNotesById, setAdminNotesById] = useState<Record<string, string>>(
+    submissions.reduce<Record<string, string>>((draft, submission) => {
+      draft[submission.id] = submission.adminNotes ?? "";
+      return draft;
+    }, {})
+  );
+  const [savedAdminNotesById, setSavedAdminNotesById] = useState<Record<string, string>>(
+    submissions.reduce<Record<string, string>>((draft, submission) => {
+      draft[submission.id] = submission.adminNotes ?? "";
+      return draft;
+    }, {})
+  );
   const [changeLogBySubmissionId, setChangeLogBySubmissionId] = useState<Record<string, SubmissionChangeLogEntry[]>>({});
   const [submissionAnswersById, setSubmissionAnswersById] = useState<Record<string, Record<string, unknown>>>(
     submissions.reduce<Record<string, Record<string, unknown>>>((draft, submission) => {
@@ -399,6 +729,7 @@ export function FormSubmissionsPanel({
   const [cellDraftByKey, setCellDraftByKey] = useState<Record<string, unknown>>({});
   const [savingCellKey, setSavingCellKey] = useState<string | null>(null);
   const [savingInlineStatusId, setSavingInlineStatusId] = useState<string | null>(null);
+  const [savingInlineNotesId, setSavingInlineNotesId] = useState<string | null>(null);
   const [editingCellKey, setEditingCellKey] = useState<string | null>(null);
   const [savedViews, setSavedViews] = useState<LocalFormSubmissionView[]>(views);
   const [activeViewId, setActiveViewId] = useState<string | null>(views[0]?.id ?? null);
@@ -406,6 +737,7 @@ export function FormSubmissionsPanel({
   const tableConfigDraftRef = useRef<DataTableViewConfig | null>(null);
   const [isCreateViewPanelOpen, setIsCreateViewPanelOpen] = useState(false);
   const [isEditViewPanelOpen, setIsEditViewPanelOpen] = useState(false);
+  const [isDataControlsPanelOpen, setIsDataControlsPanelOpen] = useState(false);
   const [newViewName, setNewViewName] = useState("");
   const [newViewVisibility, setNewViewVisibility] = useState<FormSubmissionViewVisibilityScope>("private");
   const [newViewTargetUserId, setNewViewTargetUserId] = useState<string>("");
@@ -416,16 +748,59 @@ export function FormSubmissionsPanel({
   const [isSavingView, startSavingView] = useTransition();
   const [autoSavingViewId, setAutoSavingViewId] = useState<string | null>(null);
   const [saveStateByViewId, setSaveStateByViewId] = useState<Record<string, "saving" | "saved">>({});
+  const [isFiltersPanelOpen, setIsFiltersPanelOpen] = useState(false);
+  const [viewFiltersDraft, setViewFiltersDraft] = useState<FormSubmissionViewFilters>(
+    normalizeViewFilters(views[0]?.configJson?.filters)
+  );
+  const [viewSummaryCardsDraft, setViewSummaryCardsDraft] = useState<FormSubmissionViewSummaryCard[]>(
+    normalizeSummaryCards(views[0]?.configJson?.summaryCards)
+  );
+  const [editingSummaryCardId, setEditingSummaryCardId] = useState<string | null>(null);
+  const [summaryCardLabelDraftById, setSummaryCardLabelDraftById] = useState<Record<string, string>>({});
+  const [googleSheetState, setGoogleSheetState] = useState<OrgFormGoogleSheetIntegration | null>(googleSheetIntegration);
+  const [googleSheetRunRows, setGoogleSheetRunRows] = useState<OrgFormGoogleSheetSyncRun[]>(googleSheetRecentRuns);
+  const [isSavingGoogleSheet, startSavingGoogleSheet] = useTransition();
   const handleTableConfigChange = useCallback((nextConfig: DataTableViewConfig) => {
     tableConfigDraftRef.current = nextConfig;
     setTableConfigDraft(nextConfig);
   }, []);
   const autoSaveTimerRef = useRef<number | null>(null);
   const autoSaveRequestIdRef = useRef(0);
+  const appliedFiltersSignatureRef = useRef<string | null>(null);
+  const appliedSummaryCardsSignatureRef = useRef<string | null>(null);
 
   useEffect(() => {
     setSubmissionRows(submissions);
+    setStatusById(
+      submissions.reduce<Record<string, SubmissionStatus>>((draft, submission) => {
+        draft[submission.id] = submission.status;
+        return draft;
+      }, {})
+    );
+    setSavedStatusById(
+      submissions.reduce<Record<string, SubmissionStatus>>((draft, submission) => {
+        draft[submission.id] = submission.status;
+        return draft;
+      }, {})
+    );
+    setAdminNotesById(
+      submissions.reduce<Record<string, string>>((draft, submission) => {
+        draft[submission.id] = submission.adminNotes ?? "";
+        return draft;
+      }, {})
+    );
+    setSavedAdminNotesById(
+      submissions.reduce<Record<string, string>>((draft, submission) => {
+        draft[submission.id] = submission.adminNotes ?? "";
+        return draft;
+      }, {})
+    );
   }, [submissions]);
+
+  useEffect(() => {
+    setGoogleSheetState(googleSheetIntegration);
+    setGoogleSheetRunRows(googleSheetRecentRuns);
+  }, [googleSheetIntegration, googleSheetRecentRuns]);
 
   const selectedSubmissionIdSet = useMemo(() => new Set(selectedSubmissionIds), [selectedSubmissionIds]);
 
@@ -443,29 +818,55 @@ export function FormSubmissionsPanel({
 
     const status = statusById[submissionId];
     const previousStatus = savedStatusById[submissionId] ?? status;
+    const adminNotes = (adminNotesById[submissionId] ?? "").trim();
+    const previousAdminNotes = (savedAdminNotesById[submissionId] ?? "").trim();
     setActiveSaveSubmissionId(submissionId);
 
     startSaving(async () => {
       try {
-        const result = await setSubmissionStatusAction({
-          orgSlug,
-          formId,
-          submissionId,
-          status
-        });
-
-        if (!result.ok) {
-          toast({
-            title: "Unable to update submission",
-            description: result.error,
-            variant: "destructive"
+        if (status !== previousStatus) {
+          const statusResult = await setSubmissionStatusAction({
+            orgSlug,
+            formId,
+            submissionId,
+            status
           });
-          return;
+
+          if (!statusResult.ok) {
+            toast({
+              title: "Unable to update submission",
+              description: statusResult.error,
+              variant: "destructive"
+            });
+            return;
+          }
+        }
+
+        if (adminNotes !== previousAdminNotes) {
+          const notesResult = await updateSubmissionAdminNotesAction({
+            orgSlug,
+            formId,
+            submissionId,
+            adminNotes: adminNotes.length > 0 ? adminNotes : null
+          });
+
+          if (!notesResult.ok) {
+            toast({
+              title: "Unable to update notes",
+              description: notesResult.error,
+              variant: "destructive"
+            });
+            return;
+          }
         }
 
         setSavedStatusById((current) => ({
           ...current,
           [submissionId]: status
+        }));
+        setSavedAdminNotesById((current) => ({
+          ...current,
+          [submissionId]: adminNotes
         }));
         if (previousStatus !== status) {
           appendChangeLog(submissionId, {
@@ -473,6 +874,15 @@ export function FormSubmissionsPanel({
             field: "Status",
             from: toStatusLabel(previousStatus),
             to: toStatusLabel(status),
+            mode: "single"
+          });
+        }
+        if (previousAdminNotes !== adminNotes) {
+          appendChangeLog(submissionId, {
+            at: new Date().toISOString(),
+            field: "Admin notes",
+            from: previousAdminNotes.length > 0 ? previousAdminNotes : "None",
+            to: adminNotes.length > 0 ? adminNotes : "None",
             mode: "single"
           });
         }
@@ -647,6 +1057,16 @@ export function FormSubmissionsPanel({
           successes.forEach((id) => delete next[id]);
           return next;
         });
+        setAdminNotesById((current) => {
+          const next = { ...current };
+          successes.forEach((id) => delete next[id]);
+          return next;
+        });
+        setSavedAdminNotesById((current) => {
+          const next = { ...current };
+          successes.forEach((id) => delete next[id]);
+          return next;
+        });
         setSubmissionAnswersById((current) => {
           const next = { ...current };
           successes.forEach((id) => delete next[id]);
@@ -694,6 +1114,124 @@ export function FormSubmissionsPanel({
         title: `Deleted ${successes.length}, failed ${failures.length}`,
         description: failures[0]?.error ?? "Some deletions failed.",
         variant: "warning"
+      });
+    });
+  }
+
+  function handleRefreshSubmissions() {
+    startRefreshingSubmissions(() => {
+      router.refresh();
+    });
+  }
+
+  async function refreshGoogleSheetState(showErrorToast = true) {
+    const result = await getFormGoogleSheetIntegrationAction({
+      orgSlug,
+      formId
+    });
+
+    if (!result.ok) {
+      if (showErrorToast) {
+        toast({
+          title: "Unable to refresh Google Sheets status",
+          description: result.error,
+          variant: "warning"
+        });
+      }
+      return;
+    }
+
+    setGoogleSheetState(result.data.integration);
+    setGoogleSheetRunRows(result.data.recentRuns);
+  }
+
+  function handleConnectGoogleSheet() {
+    if (!canWrite) {
+      return;
+    }
+
+    startSavingGoogleSheet(async () => {
+      const result = await connectFormGoogleSheetAction({
+        orgSlug,
+        formId
+      });
+
+      if (!result.ok) {
+        toast({
+          title: "Unable to connect Google Sheets",
+          description: result.error,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setGoogleSheetState(result.data.integration);
+      await refreshGoogleSheetState(false);
+      toast({
+        title: "Google Sheets connected",
+        variant: "success"
+      });
+    });
+  }
+
+  function handleDisconnectGoogleSheet() {
+    if (!canWrite || !googleSheetState) {
+      return;
+    }
+
+    const confirmed = window.confirm("Disconnect this Google Sheet from form submissions?");
+    if (!confirmed) {
+      return;
+    }
+
+    startSavingGoogleSheet(async () => {
+      const result = await disconnectFormGoogleSheetAction({
+        orgSlug,
+        formId
+      });
+
+      if (!result.ok) {
+        toast({
+          title: "Unable to disconnect Google Sheets",
+          description: result.error,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      await refreshGoogleSheetState(false);
+      toast({
+        title: "Google Sheets disconnected",
+        variant: "success"
+      });
+    });
+  }
+
+  function handleSyncGoogleSheetNow() {
+    if (!canWrite || !googleSheetState) {
+      return;
+    }
+
+    startSavingGoogleSheet(async () => {
+      const result = await syncFormGoogleSheetNowAction({
+        orgSlug,
+        formId
+      });
+
+      if (!result.ok) {
+        toast({
+          title: "Unable to sync Google Sheets",
+          description: result.error,
+          variant: "destructive"
+        });
+        await refreshGoogleSheetState(false);
+        return;
+      }
+
+      await refreshGoogleSheetState(false);
+      toast({
+        title: "Google Sheets synced",
+        variant: "success"
       });
     });
   }
@@ -819,6 +1357,57 @@ export function FormSubmissionsPanel({
     }
     setEditingCellKey((current) => (current === `status:${submissionId}` ? null : current));
     setSavingInlineStatusId(null);
+  }
+
+  async function saveInlineAdminNotes(submissionId: string, nextAdminNotes: string) {
+    if (!canWrite || !isEditableMode) {
+      return;
+    }
+
+    const trimmed = nextAdminNotes.trim();
+    const previous = (savedAdminNotesById[submissionId] ?? adminNotesById[submissionId] ?? "").trim();
+    if (trimmed === previous) {
+      setEditingCellKey((current) => (current === `adminNotes:${submissionId}` ? null : current));
+      return;
+    }
+
+    setSavingInlineNotesId(submissionId);
+    const result = await updateSubmissionAdminNotesAction({
+      orgSlug,
+      formId,
+      submissionId,
+      adminNotes: trimmed.length > 0 ? trimmed : null
+    });
+
+    if (!result.ok) {
+      toast({
+        title: "Unable to update notes",
+        description: result.error,
+        variant: "destructive"
+      });
+      setSavingInlineNotesId(null);
+      return;
+    }
+
+    setSavedAdminNotesById((current) => ({
+      ...current,
+      [submissionId]: trimmed
+    }));
+    setAdminNotesById((current) => ({
+      ...current,
+      [submissionId]: trimmed
+    }));
+
+    appendChangeLog(submissionId, {
+      at: new Date().toISOString(),
+      field: "Admin notes",
+      from: previous.length > 0 ? previous : "None",
+      to: trimmed.length > 0 ? trimmed : "None",
+      mode: "inline_answer"
+    });
+
+    setEditingCellKey((current) => (current === `adminNotes:${submissionId}` ? null : current));
+    setSavingInlineNotesId(null);
   }
 
   const handleVisibleRowsChange = useCallback((rows: FormSubmissionWithEntries[]) => {
@@ -1111,6 +1700,61 @@ export function FormSubmissionsPanel({
         renderSortValue: (submission) => toStatusLabel(statusById[submission.id] ?? submission.status)
       },
       {
+        key: "adminNotes",
+        label: "Admin notes",
+        group: "Submission",
+        sortable: true,
+        renderCell: (submission) => {
+          const value = adminNotesById[submission.id] ?? submission.adminNotes ?? "";
+          if (isEditableMode && canWrite) {
+            const isEditing = editingCellKey === `adminNotes:${submission.id}`;
+            if (isEditing) {
+              return (
+                <div
+                  data-inline-editor="true"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                >
+                  <Input
+                    autoFocus
+                    className="!h-auto !border-0 !bg-transparent !px-0 !py-0 !text-sm !shadow-none focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0"
+                    disabled={savingInlineNotesId === submission.id}
+                    onBlur={(event) => {
+                      void saveInlineAdminNotes(submission.id, event.target.value);
+                    }}
+                    onChange={(event) => {
+                      setAdminNotesById((current) => ({
+                        ...current,
+                        [submission.id]: event.target.value
+                      }));
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.currentTarget.blur();
+                      }
+                      if (event.key === "Escape") {
+                        setAdminNotesById((current) => ({
+                          ...current,
+                          [submission.id]: savedAdminNotesById[submission.id] ?? ""
+                        }));
+                        setEditingCellKey(null);
+                      }
+                    }}
+                    value={value}
+                  />
+                </div>
+              );
+            }
+          }
+
+          return <span className="line-clamp-2">{value.length > 0 ? value : "-"}</span>;
+        },
+        renderCopyValue: (submission) => adminNotesById[submission.id] ?? submission.adminNotes ?? "",
+        renderSearchValue: (submission) => adminNotesById[submission.id] ?? submission.adminNotes ?? "",
+        renderSortValue: (submission) => adminNotesById[submission.id] ?? submission.adminNotes ?? ""
+      },
+      {
         key: "players",
         label: "Players",
         group: "Submission",
@@ -1136,12 +1780,15 @@ export function FormSubmissionsPanel({
       ...responseColumns
     ],
     [
+      adminNotesById,
       canWrite,
       editingCellKey,
       formKind,
       handleSelectSubmission,
       isEditableMode,
       responseColumns,
+      savedAdminNotesById,
+      savingInlineNotesId,
       savingInlineStatusId,
       statusById
     ]
@@ -1149,6 +1796,7 @@ export function FormSubmissionsPanel({
 
   const selectedSubmission = selectedSubmissionId ? submissionRows.find((submission) => submission.id === selectedSubmissionId) ?? null : null;
   const selectedSubmissionAnswers = selectedSubmission ? (submissionAnswersById[selectedSubmission.id] ?? selectedSubmission.answersJson) : {};
+  const selectedSubmissionAdminNotes = selectedSubmission ? (adminNotesById[selectedSubmission.id] ?? selectedSubmission.adminNotes ?? "") : "";
   const selectedSubmissionEntries = selectedSubmission
     ? selectedSubmission.entries.map((entry) => ({
         ...entry,
@@ -1183,9 +1831,77 @@ export function FormSubmissionsPanel({
     return map;
   }, [formSchema.pages]);
 
+  const filterFieldOptions = useMemo<SubmissionFilterFieldOption[]>(() => {
+    const options: SubmissionFilterFieldOption[] = [
+      {
+        key: "status",
+        label: "Status",
+        type: "status",
+        options: asStatusOptions().map((option) => ({ value: option.value, label: option.label }))
+      },
+      {
+        key: "adminNotes",
+        label: "Admin notes",
+        type: "text"
+      },
+      {
+        key: "submittedAt",
+        label: "Submitted at",
+        type: "datetime"
+      }
+    ];
+
+    if (formKind === "program_registration") {
+      options.push({
+        key: "players",
+        label: "Players",
+        type: "number"
+      });
+    }
+
+    const seenFieldKeys = new Set<string>();
+    formSchema.pages.forEach((page) => {
+      page.fields.forEach((field) => {
+        if (seenFieldKeys.has(field.name)) {
+          return;
+        }
+
+        seenFieldKeys.add(field.name);
+        options.push({
+          key: `field:${field.name}`,
+          label: field.label,
+          type:
+            field.type === "checkbox"
+              ? "checkbox"
+              : field.type === "select"
+                ? "select"
+                : field.type === "number"
+                  ? "number"
+                  : field.type === "date"
+                    ? "date"
+                    : "text",
+          options: field.type === "select" ? field.options : undefined
+        });
+      });
+    });
+
+    return options;
+  }, [formKind, formSchema.pages]);
+
+  const filterFieldByKey = useMemo(() => new Map(filterFieldOptions.map((option) => [option.key, option])), [filterFieldOptions]);
+
   const activeSavedView = useMemo(
     () => (activeViewId ? savedViews.find((view) => view.id === activeViewId) ?? null : null),
     [activeViewId, savedViews]
+  );
+
+  const activeSavedViewFiltersSignature = useMemo(
+    () => JSON.stringify(normalizeViewFilters(activeSavedView?.configJson?.filters)),
+    [activeSavedView]
+  );
+  const activeSavedViewSummaryCardsSignature = useMemo(
+    () => JSON.stringify(normalizeSummaryCards(activeSavedView?.configJson?.summaryCards)),
+    [activeSavedView]
   );
 
   const allTableColumnKeys = useMemo(() => submissionTableColumns.map((column) => column.key), [submissionTableColumns]);
@@ -1212,6 +1928,22 @@ export function FormSubmissionsPanel({
       setActiveViewId(savedViews[0]?.id ?? null);
     }
   }, [activeViewId, savedViews]);
+
+  useEffect(() => {
+    if (appliedFiltersSignatureRef.current === activeSavedViewFiltersSignature) {
+      return;
+    }
+    appliedFiltersSignatureRef.current = activeSavedViewFiltersSignature;
+    setViewFiltersDraft(normalizeViewFilters(activeSavedView?.configJson?.filters));
+  }, [activeSavedView?.configJson?.filters, activeSavedViewFiltersSignature]);
+
+  useEffect(() => {
+    if (appliedSummaryCardsSignatureRef.current === activeSavedViewSummaryCardsSignature) {
+      return;
+    }
+    appliedSummaryCardsSignatureRef.current = activeSavedViewSummaryCardsSignature;
+    setViewSummaryCardsDraft(normalizeSummaryCards(activeSavedView?.configJson?.summaryCards));
+  }, [activeSavedView?.configJson?.summaryCards, activeSavedViewSummaryCardsSignature]);
 
   const activeTableViewConfig = useMemo<Partial<DataTableViewConfig> | null>(() => {
     if (!activeSavedView) {
@@ -1298,12 +2030,30 @@ export function FormSubmissionsPanel({
     tableConfigDraft
   ]);
 
+  const hasUnsavedFilterChanges = useMemo(() => {
+    if (!activeSavedView) {
+      return false;
+    }
+
+    const savedFilters = normalizeViewFilters(activeSavedView.configJson?.filters);
+    return JSON.stringify(savedFilters) !== JSON.stringify(viewFiltersDraft);
+  }, [activeSavedView, viewFiltersDraft]);
+
+  const hasUnsavedSummaryCardChanges = useMemo(() => {
+    if (!activeSavedView) {
+      return false;
+    }
+
+    const savedSummaryCards = toSummaryCardsForSave(normalizeSummaryCards(activeSavedView.configJson?.summaryCards));
+    return JSON.stringify(savedSummaryCards) !== JSON.stringify(toSummaryCardsForSave(viewSummaryCardsDraft));
+  }, [activeSavedView, viewSummaryCardsDraft]);
+
   useEffect(() => {
     if (!canWrite) {
       return;
     }
 
-    if (!activeSavedView || !tableConfigDraft || !hasUnsavedLayoutChanges) {
+    if (!activeSavedView || !tableConfigDraft || (!hasUnsavedLayoutChanges && !hasUnsavedFilterChanges && !hasUnsavedSummaryCardChanges)) {
       return;
     }
 
@@ -1337,7 +2087,9 @@ export function FormSubmissionsPanel({
             columnOrderKeys,
             pinnedLeftColumnKeys,
             pinnedRightColumnKeys,
-            columnWidthsByKey
+            columnWidthsByKey,
+            filters: viewFiltersDraft,
+            summaryCards: toSummaryCardsForSave(viewSummaryCardsDraft)
           });
 
           if (autoSaveRequestIdRef.current !== requestId) {
@@ -1377,7 +2129,19 @@ export function FormSubmissionsPanel({
         autoSaveTimerRef.current = null;
       }
     };
-  }, [activeSavedView, canWrite, formId, hasUnsavedLayoutChanges, orgSlug, tableConfigDraft, toast]);
+  }, [
+    activeSavedView,
+    canWrite,
+    formId,
+    hasUnsavedFilterChanges,
+    hasUnsavedLayoutChanges,
+    hasUnsavedSummaryCardChanges,
+    orgSlug,
+    tableConfigDraft,
+    toast,
+    viewFiltersDraft,
+    viewSummaryCardsDraft
+  ]);
 
   useEffect(() => {
     if (!autoSavingViewId) {
@@ -1452,7 +2216,9 @@ export function FormSubmissionsPanel({
           pinnedRightColumnKeys: latestConfig.pinnedRightColumnKeys,
           columnWidthsByKey: latestConfig.columnWidthsByKey,
           sort: latestConfig.sort,
-          searchQuery: latestConfig.searchQuery
+          searchQuery: latestConfig.searchQuery,
+          filters: viewFiltersDraft,
+          summaryCards: toSummaryCardsForSave(viewSummaryCardsDraft)
         }
       });
 
@@ -1599,6 +2365,113 @@ export function FormSubmissionsPanel({
     });
   }
 
+  function addFilterRule() {
+    const defaultField = filterFieldOptions[0];
+    if (!defaultField) {
+      return;
+    }
+
+    const defaultOperator = getOperatorOptions(defaultField.type)[0]?.value ?? "contains";
+    setViewFiltersDraft((current) => ({
+      ...current,
+      rules: [
+        ...current.rules,
+        {
+          id: createFilterRuleId(),
+          fieldKey: defaultField.key,
+          operator: defaultOperator,
+          value: ""
+        }
+      ]
+    }));
+  }
+
+  function updateFilterLogic(logic: FormSubmissionViewFilterLogic) {
+    setViewFiltersDraft((current) => ({
+      ...current,
+      logic
+    }));
+  }
+
+  function updateFilterRule(ruleId: string, updater: (current: FormSubmissionViewFilterRule) => FormSubmissionViewFilterRule) {
+    setViewFiltersDraft((current) => ({
+      ...current,
+      rules: current.rules.map((rule) => (rule.id === ruleId ? updater(rule) : rule))
+    }));
+  }
+
+  function removeFilterRule(ruleId: string) {
+    setViewFiltersDraft((current) => ({
+      ...current,
+      rules: current.rules.filter((rule) => rule.id !== ruleId)
+    }));
+  }
+
+function addSummaryCard() {
+    if (viewSummaryCardsDraft.length >= 5) {
+      return;
+    }
+    const defaultMetric = SUMMARY_METRIC_OPTIONS[0]?.value ?? "total_submissions";
+    const defaultLabel = SUMMARY_METRIC_OPTIONS[0]?.label ?? "Total items";
+    setViewSummaryCardsDraft((current) => [
+      ...current,
+      {
+        id: createFilterRuleId(),
+        label: defaultLabel,
+        metricKey: defaultMetric
+      }
+    ]);
+  }
+
+  function removeSummaryCard(cardId: string) {
+    cancelSummaryCardLabelEdit(cardId);
+    setViewSummaryCardsDraft((current) => {
+      const next = current.filter((card) => card.id !== cardId);
+      return next.length > 0 ? next : DEFAULT_SUMMARY_CARDS;
+    });
+  }
+
+  function updateSummaryCard(cardId: string, updater: (current: FormSubmissionViewSummaryCard) => FormSubmissionViewSummaryCard) {
+    setViewSummaryCardsDraft((current) => current.map((card) => (card.id === cardId ? updater(card) : card)));
+  }
+
+  function reorderSummaryCards(nextCards: FormSubmissionViewSummaryCard[]) {
+    setViewSummaryCardsDraft(nextCards);
+  }
+
+  function startSummaryCardLabelEdit(card: FormSubmissionViewSummaryCard) {
+    setSummaryCardLabelDraftById((current) => ({
+      ...current,
+      [card.id]: card.label
+    }));
+    setEditingSummaryCardId(card.id);
+  }
+
+  function commitSummaryCardLabelEdit(card: FormSubmissionViewSummaryCard) {
+    const rawDraft = summaryCardLabelDraftById[card.id] ?? card.label;
+    const trimmed = rawDraft.trim();
+    const fallbackLabel = SUMMARY_METRIC_OPTIONS.find((option) => option.value === card.metricKey)?.label ?? "Metric";
+    updateSummaryCard(card.id, (current) => ({
+      ...current,
+      label: trimmed.length > 0 ? trimmed : fallbackLabel
+    }));
+    setSummaryCardLabelDraftById((current) => {
+      const next = { ...current };
+      delete next[card.id];
+      return next;
+    });
+    setEditingSummaryCardId((current) => (current === card.id ? null : current));
+  }
+
+  function cancelSummaryCardLabelEdit(cardId: string) {
+    setSummaryCardLabelDraftById((current) => {
+      const next = { ...current };
+      delete next[cardId];
+      return next;
+    });
+    setEditingSummaryCardId((current) => (current === cardId ? null : current));
+  }
+
   const handleTableCellClick = useCallback(
     (context: { item: FormSubmissionWithEntries; columnKey: string; isActiveCell: boolean }) => {
       if (!isEditableMode || !canWrite || !context.isActiveCell) {
@@ -1607,6 +2480,11 @@ export function FormSubmissionsPanel({
 
       if (context.columnKey === "status") {
         setEditingCellKey(`status:${context.item.id}`);
+        return;
+      }
+
+      if (context.columnKey === "adminNotes") {
+        setEditingCellKey(`adminNotes:${context.item.id}`);
         return;
       }
 
@@ -1631,13 +2509,171 @@ export function FormSubmissionsPanel({
     [canWrite, entryAnswersById, fieldKeysByColumnKey, isEditableMode, submissionAnswersById]
   );
 
+  const filteredSubmissionRows = useMemo(() => {
+    const validRules = viewFiltersDraft.rules.filter((rule) => filterFieldByKey.has(rule.fieldKey));
+    if (validRules.length === 0) {
+      return submissionRows;
+    }
+
+    return submissionRows.filter((submission) => {
+      const outcomes = validRules.map((rule) => {
+        const field = filterFieldByKey.get(rule.fieldKey);
+        if (!field) {
+          return true;
+        }
+
+        let candidateValue: unknown;
+        if (rule.fieldKey === "status") {
+          candidateValue = statusById[submission.id] ?? submission.status;
+        } else if (rule.fieldKey === "adminNotes") {
+          candidateValue = adminNotesById[submission.id] ?? submission.adminNotes ?? "";
+        } else if (rule.fieldKey === "submittedAt") {
+          candidateValue = submission.createdAt;
+        } else if (rule.fieldKey === "players") {
+          candidateValue = submission.entries.length;
+        } else if (rule.fieldKey.startsWith("field:")) {
+          const fieldKey = rule.fieldKey.replace(/^field:/, "");
+          candidateValue = getSubmissionFieldResponse(
+            submission,
+            [fieldKey],
+            submissionAnswersById,
+            entryAnswersById
+          );
+        }
+
+        return matchesFilterRule(rule, candidateValue, field.type);
+      });
+
+      if (viewFiltersDraft.logic === "any") {
+        return outcomes.some(Boolean);
+      }
+      return outcomes.every(Boolean);
+    });
+  }, [adminNotesById, entryAnswersById, filterFieldByKey, statusById, submissionAnswersById, submissionRows, viewFiltersDraft.logic, viewFiltersDraft.rules]);
+
+  const hasActiveFilters = viewFiltersDraft.rules.length > 0;
+  const summaryMetricValueByKey = useMemo(() => {
+    const byStatus = filteredSubmissionRows.reduce<Record<SubmissionStatus, number>>(
+      (draft, submission) => {
+        const status = statusById[submission.id] ?? submission.status;
+        draft[status] = (draft[status] ?? 0) + 1;
+        return draft;
+      },
+      {
+        submitted: 0,
+        in_review: 0,
+        approved: 0,
+        rejected: 0,
+        waitlisted: 0,
+        cancelled: 0
+      }
+    );
+
+    return {
+      total_submissions: filteredSubmissionRows.length,
+      total_players: filteredSubmissionRows.reduce((count, submission) => count + submission.entries.length, 0),
+      status_submitted: byStatus.submitted,
+      status_in_review: byStatus.in_review,
+      status_approved: byStatus.approved,
+      status_rejected: byStatus.rejected,
+      status_waitlisted: byStatus.waitlisted,
+      status_cancelled: byStatus.cancelled
+    } satisfies Record<FormSubmissionViewSummaryMetricKey, number>;
+  }, [filteredSubmissionRows, statusById]);
+  const summaryMetricOptionByValue = useMemo(
+    () => new Map(SUMMARY_METRIC_OPTIONS.map((option) => [option.value, option])),
+    []
+  );
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Submissions</CardTitle>
-        <CardDescription>Review and move registrations through your workflow.</CardDescription>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle>Submissions</CardTitle>
+            <CardDescription>Review and move registrations through your workflow.</CardDescription>
+          </div>
+          <Button
+            className="shrink-0"
+            loading={isRefreshingSubmissions}
+            onClick={handleRefreshSubmissions}
+            size="sm"
+            variant="secondary"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="p-6 pt-4">
+        {showGoogleSheetsUi && canWrite ? (
+          <div className="mb-3 rounded-control border bg-surface p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Google Sheets</p>
+              <p className="text-sm text-text-muted">
+                {googleSheetState
+                  ? "Bidirectional sync is active. App data is authoritative and destructive sheet edits are auto-repaired."
+                  : "Connect a managed sheet to review and update submissions from Google Sheets."}
+              </p>
+              {googleSheetState ? (
+                <div className="mt-2 space-y-1 text-xs text-text-muted">
+                  <p>
+                    Status:{" "}
+                    <Chip className="normal-case tracking-normal" color={googleSheetState.status === "active" ? "green" : "yellow"}>
+                      {googleSheetState.status}
+                    </Chip>
+                  </p>
+                  <p>Last sync: {googleSheetState.lastSyncedAt ? new Date(googleSheetState.lastSyncedAt).toLocaleString() : "Never"}</p>
+                  {googleSheetState.lastError ? <p className="text-danger">Last error: {googleSheetState.lastError}</p> : null}
+                </div>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {googleSheetState?.spreadsheetUrl ? (
+                <Button
+                  onClick={() => {
+                    window.open(googleSheetState.spreadsheetUrl, "_blank", "noopener,noreferrer");
+                  }}
+                  size="sm"
+                  variant="secondary"
+                >
+                  Open sheet
+                </Button>
+              ) : null}
+              {googleSheetState ? (
+                <>
+                  <Button disabled={!canWrite || isSavingGoogleSheet} loading={isSavingGoogleSheet} onClick={handleSyncGoogleSheetNow} size="sm" variant="secondary">
+                    Sync now
+                  </Button>
+                  <Button disabled={!canWrite || isSavingGoogleSheet} onClick={handleDisconnectGoogleSheet} size="sm" variant="ghost">
+                    Disconnect
+                  </Button>
+                </>
+              ) : (
+                <Button disabled={!canWrite || !googleSheetConfigured || isSavingGoogleSheet} loading={isSavingGoogleSheet} onClick={handleConnectGoogleSheet} size="sm" variant="secondary">
+                  Connect Google Sheets
+                </Button>
+              )}
+            </div>
+          </div>
+          {!googleSheetConfigured ? (
+            <Alert className="mt-3" variant="warning">
+              Google Sheets is not configured on the server. Missing service-account environment variables.
+            </Alert>
+          ) : null}
+          {googleSheetRunRows.length > 0 ? (
+            <div className="mt-3 space-y-1 rounded-control border bg-surface-muted p-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Recent sync runs</p>
+              {googleSheetRunRows.slice(0, 3).map((run) => (
+                <p className="text-xs text-text-muted" key={run.id}>
+                  {new Date(run.startedAt).toLocaleString()} - {run.triggerSource} - {run.status} (updates {run.inboundUpdatesCount}, creates {run.inboundCreatesCount}, rows {run.outboundRowsCount}, conflicts {run.conflictsCount}, errors {run.errorCount})
+                </p>
+              ))}
+            </div>
+          ) : null}
+          </div>
+        ) : null}
         <div className="mb-3 space-y-2 rounded-control border bg-surface p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Views</p>
           <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1">
@@ -1673,10 +2709,88 @@ export function FormSubmissionsPanel({
             </Button>
           </div>
         </div>
+        <div className="mb-3 space-y-2 rounded-control border bg-surface p-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Overview</p>
+            <div className="flex items-center gap-2">
+              <Button disabled={viewSummaryCardsDraft.length >= 5} onClick={addSummaryCard} size="sm" variant="secondary">
+                <Plus className="h-4 w-4" />
+                Add card
+              </Button>
+              <Button onClick={() => setIsDataControlsPanelOpen(true)} size="sm" variant="ghost">
+                Data controls
+              </Button>
+            </div>
+          </div>
+          <SortableCanvas
+            className="flex w-full gap-2"
+            getId={(card) => card.id}
+            itemClassName="min-w-0 basis-0 flex-1"
+            items={viewSummaryCardsDraft.slice(0, 5)}
+            onReorder={reorderSummaryCards}
+            sortingStrategy="horizontal"
+            renderItem={(card, meta) => {
+              const isEditingLabel = editingSummaryCardId === card.id;
+              const labelDraft = summaryCardLabelDraftById[card.id] ?? card.label;
+
+              return (
+                <div
+                  className="group relative min-w-0 rounded-control border bg-surface-muted px-4 py-3 pr-11"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <button
+                      aria-label={`Drag ${card.label} card`}
+                      className="inline-flex shrink-0 items-center justify-center p-0 text-text-muted hover:text-text"
+                      type="button"
+                      {...meta.handleProps.attributes}
+                      {...meta.handleProps.listeners}
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
+                    {isEditingLabel ? (
+                      <Input
+                        autoFocus
+                        className="h-7 min-w-0 border-0 bg-transparent px-0 py-0 text-[11px] font-semibold uppercase tracking-wide text-text-muted shadow-none focus-visible:ring-0"
+                        onBlur={() => commitSummaryCardLabelEdit(card)}
+                        onChange={(event) => {
+                          const nextLabel = event.target.value;
+                          setSummaryCardLabelDraftById((current) => ({
+                            ...current,
+                            [card.id]: nextLabel
+                          }));
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.currentTarget.blur();
+                          }
+                          if (event.key === "Escape") {
+                            cancelSummaryCardLabelEdit(card.id);
+                          }
+                        }}
+                        value={labelDraft}
+                      />
+                    ) : (
+                      <button
+                        className="min-w-0 truncate text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted"
+                        onClick={() => startSummaryCardLabelEdit(card)}
+                        type="button"
+                      >
+                        {card.label}
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <p className="text-xl font-semibold text-text">{summaryMetricValueByKey[card.metricKey]}</p>
+                  </div>
+                </div>
+              );
+            }}
+          />
+        </div>
         <DataTable
           ariaLabel="Form submissions"
           columns={submissionTableColumns}
-          data={submissionRows}
+          data={filteredSubmissionRows}
           defaultSort={{
             columnKey: "submittedAt",
             direction: "desc"
@@ -1712,6 +2826,12 @@ export function FormSubmissionsPanel({
           }}
           readOnlyToggleDisabled={!canWrite}
           readOnlyDisabledLabel="Read only (no edit permission)"
+          renderToolbarActions={
+            <Button onClick={() => setIsFiltersPanelOpen(true)} size="sm" variant={hasActiveFilters ? "secondary" : "ghost"}>
+              <Filter className="h-3.5 w-3.5" />
+              Filters{hasActiveFilters ? ` (${viewFiltersDraft.rules.length})` : ""}
+            </Button>
+          }
           onConfigChange={handleTableConfigChange}
           onCellClick={({ item, columnKey, isActiveCell }) => {
             handleTableCellClick({
@@ -1725,6 +2845,223 @@ export function FormSubmissionsPanel({
           viewConfig={activeTableViewConfig}
         />
       </CardContent>
+
+      <Panel
+        footer={
+          <>
+            <Button onClick={() => setIsFiltersPanelOpen(false)} variant="ghost">
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                setViewFiltersDraft(DEFAULT_VIEW_FILTERS);
+              }}
+              variant="secondary"
+            >
+              Clear filters
+            </Button>
+          </>
+        }
+        onClose={() => setIsFiltersPanelOpen(false)}
+        open={isFiltersPanelOpen}
+        subtitle="Filters are scoped to the active submissions view."
+        title="Submission filters"
+      >
+        <div className="space-y-4">
+          <FormField label="Match mode">
+            <Select
+              onChange={(event) => updateFilterLogic(event.target.value as FormSubmissionViewFilterLogic)}
+              options={[
+                { value: "all", label: "All rules (AND)" },
+                { value: "any", label: "Any rule (OR)" }
+              ]}
+              value={viewFiltersDraft.logic}
+            />
+          </FormField>
+
+          {viewFiltersDraft.rules.length === 0 ? <Alert variant="info">No filters configured for this view yet.</Alert> : null}
+
+          <div className="space-y-3">
+            {viewFiltersDraft.rules.map((rule, index) => {
+              const field = filterFieldByKey.get(rule.fieldKey) ?? filterFieldOptions[0];
+              if (!field) {
+                return null;
+              }
+
+              const operatorOptions = getOperatorOptions(field.type);
+              const selectedOperator = operatorOptions.some((option) => option.value === rule.operator)
+                ? rule.operator
+                : (operatorOptions[0]?.value ?? "contains");
+              const hidesValueInput = ["is_true", "is_false", "is_empty", "is_not_empty"].includes(selectedOperator);
+
+              return (
+                <div className="space-y-2 rounded-control border bg-surface-muted p-3" key={rule.id}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Rule {index + 1}</p>
+                  <div className="grid gap-2 md:grid-cols-[1.4fr_1fr_auto]">
+                    <Select
+                      onChange={(event) => {
+                        const nextFieldKey = event.target.value;
+                        const nextField = filterFieldByKey.get(nextFieldKey) ?? filterFieldOptions[0];
+                        const nextOperator = nextField ? (getOperatorOptions(nextField.type)[0]?.value ?? "contains") : "contains";
+                        updateFilterRule(rule.id, () => ({
+                          ...rule,
+                          fieldKey: nextFieldKey,
+                          operator: nextOperator,
+                          value: ""
+                        }));
+                      }}
+                      options={filterFieldOptions.map((option) => ({ value: option.key, label: option.label }))}
+                      value={field.key}
+                    />
+                    <Select
+                      onChange={(event) => {
+                        updateFilterRule(rule.id, (current) => ({
+                          ...current,
+                          operator: event.target.value as FormSubmissionViewFilterOperator
+                        }));
+                      }}
+                      options={operatorOptions}
+                      value={selectedOperator}
+                    />
+                    <Button onClick={() => removeFilterRule(rule.id)} size="sm" variant="ghost">
+                      <X className="h-4 w-4" />
+                      Remove
+                    </Button>
+                  </div>
+
+                  {!hidesValueInput ? (
+                    field.type === "status" || field.type === "select" ? (
+                      <Select
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          updateFilterRule(rule.id, (current) => ({
+                            ...current,
+                            value: nextValue
+                          }));
+                        }}
+                        options={[
+                          { value: "", label: "Select a value" },
+                          ...(field.options ?? [])
+                        ]}
+                        value={typeof rule.value === "string" ? rule.value : ""}
+                      />
+                    ) : (
+                      <Input
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          updateFilterRule(rule.id, (current) => ({
+                            ...current,
+                            value: nextValue
+                          }));
+                        }}
+                        placeholder={
+                          field.type === "datetime" || field.type === "date"
+                            ? "YYYY-MM-DD"
+                            : field.type === "number"
+                              ? "Enter a number"
+                              : "Enter a value"
+                        }
+                        type={field.type === "number" ? "number" : field.type === "datetime" || field.type === "date" ? "date" : "text"}
+                        value={typeof rule.value === "string" ? rule.value : ""}
+                      />
+                    )
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+
+          <Button onClick={addFilterRule} variant="secondary">
+            <Plus className="h-4 w-4" />
+            Add rule
+          </Button>
+        </div>
+      </Panel>
+
+      <Panel
+        footer={
+          <>
+            <Button onClick={() => setIsDataControlsPanelOpen(false)} variant="ghost">
+              Close
+            </Button>
+            <Button disabled={viewSummaryCardsDraft.length >= 5} onClick={addSummaryCard} variant="secondary">
+              <Plus className="h-4 w-4" />
+              Add card
+            </Button>
+          </>
+        }
+        onClose={() => setIsDataControlsPanelOpen(false)}
+        open={isDataControlsPanelOpen}
+        subtitle="Configure where each card gets its value. Changes are scoped to this view."
+        title="Data controls"
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-text-muted">{viewSummaryCardsDraft.length}/5 cards</p>
+          <SortableCanvas
+            className="space-y-2"
+            getId={(card) => card.id}
+            items={viewSummaryCardsDraft}
+            onReorder={reorderSummaryCards}
+            renderItem={(card, meta) => {
+              const selectedMetric = summaryMetricOptionByValue.get(card.metricKey);
+
+              return (
+                <div className="rounded-control border bg-surface-muted p-3">
+                  <div className="grid gap-2 md:grid-cols-[auto_1fr_320px_auto] md:items-start">
+                    <button
+                      aria-label={`Drag ${card.label} card`}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-text-muted hover:text-text"
+                      type="button"
+                      {...meta.handleProps.attributes}
+                      {...meta.handleProps.listeners}
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
+                    <FormField label="Card title">
+                      <Input
+                        onChange={(event) => {
+                          const nextLabel = event.target.value;
+                          updateSummaryCard(card.id, (current) => ({
+                            ...current,
+                            label: nextLabel
+                          }));
+                        }}
+                        value={card.label}
+                      />
+                    </FormField>
+                    <FormField label="Data source">
+                      <Select
+                        className="w-[320px] max-w-full"
+                        onChange={(event) => {
+                          const nextMetricKey = event.target.value as FormSubmissionViewSummaryMetricKey;
+                          const fallbackLabel = SUMMARY_METRIC_OPTIONS.find((option) => option.value === nextMetricKey)?.label ?? "Metric";
+                          updateSummaryCard(card.id, (current) => ({
+                            ...current,
+                            metricKey: nextMetricKey,
+                            label: current.label.trim().length > 0 ? current.label : fallbackLabel
+                          }));
+                        }}
+                        options={SUMMARY_METRIC_OPTIONS}
+                        value={card.metricKey}
+                      />
+                    </FormField>
+                    <div className="pt-7">
+                      <Button onClick={() => removeSummaryCard(card.id)} size="sm" variant="ghost">
+                        <X className="h-4 w-4" />
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between rounded-control border bg-surface px-3 py-2">
+                    <p className="text-xs text-text-muted">{selectedMetric?.description ?? "Select a metric source."}</p>
+                    <p className="text-sm font-semibold text-text">Preview: {summaryMetricValueByKey[card.metricKey]}</p>
+                  </div>
+                </div>
+              );
+            }}
+          />
+        </div>
+      </Panel>
 
       <Panel
         footer={
@@ -1837,7 +3174,7 @@ export function FormSubmissionsPanel({
                 onClick={() => handleSave(selectedSubmission.id)}
                 variant="secondary"
               >
-                Save status
+                Save changes
               </Button>
             </>
           ) : null
@@ -1867,6 +3204,21 @@ export function FormSubmissionsPanel({
                     onChange={(event) => setStatusById((current) => ({ ...current, [selectedSubmission.id]: event.target.value as SubmissionStatus }))}
                     options={asStatusOptions()}
                     value={statusById[selectedSubmission.id] ?? selectedSubmission.status}
+                  />
+                </FormField>
+
+                <FormField label="Admin notes">
+                  <Textarea
+                    disabled={!canWrite || !isEditableMode}
+                    onChange={(event) =>
+                      setAdminNotesById((current) => ({
+                        ...current,
+                        [selectedSubmission.id]: event.target.value
+                      }))
+                    }
+                    placeholder="Internal notes visible to staff."
+                    rows={4}
+                    value={selectedSubmissionAdminNotes}
                   />
                 </FormField>
               </CardContent>

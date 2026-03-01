@@ -8,7 +8,7 @@ import { Chip } from "@/components/ui/chip";
 import { PageHeader } from "@/components/ui/page-header";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { can } from "@/lib/permissions/can";
-import { getFormSubmissionViewsDataAction } from "@/modules/forms/actions";
+import { getFormGoogleSheetIntegrationAction, getFormSubmissionViewsDataAction } from "@/modules/forms/actions";
 import { FormPageTabs } from "@/modules/forms/components/FormPageTabs";
 import { FormPublishToggleButton } from "@/modules/forms/components/FormPublishToggleButton";
 import { FormSubmissionsPanel } from "@/modules/forms/components/FormSubmissionsPanel";
@@ -38,9 +38,13 @@ export default async function OrgManageFormSubmissionsPage({
     notFound();
   }
 
-  const [submissions, viewsResult] = await Promise.all([
+  const [submissions, viewsResult, googleSheetResult] = await Promise.all([
     listFormSubmissionsWithEntries(orgContext.orgId, form.id),
     getFormSubmissionViewsDataAction({
+      orgSlug: orgContext.orgSlug,
+      formId: form.id
+    }),
+    getFormGoogleSheetIntegrationAction({
       orgSlug: orgContext.orgSlug,
       formId: form.id
     })
@@ -48,6 +52,9 @@ export default async function OrgManageFormSubmissionsPage({
   const canWriteForms = can(orgContext.membershipPermissions, "forms.write");
   const submissionViews = viewsResult.ok ? viewsResult.data.views : [];
   const viewAdminAccounts = viewsResult.ok ? viewsResult.data.adminAccounts : [];
+  const googleSheetIntegration = googleSheetResult.ok ? googleSheetResult.data.integration : null;
+  const googleSheetRecentRuns = googleSheetResult.ok ? googleSheetResult.data.recentRuns : [];
+  const googleSheetConfigured = googleSheetResult.ok ? googleSheetResult.data.configured : false;
   const statusLabel = form.status === "published" ? "Published" : "Not published";
   const statusColor = form.status === "published" ? "green" : "yellow";
 
@@ -87,6 +94,9 @@ export default async function OrgManageFormSubmissionsPage({
         submissions={submissions}
         viewAdminAccounts={viewAdminAccounts}
         views={submissionViews}
+        googleSheetConfigured={googleSheetConfigured}
+        googleSheetIntegration={googleSheetIntegration}
+        googleSheetRecentRuns={googleSheetRecentRuns}
       />
     </div>
   );

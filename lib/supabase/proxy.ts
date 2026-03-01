@@ -3,10 +3,16 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabasePublicConfig } from "@/lib/supabase/config";
 import { isHttpsRequest, normalizeSupabaseCookieOptions, type SupabaseCookieToSet } from "@/lib/supabase/cookies";
 
-export async function updateSupabaseSessionFromProxy(request: NextRequest) {
-  let response = NextResponse.next({
-    request
-  });
+type ProxyResponseOptions = {
+  rewriteUrl?: URL | null;
+};
+
+export async function updateSupabaseSessionFromProxy(request: NextRequest, options: ProxyResponseOptions = {}) {
+  let response = options.rewriteUrl
+    ? NextResponse.rewrite(options.rewriteUrl)
+    : NextResponse.next({
+        request
+      });
   const isHttps = isHttpsRequest(request);
   const { supabaseUrl, supabasePublishableKey } = getSupabasePublicConfig();
 

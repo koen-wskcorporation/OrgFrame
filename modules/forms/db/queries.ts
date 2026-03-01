@@ -5,6 +5,8 @@ import type {
   FormSubmissionEntry,
   FormSubmissionWithEntries,
   OrgForm,
+  OrgFormGoogleSheetIntegration,
+  OrgFormGoogleSheetSyncRun,
   OrgFormSubmissionView,
   OrgFormVersion,
   SubmissionStatus,
@@ -17,10 +19,14 @@ const formSelect =
   "id, org_id, slug, name, description, form_kind, status, program_id, target_mode, locked_program_node_id, schema_json, ui_json, settings_json, created_by, created_at, updated_at";
 const versionSelect = "id, org_id, form_id, version_number, snapshot_json, published_at, created_by, created_at";
 const submissionSelect =
-  "id, org_id, form_id, version_id, submitted_by_user_id, status, answers_json, metadata_json, created_at, updated_at";
+  "id, org_id, form_id, version_id, submitted_by_user_id, status, admin_notes, sync_rev, answers_json, metadata_json, created_at, updated_at";
 const submissionEntrySelect = "id, submission_id, player_id, program_node_id, answers_json, created_at";
 const submissionViewSelect =
   "id, org_id, form_id, name, sort_index, visibility_scope, target_user_id, config_json, created_by_user_id, created_at, updated_at";
+const googleSheetIntegrationSelect =
+  "id, org_id, form_id, spreadsheet_id, spreadsheet_url, status, last_synced_at, last_error, created_by_user_id, created_at, updated_at";
+const googleSheetSyncRunSelect =
+  "id, org_id, form_id, integration_id, trigger_source, status, inbound_updates_count, inbound_creates_count, outbound_rows_count, conflicts_count, error_count, notes, started_at, completed_at, created_at";
 
 type OrgFormRow = {
   id: string;
@@ -59,6 +65,8 @@ type SubmissionRow = {
   version_id: string;
   submitted_by_user_id: string | null;
   status: SubmissionStatus;
+  admin_notes: string | null;
+  sync_rev: number | string;
   answers_json: unknown;
   metadata_json: unknown;
   created_at: string;
@@ -86,6 +94,38 @@ type SubmissionViewRow = {
   created_by_user_id: string;
   created_at: string;
   updated_at: string;
+};
+
+type GoogleSheetIntegrationRow = {
+  id: string;
+  org_id: string;
+  form_id: string;
+  spreadsheet_id: string;
+  spreadsheet_url: string;
+  status: "active" | "disabled" | "error";
+  last_synced_at: string | null;
+  last_error: string | null;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type GoogleSheetSyncRunRow = {
+  id: number;
+  org_id: string;
+  form_id: string;
+  integration_id: string | null;
+  trigger_source: "manual" | "webhook" | "cron" | "outbox";
+  status: "running" | "ok" | "failed" | "partial";
+  inbound_updates_count: number;
+  inbound_creates_count: number;
+  outbound_rows_count: number;
+  conflicts_count: number;
+  error_count: number;
+  notes: string | null;
+  started_at: string;
+  completed_at: string | null;
+  created_at: string;
 };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -138,6 +178,8 @@ function mapSubmission(row: SubmissionRow): FormSubmission {
     versionId: row.version_id,
     submittedByUserId: row.submitted_by_user_id,
     status: row.status,
+    adminNotes: row.admin_notes,
+    syncRev: Number(row.sync_rev ?? 0),
     answersJson: asObject(row.answers_json),
     metadataJson: asObject(row.metadata_json),
     createdAt: row.created_at,
@@ -169,6 +211,42 @@ function mapSubmissionView(row: SubmissionViewRow): OrgFormSubmissionView {
     createdByUserId: row.created_by_user_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function mapGoogleSheetIntegration(row: GoogleSheetIntegrationRow): OrgFormGoogleSheetIntegration {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    formId: row.form_id,
+    spreadsheetId: row.spreadsheet_id,
+    spreadsheetUrl: row.spreadsheet_url,
+    status: row.status,
+    lastSyncedAt: row.last_synced_at,
+    lastError: row.last_error,
+    createdByUserId: row.created_by_user_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapGoogleSheetSyncRun(row: GoogleSheetSyncRunRow): OrgFormGoogleSheetSyncRun {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    formId: row.form_id,
+    integrationId: row.integration_id,
+    triggerSource: row.trigger_source,
+    status: row.status,
+    inboundUpdatesCount: row.inbound_updates_count,
+    inboundCreatesCount: row.inbound_creates_count,
+    outboundRowsCount: row.outbound_rows_count,
+    conflictsCount: row.conflicts_count,
+    errorCount: row.error_count,
+    notes: row.notes,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    createdAt: row.created_at
   };
 }
 
@@ -490,6 +568,27 @@ export async function updateFormSubmissionAnswersJson(input: {
   return mapSubmission(data as SubmissionRow);
 }
 
+export async function updateFormSubmissionAdminNotes(input: {
+  orgId: string;
+  submissionId: string;
+  adminNotes: string | null;
+}) {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_form_submissions")
+    .update({ admin_notes: input.adminNotes })
+    .eq("org_id", input.orgId)
+    .eq("id", input.submissionId)
+    .select(submissionSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update submission notes: ${error.message}`);
+  }
+
+  return mapSubmission(data as SubmissionRow);
+}
+
 export async function updateFormSubmissionEntryAnswersJson(input: {
   submissionEntryId: string;
   answersJson: Record<string, unknown>;
@@ -681,4 +780,129 @@ export async function updateFormSubmissionViewsOrderRecord(input: {
       throw new Error(`Failed to reorder submission views: ${error.message}`);
     }
   }
+}
+
+export async function getFormGoogleSheetIntegration(orgId: string, formId: string): Promise<OrgFormGoogleSheetIntegration | null> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_form_google_sheet_integrations")
+    .select(googleSheetIntegrationSelect)
+    .eq("org_id", orgId)
+    .eq("form_id", formId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load Sheets integration: ${error.message}`);
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return mapGoogleSheetIntegration(data as GoogleSheetIntegrationRow);
+}
+
+export async function upsertFormGoogleSheetIntegrationRecord(input: {
+  orgId: string;
+  formId: string;
+  spreadsheetId: string;
+  spreadsheetUrl: string;
+  createdByUserId: string;
+  status?: "active" | "disabled" | "error";
+  lastError?: string | null;
+  lastSyncedAt?: string | null;
+}): Promise<OrgFormGoogleSheetIntegration> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_form_google_sheet_integrations")
+    .upsert(
+      {
+        org_id: input.orgId,
+        form_id: input.formId,
+        spreadsheet_id: input.spreadsheetId,
+        spreadsheet_url: input.spreadsheetUrl,
+        created_by_user_id: input.createdByUserId,
+        status: input.status ?? "active",
+        last_error: input.lastError ?? null,
+        last_synced_at: input.lastSyncedAt ?? null
+      },
+      {
+        onConflict: "org_id,form_id"
+      }
+    )
+    .select(googleSheetIntegrationSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to save Sheets integration: ${error.message}`);
+  }
+
+  return mapGoogleSheetIntegration(data as GoogleSheetIntegrationRow);
+}
+
+export async function updateFormGoogleSheetIntegrationRecord(input: {
+  orgId: string;
+  formId: string;
+  status?: "active" | "disabled" | "error";
+  spreadsheetId?: string;
+  spreadsheetUrl?: string;
+  lastError?: string | null;
+  lastSyncedAt?: string | null;
+}): Promise<OrgFormGoogleSheetIntegration | null> {
+  const payload: Record<string, unknown> = {};
+  if (input.status) {
+    payload.status = input.status;
+  }
+  if (typeof input.spreadsheetId === "string") {
+    payload.spreadsheet_id = input.spreadsheetId;
+  }
+  if (typeof input.spreadsheetUrl === "string") {
+    payload.spreadsheet_url = input.spreadsheetUrl;
+  }
+  if ("lastError" in input) {
+    payload.last_error = input.lastError ?? null;
+  }
+  if ("lastSyncedAt" in input) {
+    payload.last_synced_at = input.lastSyncedAt ?? null;
+  }
+
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_form_google_sheet_integrations")
+    .update(payload)
+    .eq("org_id", input.orgId)
+    .eq("form_id", input.formId)
+    .select(googleSheetIntegrationSelect)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to update Sheets integration: ${error.message}`);
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return mapGoogleSheetIntegration(data as GoogleSheetIntegrationRow);
+}
+
+export async function listRecentFormGoogleSheetSyncRuns(
+  orgId: string,
+  formId: string,
+  options?: { limit?: number }
+): Promise<OrgFormGoogleSheetSyncRun[]> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_form_google_sheet_sync_runs")
+    .select(googleSheetSyncRunSelect)
+    .eq("org_id", orgId)
+    .eq("form_id", formId)
+    .order("started_at", { ascending: false })
+    .limit(Math.min(Math.max(options?.limit ?? 10, 1), 50));
+
+  if (error) {
+    throw new Error(`Failed to load Sheets sync runs: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => mapGoogleSheetSyncRun(row as GoogleSheetSyncRunRow));
 }
