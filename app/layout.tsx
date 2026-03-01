@@ -19,7 +19,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const hideChromeInProduction = process.env.NODE_ENV === "production";
+  const gitBranch = process.env.VERCEL_GIT_COMMIT_REF ?? process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF;
+  const showChrome = process.env.NODE_ENV !== "production" || gitBranch === "testing";
 
   return (
     <html lang="en">
@@ -28,9 +29,9 @@ export default function RootLayout({
           <UploadProvider>
             <div className="app-frame">
               <div className="app-root flex min-h-screen min-w-0 flex-col">
-                {!hideChromeInProduction ? <PrimaryHeader /> : null}
-                <div className={hideChromeInProduction ? "flex-1 min-w-0" : "flex-1 min-w-0 pt-3 md:pt-4"}>{children}</div>
-                {!hideChromeInProduction ? <AppFooter /> : null}
+                {showChrome ? <PrimaryHeader /> : null}
+                <div className={showChrome ? "flex-1 min-w-0 pt-3 md:pt-4" : "flex-1 min-w-0"}>{children}</div>
+                {showChrome ? <AppFooter /> : null}
               </div>
               <div className="panel-dock" id="panel-dock" />
             </div>
