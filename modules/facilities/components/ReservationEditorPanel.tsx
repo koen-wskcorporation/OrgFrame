@@ -167,7 +167,7 @@ export function ReservationEditorPanel({ open, onClose, onSubmit, canWrite, spac
           </>
         ) : null}
 
-        <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+        <label className="ui-inline-toggle">
           <Checkbox
             checked={draft.conflictOverride}
             disabled={!canWrite}

@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, type DataTableColumn, type DataTableViewConfig } from "@/components/ui/data-table";
 import { SortableCanvas } from "@/components/editor/SortableCanvas";
 import { FormField } from "@/components/ui/form-field";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Textarea } from "@/components/ui/textarea";
@@ -2605,9 +2606,9 @@ function addSummaryCard() {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="p-6 pt-4">
+      <CardContent className="app-section-stack px-5 pb-5 pt-2 md:px-6 md:pb-6">
         {showGoogleSheetsUi && canWrite ? (
-          <div className="mb-3 rounded-control border bg-surface p-3">
+          <div className="ui-surface-block">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Google Sheets</p>
@@ -2674,7 +2675,7 @@ function addSummaryCard() {
           ) : null}
           </div>
         ) : null}
-        <div className="mb-3 space-y-2 rounded-control border bg-surface p-3">
+        <div className="ui-surface-block space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Views</p>
           <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1">
             <SortableCanvas
@@ -2709,7 +2710,7 @@ function addSummaryCard() {
             </Button>
           </div>
         </div>
-        <div className="mb-3 space-y-2 rounded-control border bg-surface p-3">
+        <div className="ui-surface-block space-y-2">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Overview</p>
             <div className="flex items-center gap-2">
@@ -3008,15 +3009,13 @@ function addSummaryCard() {
               return (
                 <div className="rounded-control border bg-surface-muted p-3">
                   <div className="grid gap-2 md:grid-cols-[auto_1fr_320px_auto] md:items-start">
-                    <button
-                      aria-label={`Drag ${card.label} card`}
-                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-text-muted hover:text-text"
+                    <IconButton
+                      icon={<GripVertical className="h-4 w-4" />}
+                      label={`Drag ${card.label} card`}
                       type="button"
                       {...meta.handleProps.attributes}
                       {...meta.handleProps.listeners}
-                    >
-                      <GripVertical className="h-4 w-4" />
-                    </button>
+                    />
                     <FormField label="Card title">
                       <Input
                         onChange={(event) => {
@@ -3296,11 +3295,12 @@ function addSummaryCard() {
               Apply status to selected
             </Button>
             <Button
+              className="ui-button-danger"
               disabled={!isEditableMode || !canWrite || isDeletingSubmissions}
               loading={isDeletingSubmissions}
               onClick={handleDeleteSelectedSubmissions}
               size="sm"
-              variant="destructive"
+              variant="secondary"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Delete selected

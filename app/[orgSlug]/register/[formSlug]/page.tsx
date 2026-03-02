@@ -57,8 +57,8 @@ export default async function OrgFormRegistrationPage({
   ]);
 
   return (
-    <main className="w-full px-6 py-8 md:px-8 md:py-10">
-      <div className="space-y-6">
+    <main className="app-page-shell w-full py-8 md:py-10">
+      <div className="ui-stack-page">
         <PageHeader description={form.description ?? "Complete the form and submit registration."} title={form.name} />
 
         {form.formKind === "program_registration" && players.length === 0 ? (

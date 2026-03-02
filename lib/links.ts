@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const linkTypeValues = ["internal", "external"] as const;
-export const buttonVariantValues = ["primary", "secondary", "ghost", "link"] as const;
+export const buttonVariantValues = ["primary", "secondary", "ghost"] as const;
 
 export type LinkType = (typeof linkTypeValues)[number];
 export type ButtonVariant = (typeof buttonVariantValues)[number];
@@ -122,6 +122,9 @@ export function asLinkValue(value: unknown, fallback: LinkValue = defaultInterna
 }
 
 export function asButtonVariant(value: unknown, fallback: ButtonVariant = "primary"): ButtonVariant {
+  if (value === "link") {
+    return "ghost";
+  }
   const parsed = buttonVariantSchema.safeParse(value);
   return parsed.success ? parsed.data : fallback;
 }

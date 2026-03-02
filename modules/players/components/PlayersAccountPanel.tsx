@@ -298,7 +298,7 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
   }
 
   return (
-    <div className="space-y-6">
+    <div className="ui-stack-page">
       <Card>
         <CardHeader className="p-4">
           <div className="flex items-start justify-between gap-3">

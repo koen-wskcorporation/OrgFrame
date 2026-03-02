@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Alert } from "@/components/ui/alert";
+import { PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { can } from "@/lib/permissions/can";
@@ -24,7 +25,7 @@ export default async function OrgManageFacilitiesPage({ params }: { params: Prom
   const readModel = await listFacilityReservationReadModel(orgContext.orgId);
 
   return (
-    <div className="space-y-6">
+    <PageStack>
       <PageHeader
         description="Manage facility spaces, booking schedules, blackouts, and approvals."
         showBorder={false}
@@ -32,6 +33,6 @@ export default async function OrgManageFacilitiesPage({ params }: { params: Prom
       />
       {!canWriteFacilities ? <Alert variant="info">You have read-only access to facilities.</Alert> : null}
       <FacilitiesManagePanel canWrite={canWriteFacilities} initialReadModel={readModel} orgSlug={orgContext.orgSlug} />
-    </div>
+    </PageStack>
   );
 }

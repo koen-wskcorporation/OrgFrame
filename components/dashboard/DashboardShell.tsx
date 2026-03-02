@@ -16,10 +16,10 @@ type DashboardSectionProps = {
 
 export function DashboardShell({ title, subtitle, actions, children }: DashboardShellProps) {
   return (
-    <main className="app-shell w-full px-6 pb-8 pt-0 md:px-8 md:pb-10 md:pt-0">
-      <div className="space-y-8">
+    <main className="app-page-shell pb-8 pt-0 md:pb-10 md:pt-0">
+      <div className="app-page-stack">
         <PageHeader actions={actions} description={subtitle} title={title} />
-        <div className="space-y-8">{children}</div>
+        <div className="space-y-8 md:space-y-9">{children}</div>
       </div>
     </main>
   );
@@ -27,10 +27,10 @@ export function DashboardShell({ title, subtitle, actions, children }: Dashboard
 
 export function DashboardSection({ title, description, actions, children }: DashboardSectionProps) {
   return (
-    <section className="space-y-4">
+    <section className="app-section-stack">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h2 className="text-xl font-semibold text-text">{title}</h2>
+          <h2 className="text-xl font-semibold leading-tight text-text">{title}</h2>
           {description ? <p className="text-sm text-text-muted">{description}</p> : null}
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}

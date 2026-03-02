@@ -22,6 +22,7 @@ import {
   upsertFacilityReservationRule,
   upsertRuleGeneratedReservations
 } from "@/modules/facilities/db/queries";
+import { normalizeFacilitySpaceStatusLabels } from "@/modules/facilities/status";
 import { generateReservationsForRule, zonedLocalToUtc } from "@/modules/facilities/schedule/rule-engine";
 import type {
   FacilityReservation,
@@ -145,6 +146,13 @@ const createSpaceSchema = z.object({
   slug: textSchema.max(120).optional(),
   spaceKind: z.enum(["building", "room", "field", "court", "custom"] satisfies FacilitySpaceKind[]).optional(),
   status: z.enum(["open", "closed", "archived"]).optional(),
+  statusLabels: z
+    .object({
+      open: textSchema.max(48).optional(),
+      closed: textSchema.max(48).optional(),
+      archived: textSchema.max(48).optional()
+    })
+    .optional(),
   isBookable: z.boolean().optional(),
   timezone: textSchema.max(120).optional(),
   capacity: z.number().int().min(0).nullable().optional(),
@@ -170,7 +178,7 @@ const toggleSpaceBookableSchema = z.object({
 const toggleSpaceOpenClosedSchema = z.object({
   orgSlug: textSchema.min(1),
   spaceId: z.string().uuid(),
-  status: z.enum(["open", "closed"])
+  status: z.enum(["open", "closed", "archived"])
 });
 
 const archiveSpaceSchema = z.object({
@@ -273,6 +281,7 @@ export async function createFacilitySpaceAction(input: z.input<typeof createSpac
       timezone: resolveTimezone(payload.timezone),
       capacity: payload.capacity ?? null,
       metadataJson: {},
+      statusLabelsJson: normalizeFacilitySpaceStatusLabels(payload.statusLabels),
       sortIndex: payload.sortIndex ?? 0
     });
 
@@ -327,6 +336,7 @@ export async function updateFacilitySpaceAction(input: z.input<typeof updateSpac
       timezone: resolveTimezone(payload.timezone ?? existing.timezone),
       capacity: payload.capacity ?? existing.capacity,
       metadataJson: existing.metadataJson,
+      statusLabelsJson: payload.statusLabels ? normalizeFacilitySpaceStatusLabels(payload.statusLabels) : existing.statusLabelsJson,
       sortIndex: payload.sortIndex ?? existing.sortIndex
     });
 
@@ -380,6 +390,7 @@ export async function moveFacilitySpaceAction(input: z.input<typeof moveSpaceSch
       timezone: existing.timezone,
       capacity: existing.capacity,
       metadataJson: existing.metadataJson,
+      statusLabelsJson: existing.statusLabelsJson,
       sortIndex: existing.sortIndex
     });
 
@@ -422,6 +433,7 @@ export async function archiveFacilitySpaceAction(input: z.input<typeof archiveSp
       timezone: existing.timezone,
       capacity: existing.capacity,
       metadataJson: existing.metadataJson,
+      statusLabelsJson: existing.statusLabelsJson,
       sortIndex: existing.sortIndex
     });
 
@@ -466,6 +478,7 @@ export async function toggleFacilitySpaceBookableAction(
       timezone: existing.timezone,
       capacity: existing.capacity,
       metadataJson: existing.metadataJson,
+      statusLabelsJson: existing.statusLabelsJson,
       sortIndex: existing.sortIndex
     });
 
@@ -510,6 +523,7 @@ export async function toggleFacilitySpaceOpenClosedAction(
       timezone: existing.timezone,
       capacity: existing.capacity,
       metadataJson: existing.metadataJson,
+      statusLabelsJson: existing.statusLabelsJson,
       sortIndex: existing.sortIndex
     });
 

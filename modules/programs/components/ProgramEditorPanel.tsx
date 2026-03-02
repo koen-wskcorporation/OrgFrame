@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DndContext, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { Eye, EyeOff, GripVertical, MoreHorizontal, Pencil, Plus, Search, Trash2, ZoomIn, ZoomOut } from "lucide-react";
@@ -37,7 +36,7 @@ type ProgramEditorPanelProps = {
   canWritePrograms: boolean;
   canReadForms: boolean;
   canWriteForms: boolean;
-  activeSection: "structure" | "schedule" | "registration";
+  activeSection: "structure" | "schedule" | "registration" | "settings";
   scheduleSeed?: {
     rules: ProgramScheduleRule[];
     occurrences: ProgramOccurrence[];
@@ -441,14 +440,14 @@ function StructureTreeRow({
                     Edit details
                   </Button>
                   <Button
-                    className="w-full justify-start"
+                    className="ui-button-danger w-full justify-start"
                     onClick={() => {
                       onDelete(node.id);
                       setIsMenuOpen(false);
                     }}
                     size="sm"
                     type="button"
-                    variant="destructive"
+                    variant="secondary"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete
@@ -550,13 +549,9 @@ export function ProgramEditorPanel({
   scheduleSeed
 }: ProgramEditorPanelProps) {
   const { toast } = useToast();
-  const pathname = usePathname();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const [isSavingProgram, startSavingProgram] = useTransition();
   const [isMutatingNodes, startMutatingNodes] = useTransition();
   const [isMutatingSchedule, startMutatingSchedule] = useTransition();
-  const [isProgramSettingsOpen, setIsProgramSettingsOpen] = useState(false);
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [isDivisionCreateOpen, setIsDivisionCreateOpen] = useState(false);
   const [isNodeEditOpen, setIsNodeEditOpen] = useState(false);
@@ -656,12 +651,6 @@ export function ProgramEditorPanel({
   const editingNode = editingNodeId ? nodeById.get(editingNodeId) : null;
   const editingParentNode = editingNode?.parentId ? nodeById.get(editingNode.parentId) : null;
   const canSetEditingNodeToTeam = Boolean(editingNode && editingParentNode?.nodeKind === "division");
-
-  useEffect(() => {
-    if (searchParams.get("panel") === "settings") {
-      setIsProgramSettingsOpen(true);
-    }
-  }, [searchParams]);
 
   useEffect(() => {
     if (!activeDivisionId) {
@@ -781,10 +770,6 @@ export function ProgramEditorPanel({
         variant: "success"
       });
       setSavedSlug(slug);
-      setIsProgramSettingsOpen(false);
-      if (searchParams.get("panel") === "settings") {
-        router.replace(pathname);
-      }
     });
   }
 
@@ -1347,102 +1332,101 @@ export function ProgramEditorPanel({
   }, [nodeKind, parentId, nodes]);
 
   return (
-    <div className="space-y-6">
-      <Panel
-        footer={
-          <>
-            <Button onClick={() => setIsProgramSettingsOpen(false)} type="button" variant="ghost">
-              Cancel
-            </Button>
-            <Button disabled={isSavingProgram} form="program-settings-form" loading={isSavingProgram} type="submit">
-              {isSavingProgram ? "Saving..." : "Save program"}
-            </Button>
-          </>
-        }
-        onClose={() => setIsProgramSettingsOpen(false)}
-        open={isProgramSettingsOpen}
-        panelClassName="ml-auto max-w-[300px]"
-        subtitle="Configure the core program details and publish state."
-        title="Program settings"
-      >
-        <form className="grid gap-4" id="program-settings-form" onSubmit={handleProgramSave}>
-          <FormField label="Program name">
-            <Input onChange={(event) => setName(event.target.value)} required value={name} />
-          </FormField>
-          <FormField label="Slug">
-            <Input
-              onChange={(event) => setSlug(slugify(event.target.value))}
-              required
-              slugValidation={{
-                kind: "program",
-                orgSlug,
-                currentSlug: savedSlug
-              }}
-              value={slug}
-            />
-          </FormField>
-          <FormField label="Type">
-            <Select
-              onChange={(event) => setProgramType(event.target.value as "league" | "season" | "clinic" | "custom")}
-              options={[
-                { value: "league", label: "League" },
-                { value: "season", label: "Season" },
-                { value: "clinic", label: "Clinic" },
-                { value: "custom", label: "Custom" }
-              ]}
-              value={programType}
-            />
-          </FormField>
-          <FormField label="Status">
-            <Select
-              onChange={(event) => setStatus(event.target.value as "draft" | "published" | "archived")}
-              options={[
-                { value: "draft", label: "Draft" },
-                { value: "published", label: "Published" },
-                { value: "archived", label: "Archived" }
-              ]}
-              value={status}
-            />
-          </FormField>
-          {programType === "custom" ? (
-            <FormField label="Custom type label">
-              <Input onChange={(event) => setCustomTypeLabel(event.target.value)} required value={customTypeLabel} />
-            </FormField>
-          ) : null}
-          <FormField label="Description">
-            <Textarea className="min-h-[80px]" onChange={(event) => setDescription(event.target.value)} value={description} />
-          </FormField>
-          <FormField label="Cover photo">
-            <AssetTile
-              constraints={{
-                accept: "image/*,.svg",
-                maxSizeMB: 10,
-                aspect: "wide",
-                recommendedPx: {
-                  w: 1600,
-                  h: 900
-                }
-              }}
-              fit="cover"
-              initialPath={coverImagePath || null}
-              initialUrl={getOrgAssetPublicUrl(coverImagePath)}
-              kind="org"
-              onChange={(asset) => setCoverImagePath(asset.path)}
-              onRemove={() => setCoverImagePath("")}
-              orgSlug={orgSlug}
-              purpose="program-cover"
-              specificationText="PNG, JPG, WEBP, HEIC, or SVG"
-              title="Program cover"
-            />
-          </FormField>
-          <FormField label="Start date">
-            <CalendarPicker onChange={setStartDate} value={startDate} />
-          </FormField>
-          <FormField label="End date">
-            <CalendarPicker onChange={setEndDate} value={endDate} />
-          </FormField>
-        </form>
-      </Panel>
+    <div className="ui-stack-page">
+      {activeSection === "settings" ? (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Program settings</CardTitle>
+                <CardDescription>Configure the core program details and publish state.</CardDescription>
+              </div>
+              <Button disabled={isSavingProgram} form="program-settings-form" loading={isSavingProgram} type="submit">
+                {isSavingProgram ? "Saving..." : "Save program"}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <form className="grid gap-4 md:grid-cols-2" id="program-settings-form" onSubmit={handleProgramSave}>
+              <FormField label="Program name">
+                <Input onChange={(event) => setName(event.target.value)} required value={name} />
+              </FormField>
+              <FormField label="Slug">
+                <Input
+                  onChange={(event) => setSlug(slugify(event.target.value))}
+                  required
+                  slugValidation={{
+                    kind: "program",
+                    orgSlug,
+                    currentSlug: savedSlug
+                  }}
+                  value={slug}
+                />
+              </FormField>
+              <FormField label="Type">
+                <Select
+                  onChange={(event) => setProgramType(event.target.value as "league" | "season" | "clinic" | "custom")}
+                  options={[
+                    { value: "league", label: "League" },
+                    { value: "season", label: "Season" },
+                    { value: "clinic", label: "Clinic" },
+                    { value: "custom", label: "Custom" }
+                  ]}
+                  value={programType}
+                />
+              </FormField>
+              <FormField label="Status">
+                <Select
+                  onChange={(event) => setStatus(event.target.value as "draft" | "published" | "archived")}
+                  options={[
+                    { value: "draft", label: "Draft" },
+                    { value: "published", label: "Published" },
+                    { value: "archived", label: "Archived" }
+                  ]}
+                  value={status}
+                />
+              </FormField>
+              {programType === "custom" ? (
+                <FormField label="Custom type label">
+                  <Input onChange={(event) => setCustomTypeLabel(event.target.value)} required value={customTypeLabel} />
+                </FormField>
+              ) : null}
+              <FormField className="md:col-span-2" label="Description">
+                <Textarea className="min-h-[80px]" onChange={(event) => setDescription(event.target.value)} value={description} />
+              </FormField>
+              <FormField className="md:col-span-2" label="Cover photo">
+                <AssetTile
+                  constraints={{
+                    accept: "image/*,.svg",
+                    maxSizeMB: 10,
+                    aspect: "wide",
+                    recommendedPx: {
+                      w: 1600,
+                      h: 900
+                    }
+                  }}
+                  fit="cover"
+                  initialPath={coverImagePath || null}
+                  initialUrl={getOrgAssetPublicUrl(coverImagePath)}
+                  kind="org"
+                  onChange={(asset) => setCoverImagePath(asset.path)}
+                  onRemove={() => setCoverImagePath("")}
+                  orgSlug={orgSlug}
+                  purpose="program-cover"
+                  specificationText="PNG, JPG, WEBP, HEIC, or SVG"
+                  title="Program cover"
+                />
+              </FormField>
+              <FormField label="Start date">
+                <CalendarPicker onChange={setStartDate} value={startDate} />
+              </FormField>
+              <FormField label="End date">
+                <CalendarPicker onChange={setEndDate} value={endDate} />
+              </FormField>
+            </form>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {activeSection === "registration" ? (
         <>
@@ -1605,9 +1589,6 @@ export function ProgramEditorPanel({
                       <ZoomIn className="h-3.5 w-3.5" />
                     </Button>
                     <Button onClick={() => structureCanvasRef.current?.fitToView()} size="sm" type="button" variant="secondary">
-                      Fit to view
-                    </Button>
-                    <Button onClick={() => structureCanvasRef.current?.resetView()} size="sm" type="button" variant="secondary">
                       Reset
                     </Button>
                     <Chip size="small">{structureZoomPercent}%</Chip>
@@ -1655,11 +1636,11 @@ export function ProgramEditorPanel({
           <FormField hint="Optional" label="Capacity">
             <Input onChange={(event) => setEditingCapacity(event.target.value)} type="number" value={editingCapacity} />
           </FormField>
-          <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+          <label className="ui-inline-toggle">
             <Checkbox checked={editingWaitlistEnabled} onChange={(event) => setEditingWaitlistEnabled(event.target.checked)} />
             Waitlist enabled
           </label>
-          <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+          <label className="ui-inline-toggle">
             <Checkbox checked={editingPublished} onChange={(event) => setEditingPublished(event.target.checked)} />
             Published
           </label>
@@ -1706,7 +1687,7 @@ export function ProgramEditorPanel({
           <FormField hint="Optional" label="Capacity">
             <Input onChange={(event) => setCapacity(event.target.value)} type="number" value={capacity} />
           </FormField>
-          <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+          <label className="ui-inline-toggle">
             <Checkbox checked={waitlistEnabled} onChange={(event) => setWaitlistEnabled(event.target.checked)} />
             Waitlist enabled
           </label>

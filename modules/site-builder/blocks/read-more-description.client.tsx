@@ -58,11 +58,11 @@ export function ReadMoreDescription({ children }: ReadMoreDescriptionProps) {
       </p>
       {canExpand ? (
         <Button
-          className="mt-2 h-auto px-0 text-xs"
+          className="mt-2 h-auto px-0 text-xs hover:bg-transparent"
           onClick={() => setExpanded((value) => !value)}
           size="sm"
           type="button"
-          variant="link"
+          variant="ghost"
         >
           {expanded ? "Read less" : "Read more"}
         </Button>

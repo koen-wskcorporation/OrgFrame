@@ -66,7 +66,7 @@ export default async function OrgLayout({
           orgSlug={orgRequest.org.orgSlug}
         />
       ) : null}
-      {children}
+      <div className="org-layout-content">{children}</div>
     </div>
   );
 }

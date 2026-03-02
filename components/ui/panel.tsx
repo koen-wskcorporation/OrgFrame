@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/utils";
 
 const PANEL_WIDTH = 325;
@@ -64,11 +65,17 @@ export function Panel({
     const syncPanelTop = () => {
       const header = document.getElementById(PRIMARY_HEADER_ID);
       const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
-      const panelTop = Math.max(0, Math.round(headerBottom));
+      const rootStyles = window.getComputedStyle(document.documentElement);
+      const orgHeaderBottom = Number.parseFloat(rootStyles.getPropertyValue("--org-header-bottom")) || 0;
+      const layoutGap = Number.parseFloat(rootStyles.getPropertyValue("--layout-gap")) || 0;
+      const panelTop = Math.max(0, Math.round(Math.max(headerBottom, orgHeaderBottom) + layoutGap));
       panelRef.current?.style.setProperty("--panel-top", `${panelTop}px`);
     };
     const syncPanelWidth = () => {
-      const panelWidth = Math.min(window.innerWidth, PANEL_WIDTH);
+      const rootStyles = window.getComputedStyle(document.documentElement);
+      const layoutGap = Number.parseFloat(rootStyles.getPropertyValue("--layout-gap")) || 0;
+      const viewportAllowance = Math.max(0, window.innerWidth - layoutGap * 2);
+      const panelWidth = Math.min(viewportAllowance, PANEL_WIDTH);
       document.body.style.setProperty("--panel-active-width", `${Math.round(panelWidth)}px`);
     };
 
@@ -132,36 +139,30 @@ export function Panel({
     <aside
       aria-label={typeof title === "string" ? title : undefined}
       className={cn(
-        "app-panel fixed bottom-0 right-0 z-[100]",
-        "flex min-w-0 shrink-0 flex-col border-l bg-surface shadow-floating",
+        "app-panel fixed z-[100] flex min-w-0 shrink-0 flex-col overflow-hidden rounded-card border bg-surface shadow-floating",
         panelClassName
       )}
       ref={panelRef}
       role="complementary"
       style={{
         ...panelStyle,
+        bottom: "var(--layout-gap)",
+        right: "var(--layout-gap)",
         top: "var(--panel-top, 0px)",
-        maxWidth: `min(100vw, ${PANEL_WIDTH}px)`,
-        width: `min(100vw, ${PANEL_WIDTH}px)`
+        maxWidth: `min(calc(100vw - (var(--layout-gap) * 2)), ${PANEL_WIDTH}px)`,
+        width: `min(calc(100vw - (var(--layout-gap) * 2)), ${PANEL_WIDTH}px)`
       }}
     >
-      <div className="relative shrink-0 border-b px-5 py-4 pr-16">
-        <h2 className="text-lg font-semibold text-text">{title}</h2>
-        {subtitle ? <p className="mt-1 text-sm text-text-muted">{subtitle}</p> : null}
+      <div className="relative shrink-0 border-b px-5 py-4 pr-16 md:px-6">
+        <h2 className="text-lg font-semibold leading-tight text-text">{title}</h2>
+        {subtitle ? <p className="mt-1 text-sm leading-relaxed text-text-muted">{subtitle}</p> : null}
       </div>
 
-      <button
-        aria-label="Close panel"
-        className="absolute right-3 top-3 z-[101] inline-flex h-9 w-9 items-center justify-center rounded-full border bg-surface text-lg leading-none text-text shadow-sm hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={onClose}
-        type="button"
-      >
-        ×
-      </button>
+      <IconButton className="absolute right-3 top-3 z-[101]" icon={<span className="text-lg leading-none">×</span>} label="Close panel" onClick={onClose} />
 
-      <div className={cn("min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 py-4 [overflow-wrap:anywhere]", contentClassName)}>{children}</div>
+      <div className={cn("min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 py-4 [overflow-wrap:anywhere] md:px-6", contentClassName)}>{children}</div>
 
-      {footer ? <div className="shrink-0 border-t bg-surface px-5 py-4 flex flex-wrap items-center justify-end gap-2">{footer}</div> : null}
+      {footer ? <div className="shrink-0 border-t bg-surface px-5 py-4 md:px-6 flex flex-wrap items-center justify-end gap-2">{footer}</div> : null}
     </aside>,
     portalTarget
   );

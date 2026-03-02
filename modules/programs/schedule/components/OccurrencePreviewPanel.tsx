@@ -92,11 +92,14 @@ export function OccurrencePreviewPanel({
   return (
     <Card className="border-border bg-surface">
       <CardHeader className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <CalendarDays className="h-4 w-4" />
-            Occurrence Preview
-          </CardTitle>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 space-y-1">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarDays className="h-4 w-4" />
+              Occurrence Preview
+            </CardTitle>
+            <CardDescription>{summary}</CardDescription>
+          </div>
           <div className="flex flex-wrap items-center gap-1">
             {filterItems.map((item) => (
               <button
@@ -114,7 +117,6 @@ export function OccurrencePreviewPanel({
             ))}
           </div>
         </div>
-        <CardDescription>{summary}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         {filter === "exceptions" ? (

@@ -26,6 +26,7 @@ export type FacilitySpace = {
   timezone: string;
   capacity: number | null;
   metadataJson: Record<string, unknown>;
+  statusLabelsJson: Record<string, unknown>;
   sortIndex: number;
   createdAt: string;
   updatedAt: string;

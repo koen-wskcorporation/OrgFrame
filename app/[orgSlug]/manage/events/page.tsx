@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Alert } from "@/components/ui/alert";
+import { PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { can } from "@/lib/permissions/can";
@@ -24,10 +25,10 @@ export default async function OrgManageEventsPage({ params }: { params: Promise<
   const events = await listEventsForManage(orgContext.orgId);
 
   return (
-    <div className="space-y-6">
+    <PageStack>
       <PageHeader description="Create and manage organization events for list and calendar blocks." showBorder={false} title="Events" />
       {!canWriteEvents ? <Alert variant="info">You have read-only access to events.</Alert> : null}
       <EventsManagePanel canWrite={canWriteEvents} events={events} orgSlug={orgContext.orgSlug} />
-    </div>
+    </PageStack>
   );
 }

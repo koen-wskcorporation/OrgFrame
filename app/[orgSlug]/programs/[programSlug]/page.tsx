@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { Alert } from "@/components/ui/alert";
-import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
@@ -90,8 +89,8 @@ export default async function OrgProgramDetailPage({
   ]);
 
   return (
-    <main className="w-full px-6 py-8 md:px-8 md:py-10">
-      <div className="space-y-6">
+    <main className="app-page-shell w-full py-8 md:py-10">
+      <div className="ui-stack-page">
         <PageHeader
           description={details.program.description ?? "Program details and registration options."}
           title={details.program.name}
@@ -130,9 +129,9 @@ export default async function OrgProgramDetailPage({
                   <p className="font-semibold text-text">{form.name}</p>
                   <p className="text-xs text-text-muted">/{orgSlug}/register/{form.slug}</p>
                   <div className="mt-2">
-                    <Link className={buttonVariants({ size: "sm" })} href={`/${orgSlug}/register/${form.slug}`}>
+                    <Button href={`/${orgSlug}/register/${form.slug}`} size="sm">
                       Register
-                    </Link>
+                    </Button>
                   </div>
                 </div>
               ))}

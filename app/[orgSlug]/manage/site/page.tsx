@@ -1,6 +1,6 @@
-import Link from "next/link";
 import type { Metadata } from "next";
-import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { getOrgCapabilities } from "@/lib/permissions/orgCapabilities";
@@ -20,16 +20,16 @@ export default async function OrgManageSitePage({ params }: { params: Promise<{ 
   }
 
   return (
-    <div className="space-y-6">
+    <PageStack>
       <PageHeader description="Page and menu management now lives in the org header." showBorder={false} title="Site" />
       <p className="text-sm text-text-muted">
         Manage your site pages from the org header using <span className="font-semibold text-text">Admin {"->"} Edit menu</span>.
       </p>
       <div>
-        <Link className={buttonVariants({ variant: "secondary" })} href={`/${orgContext.orgSlug}`}>
+        <Button href={`/${orgContext.orgSlug}`} variant="secondary">
           Go to org site
-        </Link>
+        </Button>
       </div>
-    </div>
+    </PageStack>
   );
 }

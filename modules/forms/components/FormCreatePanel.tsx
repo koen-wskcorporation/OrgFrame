@@ -178,6 +178,8 @@ export function FormCreatePanel({ open, onClose, orgSlug, programs, canWrite = t
           <Input
             disabled={!canWrite}
             onChange={(event) => setSlug(slugify(event.target.value))}
+            onSlugAutoChange={setSlug}
+            slugAutoSource={resolvedName}
             slugValidation={{
               kind: "form",
               orgSlug
@@ -232,13 +234,13 @@ export function FormCreatePanel({ open, onClose, orgSlug, programs, canWrite = t
                 value={targetMode}
               />
             </FormField>
-            <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text md:col-span-2">
+            <label className="ui-inline-toggle md:col-span-2">
               <Checkbox checked={allowMultiplePlayers} disabled={!canWrite} onChange={(event) => setAllowMultiplePlayers(event.target.checked)} />
               Allow multiple players per submission
             </label>
           </>
         ) : null}
-        <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text md:col-span-2">
+        <label className="ui-inline-toggle md:col-span-2">
           <Checkbox
             checked={requireSignIn}
             disabled={!canWrite}

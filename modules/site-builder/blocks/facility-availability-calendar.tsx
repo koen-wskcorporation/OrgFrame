@@ -204,7 +204,7 @@ export function FacilityAvailabilityCalendarBlockEditor({
         />
       </FormField>
 
-      <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+      <label className="ui-inline-toggle">
         <Checkbox
           checked={block.config.showPendingReservations}
           onChange={(event) => updateConfig({ showPendingReservations: event.target.checked })}

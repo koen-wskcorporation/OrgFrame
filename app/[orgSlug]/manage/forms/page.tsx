@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Alert } from "@/components/ui/alert";
+import { PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { can } from "@/lib/permissions/can";
@@ -30,10 +31,10 @@ export default async function OrgManageFormsPage({ params }: { params: Promise<{
   ]);
 
   return (
-    <div className="space-y-6">
+    <PageStack>
       <PageHeader description="Build, publish, and operate generic and registration forms." showBorder={false} title="Forms" />
       {!canWriteForms ? <Alert variant="info">You have read-only access to forms.</Alert> : null}
       <FormsManagePanel canWrite={canWriteForms} forms={forms} orgSlug={orgContext.orgSlug} programs={programs} />
-    </div>
+    </PageStack>
   );
 }

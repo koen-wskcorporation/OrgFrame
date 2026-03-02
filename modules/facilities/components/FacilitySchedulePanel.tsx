@@ -179,11 +179,14 @@ export function FacilitySchedulePanel({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="ui-stack-page">
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle>Reservations</CardTitle>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <CardTitle>Reservations</CardTitle>
+              <CardDescription>Pending and approved reservations both block availability and overlap conflicts.</CardDescription>
+            </div>
             <div className="flex flex-wrap gap-2">
               <Button disabled={!canWrite} onClick={openCreateReservation} type="button">
                 <CalendarPlus2 className="h-4 w-4" />
@@ -195,7 +198,6 @@ export function FacilitySchedulePanel({
               </Button>
             </div>
           </div>
-          <CardDescription>Pending and approved reservations both block availability and overlap conflicts.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {sortedReservations.length === 0 ? <Alert variant="info">No reservations yet.</Alert> : null}
@@ -244,14 +246,16 @@ export function FacilitySchedulePanel({
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle>Recurring Rules</CardTitle>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <CardTitle>Recurring Rules</CardTitle>
+              <CardDescription>Rules generate future reservations and respect skip/override exceptions.</CardDescription>
+            </div>
             <Button disabled={!canWrite} onClick={openCreateRule} type="button" variant="secondary">
               <Plus className="h-4 w-4" />
               New rule
             </Button>
           </div>
-          <CardDescription>Rules generate future reservations and respect skip/override exceptions.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {sortedRules.length === 0 ? <Alert variant="info">No recurring rules yet.</Alert> : null}
@@ -452,7 +456,7 @@ export function FacilitySchedulePanel({
           <FormField hint="Used by multiple-specific-dates mode" label="Specific dates (comma-separated)">
             <Input onChange={(event) => setRuleDraft((current) => ({ ...current, specificDates: event.target.value }))} value={ruleDraft.specificDates} />
           </FormField>
-          <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+          <label className="ui-inline-toggle">
             <Checkbox
               checked={ruleDraft.conflictOverride}
               onChange={(event) => setRuleDraft((current) => ({ ...current, conflictOverride: event.target.checked }))}

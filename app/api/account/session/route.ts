@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSignedProfileAvatarUrl } from "@/lib/account/getSignedProfileAvatarUrl";
 import { getSessionUser } from "@/lib/auth/getSessionUser";
+import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
+import { listUserOrgs } from "@/lib/org/listUserOrgs";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -28,6 +30,7 @@ export async function GET() {
 
   const avatarPath = profile?.avatar_path ?? null;
   const avatarUrl = avatarPath ? await getSignedProfileAvatarUrl(avatarPath, 60 * 10) : null;
+  const organizations = await listUserOrgs().catch(() => []);
 
   return NextResponse.json(
     {
@@ -38,7 +41,13 @@ export async function GET() {
         firstName: profile?.first_name ?? null,
         lastName: profile?.last_name ?? null,
         avatarUrl
-      }
+      },
+      organizations: organizations.map((membership) => ({
+        orgId: membership.orgId,
+        orgName: membership.orgName,
+        orgSlug: membership.orgSlug,
+        iconUrl: getOrgAssetPublicUrl(membership.iconPath ?? membership.logoPath)
+      }))
     },
     {
       headers: {

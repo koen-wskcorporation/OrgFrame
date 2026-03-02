@@ -18,6 +18,9 @@ type SlugValidationStatus = "idle" | "checking" | "available" | "taken" | "inval
 type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   slugValidation?: SlugValidationConfig;
   persistentPrefix?: string;
+  slugAutoSource?: string;
+  onSlugAutoChange?: (value: string) => void;
+  slugAutoEnabled?: boolean;
 };
 
 type SlugAvailabilityResponse = {
@@ -29,6 +32,11 @@ type SlugAvailabilityResponse = {
 };
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const inputShellClass =
+  "flex h-10 w-full items-center rounded-control border border-border bg-surface text-sm text-text shadow-[inset_0_1px_0_hsl(var(--canvas)/0.35)]";
+const inputFocusClass =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas";
+const inputDisabledClass = "disabled:cursor-not-allowed disabled:opacity-55";
 
 function normalizeSlug(value: string) {
   return value
@@ -67,12 +75,39 @@ function isValidAvailabilityResponse(value: unknown): value is SlugAvailabilityR
   );
 }
 
+function resolveSlugPathPrefix(slugValidation: SlugValidationConfig | undefined, persistentPrefix: string | undefined) {
+  if (persistentPrefix) {
+    return persistentPrefix;
+  }
+
+  if (!slugValidation) {
+    return undefined;
+  }
+
+  const orgSlug = slugValidation.orgSlug?.trim();
+  if (slugValidation.kind === "program" && orgSlug) {
+    return `/${orgSlug}/programs/`;
+  }
+
+  if (slugValidation.kind === "form" && orgSlug) {
+    return `/${orgSlug}/register/`;
+  }
+
+  if (slugValidation.kind === "page" && orgSlug) {
+    return `/${orgSlug}/`;
+  }
+
+  return undefined;
+}
+
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, slugValidation, persistentPrefix, onChange, value, defaultValue, ...props }, forwardedRef) => {
+  ({ className, slugValidation, persistentPrefix, onChange, value, defaultValue, slugAutoSource, onSlugAutoChange, slugAutoEnabled = true, ...props }, forwardedRef) => {
     const inputRef = React.useRef<HTMLInputElement | null>(null);
     const latestRequestId = React.useRef(0);
+    const hasCustomizedSlugRef = React.useRef(false);
     const isControlled = value !== undefined;
     const [inputValue, setInputValue] = React.useState(() => (isControlled ? asStringValue(value) : asStringValue(defaultValue)));
+    const [hasSlugBeenEdited, setHasSlugBeenEdited] = React.useState(false);
     const [slugStatus, setSlugStatus] = React.useState<SlugValidationStatus>("idle");
     const [slugMessage, setSlugMessage] = React.useState<string | null>(null);
     const slugValidationKind = slugValidation?.kind;
@@ -80,6 +115,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const slugValidationCurrentSlug = slugValidation?.currentSlug;
     const slugValidationEnabled = slugValidation?.enabled;
     const slugValidationDebounceMs = slugValidation?.debounceMs;
+    const isSlugField = Boolean(slugValidation && slugValidationEnabled !== false);
+    const resolvedPrefix = resolveSlugPathPrefix(slugValidation, persistentPrefix);
 
     React.useEffect(() => {
       if (!isControlled) {
@@ -91,6 +128,12 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
     React.useEffect(() => {
       if (!slugValidationKind || slugValidationEnabled === false) {
+        setSlugStatus("idle");
+        setSlugMessage(null);
+        return;
+      }
+
+      if (!hasSlugBeenEdited) {
         setSlugStatus("idle");
         setSlugMessage(null);
         return;
@@ -161,7 +204,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           setSlugStatus("error");
           setSlugMessage("Unable to check slug availability right now.");
         }
-      }, slugValidationDebounceMs ?? 220);
+      }, slugValidationDebounceMs ?? 0);
 
       return () => {
         window.clearTimeout(timer);
@@ -173,23 +216,48 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       slugValidationOrgSlug,
       slugValidationCurrentSlug,
       slugValidationEnabled,
-      slugValidationDebounceMs
+      slugValidationDebounceMs,
+      hasSlugBeenEdited
     ]);
+
+    React.useEffect(() => {
+      if (!isSlugField || slugAutoEnabled === false || !onSlugAutoChange || hasCustomizedSlugRef.current) {
+        return;
+      }
+
+      const sourceSlug = normalizeSlug(slugAutoSource ?? "");
+      if (normalizeSlug(inputValue) === sourceSlug) {
+        return;
+      }
+
+      onSlugAutoChange(sourceSlug);
+    }, [inputValue, isSlugField, onSlugAutoChange, slugAutoEnabled, slugAutoSource]);
 
     React.useEffect(() => {
       if (!inputRef.current) {
         return;
       }
 
-      if (slugStatus === "taken" || slugStatus === "invalid") {
+      if (hasSlugBeenEdited && (slugStatus === "taken" || slugStatus === "invalid")) {
         inputRef.current.setCustomValidity(slugMessage ?? "Invalid slug.");
         return;
       }
 
       inputRef.current.setCustomValidity("");
-    }, [slugMessage, slugStatus]);
+    }, [slugMessage, slugStatus, hasSlugBeenEdited]);
 
     const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (isSlugField) {
+        setHasSlugBeenEdited(true);
+      }
+
+      if (isSlugField && slugAutoEnabled !== false && !hasCustomizedSlugRef.current) {
+        const sourceSlug = normalizeSlug(slugAutoSource ?? "");
+        if (normalizeSlug(event.target.value) !== sourceSlug) {
+          hasCustomizedSlugRef.current = true;
+        }
+      }
+
       setInputValue(event.target.value);
       onChange?.(event);
     };
@@ -209,21 +277,21 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       forwardedRef.current = element;
     };
 
-    const isSlugField = Boolean(slugValidation && slugValidationEnabled !== false);
     const isSlugUnavailable = slugStatus === "taken" || slugStatus === "invalid";
-    const shouldShowStatus = isSlugField && inputValue.trim().length > 0 && slugMessage;
-    const hasPrefix = Boolean(persistentPrefix);
+    const shouldShowStatus = isSlugField && hasSlugBeenEdited && inputValue.trim().length > 0 && slugMessage;
+    const hasPrefix = Boolean(resolvedPrefix);
     const inputElement = hasPrefix ? (
       <div
         className={cn(
-          "flex h-10 w-full items-center rounded-control border bg-surface pr-2 text-sm focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-canvas",
+          inputShellClass,
+          "pr-2 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-canvas",
           isSlugUnavailable ? "border-destructive focus-within:ring-destructive/40" : null,
           slugStatus === "available" ? "border-success/40" : null,
           props.disabled ? "cursor-not-allowed opacity-55" : null,
           className
         )}
       >
-        <span className="shrink-0 pl-3 text-text-muted">{persistentPrefix}</span>
+        <span className="shrink-0 pl-3 text-[13px] text-text-muted">{resolvedPrefix}</span>
         <input
           aria-invalid={isSlugUnavailable ? true : props["aria-invalid"]}
           className="h-full w-full border-0 bg-transparent px-1 py-2 text-sm text-text placeholder:text-text-muted focus-visible:outline-none"
@@ -238,7 +306,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <input
         aria-invalid={isSlugUnavailable ? true : props["aria-invalid"]}
         className={cn(
-          "flex h-10 w-full rounded-control border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-55",
+          inputShellClass,
+          inputFocusClass,
+          inputDisabledClass,
+          "px-3 py-2 placeholder:text-text-muted",
           isSlugUnavailable ? "border-destructive focus-visible:ring-destructive/40" : null,
           slugStatus === "available" ? "border-success/40" : null,
           className
@@ -261,7 +332,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         {shouldShowStatus ? (
           <p
             className={cn(
-              "text-xs",
+              "text-xs leading-relaxed",
               slugStatus === "taken" || slugStatus === "invalid" ? "text-destructive" : null,
               slugStatus === "available" ? "text-success" : null,
               slugStatus === "checking" || slugStatus === "error" ? "text-text-muted" : null

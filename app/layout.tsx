@@ -29,8 +29,8 @@ export default function RootLayout({
             <div className="app-frame">
               <div className="app-root flex min-h-screen min-w-0 flex-col">
                 {showHeaders ? <PrimaryHeader /> : null}
-                <div className={showHeaders ? "flex-1 min-w-0 pt-3 md:pt-4" : "flex-1 min-w-0"}>{children}</div>
-                {showHeaders ? <AppFooter /> : null}
+                <div className={showHeaders ? "flex-1 min-w-0 pt-[var(--layout-gap)]" : "flex-1 min-w-0"}>{children}</div>
+                
               </div>
               <div className="panel-dock" id="panel-dock" />
             </div>

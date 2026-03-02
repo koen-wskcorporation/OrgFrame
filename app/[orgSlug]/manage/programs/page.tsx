@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Alert } from "@/components/ui/alert";
+import { PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { can } from "@/lib/permissions/can";
@@ -24,10 +25,10 @@ export default async function OrgManageProgramsPage({ params }: { params: Promis
   const programs = await listProgramsForManage(orgContext.orgId);
 
   return (
-    <div className="space-y-6">
+    <PageStack>
       <PageHeader description="Create and manage program catalogs, structure maps, and schedules." showBorder={false} title="Programs" />
       {!canWritePrograms ? <Alert variant="info">You have read-only access to programs.</Alert> : null}
       <ProgramsManagePanel canWrite={canWritePrograms} orgSlug={orgContext.orgSlug} programs={programs} />
-    </div>
+    </PageStack>
   );
 }

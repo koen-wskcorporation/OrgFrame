@@ -105,11 +105,12 @@ export function FacilitiesManagePanel({ orgSlug, canWrite, initialReadModel }: F
   }
 
   return (
-    <div className="space-y-6">
+    <div className="ui-stack-page">
       {isMutating ? <Alert variant="info">Saving facilities changes...</Alert> : null}
 
       <FacilityTreeEditor
         canWrite={canWrite}
+        orgSlug={orgSlug}
         onArchiveSpace={(spaceId) =>
           withToast(
             () =>
@@ -141,7 +142,7 @@ export function FacilitiesManagePanel({ orgSlug, canWrite, initialReadModel }: F
             "Bookable state updated"
           )
         }
-        onToggleOpenClosed={(spaceId, status) =>
+        onSetStatus={(spaceId, status) =>
           withToast(
             () =>
               toggleFacilitySpaceOpenClosedAction({
@@ -300,11 +301,11 @@ export function FacilitiesManagePanel({ orgSlug, canWrite, initialReadModel }: F
           <CardTitle>Rule Exceptions</CardTitle>
           <CardDescription>{handleExceptionSummary(readModel.exceptions)}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="ui-list-stack">
           {readModel.exceptions.length === 0 ? <p className="text-sm text-text-muted">No skip/override exceptions configured.</p> : null}
-          <div className="space-y-2">
+          <div className="ui-list-stack">
             {readModel.exceptions.map((exception) => (
-              <div className="rounded-control border bg-surface px-3 py-2 text-sm text-text" key={exception.id}>
+              <div className="ui-list-item py-2 text-sm text-text" key={exception.id}>
                 {exception.kind} - {exception.sourceKey}
               </div>
             ))}

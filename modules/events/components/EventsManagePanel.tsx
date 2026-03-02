@@ -345,22 +345,24 @@ export function EventsManagePanel({ orgSlug, events, canWrite = true }: EventsMa
   }
 
   return (
-    <div className="space-y-6">
+    <div className="ui-stack-page">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle>Events</CardTitle>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <CardTitle>Events</CardTitle>
+              <CardDescription>Publish events to power the Events block list and calendar views.</CardDescription>
+            </div>
             <Button disabled={!canWrite} onClick={openCreatePanel} type="button">
               <CalendarPlus2 className="h-4 w-4" />
               Create event
             </Button>
           </div>
-          <CardDescription>Publish events to power the Events block list and calendar views.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="ui-list-stack">
           {sortedEvents.length === 0 ? <Alert variant="info">No events yet.</Alert> : null}
           {sortedEvents.map((eventItem) => (
-            <div className="rounded-control border bg-surface px-3 py-3" key={eventItem.id}>
+            <div className="ui-list-item ui-list-item-hover" key={eventItem.id}>
               <div className="flex items-start gap-2">
                 <PublishStatusIcon
                   disabled={!canWrite}
@@ -393,7 +395,7 @@ export function EventsManagePanel({ orgSlug, events, canWrite = true }: EventsMa
         footer={
           <>
             {editingEventId ? (
-              <Button disabled={!canWrite || isSaving || isDeleting} loading={isDeleting} onClick={handleDeleteEvent} variant="destructive">
+              <Button className="ui-button-danger" disabled={!canWrite || isSaving || isDeleting} loading={isDeleting} onClick={handleDeleteEvent} variant="secondary">
                 <Trash2 className="h-4 w-4" />
                 Delete
               </Button>
@@ -465,7 +467,7 @@ export function EventsManagePanel({ orgSlug, events, canWrite = true }: EventsMa
             />
           </FormField>
 
-          <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+          <label className="ui-inline-toggle">
             <Checkbox
               checked={draft.isAllDay}
               disabled={!canWrite}

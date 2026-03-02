@@ -1,14 +1,14 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Alert } from "@/components/ui/alert";
-import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
+import { PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
+import { PageTabs } from "@/components/ui/page-tabs";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { can } from "@/lib/permissions/can";
 import { FormEditorPanel } from "@/modules/forms/components/FormEditorPanel";
-import { FormPageTabs } from "@/modules/forms/components/FormPageTabs";
 import { FormPublishToggleButton } from "@/modules/forms/components/FormPublishToggleButton";
 import { getFormById } from "@/modules/forms/db/queries";
 import { listProgramNodes, listProgramsForManage } from "@/modules/programs/db/queries";
@@ -46,13 +46,13 @@ export default async function OrgManageFormEditorPage({
   const statusColor = form.status === "published" ? "green" : "yellow";
 
   return (
-    <div className="space-y-6">
+    <PageStack>
       <PageHeader
         actions={
           <>
-            <Link className={buttonVariants({ variant: "secondary" })} href={`/${orgContext.orgSlug}/tools/forms`}>
+            <Button href={`/${orgContext.orgSlug}/tools/forms`} variant="secondary">
               Back to forms
-            </Link>
+            </Button>
             <FormPublishToggleButton canWrite={canWriteForms} form={form} orgSlug={orgContext.orgSlug} />
           </>
         }
@@ -67,9 +67,35 @@ export default async function OrgManageFormEditorPage({
           </span>
         }
       />
-      <FormPageTabs active="builder" formId={form.id} orgSlug={orgContext.orgSlug} />
+      <PageTabs
+        active="builder"
+        ariaLabel="Form pages"
+        items={[
+          {
+            key: "builder",
+            label: "Builder",
+            description: "Fields, pages, and logic",
+            href: `/${orgContext.orgSlug}/tools/forms/${form.id}/editor`,
+            prefetch: false
+          },
+          {
+            key: "submissions",
+            label: "Submissions",
+            description: "Review, triage, and exports",
+            href: `/${orgContext.orgSlug}/tools/forms/${form.id}/submissions`,
+            prefetch: false
+          },
+          {
+            key: "settings",
+            label: "Settings",
+            description: "Metadata, publishing, and rules",
+            href: `/${orgContext.orgSlug}/tools/forms/${form.id}/settings`,
+            prefetch: false
+          }
+        ]}
+      />
       {!canWriteForms ? <Alert variant="info">You have read-only access to this form.</Alert> : null}
       <FormEditorPanel canWrite={canWriteForms} form={form} orgSlug={orgContext.orgSlug} programNodes={programNodes} programs={programs} />
-    </div>
+    </PageStack>
   );
 }

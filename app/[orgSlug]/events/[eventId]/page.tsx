@@ -63,8 +63,8 @@ export default async function OrgEventDetailPage({
   }
 
   return (
-    <main className="w-full px-6 py-8 md:px-8 md:py-10">
-      <div className="space-y-6">
+    <main className="app-page-shell w-full py-8 md:py-10">
+      <div className="ui-stack-page">
         <BackButton fallbackHref={`/${org.orgSlug}`} label="Back" size="sm" variant="ghost" />
 
         <PageHeader description={formatEventRange(event)} title={event.title} />

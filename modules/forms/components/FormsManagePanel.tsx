@@ -93,22 +93,24 @@ export function FormsManagePanel({ orgSlug, forms, programs, canWrite = true }: 
   }
 
   return (
-    <div className="space-y-6">
+    <div className="ui-stack-page">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle>Forms</CardTitle>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <CardTitle>Forms</CardTitle>
+              <CardDescription>Open forms to edit schema, versions, and submissions.</CardDescription>
+            </div>
             <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
               <Plus className="h-4 w-4" />
               Create form
             </Button>
           </div>
-          <CardDescription>Open forms to edit schema, versions, and submissions.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="ui-list-stack">
           {sortedForms.length === 0 ? <Alert variant="info">No forms yet.</Alert> : null}
           {sortedForms.map((form) => (
-            <Link className="block rounded-control border bg-surface px-3 py-3 hover:bg-surface-muted" href={`/${orgSlug}/tools/forms/${form.id}/editor`} key={form.id}>
+            <Link className="ui-list-item ui-list-item-hover block" href={`/${orgSlug}/tools/forms/${form.id}/editor`} key={form.id}>
               <div className="flex items-center gap-1.5">
                 <PublishStatusIcon
                   disabled={!canWrite}

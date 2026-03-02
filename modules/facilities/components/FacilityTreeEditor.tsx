@@ -9,6 +9,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
+import { buildFacilitySpaceStatusOptions, formatFacilitySpaceStatusLabel, resolveFacilitySpaceStatusLabels } from "@/modules/facilities/status";
 import type { FacilitySpace } from "@/modules/facilities/types";
 import { FacilityStatusBadge } from "@/modules/facilities/components/FacilityStatusBadge";
 
@@ -19,6 +20,9 @@ type SpaceDraft = {
   slug: string;
   spaceKind: FacilitySpace["spaceKind"];
   status: FacilitySpace["status"];
+  statusLabelOpen: string;
+  statusLabelClosed: string;
+  statusLabelArchived: string;
   isBookable: boolean;
   timezone: string;
   capacity: string;
@@ -26,6 +30,7 @@ type SpaceDraft = {
 };
 
 type FacilityTreeEditorProps = {
+  orgSlug?: string;
   spaces: FacilitySpace[];
   canWrite: boolean;
   onCreateSpace: (input: {
@@ -34,6 +39,7 @@ type FacilityTreeEditorProps = {
     slug: string;
     spaceKind: FacilitySpace["spaceKind"];
     status: FacilitySpace["status"];
+    statusLabels?: Partial<Record<FacilitySpace["status"], string>>;
     isBookable: boolean;
     timezone: string;
     capacity: number | null;
@@ -46,6 +52,7 @@ type FacilityTreeEditorProps = {
     slug: string;
     spaceKind: FacilitySpace["spaceKind"];
     status: FacilitySpace["status"];
+    statusLabels?: Partial<Record<FacilitySpace["status"], string>>;
     isBookable: boolean;
     timezone: string;
     capacity: number | null;
@@ -53,10 +60,21 @@ type FacilityTreeEditorProps = {
   }) => void;
   onArchiveSpace: (spaceId: string) => void;
   onToggleBookable: (spaceId: string, isBookable: boolean) => void;
-  onToggleOpenClosed: (spaceId: string, status: "open" | "closed") => void;
+  onSetStatus: (spaceId: string, status: FacilitySpace["status"]) => void;
 };
 
+function slugify(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 function toDraft(space?: FacilitySpace | null): SpaceDraft {
+  const statusLabels = space ? resolveFacilitySpaceStatusLabels(space) : {};
+
   return {
     spaceId: space?.id,
     parentSpaceId: space?.parentSpaceId ?? "",
@@ -64,6 +82,9 @@ function toDraft(space?: FacilitySpace | null): SpaceDraft {
     slug: space?.slug ?? "",
     spaceKind: space?.spaceKind ?? "custom",
     status: space?.status ?? "open",
+    statusLabelOpen: statusLabels.open ?? "",
+    statusLabelClosed: statusLabels.closed ?? "",
+    statusLabelArchived: statusLabels.archived ?? "",
     isBookable: space?.isBookable ?? true,
     timezone: space?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     capacity: space?.capacity?.toString() ?? "",
@@ -76,13 +97,14 @@ function sortedSpaces(spaces: FacilitySpace[]) {
 }
 
 function renderTree(
+  orgSlug: string | undefined,
   spaces: FacilitySpace[],
   parentId: string | null,
   depth: number,
   onEdit: (space: FacilitySpace) => void,
   onArchive: (spaceId: string) => void,
   onToggleBookable: (space: FacilitySpace) => void,
-  onToggleOpenClosed: (space: FacilitySpace) => void,
+  onSetStatus: (space: FacilitySpace, status: FacilitySpace["status"]) => void,
   canWrite: boolean
 ) {
   return spaces
@@ -90,51 +112,55 @@ function renderTree(
     .map((space) => (
       <div className="space-y-2" key={space.id}>
         <div
-          className="flex flex-wrap items-center gap-2 rounded-control border bg-surface px-3 py-2"
+          className="ui-list-item ui-list-item-hover flex flex-wrap items-start justify-between gap-3"
           style={{
             marginLeft: `${depth * 12}px`
           }}
         >
-          <p className="font-medium text-text">{space.name}</p>
-          <span className="text-xs text-text-muted">{space.spaceKind}</span>
-          <FacilityStatusBadge status={space.status} />
-          <span className="text-xs text-text-muted">{space.isBookable ? "Bookable" : "Not bookable"}</span>
+          <div className="min-w-0">
+            {(() => {
+              const statusLabels = resolveFacilitySpaceStatusLabels(space);
+              return (
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-text">{space.name}</p>
+                  <FacilityStatusBadge
+                    disabled={!canWrite}
+                    label={formatFacilitySpaceStatusLabel(space.status, statusLabels)}
+                    onSelectSpaceStatus={(nextStatus) => onSetStatus(space, nextStatus)}
+                    spaceStatusOptions={buildFacilitySpaceStatusOptions(statusLabels)}
+                    status={space.status}
+                  />
+                </div>
+              );
+            })()}
+            <p className="text-xs text-text-muted">
+              {space.spaceKind} · {space.isBookable ? "Bookable" : "Not bookable"}
+            </p>
+            {orgSlug ? <p className="mt-1 text-sm text-text-muted">/{orgSlug}/tools/facilities/{space.id}</p> : null}
+          </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button onClick={() => onEdit(space)} size="sm" type="button" variant="secondary">
-              Edit
-            </Button>
-            <Button
-              disabled={!canWrite || space.status === "archived"}
-              onClick={() => onToggleOpenClosed(space)}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              {space.status === "open" ? "Close" : "Open"}
-            </Button>
-            <Button disabled={!canWrite} onClick={() => onToggleBookable(space)} size="sm" type="button" variant="secondary">
-              {space.isBookable ? "Set non-bookable" : "Set bookable"}
-            </Button>
-            <Button disabled={!canWrite || space.status === "archived"} onClick={() => onArchive(space.id)} size="sm" type="button" variant="ghost">
-              <Archive className="h-4 w-4" />
-              Archive
-            </Button>
+            {orgSlug ? (
+              <Button href={`/${orgSlug}/tools/facilities/${space.id}`} size="sm" variant="secondary">
+                Manage
+              </Button>
+            ) : null}
           </div>
         </div>
-        {renderTree(spaces, space.id, depth + 1, onEdit, onArchive, onToggleBookable, onToggleOpenClosed, canWrite)}
+        {renderTree(orgSlug, spaces, space.id, depth + 1, onEdit, onArchive, onToggleBookable, onSetStatus, canWrite)}
       </div>
     ));
 }
 
 export function FacilityTreeEditor({
+  orgSlug,
   spaces,
   canWrite,
   onCreateSpace,
   onUpdateSpace,
   onArchiveSpace,
   onToggleBookable,
-  onToggleOpenClosed
+  onSetStatus
 }: FacilityTreeEditorProps) {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [draft, setDraft] = useState<SpaceDraft>(() => toDraft());
@@ -161,6 +187,11 @@ export function FacilityTreeEditor({
       slug: draft.slug.trim(),
       spaceKind: draft.spaceKind,
       status: draft.status,
+      statusLabels: {
+        open: draft.statusLabelOpen,
+        closed: draft.statusLabelClosed,
+        archived: draft.statusLabelArchived
+      },
       isBookable: draft.isBookable,
       timezone: draft.timezone.trim(),
       capacity: draft.capacity.trim().length > 0 ? Number.parseInt(draft.capacity, 10) : null,
@@ -182,25 +213,28 @@ export function FacilityTreeEditor({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-3">
-          <CardTitle>Facility Spaces</CardTitle>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <CardTitle>Facility Spaces</CardTitle>
+            <CardDescription>Build a deep hierarchy across buildings, rooms, fields, courts, and custom spaces.</CardDescription>
+          </div>
           <Button disabled={!canWrite} onClick={openCreatePanel} type="button">
             <Plus className="h-4 w-4" />
             Add space
           </Button>
         </div>
-        <CardDescription>Build a deep hierarchy across buildings, rooms, fields, courts, and custom spaces.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="ui-list-stack">
         {allSpaces.length === 0 ? <p className="text-sm text-text-muted">No spaces yet.</p> : null}
         {renderTree(
+          orgSlug,
           allSpaces,
           null,
           0,
           openEditPanel,
           onArchiveSpace,
           (space) => onToggleBookable(space.id, !space.isBookable),
-          (space) => onToggleOpenClosed(space.id, space.status === "open" ? "closed" : "open"),
+          (space, status) => onSetStatus(space.id, status),
           canWrite
         )}
       </CardContent>
@@ -227,7 +261,19 @@ export function FacilityTreeEditor({
             <Input onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} value={draft.name} />
           </FormField>
           <FormField hint="Optional, auto-generated server-side if blank." label="Slug">
-            <Input onChange={(event) => setDraft((current) => ({ ...current, slug: event.target.value }))} value={draft.slug} />
+            <Input
+              onChange={(event) => setDraft((current) => ({ ...current, slug: slugify(event.target.value) }))}
+              onSlugAutoChange={(value) => {
+                if (draft.spaceId) {
+                  return;
+                }
+
+                setDraft((current) => ({ ...current, slug: value }));
+              }}
+              slugAutoEnabled={!draft.spaceId}
+              slugAutoSource={draft.name}
+              value={draft.slug}
+            />
           </FormField>
           <FormField label="Parent">
             <Select
@@ -268,6 +314,17 @@ export function FacilityTreeEditor({
               value={draft.status}
             />
           </FormField>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField hint="Optional label shown for Open." label="Custom Open Status">
+              <Input onChange={(event) => setDraft((current) => ({ ...current, statusLabelOpen: event.target.value }))} value={draft.statusLabelOpen} />
+            </FormField>
+            <FormField hint="Optional label shown for Closed." label="Custom Closed Status">
+              <Input onChange={(event) => setDraft((current) => ({ ...current, statusLabelClosed: event.target.value }))} value={draft.statusLabelClosed} />
+            </FormField>
+            <FormField hint="Optional label shown for Archived." label="Custom Archived Status">
+              <Input onChange={(event) => setDraft((current) => ({ ...current, statusLabelArchived: event.target.value }))} value={draft.statusLabelArchived} />
+            </FormField>
+          </div>
           <FormField label="Timezone">
             <Input onChange={(event) => setDraft((current) => ({ ...current, timezone: event.target.value }))} value={draft.timezone} />
           </FormField>
@@ -277,7 +334,7 @@ export function FacilityTreeEditor({
           <FormField label="Sort index">
             <Input onChange={(event) => setDraft((current) => ({ ...current, sortIndex: event.target.value }))} type="number" value={draft.sortIndex} />
           </FormField>
-          <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+          <label className="ui-inline-toggle">
             <Checkbox
               checked={draft.isBookable}
               onChange={(event) => setDraft((current) => ({ ...current, isBookable: event.target.checked }))}

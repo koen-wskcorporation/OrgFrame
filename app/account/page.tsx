@@ -5,6 +5,7 @@ import { AssetTile } from "@/components/ui/asset-tile";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { getCurrentUser } from "@/lib/auth/getCurrentUser";
@@ -46,7 +47,7 @@ export default async function AccountPage({
   const fullName = [currentUser.firstName, currentUser.lastName].filter(Boolean).join(" ") || "No name set";
 
   return (
-    <>
+    <PageStack>
       <PageHeader description="Manage your profile details and account security." showBorder={false} title="Account" />
 
       {successMessage ? <Alert variant="success">{successMessage}</Alert> : null}
@@ -124,7 +125,6 @@ export default async function AccountPage({
           </form>
         </CardContent>
       </Card>
-
-    </>
+    </PageStack>
   );
 }

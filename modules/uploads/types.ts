@@ -46,6 +46,7 @@ export type UploadedAsset = {
   publicUrl: string;
   mime: string;
   size: number;
+  dominantColor?: string;
   width?: number;
   height?: number;
   crop?: UploadCrop;

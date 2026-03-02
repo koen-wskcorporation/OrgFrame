@@ -1,11 +1,11 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { CreateOrganizationDialog } from "@/components/dashboard/CreateOrganizationDialog";
 import { DashboardSection, DashboardShell } from "@/components/dashboard/DashboardShell";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { OrgCard } from "@/components/dashboard/OrgCard";
+import { Button } from "@/components/ui/button";
+import { CardGrid } from "@/components/ui/layout";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { buttonVariants } from "@/components/ui/button";
 import { signOutAction } from "@/app/auth/actions";
 import { getDashboardContext } from "@/lib/dashboard/getDashboardContext";
 import { AiAssistantLauncher } from "@/modules/ai/components/AiAssistantLauncher";
@@ -21,10 +21,9 @@ export default async function HomePage() {
     <DashboardShell
       actions={
         <>
-          <AiAssistantLauncher askOnly buttonLabel="AI Assistant" buttonVariant="secondary" />
-          <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/account">
+          <Button href="/account" size="sm" variant="secondary">
             Account
-          </Link>
+          </Button>
           <form action={signOutAction}>
             <SubmitButton size="sm" variant="ghost">
               Sign out
@@ -43,7 +42,7 @@ export default async function HomePage() {
         {organizations.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-3">
+          <CardGrid className="sm:grid-cols-2 xl:grid-cols-3">
             {organizations.map((organization) => (
               <OrgCard
                 iconUrl={organization.iconUrl}
@@ -52,7 +51,7 @@ export default async function HomePage() {
                 orgSlug={organization.orgSlug}
               />
             ))}
-          </div>
+          </CardGrid>
         )}
       </DashboardSection>
     </DashboardShell>

@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { ButtonConfigDialog } from "@/components/editor/buttons/ButtonConfigDialog";
 import { buttonVariantLabelByValue, type ButtonConfig } from "@/components/editor/buttons/types";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/utils";
 import { createLocalId, normalizeButtons } from "@/lib/links";
 
@@ -141,9 +141,7 @@ export function ButtonListEditor({
       <div className="w-full min-w-0 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold text-text">{title}</p>
-          <Button disabled={buttons.length >= maxButtons} onClick={openAddDialog} size="sm" variant="secondary">
-            {addButtonLabel}
-          </Button>
+          <IconButton disabled={buttons.length >= maxButtons} icon={<Plus />} label={addButtonLabel} onClick={openAddDialog} />
         </div>
 
         {buttons.length === 0 ? (
@@ -154,8 +152,7 @@ export function ButtonListEditor({
               <div className="flex min-w-0 max-w-full items-center overflow-hidden rounded-control border bg-surface" key={button.id}>
                 <button
                   className={cn(
-                    "flex h-9 min-w-0 max-w-full items-center gap-2 px-3 text-left text-xs font-semibold text-text transition-colors hover:bg-surface-muted",
-                    button.variant === "link" ? "underline underline-offset-2" : undefined
+                    "flex h-9 min-w-0 max-w-full items-center gap-2 px-3 text-left text-xs font-semibold text-text transition-colors hover:bg-surface-muted"
                   )}
                   onClick={() => openEditDialog(index)}
                   type="button"
@@ -163,14 +160,7 @@ export function ButtonListEditor({
                   <span className="max-w-[180px] min-w-0 truncate">{button.label}</span>
                   <span className="shrink-0 text-[10px] uppercase tracking-wide text-text-muted">{buttonVariantLabelByValue[button.variant]}</span>
                 </button>
-                <button
-                  aria-label={`Remove ${button.label}`}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center border-l text-text-muted transition-colors hover:bg-surface-muted hover:text-text"
-                  onClick={() => removeButton(index)}
-                  type="button"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <IconButton className="h-9 w-9 border-l rounded-none" icon={<X />} label={`Remove ${button.label}`} onClick={() => removeButton(index)} />
               </div>
             ))}
           </div>

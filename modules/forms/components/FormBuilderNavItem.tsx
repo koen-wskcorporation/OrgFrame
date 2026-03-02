@@ -2,6 +2,7 @@
 
 import { Check, GripVertical, Pencil, Trash2 } from "lucide-react";
 import type { ButtonHTMLAttributes } from "react";
+import { IconButton } from "@/components/ui/icon-button";
 import { SpinnerIcon } from "@/components/ui/spinner-icon";
 import { cn } from "@/lib/utils";
 
@@ -39,16 +40,14 @@ export function FormBuilderNavItem({
         isActive ? "border-accent/60 bg-accent/10" : "border-border"
       )}
     >
-      <button
-        aria-label={dragAriaLabel ?? `Drag ${label || "item"}`}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-text-muted hover:text-text disabled:cursor-not-allowed disabled:text-text-muted/60"
+      <IconButton
+        icon={<GripVertical className="h-4 w-4" />}
+        label={dragAriaLabel ?? `Drag ${label || "item"}`}
         disabled={disabled || !canMove}
         suppressHydrationWarning
         type="button"
         {...(canMove ? dragHandleProps : {})}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
+      />
 
       <button className="min-w-0 max-w-[220px] text-left text-xs font-semibold text-text" onClick={onSelect} type="button">
         <span className="truncate">{label || "Untitled"}</span>
@@ -62,27 +61,23 @@ export function FormBuilderNavItem({
       ) : null}
 
       <div className="ml-2 inline-flex items-center gap-1">
-        <button
-          aria-label="Edit"
-          className="inline-flex h-8 w-8 items-center justify-center text-text-muted hover:text-text disabled:cursor-not-allowed disabled:text-text-muted/60"
+        <IconButton
+          icon={<Pencil className="h-4 w-4" />}
+          label="Edit"
           disabled={disabled}
           onClick={onEdit}
           title="Edit"
           type="button"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
+        />
 
-        <button
-          aria-label="Delete"
-          className="inline-flex h-8 w-8 items-center justify-center text-text-muted hover:text-text disabled:cursor-not-allowed disabled:text-text-muted/60"
+        <IconButton
+          icon={<Trash2 className="h-4 w-4" />}
+          label="Delete"
           disabled={disabled || !canDelete}
           onClick={onDelete}
           title="Delete"
           type="button"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        />
       </div>
     </div>
   );

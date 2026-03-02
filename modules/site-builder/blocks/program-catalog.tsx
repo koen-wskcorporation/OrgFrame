@@ -171,7 +171,7 @@ export function ProgramCatalogBlockEditor({ block, onChange, context }: BlockEdi
         />
       </FormField>
 
-      <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+      <label className="ui-inline-toggle">
         <Checkbox
           checked={block.config.showDates}
           onChange={(event) => {
@@ -181,7 +181,7 @@ export function ProgramCatalogBlockEditor({ block, onChange, context }: BlockEdi
         Show date ranges
       </label>
 
-      <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+      <label className="ui-inline-toggle">
         <Checkbox
           checked={block.config.showType}
           onChange={(event) => {

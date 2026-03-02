@@ -4,6 +4,7 @@ import { Alert } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { AppPage, PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { requestPasswordResetAction, updatePasswordFromResetAction } from "@/app/auth/actions";
@@ -37,8 +38,8 @@ export default async function ResetPage({
   const infoMessage = query.message ? infoMessageByCode[query.message] ?? query.message : null;
 
   return (
-    <main className="app-container py-8 md:py-10">
-      <div className="space-y-6">
+    <AppPage className="py-8 md:py-10">
+      <PageStack>
         <PageHeader description="Request a reset email or set a new password from a valid reset link." title="Reset Password" />
 
         {errorMessage ? <Alert variant="destructive">{errorMessage}</Alert> : null}
@@ -78,7 +79,7 @@ export default async function ResetPage({
             </p>
           </CardContent>
         </Card>
-      </div>
-    </main>
+      </PageStack>
+    </AppPage>
   );
 }

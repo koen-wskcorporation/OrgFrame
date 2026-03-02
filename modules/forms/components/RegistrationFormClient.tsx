@@ -792,7 +792,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
 
     if (field.type === "checkbox") {
       return (
-        <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text" key={`${keyPrefix}-${field.id}`}>
+        <label className="ui-inline-toggle" key={`${keyPrefix}-${field.id}`}>
           <Checkbox
             checked={value === true || value === "true" || value === "on"}
             onChange={(event) => onChange(field.name, event.target.checked)}

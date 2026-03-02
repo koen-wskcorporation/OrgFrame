@@ -10,6 +10,15 @@ import { useToast } from "@/components/ui/toast";
 import { useSiteOrigin } from "@/lib/hooks/useSiteOrigin";
 import { createOrganizationAction } from "@/app/account/organizations/actions";
 
+function slugify(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 export function CreateOrganizationDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -89,8 +98,10 @@ export function CreateOrganizationDialog() {
               id={orgSlugId}
               maxLength={120}
               name="orgSlug"
-              onChange={(event) => setOrgSlug(event.target.value)}
+              onChange={(event) => setOrgSlug(slugify(event.target.value))}
+              onSlugAutoChange={setOrgSlug}
               persistentPrefix={`${siteOrigin || ""}/`}
+              slugAutoSource={orgName}
               slugValidation={{ kind: "org" }}
               value={orgSlug}
             />

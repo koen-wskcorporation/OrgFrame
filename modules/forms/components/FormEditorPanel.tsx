@@ -1,15 +1,13 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { Eye, Pencil, Settings2, Share2 } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { Eye, Pencil, Share2 } from "lucide-react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { saveFormDraftAction } from "@/modules/forms/actions";
 import { FormFieldsVisualEditor } from "@/modules/forms/components/FormFieldsVisualEditor";
 import { FormSharingPanel } from "@/modules/forms/components/FormSharingPanel";
-import { FormSettingsPanel } from "@/modules/forms/components/FormSettingsPanel";
 import type { FormSchema, OrgForm } from "@/modules/forms/types";
 import type { Program, ProgramNode } from "@/modules/programs/types";
 
@@ -22,19 +20,11 @@ type FormEditorPanelProps = {
 };
 
 export function FormEditorPanel({ orgSlug, form, programs, programNodes, canWrite = true }: FormEditorPanelProps) {
-  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isSaving, startSaving] = useTransition();
   const [builderView, setBuilderView] = useState<"editor" | "preview">("editor");
   const [formSchema, setFormSchema] = useState<FormSchema>(form.schemaJson);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [sharingOpen, setSharingOpen] = useState(false);
-
-  useEffect(() => {
-    if (searchParams.get("panel") === "settings") {
-      setSettingsOpen(true);
-    }
-  }, [searchParams]);
 
   function handleSaveDraft() {
     if (!canWrite) {
@@ -81,7 +71,7 @@ export function FormEditorPanel({ orgSlug, form, programs, programNodes, canWrit
   }
 
   return (
-    <div className="space-y-4">
+    <div className="ui-stack-page">
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -98,17 +88,13 @@ export function FormEditorPanel({ orgSlug, form, programs, programNodes, canWrit
                 {builderView === "editor" ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
                 {builderView === "editor" ? "Live preview" : "Editor"}
               </Button>
-              <Button onClick={() => setSettingsOpen(true)} type="button" variant="secondary">
-                <Settings2 className="h-4 w-4" />
-                Settings
-              </Button>
               <Button disabled={isSaving || !canWrite} loading={isSaving} onClick={handleSaveDraft} type="button">
                 {isSaving ? "Saving..." : "Save draft"}
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4 pt-4">
+        <CardContent className="app-section-stack pt-2">
           <FormFieldsVisualEditor
             disabled={isSaving || !canWrite}
             formDescription={form.description ?? ""}
@@ -122,15 +108,6 @@ export function FormEditorPanel({ orgSlug, form, programs, programNodes, canWrit
           />
         </CardContent>
       </Card>
-      <FormSettingsPanel
-        canWrite={canWrite}
-        form={form}
-        onClose={() => setSettingsOpen(false)}
-        open={settingsOpen}
-        orgSlug={orgSlug}
-        programNodes={programNodes}
-        programs={programs}
-      />
       <FormSharingPanel formId={form.id} formSlug={form.slug} onClose={() => setSharingOpen(false)} open={sharingOpen} orgSlug={orgSlug} />
     </div>
   );

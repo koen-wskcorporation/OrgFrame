@@ -35,6 +35,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FormField } from "@/components/ui/form-field";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -265,7 +266,7 @@ function renderPreviewField(field: FormFieldDefinition) {
   if (field.type === "checkbox") {
     return (
       <div className="space-y-1" key={field.id}>
-        <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+        <label className="ui-inline-toggle">
           <Checkbox disabled />
           {label}
         </label>
@@ -393,20 +394,16 @@ function SortableCanvasField({
     <div ref={setNodeRef} style={style}>
       <div className={cn("rounded-control border bg-surface p-3 transition-colors hover:bg-surface-muted", selected ? "border-accent/60" : "")}>
         <div className="flex items-start gap-2">
-          <button
-            aria-label="Drag field"
-            className={cn(
-              "mt-[2px] rounded-[8px] border bg-surface-muted p-1 text-text-muted",
-              disabled ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing"
-            )}
+          <IconButton
+            icon={<GripVertical className="h-3.5 w-3.5" />}
+            label="Drag field"
+            className={cn("mt-[2px]", disabled ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing")}
             disabled={disabled}
             suppressHydrationWarning
             type="button"
             {...attributes}
             {...listeners}
-          >
-            <GripVertical className="h-3.5 w-3.5" />
-          </button>
+          />
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1">
@@ -434,38 +431,29 @@ function SortableCanvasField({
             Required
           </label>
 
-          <Button
-            aria-label="Duplicate field"
-            className="h-8 w-8 px-0"
+          <IconButton
+            icon={<Copy className="h-4 w-4" />}
+            label="Duplicate field"
             disabled={disabled}
             onClick={() => onDuplicate(field.id)}
             type="button"
-            variant="ghost"
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
+          />
 
-          <Button
-            aria-label="Field settings"
-            className="h-8 w-8 px-0"
+          <IconButton
+            icon={<Settings2 className="h-4 w-4" />}
+            label="Field settings"
             disabled={disabled}
             onClick={() => onOpenSettings(field.id)}
             type="button"
-            variant="ghost"
-          >
-            <Settings2 className="h-4 w-4" />
-          </Button>
+          />
 
-          <Button
-            aria-label="Remove field"
-            className="h-8 w-8 px-0"
+          <IconButton
+            icon={<Trash2 className="h-4 w-4" />}
+            label="Remove field"
             disabled={disabled}
             onClick={() => onDelete(field.id)}
             type="button"
-            variant="ghost"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          />
         </div>
       </div>
     </div>
@@ -913,7 +901,7 @@ export function FormFieldsVisualEditor({ orgSlug, formName, formDescription, for
           </FormField>
           {activePage.pageKey === "generic_success" || activePage.pageKey === REGISTRATION_PAGE_KEYS.success ? (
             <div className="space-y-3 rounded-control border bg-surface-muted/40 p-3 md:col-span-2">
-              <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+              <label className="ui-inline-toggle">
                 <Checkbox
                   checked={activePage.showSubmitAnotherResponseButton}
                   disabled={disabled}
@@ -1173,7 +1161,7 @@ export function FormFieldsVisualEditor({ orgSlug, formName, formDescription, for
               />
             </FormField>
 
-            <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+            <label className="ui-inline-toggle">
               <Checkbox
                 checked={selectedField.required}
                 disabled={disabled}
