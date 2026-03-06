@@ -1,8 +1,5 @@
+import { PageLoadingSkeleton } from "@/components/ui/skeleton";
+
 export default function ManageFormSubmissionsLoading() {
-  return (
-    <div className="space-y-4">
-      <div className="h-8 w-56 animate-pulse rounded-control bg-surface-muted" />
-      <div className="h-80 animate-pulse rounded-card border bg-surface-muted" />
-    </div>
-  );
+  return <PageLoadingSkeleton blocks={["h-80"]} titleClassName="w-56" />;
 }

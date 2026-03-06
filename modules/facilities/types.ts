@@ -1,4 +1,4 @@
-export type FacilitySpaceKind = "building" | "room" | "field" | "court" | "custom";
+export type FacilitySpaceKind = "building" | "floor" | "room" | "field" | "court" | "custom";
 
 export type FacilitySpaceStatus = "open" | "closed" | "archived";
 
@@ -26,6 +26,7 @@ export type FacilitySpace = {
   timezone: string;
   capacity: number | null;
   metadataJson: Record<string, unknown>;
+  statusLabelsJson: Record<string, unknown>;
   sortIndex: number;
   createdAt: string;
   updatedAt: string;

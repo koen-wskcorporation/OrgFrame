@@ -2,12 +2,11 @@
 
 import { createContext, useCallback, useMemo, useState } from "react";
 import { useToast } from "@/components/ui/toast";
-import { commitUploadAction } from "@/modules/uploads/actions";
-import { defaultUploadCrop, fileMatchesAccept, isImageFile, readImageDimensions } from "@/modules/uploads/client-utils";
+import { defaultUploadCrop, extractDominantColorFromImageFile, fileMatchesAccept, isImageFile, readImageDimensions } from "@/modules/uploads/client-utils";
 import { uploadPurposeConfigByPurpose } from "@/modules/uploads/config";
 import { ImagePositionDialog } from "@/modules/uploads/ImagePositionDialog";
 import { UploadDialog } from "@/modules/uploads/UploadDialog";
-import type { OpenUploadOptions, UploadedAsset, UploadCrop } from "@/modules/uploads/types";
+import type { CommitUploadResult, OpenUploadOptions, UploadedAsset, UploadCrop } from "@/modules/uploads/types";
 
 type UploaderContextValue = {
   openUpload: (options: OpenUploadOptions) => Promise<UploadedAsset | null>;
@@ -25,6 +24,7 @@ type ActiveUploadRequest = {
     height: number;
   } | null;
   crop: UploadCrop;
+  extractedColor: string | null;
   error: string | null;
   resolve: (asset: UploadedAsset | null) => void;
 };
@@ -74,6 +74,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
           file: null,
           imageDimensions: null,
           crop: defaultUploadCrop(options.initialCrop),
+          extractedColor: null,
           error: null,
           resolve
         };
@@ -100,6 +101,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         file: null,
         imageDimensions: null,
         crop: defaultUploadCrop(current.options.initialCrop),
+        extractedColor: null,
         error: null
       };
     });
@@ -153,7 +155,23 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       })
     );
 
-    const result = await commitUploadAction(formData);
+    let result: CommitUploadResult;
+
+    try {
+      const response = await fetch("/api/uploads/commit", {
+        method: "POST",
+        body: formData
+      });
+
+      const payload = (await response.json()) as CommitUploadResult;
+      result = !response.ok && payload.ok ? { ok: false, error: "Upload failed. Please try again." } : payload;
+    } catch {
+      result = {
+        ok: false,
+        error: "Upload failed. Please try again."
+      };
+    }
+
     setIsSaving(false);
 
     if (!result.ok) {
@@ -175,7 +193,10 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    requestSnapshot.resolve(result.asset);
+    requestSnapshot.resolve({
+      ...result.asset,
+      dominantColor: requestSnapshot.extractedColor ?? result.asset.dominantColor
+    });
     setActiveRequest((current) => {
       if (!current || current.id !== requestId) {
         return current;
@@ -221,6 +242,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
 
     const image = isImageFile(file);
     const imageDimensions = image ? await readImageDimensions(file) : null;
+    const extractedColor = image ? await extractDominantColorFromImageFile(file) : null;
     const canAdjustPosition = image && Boolean(imageDimensions) && !shouldSkipImagePositionStep(activeRequest.options.purpose);
 
     setActiveRequest((current) => {
@@ -232,6 +254,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         ...current,
         file,
         imageDimensions,
+        extractedColor,
         step: canAdjustPosition ? "position" : "pick",
         crop: image ? defaultUploadCrop(current.options.initialCrop) : current.crop,
         error: null

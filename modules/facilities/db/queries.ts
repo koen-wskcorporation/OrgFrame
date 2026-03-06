@@ -11,7 +11,7 @@ import type {
 import type { GeneratedFacilityReservationInput } from "@/modules/facilities/schedule/rule-engine";
 
 const spaceSelect =
-  "id, org_id, parent_space_id, name, slug, space_kind, status, is_bookable, timezone, capacity, metadata_json, sort_index, created_at, updated_at";
+  "id, org_id, parent_space_id, name, slug, space_kind, status, is_bookable, timezone, capacity, metadata_json, status_labels_json, sort_index, created_at, updated_at";
 const ruleSelect =
   "id, org_id, space_id, mode, reservation_kind, default_status, public_label, internal_notes, timezone, start_date, end_date, start_time, end_time, interval_count, interval_unit, by_weekday, by_monthday, end_mode, until_date, max_occurrences, event_id, program_id, conflict_override, sort_index, is_active, config_json, rule_hash, created_by, created_at, updated_at";
 const reservationSelect =
@@ -31,6 +31,7 @@ type SpaceRow = {
   timezone: string;
   capacity: number | null;
   metadata_json: unknown;
+  status_labels_json: unknown;
   sort_index: number;
   created_at: string;
   updated_at: string;
@@ -131,6 +132,7 @@ function mapSpace(row: SpaceRow): FacilitySpace {
     timezone: row.timezone,
     capacity: row.capacity,
     metadataJson: asObject(row.metadata_json),
+    statusLabelsJson: asObject(row.status_labels_json),
     sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -261,6 +263,7 @@ export async function createFacilitySpaceRecord(input: {
   timezone: string;
   capacity: number | null;
   metadataJson?: Record<string, unknown>;
+  statusLabelsJson?: Record<string, unknown>;
   sortIndex?: number;
 }): Promise<FacilitySpace> {
   const supabase = await createSupabaseServer();
@@ -277,6 +280,7 @@ export async function createFacilitySpaceRecord(input: {
       timezone: input.timezone,
       capacity: input.capacity,
       metadata_json: input.metadataJson ?? {},
+      status_labels_json: input.statusLabelsJson ?? {},
       sort_index: input.sortIndex ?? 0
     })
     .select(spaceSelect)
@@ -301,6 +305,7 @@ export async function updateFacilitySpaceRecord(input: {
   timezone: string;
   capacity: number | null;
   metadataJson?: Record<string, unknown>;
+  statusLabelsJson?: Record<string, unknown>;
   sortIndex?: number;
 }): Promise<FacilitySpace> {
   const supabase = await createSupabaseServer();
@@ -316,6 +321,7 @@ export async function updateFacilitySpaceRecord(input: {
       timezone: input.timezone,
       capacity: input.capacity,
       metadata_json: input.metadataJson ?? {},
+      status_labels_json: input.statusLabelsJson ?? {},
       sort_index: input.sortIndex ?? 0
     })
     .eq("org_id", input.orgId)
@@ -328,6 +334,36 @@ export async function updateFacilitySpaceRecord(input: {
   }
 
   return mapSpace(data as SpaceRow);
+}
+
+export async function updateFacilitySpaceHierarchyRecord(input: {
+  orgId: string;
+  spaceId: string;
+  parentSpaceId: string | null;
+  sortIndex: number;
+}): Promise<void> {
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase
+    .from("facility_spaces")
+    .update({
+      parent_space_id: input.parentSpaceId,
+      sort_index: input.sortIndex
+    })
+    .eq("org_id", input.orgId)
+    .eq("id", input.spaceId);
+
+  if (error) {
+    throw new Error(`Failed to update facility space hierarchy: ${error.message}`);
+  }
+}
+
+export async function deleteFacilitySpaceRecord(input: { orgId: string; spaceId: string }): Promise<void> {
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase.from("facility_spaces").delete().eq("org_id", input.orgId).eq("id", input.spaceId);
+
+  if (error) {
+    throw new Error(`Failed to delete facility space: ${error.message}`);
+  }
 }
 
 export async function listFacilityReservationRules(orgId: string, options?: { spaceId?: string }): Promise<FacilityReservationRule[]> {

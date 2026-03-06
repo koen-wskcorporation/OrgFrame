@@ -1,13 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Plus, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 import { useToast } from "@/components/ui/toast";
 import { createDefaultRuntimeBlock, getRuntimeBlockDefinition } from "@/modules/site-builder/blocks/runtime-registry";
 import { loadOrgPageAction, saveOrgPageAction } from "@/modules/site-builder/actions";
@@ -73,7 +73,6 @@ export function OrgSitePage({
 
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
 
   const [, startLoadingEditor] = useTransition();
   const [isSaving, startSaving] = useTransition();
@@ -196,23 +195,6 @@ export function OrgSitePage({
   }, [canEdit, enterEditMode]);
 
   useEffect(() => {
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    const syncHost = () => {
-      setToolbarHost(document.getElementById("org-page-editor-toolbar-host"));
-    };
-
-    syncHost();
-    const frameId = window.requestAnimationFrame(syncHost);
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [isEditing]);
-
-  useEffect(() => {
     if (!canEdit || typeof window === "undefined") {
       return;
     }
@@ -318,15 +300,16 @@ export function OrgSitePage({
   });
 
   const editorToolbar = canEdit && isEditing ? (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-3">
       <Input
-        className="h-9 w-[260px]"
+        className="h-9 w-full"
         onChange={(event) => {
           setDraftTitle(event.target.value);
         }}
         value={draftTitle}
+        title="Page Title"
       />
-      <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-1.5 text-sm">
+      <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm">
         <Checkbox
           checked={draftIsPublished}
           onChange={(event) => {
@@ -340,24 +323,20 @@ export function OrgSitePage({
         Add block
       </Button>
       <Button disabled={isSaving} loading={isSaving} onClick={saveDraft} size="sm">
-        <Save className="h-4 w-4" />
         {isSaving ? "Saving..." : "Save"}
       </Button>
       <Button disabled={isSaving} onClick={cancelEditing} size="sm" variant="ghost">
         <X className="h-4 w-4" />
         Cancel
       </Button>
-      {hasUnsavedChanges ? (
-        <span className="ml-auto rounded-control border border-accent/30 bg-accent/10 px-2.5 py-1 text-xs font-semibold text-text">Unsaved changes</span>
-      ) : null}
     </div>
   ) : null;
 
   return (
     <main className="app-container pb-10 pt-0 md:pb-10 md:pt-0">
-      <div className="space-y-6">
+      <div className="ui-stack-page">
         {!isEditing ? (
-          <div className="space-y-6">
+          <div className="ui-stack-page">
             {viewBlocks.map((block) => {
               const definition = getRuntimeBlockDefinition(block.type);
               const Render = definition.Render;
@@ -411,7 +390,23 @@ export function OrgSitePage({
         open={Boolean(selectedBlock)}
       />
 
-      {editorToolbar ? (toolbarHost ? createPortal(editorToolbar, toolbarHost) : editorToolbar) : null}
+      {editorToolbar ? (
+        <Panel
+          onClose={cancelEditing}
+          open={canEdit && isEditing}
+          subtitle="Update page metadata and add or remove content blocks."
+          title="Page Editor"
+        >
+          <div className="space-y-3">
+            {hasUnsavedChanges ? (
+              <span className="inline-flex rounded-control border border-accent/30 bg-accent/10 px-2.5 py-1 text-xs font-semibold text-text">Unsaved changes</span>
+            ) : (
+              <span className="inline-flex rounded-control border border-border/80 bg-surface-muted px-2.5 py-1 text-xs font-semibold text-text-muted">All changes saved</span>
+            )}
+            {editorToolbar}
+          </div>
+        </Panel>
+      ) : null}
     </main>
   );
 }

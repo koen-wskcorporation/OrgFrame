@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { EventCatalogItem } from "@/modules/events/types";
+import type { CalendarPublicCatalogItem } from "@/modules/calendar/types";
 
 type CalendarView = "month" | "week" | "day";
 
 type EventsCalendarClientProps = {
   orgSlug: string;
-  events: EventCatalogItem[];
+  events: CalendarPublicCatalogItem[];
   initialView: CalendarView;
   emptyMessage: string;
 };
@@ -61,7 +61,7 @@ function parseIsoDate(value: string | null) {
   return parsed;
 }
 
-function toEventRange(event: EventCatalogItem): EventRange | null {
+function toEventRange(event: CalendarPublicCatalogItem): EventRange | null {
   if (event.isAllDay && event.allDayStartDate && event.allDayEndDate) {
     const startDate = parseIsoDate(event.allDayStartDate);
     const endDate = parseIsoDate(event.allDayEndDate);
@@ -122,7 +122,7 @@ function isSameLocalDate(a: Date, b: Date, timezone: string) {
   return formatter.format(a) === formatter.format(b);
 }
 
-function formatEventTimeLabel(event: EventCatalogItem) {
+function formatEventTimeLabel(event: CalendarPublicCatalogItem) {
   if (event.isAllDay) {
     return "All day";
   }
@@ -157,11 +157,11 @@ function formatEventTimeLabel(event: EventCatalogItem) {
   return `${dateTimeFormatter.format(start)} to ${dateTimeFormatter.format(end)}`;
 }
 
-function EventItem({ event, orgSlug }: { event: EventCatalogItem; orgSlug: string }) {
+function EventItem({ event, orgSlug }: { event: CalendarPublicCatalogItem; orgSlug: string }) {
   return (
     <article className="rounded-control border bg-surface px-3 py-2">
       <p className="font-semibold text-text">
-        <Link className="hover:underline" href={`/${orgSlug}/events/${event.id}`}>
+        <Link className="hover:underline" href={`/${orgSlug}/calendar/${event.occurrenceId}`}>
           {event.title}
         </Link>
       </p>
@@ -190,7 +190,7 @@ export function EventsCalendarClient({ orgSlug, events, initialView, emptyMessag
           range
         };
       })
-      .filter((entry): entry is { event: EventCatalogItem; range: EventRange } => Boolean(entry));
+      .filter((entry): entry is { event: CalendarPublicCatalogItem; range: EventRange } => Boolean(entry));
   }, [events]);
 
   const eventsForDay = (day: Date) => {
@@ -317,7 +317,7 @@ export function EventsCalendarClient({ orgSlug, events, initialView, emptyMessag
               return (
                 <button
                   className={cn(
-                    "min-h-[88px] rounded-control border p-1.5 text-left transition-colors",
+                    "relative min-h-[88px] rounded-control border p-1.5 text-left transition-colors",
                     inMonth ? "bg-surface" : "bg-surface-muted/40 text-text-muted"
                   )}
                   key={`${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`}
@@ -327,10 +327,10 @@ export function EventsCalendarClient({ orgSlug, events, initialView, emptyMessag
                   }}
                   type="button"
                 >
-                  <p className="text-xs font-semibold text-text">{day.getDate()}</p>
-                  <div className="mt-1 space-y-1">
+                  <p className="absolute left-1.5 top-1.5 text-xs font-semibold text-text">{day.getDate()}</p>
+                  <div className="mt-5 space-y-1">
                     {dayEvents.slice(0, 2).map((eventItem) => (
-                      <p className="truncate rounded-control bg-surface-muted px-1.5 py-0.5 text-[10px] text-text-muted" key={eventItem.id}>
+                      <p className="truncate rounded-control bg-surface-muted px-1.5 py-0.5 text-[10px] text-text-muted" key={eventItem.occurrenceId}>
                         {eventItem.title}
                       </p>
                     ))}
@@ -362,9 +362,9 @@ export function EventsCalendarClient({ orgSlug, events, initialView, emptyMessag
                 </button>
                 <div className="space-y-2">
                   {dayEvents.length === 0 ? <p className="text-xs text-text-muted">No events</p> : null}
-                  {dayEvents.map((eventItem) => (
-                    <EventItem event={eventItem} key={eventItem.id} orgSlug={orgSlug} />
-                  ))}
+                    {dayEvents.map((eventItem) => (
+                      <EventItem event={eventItem} key={eventItem.occurrenceId} orgSlug={orgSlug} />
+                    ))}
                 </div>
               </section>
             );
@@ -376,7 +376,7 @@ export function EventsCalendarClient({ orgSlug, events, initialView, emptyMessag
         <div className="space-y-2">
           {eventsForDay(anchorDate).length === 0 ? <p className="text-sm text-text-muted">{emptyMessage}</p> : null}
           {eventsForDay(anchorDate).map((eventItem) => (
-            <EventItem event={eventItem} key={eventItem.id} orgSlug={orgSlug} />
+            <EventItem event={eventItem} key={eventItem.occurrenceId} orgSlug={orgSlug} />
           ))}
         </div>
       ) : null}

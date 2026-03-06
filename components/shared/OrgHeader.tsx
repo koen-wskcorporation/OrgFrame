@@ -24,8 +24,9 @@ import {
 } from "lucide-react";
 import { SortableCanvas, type SortableRenderMeta } from "@/components/editor/SortableCanvas";
 import { EditorSettingsDialog } from "@/components/shared/EditorSettingsDialog";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { NavItem } from "@/components/ui/nav-item";
 import { PublishStatusIcon } from "@/components/ui/publish-status-icon";
@@ -41,6 +42,7 @@ import {
   ORG_SITE_SET_EDITOR_EVENT
 } from "@/modules/site-builder/events";
 import type { OrgManagePage } from "@/modules/site-builder/types";
+import { ProgramHeaderBar } from "@/components/shared/ProgramHeaderBar";
 
 type OrgHeaderProps = {
   orgSlug: string;
@@ -145,20 +147,23 @@ function EditableMenuItem({
   const href = pageHref(orgSlug, page.slug);
 
   return (
-    <div className={cn("flex min-w-[268px] items-center gap-2 rounded-control border bg-surface px-2 py-1.5", meta.isDragging ? "shadow-card" : "shadow-none")}>
-      <button
-        aria-label={`Drag ${page.title}`}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-text-muted hover:text-text"
+    <div
+      className={cn(
+        "inline-flex h-10 w-fit max-w-[min(42vw,360px)] items-center gap-2 rounded-control border bg-surface px-2 transition-[width] duration-200",
+        meta.isDragging ? "shadow-card" : "shadow-none"
+      )}
+    >
+      <IconButton
+        icon={<GripVertical />}
+        label={`Drag ${page.title}`}
         disabled={isSaving}
         type="button"
         {...meta.handleProps.attributes}
         {...meta.handleProps.listeners}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
+      />
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 truncate text-xs font-semibold leading-none text-text">
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5 truncate text-sm font-semibold leading-none text-text">
           <PublishStatusIcon
             align="right"
             className="shrink-0"
@@ -167,20 +172,29 @@ function EditableMenuItem({
             isPublished={page.isPublished}
             onToggle={() => onToggleVisibility(page)}
             publishLabel="Show in menu"
+            size="compact"
             statusLabel={page.isPublished ? `Published status for ${page.title}` : `Hidden status for ${page.title}`}
             unpublishLabel="Hide from menu"
           />
-          <span className="truncate">{page.title}</span>
+          <span className="max-w-[20ch] truncate">{page.title}</span>
         </div>
       </div>
 
-      <Button className="h-8 w-8 p-0" disabled={isSaving} onClick={() => onOpenSettings(page)} size="sm" title="Page settings" variant="secondary">
-        <SlidersHorizontal className="h-4 w-4" />
-      </Button>
+      <IconButton
+        icon={<SlidersHorizontal />}
+        label="Page settings"
+        disabled={isSaving}
+        onClick={() => onOpenSettings(page)}
+        title="Page settings"
+      />
 
-      <Button className="h-8 w-8 p-0" disabled={isSaving} onClick={() => onOpenEditor(href)} size="sm" title="Edit page" variant="ghost">
-        <Pencil className="h-4 w-4" />
-      </Button>
+      <IconButton
+        icon={<Pencil />}
+        label="Edit page"
+        disabled={isSaving}
+        onClick={() => onOpenEditor(href)}
+        title="Edit page"
+      />
     </div>
   );
 }
@@ -441,6 +455,7 @@ export function OrgHeader({
       return;
     }
 
+    let rafId = 0;
     const syncHeight = () => {
       const rect = rootRef.current?.getBoundingClientRect();
       const nextHeight = Math.max(0, Math.round(rect?.height ?? 0));
@@ -448,29 +463,42 @@ export function OrgHeader({
       document.documentElement.style.setProperty("--org-header-height", `${nextHeight}px`);
       document.documentElement.style.setProperty("--org-header-bottom", `${nextBottom}px`);
     };
+    const scheduleSyncHeight = () => {
+      if (rafId) {
+        return;
+      }
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        syncHeight();
+      });
+    };
 
     syncHeight();
-    const raf = window.requestAnimationFrame(syncHeight);
+    scheduleSyncHeight();
     let observer: ResizeObserver | null = null;
     if (typeof ResizeObserver !== "undefined" && rootRef.current) {
-      observer = new ResizeObserver(() => syncHeight());
+      observer = new ResizeObserver(() => scheduleSyncHeight());
       observer.observe(rootRef.current);
     }
-    window.addEventListener("resize", syncHeight);
+    window.addEventListener("resize", scheduleSyncHeight);
+    window.addEventListener("scroll", scheduleSyncHeight, { passive: true });
 
     return () => {
-      window.cancelAnimationFrame(raf);
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
       observer?.disconnect();
-      window.removeEventListener("resize", syncHeight);
+      window.removeEventListener("resize", scheduleSyncHeight);
+      window.removeEventListener("scroll", scheduleSyncHeight);
       document.documentElement.style.setProperty("--org-header-height", "0px");
       document.documentElement.style.setProperty("--org-header-bottom", "0px");
     };
   }, []);
 
   return (
-    <div className="app-container sticky top-3 z-40 pb-4 pt-0 md:top-4" ref={rootRef}>
+    <div className="app-container sticky top-[var(--layout-gap)] z-40 pb-[var(--layout-gap)] pt-0" ref={rootRef}>
       <div className={cn("rounded-card border bg-surface shadow-floating transition-shadow", isScrolled ? "shadow-lg" : "") }>
-        <div className="flex min-h-[64px] items-center gap-3 px-3 py-3 md:px-[18px]">
+        <div className="flex min-h-[64px] items-center gap-3 pb-2.5 pl-4 pr-2.5 pt-2.5 md:pb-4 md:pl-6 md:pr-4 md:pt-4">
           <div className="shrink-0 self-stretch">
             <Link className="flex h-full min-w-0 items-center gap-3 leading-none" href={orgBasePath} prefetch>
               {governingBodyLogoUrl ? (
@@ -502,7 +530,7 @@ export function OrgHeader({
 
           <nav className="hidden min-w-0 flex-1 md:block">
             {!isMenuEditMode ? (
-              <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto pb-1">
+              <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto">
                 {navPages.map((page) => {
                   const href = pageHref(orgSlug, page.slug);
                   return (
@@ -513,7 +541,7 @@ export function OrgHeader({
                 })}
               </div>
             ) : (
-              <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto pb-1">
+              <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto">
                 <SortableCanvas
                   className="flex min-w-0 items-center justify-end gap-2"
                   getId={(page) => page.id}
@@ -535,16 +563,13 @@ export function OrgHeader({
                   )}
                   sortingStrategy="horizontal"
                 />
-                <Button
-                  className="h-[38px] shrink-0 px-2"
+                <IconButton
+                  icon={<Plus className="h-4 w-4" />}
+                  label="Add page"
                   onClick={() => {
                     setCreateDialogOpen(true);
                   }}
-                  size="sm"
-                  variant="secondary"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
+                />
               </div>
             )}
           </nav>
@@ -553,8 +578,7 @@ export function OrgHeader({
 
           <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0">
             {canEditPages && hasInlineEditingActive ? (
-              <button
-                className={buttonVariants({ size: "sm", variant: "primary" })}
+              <Button
                 onClick={() => {
                   setIsMenuEditMode(false);
                   setCreateDialogOpen(false);
@@ -569,37 +593,36 @@ export function OrgHeader({
                     })
                   );
                 }}
+                size="md"
                 type="button"
+                variant="primary"
               >
                 Done
-              </button>
+              </Button>
             ) : null}
 
             {canEditCurrentPage && !hasInlineEditingActive ? (
-              <button className={buttonVariants({ size: "sm", variant: "ghost" })} onClick={() => openEditorOnPath(currentPathname || orgBasePath)} type="button">
+              <Button onClick={() => openEditorOnPath(currentPathname || orgBasePath)} size="md" type="button" variant="ghost">
                 <Pencil className="h-4 w-4" />
                 Edit Page
-              </button>
+              </Button>
             ) : null}
 
             {canEditPages && !hasInlineEditingActive ? (
-              <button
-                className={buttonVariants({ size: "sm", variant: "ghost" })}
+              <Button
                 onClick={() => {
                   setIsMenuEditMode(true);
                   setCreateDialogOpen(false);
                   setSettingsDialogOpen(false);
                   setIsToolsMenuOpen(false);
                 }}
+                size="md"
                 type="button"
+                variant="ghost"
               >
                 <LayoutDashboard className="h-4 w-4" />
                 Edit Menu
-              </button>
-            ) : null}
-
-            {showAiAssistant && !hasInlineEditingActive ? (
-              <AiAssistantLauncher buttonVariant="ghost" canAct={canActWithAi} orgSlug={orgSlug} />
+              </Button>
             ) : null}
 
             {canManageOrg && !hasInlineEditingActive ? (
@@ -611,17 +634,17 @@ export function OrgHeader({
                   }
                 }}
               >
-                <button
+                <Button
                   aria-expanded={isToolsMenuOpen}
                   aria-label="Open admin menu"
-                  className={buttonVariants({ size: "sm" })}
                   onClick={() => setIsToolsMenuOpen((current) => !current)}
+                  size="md"
                   type="button"
                 >
                   <Wrench className="h-4 w-4" />
                   Tools
                   <ChevronDown className={cn("h-4 w-4 transition-transform", isToolsMenuOpen ? "rotate-180" : "rotate-0")} />
-                </button>
+                </Button>
                 {isToolsMenuOpen ? (
                   <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[20rem] max-w-[calc(100vw-1rem)] rounded-card border bg-surface p-2 shadow-floating">
                     {toolsNavTopLevelItems.map((item) => {
@@ -698,11 +721,8 @@ export function OrgHeader({
           </div>
         </div>
 
-        {canEditPages && isPageContentEditing ? (
-          <div className="border-t px-3 py-3 md:px-[18px]">
-            <div id="org-page-editor-toolbar-host" />
-          </div>
-        ) : null}
+        <ProgramHeaderBar orgSlug={orgSlug} />
+
       </div>
 
       <EditorSettingsDialog

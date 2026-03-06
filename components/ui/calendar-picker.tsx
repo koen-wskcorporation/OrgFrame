@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/utils";
 
 type CalendarPickerProps = {
@@ -220,7 +221,7 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
     <div className={cn("relative", className)} ref={rootRef}>
       <div
         className={cn(
-          "flex h-10 w-full items-center gap-1 rounded-control border bg-surface px-1 py-1 text-sm text-text focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-canvas",
+          "flex h-10 w-full items-center gap-1 rounded-control border border-border bg-surface px-1 py-1 text-sm text-text shadow-[inset_0_1px_0_hsl(var(--canvas)/0.35)] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-canvas",
           disabled ? "opacity-55" : null
         )}
       >
@@ -295,58 +296,42 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
           type="text"
           value={usDigitsToMaskedValue(inputDigits)}
         />
-        <button
-          aria-disabled={disabled || undefined}
+        <IconButton
           aria-expanded={open}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted disabled:cursor-not-allowed"
           disabled={disabled}
+          icon={<CalendarDays aria-hidden className="h-4 w-4 shrink-0" />}
+          label="Open calendar"
           onClick={() => setOpen((current) => !current)}
-          type="button"
-        >
-          <CalendarDays aria-hidden className="h-4 w-4 shrink-0" />
-          <span className="sr-only">Open calendar</span>
-        </button>
+        />
       </div>
 
       {open ? (
-        <div className="absolute z-50 mt-2 w-[18rem] rounded-card border bg-surface p-3 shadow-card">
+        <div className="absolute z-50 mt-2 w-[18rem] rounded-card border bg-surface p-3 shadow-floating">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <button
-                className="inline-flex h-8 w-8 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted"
+              <IconButton
+                icon={<ChevronsLeft aria-hidden className="h-4 w-4" />}
+                label="Previous year"
                 onClick={() => setVisibleMonth((current) => new Date(current.getFullYear() - 1, current.getMonth(), 1))}
-                type="button"
-              >
-                <ChevronsLeft aria-hidden className="h-4 w-4" />
-                <span className="sr-only">Previous year</span>
-              </button>
-              <button
-                className="inline-flex h-8 w-8 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted"
+              />
+              <IconButton
+                icon={<ChevronLeft aria-hidden className="h-4 w-4" />}
+                label="Previous month"
                 onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
-                type="button"
-              >
-                <ChevronLeft aria-hidden className="h-4 w-4" />
-                <span className="sr-only">Previous month</span>
-              </button>
+              />
             </div>
             <p className="text-sm font-semibold text-text">{formatMonthLabel(monthStart)}</p>
             <div className="flex items-center gap-1">
-              <button
-                className="inline-flex h-8 w-8 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted"
+              <IconButton
+                icon={<ChevronRight aria-hidden className="h-4 w-4" />}
+                label="Next month"
                 onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
-                type="button"
-              >
-                <ChevronRight aria-hidden className="h-4 w-4" />
-                <span className="sr-only">Next month</span>
-              </button>
-              <button
-                className="inline-flex h-8 w-8 items-center justify-center rounded-control border bg-surface text-text hover:bg-surface-muted"
+              />
+              <IconButton
+                icon={<ChevronsRight aria-hidden className="h-4 w-4" />}
+                label="Next year"
                 onClick={() => setVisibleMonth((current) => new Date(current.getFullYear() + 1, current.getMonth(), 1))}
-                type="button"
-              >
-                <ChevronsRight aria-hidden className="h-4 w-4" />
-                <span className="sr-only">Next year</span>
-              </button>
+              />
             </div>
           </div>
 

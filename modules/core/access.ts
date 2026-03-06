@@ -15,6 +15,8 @@ export type Permission =
   | "forms.write"
   | "events.read"
   | "events.write"
+  | "calendar.read"
+  | "calendar.write"
   | "facilities.read"
   | "facilities.write";
 
@@ -22,7 +24,7 @@ export type PermissionDefinition = {
   permission: Permission;
   label: string;
   description: string;
-  group: "Organization" | "Site Builder" | "Programs" | "Forms" | "Events" | "Facilities";
+  group: "Organization" | "Site Builder" | "Programs" | "Forms" | "Calendar" | "Events" | "Facilities";
 };
 
 export type CustomRolePermissionSource = {
@@ -43,6 +45,8 @@ export const allPermissions: Permission[] = [
   "forms.write",
   "events.read",
   "events.write",
+  "calendar.read",
+  "calendar.write",
   "facilities.read",
   "facilities.write"
 ];
@@ -121,6 +125,18 @@ export const permissionDefinitions: PermissionDefinition[] = [
     label: "Events write",
     description: "Create, edit, publish, and archive events.",
     group: "Events"
+  },
+  {
+    permission: "calendar.read",
+    label: "Calendar read",
+    description: "Read calendar entries, schedules, invites, and facility allocations.",
+    group: "Calendar"
+  },
+  {
+    permission: "calendar.write",
+    label: "Calendar write",
+    description: "Create and manage calendar entries, schedules, invites, and facility allocations.",
+    group: "Calendar"
   },
   {
     permission: "facilities.read",

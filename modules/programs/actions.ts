@@ -24,6 +24,7 @@ import {
   updateProgramNodeSettingsRecord,
   updateProgramRecord
 } from "@/modules/programs/db/queries";
+import { getTeamAssociationCountsByNode } from "@/modules/programs/teams/db/queries";
 import type { ProgramScheduleBlockType, ProgramType } from "@/modules/programs/types";
 
 const textSchema = z.string().trim();
@@ -600,6 +601,13 @@ export async function saveProgramHierarchyAction(input: z.input<typeof saveHiera
 
       if (!targetNode) {
         return asError("Node not found.");
+      }
+
+      if (targetNode.nodeKind === "team" && payload.nodeKind === "division") {
+        const counts = await getTeamAssociationCountsByNode(targetNode.id);
+        if (counts.memberCount > 0 || counts.staffCount > 0) {
+          return asError("Teams with roster or staff cannot be converted to divisions.");
+        }
       }
 
       const nodeById = new Map(existingNodes.map((node) => [node.id, { nodeKind: node.nodeKind }]));

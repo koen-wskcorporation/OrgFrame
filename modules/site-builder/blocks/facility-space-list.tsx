@@ -169,14 +169,14 @@ export function FacilitySpaceListBlockEditor({ block, onChange }: BlockEditorPro
           value={String(block.config.maxItems)}
         />
       </FormField>
-      <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+      <label className="ui-inline-toggle">
         <Checkbox
           checked={block.config.showOnlyBookable}
           onChange={(event) => updateConfig({ showOnlyBookable: event.target.checked })}
         />
         Show only bookable spaces
       </label>
-      <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+      <label className="ui-inline-toggle">
         <Checkbox checked={block.config.showHierarchy} onChange={(event) => updateConfig({ showHierarchy: event.target.checked })} />
         Indent by hierarchy
       </label>

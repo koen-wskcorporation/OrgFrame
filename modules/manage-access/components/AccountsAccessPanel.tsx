@@ -452,11 +452,11 @@ export function AccountsAccessPanel({
         </Button>
         <Button
           aria-label={`Remove ${displayUser(member)}`}
-          className="h-7 px-2 text-[11px]"
+          className="ui-button-danger h-7 px-2 text-[11px]"
           disabled={!canManageActions || !canEditThisMember || isRemoving}
           onClick={() => setRemoveTarget(member)}
           size="sm"
-          variant="destructive"
+          variant="secondary"
         >
           <Trash2 aria-hidden className="h-3.5 w-3.5" />
           Remove
@@ -472,7 +472,7 @@ export function AccountsAccessPanel({
     : (selectedRoleOptions[0]?.value ?? selectedRoleDraft);
 
   return (
-    <div className="space-y-6">
+    <div className="ui-stack-page">
       {loadError ? <Alert variant="warning">{loadError}</Alert> : null}
 
       <Card>
@@ -480,7 +480,7 @@ export function AccountsAccessPanel({
           <CardTitle>Invite user</CardTitle>
           <CardDescription>Add a user by email and assign their initial organization role.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="app-section-stack">
           <form className="grid gap-3 md:grid-cols-[2fr_1fr_auto]" onSubmit={handleInviteSubmit}>
             <FormField className="md:col-span-1" label="Email">
               <Input
@@ -519,7 +519,7 @@ export function AccountsAccessPanel({
           <CardTitle>Members</CardTitle>
           <CardDescription>Drag header handles to reorder columns, and click rows to open member details.</CardDescription>
         </CardHeader>
-        <CardContent className="p-6 pt-4">
+        <CardContent className="px-5 pb-5 pt-2 md:px-6 md:pb-6">
           <DataTable
             ariaLabel="Organization members"
             columns={memberTableColumns}
@@ -561,9 +561,10 @@ export function AccountsAccessPanel({
                 {activeResetMembershipId === selectedMember.membershipId ? "Sending..." : "Send password reset"}
               </Button>
               <Button
+                className="ui-button-danger"
                 disabled={!canManageActions || !canEditAdminMembership(currentUserRole, selectedMember.role) || isRemoving}
                 onClick={() => setRemoveTarget(selectedMember)}
-                variant="destructive"
+                variant="secondary"
               >
                 Remove access
               </Button>
@@ -580,31 +581,31 @@ export function AccountsAccessPanel({
         title={selectedMember ? displayUser(selectedMember) : "Member profile"}
       >
         {selectedMember ? (
-          <div className="space-y-4">
+          <div className="app-section-stack">
             <Card className="shadow-none">
-              <CardContent className="grid gap-3 py-6 md:grid-cols-2">
+              <CardContent className="grid gap-3 py-5 md:grid-cols-2">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Status</p>
+                  <p className="ui-kv-label">Status</p>
                   <Badge className="mt-1" variant={statusBadgeVariant(selectedMember.status)}>
                     {statusLabel(selectedMember.status)}
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Role</p>
+                  <p className="ui-kv-label">Role</p>
                   <Badge className="mt-1" variant={roleBadgeVariant(selectedMember.role)}>
                     {resolveRoleLabel(selectedMember.role)}
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Joined</p>
-                  <p className="mt-1 text-sm text-text">{formatDateTime(selectedMember.joinedAt, dateFormatter)}</p>
+                  <p className="ui-kv-label">Joined</p>
+                  <p className="mt-1 ui-kv-value">{formatDateTime(selectedMember.joinedAt, dateFormatter)}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Last activity</p>
-                  <p className="mt-1 text-sm text-text">{formatDateTime(selectedMember.lastActivityAt, dateFormatter)}</p>
+                  <p className="ui-kv-label">Last activity</p>
+                  <p className="mt-1 ui-kv-value">{formatDateTime(selectedMember.lastActivityAt, dateFormatter)}</p>
                 </div>
                 <div className="md:col-span-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">User ID</p>
+                  <p className="ui-kv-label">User ID</p>
                   <p className="mt-1 break-all font-mono text-xs text-text-muted">{selectedMember.userId}</p>
                 </div>
               </CardContent>
@@ -635,7 +636,7 @@ export function AccountsAccessPanel({
             <Button disabled={isRemoving} onClick={() => setRemoveTarget(null)} variant="ghost">
               Cancel
             </Button>
-            <Button disabled={isRemoving} loading={isRemoving} onClick={handleRemoveConfirm} variant="destructive">
+            <Button className="ui-button-danger" disabled={isRemoving} loading={isRemoving} onClick={handleRemoveConfirm} variant="secondary">
               {isRemoving ? "Removing..." : "Confirm remove"}
             </Button>
           </>

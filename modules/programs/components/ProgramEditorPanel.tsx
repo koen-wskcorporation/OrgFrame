@@ -4,12 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DndContext, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
-import { Eye, EyeOff, GripVertical, MoreHorizontal, Pencil, Plus, Search, Trash2, ZoomIn, ZoomOut } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { Eye, EyeOff, GripVertical, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { CalendarPicker } from "@/components/ui/calendar-picker";
-import { CanvasViewport, type CanvasViewportHandle } from "@/components/ui/canvas-viewport";
+import { type CanvasViewportHandle } from "@/components/ui/canvas-viewport";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Chip } from "@/components/ui/chip";
@@ -23,21 +23,25 @@ import { AssetTile } from "@/components/ui/asset-tile";
 import { useToast } from "@/components/ui/toast";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
 import { cn } from "@/lib/utils";
+import { StructureCanvasShell } from "@/modules/core/components/StructureCanvasShell";
 import { FormCreatePanel } from "@/modules/forms/components/FormCreatePanel";
 import type { OrgForm } from "@/modules/forms/types";
 import { saveProgramHierarchyAction, saveProgramScheduleAction, updateProgramAction } from "@/modules/programs/actions";
 import { ScheduleBuilderPage } from "@/modules/programs/schedule/components/ScheduleBuilderPage";
-import type { ProgramNode, ProgramOccurrence, ProgramScheduleException, ProgramScheduleRule, ProgramWithDetails } from "@/modules/programs/types";
+import type { ProgramNode, ProgramOccurrence, ProgramScheduleException, ProgramScheduleRule, ProgramTeamSummary, ProgramWithDetails } from "@/modules/programs/types";
 import { isProgramNodePublished } from "@/modules/programs/utils";
+import { getProgramTeamsOverviewAction } from "@/modules/programs/teams/actions";
+import { TeamDetailPanel } from "@/modules/programs/teams/components/TeamDetailPanel";
 
 type ProgramEditorPanelProps = {
   orgSlug: string;
   data: ProgramWithDetails;
   forms: OrgForm[];
+  teamSummaries: ProgramTeamSummary[];
   canWritePrograms: boolean;
   canReadForms: boolean;
   canWriteForms: boolean;
-  activeSection: "structure" | "schedule" | "registration";
+  activeSection: "structure" | "schedule" | "registration" | "settings";
   scheduleSeed?: {
     rules: ProgramScheduleRule[];
     occurrences: ProgramOccurrence[];
@@ -257,7 +261,9 @@ function StructureTreeRow({
   onActivateDivision,
   onEdit,
   onTogglePublished,
+  onOpenTeam,
   teamCount,
+  teamSummary,
   teamChildren,
   branchChildren
 }: {
@@ -276,7 +282,9 @@ function StructureTreeRow({
   onActivateDivision: (nodeId: string) => void;
   onEdit: (node: ProgramNode) => void;
   onTogglePublished: (node: ProgramNode) => void;
+  onOpenTeam?: (teamId: string) => void;
   teamCount: number;
+  teamSummary?: ProgramTeamSummary | null;
   teamChildren?: ReactNode;
   branchChildren?: ReactNode;
 }) {
@@ -308,6 +316,8 @@ function StructureTreeRow({
   const nodeTypeLabel = node.nodeKind === "team" ? "Team" : "Division";
   const breadcrumbParts = divisionBreadcrumb ?? [node.name];
   const hasNestedDivisionBreadcrumb = node.nodeKind === "division" && breadcrumbParts.length > 1;
+  const teamRosterCount = teamSummary?.memberCount ?? 0;
+  const teamStaffCount = teamSummary?.staffCount ?? 0;
 
   useEffect(() => {
     if (!isMenuOpen) {
@@ -341,11 +351,24 @@ function StructureTreeRow({
           onActivateDivision(node.id);
         }
       }}
+      onClick={(event) => {
+        if (node.nodeKind !== "team" || !onOpenTeam) {
+          return;
+        }
+
+        const target = event.target;
+        if (target instanceof HTMLElement && target.closest("button, a, input, textarea, select")) {
+          return;
+        }
+
+        onOpenTeam(node.id);
+      }}
       ref={rowRef}
     >
       <div
         className={cn(
-          "w-full cursor-default rounded-control border bg-surface shadow-sm transition-shadow",
+          "w-full rounded-control border bg-surface shadow-sm transition-shadow",
+          node.nodeKind === "team" ? "cursor-pointer" : "cursor-default",
           node.nodeKind === "division" ? "min-w-[240px]" : "min-w-0",
           node.nodeKind === "division" ? "p-2" : "px-2 py-1",
           isDragging && "shadow-card",
@@ -379,6 +402,7 @@ function StructureTreeRow({
                   isLoading={isPublishToggling}
                   isPublished={isPublished}
                   onToggle={() => onTogglePublished(node)}
+                  size="compact"
                   statusLabel={isPublished ? `Published status for ${node.name}` : `Unpublished status for ${node.name}`}
                 />
                 {hasNestedDivisionBreadcrumb ? (
@@ -395,8 +419,13 @@ function StructureTreeRow({
                     {node.name}
                   </p>
                 )}
-                <Chip size="small">{nodeTypeLabel}</Chip>
+                <Chip size="compact">{nodeTypeLabel}</Chip>
               </div>
+              {node.nodeKind === "team" ? (
+                <p className="text-[10px] text-text-muted">
+                  Roster {teamRosterCount} · Staff {teamStaffCount}
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="relative shrink-0">
@@ -441,14 +470,14 @@ function StructureTreeRow({
                     Edit details
                   </Button>
                   <Button
-                    className="w-full justify-start"
+                    className="ui-button-danger w-full justify-start"
                     onClick={() => {
                       onDelete(node.id);
                       setIsMenuOpen(false);
                     }}
                     size="sm"
                     type="button"
-                    variant="destructive"
+                    variant="secondary"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete
@@ -543,6 +572,7 @@ export function ProgramEditorPanel({
   orgSlug,
   data,
   forms: initialForms,
+  teamSummaries: initialTeamSummaries,
   canWritePrograms,
   canReadForms,
   canWriteForms,
@@ -550,16 +580,17 @@ export function ProgramEditorPanel({
   scheduleSeed
 }: ProgramEditorPanelProps) {
   const { toast } = useToast();
-  const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const [isSavingProgram, startSavingProgram] = useTransition();
   const [isMutatingNodes, startMutatingNodes] = useTransition();
   const [isMutatingSchedule, startMutatingSchedule] = useTransition();
-  const [isProgramSettingsOpen, setIsProgramSettingsOpen] = useState(false);
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [isDivisionCreateOpen, setIsDivisionCreateOpen] = useState(false);
   const [isNodeEditOpen, setIsNodeEditOpen] = useState(false);
+  const [teamSummaries, setTeamSummaries] = useState(initialTeamSummaries);
+  const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
   const [activeDragNodeId, setActiveDragNodeId] = useState<string | null>(null);
   const [publishToggleNodeId, setPublishToggleNodeId] = useState<string | null>(null);
   const [activeDivisionId, setActiveDivisionId] = useState<string | null>(null);
@@ -573,6 +604,24 @@ export function ProgramEditorPanel({
   const [savedSlug, setSavedSlug] = useState(data.program.slug);
   const structureCanvasRef = useRef<CanvasViewportHandle | null>(null);
   const structureSearchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleTeamSummaryUpdate = useCallback(
+    (update: { teamId: string; team: ProgramTeamSummary["team"]; memberCount: number; staffCount: number }) => {
+      setTeamSummaries((current) =>
+        current.map((summary) =>
+          summary.team.id === update.teamId
+            ? {
+                ...summary,
+                team: update.team,
+                memberCount: update.memberCount,
+                staffCount: update.staffCount
+              }
+            : summary
+        )
+      );
+    },
+    []
+  );
 
   const [name, setName] = useState(data.program.name);
   const [slug, setSlug] = useState(data.program.slug);
@@ -617,6 +666,7 @@ export function ProgramEditorPanel({
   );
 
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const teamSummaryByNodeId = useMemo(() => new Map(teamSummaries.map((summary) => [summary.node.id, summary])), [teamSummaries]);
   const divisionBreadcrumbsById = useMemo(() => {
     const breadcrumbs = new Map<string, string[]>();
 
@@ -658,10 +708,8 @@ export function ProgramEditorPanel({
   const canSetEditingNodeToTeam = Boolean(editingNode && editingParentNode?.nodeKind === "division");
 
   useEffect(() => {
-    if (searchParams.get("panel") === "settings") {
-      setIsProgramSettingsOpen(true);
-    }
-  }, [searchParams]);
+    setTeamSummaries(initialTeamSummaries);
+  }, [initialTeamSummaries]);
 
   useEffect(() => {
     if (!activeDivisionId) {
@@ -673,6 +721,20 @@ export function ProgramEditorPanel({
       setActiveDivisionId(null);
     }
   }, [activeDivisionId, nodeById]);
+
+  useEffect(() => {
+    if (activeSection !== "structure") {
+      setActiveTeamId(null);
+      return;
+    }
+
+    const teamId = searchParams.get("teamId");
+    if (!teamId) {
+      return;
+    }
+
+    setActiveTeamId(teamId);
+  }, [activeSection, searchParams]);
 
   useEffect(() => {
     if (activeSection !== "structure" || !isCanvasActive) {
@@ -781,11 +843,14 @@ export function ProgramEditorPanel({
         variant: "success"
       });
       setSavedSlug(slug);
-      setIsProgramSettingsOpen(false);
-      if (searchParams.get("panel") === "settings") {
-        router.replace(pathname);
-      }
     });
+  }
+
+  async function refreshTeamSummaries() {
+    const result = await getProgramTeamsOverviewAction({ orgSlug, programId: data.program.id });
+    if (result.ok) {
+      setTeamSummaries(result.data.teamSummaries);
+    }
   }
 
   function handleNodeCreate(event: React.FormEvent<HTMLFormElement>) {
@@ -839,6 +904,7 @@ export function ProgramEditorPanel({
       setWaitlistEnabled(true);
       setNodes(result.data.details.nodes);
       setScheduleBlocks(result.data.details.scheduleBlocks);
+      refreshTeamSummaries();
       setIsDivisionCreateOpen(false);
       toast({ title: "Node added", variant: "success" });
     });
@@ -865,6 +931,7 @@ export function ProgramEditorPanel({
       toast({ title: "Node deleted", variant: "success" });
       setNodes(result.data.details.nodes);
       setScheduleBlocks(result.data.details.scheduleBlocks);
+      refreshTeamSummaries();
     });
   }
 
@@ -916,6 +983,7 @@ export function ProgramEditorPanel({
 
       setNodes(result.data.details.nodes);
       setScheduleBlocks(result.data.details.scheduleBlocks);
+      refreshTeamSummaries();
       setIsNodeEditOpen(false);
       toast({ title: "Node updated", variant: "success" });
     });
@@ -1141,6 +1209,36 @@ export function ProgramEditorPanel({
     focusNodeInCanvas(target.id);
   }
 
+  function updateTeamQuery(nextTeamId: string | null) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextTeamId) {
+      params.set("teamId", nextTeamId);
+    } else {
+      params.delete("teamId");
+    }
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
+
+  function openTeamPanel(nodeId: string) {
+    const summary = teamSummaryByNodeId.get(nodeId);
+    if (!summary) {
+      return;
+    }
+
+    setActiveTeamId(summary.team.id);
+    if (activeSection === "structure") {
+      updateTeamQuery(summary.team.id);
+    }
+  }
+
+  function closeTeamPanel() {
+    setActiveTeamId(null);
+    if (activeSection === "structure") {
+      updateTeamQuery(null);
+    }
+  }
+
   function renderStructureBranch(parentId: string | null, options?: { contained?: boolean; kindFilter?: ProgramNode["nodeKind"] }): ReactNode {
     const contained = options?.contained ?? false;
     const kindFilter = options?.kindFilter;
@@ -1186,8 +1284,10 @@ export function ProgramEditorPanel({
                         onActivateDivision={setActiveDivisionId}
                         onDelete={handleNodeDelete}
                         onEdit={openNodeEditPanel}
+                        onOpenTeam={openTeamPanel}
                         onTogglePublished={handleNodePublishToggle}
                         teamCount={teamCount}
+                        teamSummary={teamSummaryByNodeId.get(node.id) ?? null}
                         teamChildren={node.nodeKind === "division" ? renderStructureBranch(node.id, { contained: true, kindFilter: "team" }) : null}
                         branchChildren={node.nodeKind === "division" ? renderStructureBranch(node.id, { kindFilter: "division" }) : null}
                       />
@@ -1237,8 +1337,10 @@ export function ProgramEditorPanel({
                       onActivateDivision={setActiveDivisionId}
                       onDelete={handleNodeDelete}
                       onEdit={openNodeEditPanel}
+                      onOpenTeam={openTeamPanel}
                       onTogglePublished={handleNodePublishToggle}
                       teamCount={teamCount}
+                      teamSummary={teamSummaryByNodeId.get(node.id) ?? null}
                       teamChildren={node.nodeKind === "division" ? renderStructureBranch(node.id, { contained: true, kindFilter: "team" }) : null}
                       branchChildren={node.nodeKind === "division" ? renderStructureBranch(node.id, { kindFilter: "division" }) : null}
                     />
@@ -1347,102 +1449,101 @@ export function ProgramEditorPanel({
   }, [nodeKind, parentId, nodes]);
 
   return (
-    <div className="space-y-6">
-      <Panel
-        footer={
-          <>
-            <Button onClick={() => setIsProgramSettingsOpen(false)} type="button" variant="ghost">
-              Cancel
-            </Button>
-            <Button disabled={isSavingProgram} form="program-settings-form" loading={isSavingProgram} type="submit">
-              {isSavingProgram ? "Saving..." : "Save program"}
-            </Button>
-          </>
-        }
-        onClose={() => setIsProgramSettingsOpen(false)}
-        open={isProgramSettingsOpen}
-        panelClassName="ml-auto max-w-[300px]"
-        subtitle="Configure the core program details and publish state."
-        title="Program settings"
-      >
-        <form className="grid gap-4" id="program-settings-form" onSubmit={handleProgramSave}>
-          <FormField label="Program name">
-            <Input onChange={(event) => setName(event.target.value)} required value={name} />
-          </FormField>
-          <FormField label="Slug">
-            <Input
-              onChange={(event) => setSlug(slugify(event.target.value))}
-              required
-              slugValidation={{
-                kind: "program",
-                orgSlug,
-                currentSlug: savedSlug
-              }}
-              value={slug}
-            />
-          </FormField>
-          <FormField label="Type">
-            <Select
-              onChange={(event) => setProgramType(event.target.value as "league" | "season" | "clinic" | "custom")}
-              options={[
-                { value: "league", label: "League" },
-                { value: "season", label: "Season" },
-                { value: "clinic", label: "Clinic" },
-                { value: "custom", label: "Custom" }
-              ]}
-              value={programType}
-            />
-          </FormField>
-          <FormField label="Status">
-            <Select
-              onChange={(event) => setStatus(event.target.value as "draft" | "published" | "archived")}
-              options={[
-                { value: "draft", label: "Draft" },
-                { value: "published", label: "Published" },
-                { value: "archived", label: "Archived" }
-              ]}
-              value={status}
-            />
-          </FormField>
-          {programType === "custom" ? (
-            <FormField label="Custom type label">
-              <Input onChange={(event) => setCustomTypeLabel(event.target.value)} required value={customTypeLabel} />
-            </FormField>
-          ) : null}
-          <FormField label="Description">
-            <Textarea className="min-h-[80px]" onChange={(event) => setDescription(event.target.value)} value={description} />
-          </FormField>
-          <FormField label="Cover photo">
-            <AssetTile
-              constraints={{
-                accept: "image/*,.svg",
-                maxSizeMB: 10,
-                aspect: "wide",
-                recommendedPx: {
-                  w: 1600,
-                  h: 900
-                }
-              }}
-              fit="cover"
-              initialPath={coverImagePath || null}
-              initialUrl={getOrgAssetPublicUrl(coverImagePath)}
-              kind="org"
-              onChange={(asset) => setCoverImagePath(asset.path)}
-              onRemove={() => setCoverImagePath("")}
-              orgSlug={orgSlug}
-              purpose="program-cover"
-              specificationText="PNG, JPG, WEBP, HEIC, or SVG"
-              title="Program cover"
-            />
-          </FormField>
-          <FormField label="Start date">
-            <CalendarPicker onChange={setStartDate} value={startDate} />
-          </FormField>
-          <FormField label="End date">
-            <CalendarPicker onChange={setEndDate} value={endDate} />
-          </FormField>
-        </form>
-      </Panel>
+    <div className="ui-stack-page">
+      {activeSection === "settings" ? (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Program settings</CardTitle>
+                <CardDescription>Configure the core program details and publish state.</CardDescription>
+              </div>
+              <Button disabled={isSavingProgram} form="program-settings-form" loading={isSavingProgram} type="submit">
+                {isSavingProgram ? "Saving..." : "Save program"}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <form className="grid gap-4 md:grid-cols-2" id="program-settings-form" onSubmit={handleProgramSave}>
+              <FormField label="Program name">
+                <Input onChange={(event) => setName(event.target.value)} required value={name} />
+              </FormField>
+              <FormField label="Slug">
+                <Input
+                  onChange={(event) => setSlug(slugify(event.target.value))}
+                  required
+                  slugValidation={{
+                    kind: "program",
+                    orgSlug,
+                    currentSlug: savedSlug
+                  }}
+                  value={slug}
+                />
+              </FormField>
+              <FormField label="Type">
+                <Select
+                  onChange={(event) => setProgramType(event.target.value as "league" | "season" | "clinic" | "custom")}
+                  options={[
+                    { value: "league", label: "League" },
+                    { value: "season", label: "Season" },
+                    { value: "clinic", label: "Clinic" },
+                    { value: "custom", label: "Custom" }
+                  ]}
+                  value={programType}
+                />
+              </FormField>
+              <FormField label="Status">
+                <Select
+                  onChange={(event) => setStatus(event.target.value as "draft" | "published" | "archived")}
+                  options={[
+                    { value: "draft", label: "Draft" },
+                    { value: "published", label: "Published" },
+                    { value: "archived", label: "Archived" }
+                  ]}
+                  value={status}
+                />
+              </FormField>
+              {programType === "custom" ? (
+                <FormField label="Custom type label">
+                  <Input onChange={(event) => setCustomTypeLabel(event.target.value)} required value={customTypeLabel} />
+                </FormField>
+              ) : null}
+              <FormField className="md:col-span-2" label="Description">
+                <Textarea className="min-h-[80px]" onChange={(event) => setDescription(event.target.value)} value={description} />
+              </FormField>
+              <FormField className="md:col-span-2" label="Cover photo">
+                <AssetTile
+                  constraints={{
+                    accept: "image/*,.svg",
+                    maxSizeMB: 10,
+                    aspect: "wide",
+                    recommendedPx: {
+                      w: 1600,
+                      h: 900
+                    }
+                  }}
+                  fit="cover"
+                  initialPath={coverImagePath || null}
+                  initialUrl={getOrgAssetPublicUrl(coverImagePath)}
+                  kind="org"
+                  onChange={(asset) => setCoverImagePath(asset.path)}
+                  onRemove={() => setCoverImagePath("")}
+                  orgSlug={orgSlug}
+                  purpose="program-cover"
+                  specificationText="PNG, JPG, WEBP, HEIC, or SVG"
+                  title="Program cover"
+                />
+              </FormField>
+              <FormField label="Start date">
+                <CalendarPicker onChange={setStartDate} value={startDate} />
+              </FormField>
+              <FormField label="End date">
+                <CalendarPicker onChange={setEndDate} value={endDate} />
+              </FormField>
+            </form>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {activeSection === "registration" ? (
         <>
@@ -1504,116 +1605,50 @@ export function ProgramEditorPanel({
               <CardDescription>Map out divisions and teams. Teams must always be nested under a division.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div
-                className="relative h-[68vh] min-h-[460px]"
-                onPointerEnter={() => setIsCanvasActive(true)}
-                onPointerLeave={() => setIsCanvasActive(false)}
+              <StructureCanvasShell
+                addButtonAriaLabel="Add division"
+                addButtonDisabled={isMutatingNodes}
+                canvasRef={structureCanvasRef}
+                dragInProgress={Boolean(activeDragNodeId)}
+                emptyState={nodes.length === 0 ? <Alert variant="info">No structure nodes yet. Add a division to start the map.</Alert> : null}
+                onAdd={() => openNodeCreatePanel(null, "division")}
+                onCanvasEnter={() => setIsCanvasActive(true)}
+                onCanvasLeave={() => setIsCanvasActive(false)}
+                onSearchQueryChange={setStructureSearch}
+                onSearchSubmit={focusNodeFromSearch}
+                onViewScaleChange={(scale) => {
+                  setStructureScale(scale);
+                  setStructureZoomPercent(Math.round(scale * 100));
+                }}
+                rootHeader={
+                  <div className="w-[280px] max-w-[min(82vw,280px)] rounded-control border bg-surface px-4 py-3 text-center shadow-sm">
+                    <p className="text-xs uppercase tracking-wide text-text-muted">Program</p>
+                    <p className="font-semibold text-text">{name}</p>
+                  </div>
+                }
+                searchInputRef={structureSearchInputRef}
+                searchPlaceholder="Search divisions"
+                searchQuery={structureSearch}
+                searchResults={matchingNodes.map((node) => ({
+                  id: node.id,
+                  name: node.name,
+                  kindLabel: node.nodeKind
+                }))}
+                storageKey={`program-structure-canvas:${orgSlug}:${data.program.id}`}
+                zoomPercent={structureZoomPercent}
               >
-                {/* Canvas interaction rules: wheel pans, ctrl/cmd+wheel zooms, and holding Space forces pan mode. */}
-                <CanvasViewport
-                  contentClassName="min-w-max"
-                  dragInProgress={Boolean(activeDragNodeId)}
-                  onViewChange={(view) => {
-                    setStructureScale(view.scale);
-                    setStructureZoomPercent(Math.round(view.scale * 100));
-                  }}
-                  ref={structureCanvasRef}
-                  storageKey={`program-structure-canvas:${orgSlug}:${data.program.id}`}
-                >
-                  <div className="flex w-full min-w-[840px] flex-col items-center gap-3">
-                    <div className="w-[280px] max-w-[min(82vw,280px)] rounded-control border bg-surface px-4 py-3 text-center shadow-sm">
-                      <p className="text-xs uppercase tracking-wide text-text-muted">Program</p>
-                      <p className="font-semibold text-text">{name}</p>
-                    </div>
-                    {nodes.length === 0 ? <Alert variant="info">No structure nodes yet. Add a division to start the map.</Alert> : null}
-
-                    {nodes.length > 0 || activeDragNodeId ? (
-                      <DndContext
-                        collisionDetection={closestCenter}
-                        onDragCancel={() => setActiveDragNodeId(null)}
-                        onDragEnd={handleNodeDragEnd}
-                        onDragStart={handleNodeDragStart}
-                        sensors={sensors}
-                      >
-                        {renderStructureBranch(null, { kindFilter: "division" })}
-                      </DndContext>
-                    ) : null}
-                  </div>
-                </CanvasViewport>
-
-                <div className="pointer-events-none absolute left-3 top-3 z-30 w-[300px] max-w-[calc(100%-140px)]">
-                  <div className="pointer-events-auto relative" data-canvas-pan-ignore="true">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-                      <Input
-                        className="pl-9"
-                        onChange={(event) => setStructureSearch(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter") {
-                            return;
-                          }
-
-                          event.preventDefault();
-                          focusNodeFromSearch(event.currentTarget.value);
-                          setStructureSearch("");
-                        }}
-                        placeholder="Search divisions"
-                        ref={structureSearchInputRef}
-                        value={structureSearch}
-                      />
-                    </div>
-                    {normalizedStructureSearch ? (
-                      <div className="mt-1 max-h-44 overflow-y-auto rounded-control border bg-surface p-1 shadow-sm">
-                        <p className="px-2 py-1 text-[11px] text-text-muted">Press Enter to jump to the best match</p>
-                        {matchingNodes.length === 0 ? <p className="px-2 py-1 text-xs text-text-muted">No matches</p> : null}
-                        {matchingNodes.slice(0, 12).map((node) => (
-                          <button
-                            className="flex w-full items-center justify-between rounded-control px-2 py-1 text-left text-xs text-text hover:bg-surface-muted"
-                            key={node.id}
-                            onClick={() => {
-                              focusNodeFromSearch(node.name);
-                            }}
-                            type="button"
-                          >
-                            <span className="truncate" title={node.name}>
-                              {node.name}
-                            </span>
-                            <span className="ml-2 shrink-0 text-text-muted">{node.nodeKind}</span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="pointer-events-none absolute right-3 top-3 z-30">
-                  <div className="pointer-events-auto flex items-center gap-2 rounded-control border bg-surface/95 p-2 shadow-sm" data-canvas-pan-ignore="true">
-                    <Button
-                      aria-label="Add division"
-                      disabled={isMutatingNodes}
-                      onClick={() => openNodeCreatePanel(null, "division")}
-                      size="sm"
-                      type="button"
-                      variant="primary"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                    <Button onClick={() => structureCanvasRef.current?.zoomOut()} size="sm" type="button" variant="secondary">
-                      <ZoomOut className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button onClick={() => structureCanvasRef.current?.zoomIn()} size="sm" type="button" variant="secondary">
-                      <ZoomIn className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button onClick={() => structureCanvasRef.current?.fitToView()} size="sm" type="button" variant="secondary">
-                      Fit to view
-                    </Button>
-                    <Button onClick={() => structureCanvasRef.current?.resetView()} size="sm" type="button" variant="secondary">
-                      Reset
-                    </Button>
-                    <Chip size="small">{structureZoomPercent}%</Chip>
-                  </div>
-                </div>
-              </div>
+                {nodes.length > 0 || activeDragNodeId ? (
+                  <DndContext
+                    collisionDetection={closestCenter}
+                    onDragCancel={() => setActiveDragNodeId(null)}
+                    onDragEnd={handleNodeDragEnd}
+                    onDragStart={handleNodeDragStart}
+                    sensors={sensors}
+                  >
+                    {renderStructureBranch(null, { kindFilter: "division" })}
+                  </DndContext>
+                ) : null}
+              </StructureCanvasShell>
             </CardContent>
           </Card>
 
@@ -1655,11 +1690,11 @@ export function ProgramEditorPanel({
           <FormField hint="Optional" label="Capacity">
             <Input onChange={(event) => setEditingCapacity(event.target.value)} type="number" value={editingCapacity} />
           </FormField>
-          <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+          <label className="ui-inline-toggle">
             <Checkbox checked={editingWaitlistEnabled} onChange={(event) => setEditingWaitlistEnabled(event.target.checked)} />
             Waitlist enabled
           </label>
-          <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+          <label className="ui-inline-toggle">
             <Checkbox checked={editingPublished} onChange={(event) => setEditingPublished(event.target.checked)} />
             Published
           </label>
@@ -1706,12 +1741,22 @@ export function ProgramEditorPanel({
           <FormField hint="Optional" label="Capacity">
             <Input onChange={(event) => setCapacity(event.target.value)} type="number" value={capacity} />
           </FormField>
-          <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+          <label className="ui-inline-toggle">
             <Checkbox checked={waitlistEnabled} onChange={(event) => setWaitlistEnabled(event.target.checked)} />
             Waitlist enabled
           </label>
         </form>
           </Panel>
+
+          <TeamDetailPanel
+            canWrite={canWritePrograms}
+            nodes={nodes}
+            onClose={closeTeamPanel}
+            onSummaryChange={handleTeamSummaryUpdate}
+            open={Boolean(activeTeamId)}
+            orgSlug={orgSlug}
+            teamId={activeTeamId}
+          />
         </>
       ) : null}
 

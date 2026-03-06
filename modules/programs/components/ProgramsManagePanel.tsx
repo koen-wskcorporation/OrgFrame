@@ -211,22 +211,24 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
   }
 
   return (
-    <div className="space-y-6">
+    <div className="ui-stack-page">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle>Programs</CardTitle>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <CardTitle>Programs</CardTitle>
+              <CardDescription>Manage program structure, schedules, and linked forms.</CardDescription>
+            </div>
             <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
               <Plus className="h-4 w-4" />
               Create program
             </Button>
           </div>
-          <CardDescription>Manage program structure, schedules, and linked forms.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="ui-list-stack">
           {sortedPrograms.length === 0 ? <Alert variant="info">No programs yet.</Alert> : null}
           {sortedPrograms.map((program) => (
-            <div className="rounded-control border bg-surface px-3 py-3 hover:bg-surface-muted" key={program.id}>
+            <div className="ui-list-item ui-list-item-hover" key={program.id}>
               <div className="flex items-start justify-between gap-3">
                 <Link className="block min-w-0 flex-1" href={`/${orgSlug}/tools/programs/${program.id}`}>
                   <div className="flex items-center gap-1.5">
@@ -285,6 +287,8 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
             <Input
               disabled={!canWrite}
               onChange={(event) => setSlug(slugify(event.target.value))}
+              onSlugAutoChange={setSlug}
+              slugAutoSource={name}
               slugValidation={{
                 kind: "program",
                 orgSlug

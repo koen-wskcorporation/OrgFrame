@@ -8,6 +8,7 @@ import { requireOrgPermission } from "@/lib/permissions/requireOrgPermission";
 import {
   createFacilityReservationRecord,
   createFacilitySpaceRecord,
+  deleteFacilitySpaceRecord,
   deleteFacilityReservationRule,
   deleteFacilityReservationException,
   getFacilityReservationById,
@@ -15,13 +16,16 @@ import {
   getFacilitySpaceById,
   listFacilityReservationExceptions,
   listFacilityReservationReadModel,
+  listFacilitySpacesForManage,
   setFacilityReservationStatus,
   updateFacilityReservationRecord,
+  updateFacilitySpaceHierarchyRecord,
   updateFacilitySpaceRecord,
   upsertFacilityReservationException,
   upsertFacilityReservationRule,
   upsertRuleGeneratedReservations
 } from "@/modules/facilities/db/queries";
+import { normalizeFacilitySpaceStatusLabels } from "@/modules/facilities/status";
 import { generateReservationsForRule, zonedLocalToUtc } from "@/modules/facilities/schedule/rule-engine";
 import type {
   FacilityReservation,
@@ -134,8 +138,112 @@ function asReservationConflictError(error: unknown) {
 function revalidateFacilitiesRoutes(orgSlug: string) {
   revalidatePath(`/${orgSlug}/tools/facilities`);
   revalidatePath(`/${orgSlug}/manage/facilities`);
-  revalidatePath(`/${orgSlug}`);
-  revalidatePath(`/${orgSlug}`, "layout");
+}
+
+const facilityLeafKinds = new Set<FacilitySpaceKind>(["room", "field", "court", "custom"]);
+
+function canParentContainKind(parentKind: FacilitySpaceKind, childKind: FacilitySpaceKind) {
+  if (parentKind === "building") {
+    return childKind === "floor" || childKind === "room" || childKind === "field" || childKind === "court" || childKind === "custom";
+  }
+
+  if (parentKind === "floor") {
+    return childKind === "room" || childKind === "field" || childKind === "court" || childKind === "custom";
+  }
+
+  return false;
+}
+
+function validateFacilityParenting(
+  childKind: FacilitySpaceKind,
+  parentSpaceId: string | null,
+  spaceById: Map<string, { id: string; name: string; spaceKind: FacilitySpaceKind }>
+) {
+  if (!parentSpaceId) {
+    if (childKind === "floor") {
+      return "Floors must be created inside a building.";
+    }
+
+    return null;
+  }
+
+  const parent = spaceById.get(parentSpaceId);
+  if (!parent) {
+    return "Parent space not found.";
+  }
+
+  if (!canParentContainKind(parent.spaceKind, childKind)) {
+    return `${parent.name} (${parent.spaceKind}) cannot contain a ${childKind}.`;
+  }
+
+  return null;
+}
+
+function hasParentCycle(spaceId: string, parentById: Map<string, string | null>) {
+  const seen = new Set<string>([spaceId]);
+  let cursor = parentById.get(spaceId) ?? null;
+
+  while (cursor) {
+    if (seen.has(cursor)) {
+      return true;
+    }
+
+    seen.add(cursor);
+    cursor = parentById.get(cursor) ?? null;
+  }
+
+  return false;
+}
+
+function collectSpaceDescendantIds(parentById: Map<string, string | null>, rootId: string) {
+  const descendants = new Set<string>();
+  const stack = [...[...parentById.entries()].filter(([, parentId]) => parentId === rootId).map(([spaceId]) => spaceId)];
+
+  while (stack.length > 0) {
+    const next = stack.pop();
+    if (!next || descendants.has(next)) {
+      continue;
+    }
+
+    descendants.add(next);
+
+    for (const [spaceId, parentId] of parentById.entries()) {
+      if (parentId === next) {
+        stack.push(spaceId);
+      }
+    }
+  }
+
+  return descendants;
+}
+
+function validateBuildingFloorMinimum(
+  spaces: Array<{ id: string; name: string; parentSpaceId: string | null; spaceKind: FacilitySpaceKind; status: "open" | "closed" | "archived" }>,
+  affectedBuildingIds?: Set<string>
+) {
+  const floorCountByBuildingId = new Map<string, number>();
+
+  for (const space of spaces) {
+    if (space.spaceKind === "floor" && space.parentSpaceId && space.status !== "archived") {
+      floorCountByBuildingId.set(space.parentSpaceId, (floorCountByBuildingId.get(space.parentSpaceId) ?? 0) + 1);
+    }
+  }
+
+  for (const space of spaces) {
+    if (space.spaceKind !== "building" || space.status === "archived") {
+      continue;
+    }
+
+    if (affectedBuildingIds && !affectedBuildingIds.has(space.id)) {
+      continue;
+    }
+
+    if ((floorCountByBuildingId.get(space.id) ?? 0) === 0) {
+      return `Building \"${space.name}\" must have at least one floor.`;
+    }
+  }
+
+  return null;
 }
 
 const createSpaceSchema = z.object({
@@ -143,12 +251,20 @@ const createSpaceSchema = z.object({
   parentSpaceId: z.string().uuid().nullable().optional(),
   name: textSchema.min(2).max(120),
   slug: textSchema.max(120).optional(),
-  spaceKind: z.enum(["building", "room", "field", "court", "custom"] satisfies FacilitySpaceKind[]).optional(),
+  spaceKind: z.enum(["building", "floor", "room", "field", "court", "custom"] satisfies FacilitySpaceKind[]).optional(),
   status: z.enum(["open", "closed", "archived"]).optional(),
+  statusLabels: z
+    .object({
+      open: textSchema.max(48).optional(),
+      closed: textSchema.max(48).optional(),
+      archived: textSchema.max(48).optional()
+    })
+    .optional(),
   isBookable: z.boolean().optional(),
   timezone: textSchema.max(120).optional(),
   capacity: z.number().int().min(0).nullable().optional(),
-  sortIndex: z.number().int().min(0).optional()
+  sortIndex: z.number().int().min(0).optional(),
+  metadataJson: z.record(z.string(), z.unknown()).optional()
 });
 
 const updateSpaceSchema = createSpaceSchema.extend({
@@ -161,6 +277,18 @@ const moveSpaceSchema = z.object({
   parentSpaceId: z.string().uuid().nullable()
 });
 
+const saveStructureSchema = z.object({
+  orgSlug: textSchema.min(1),
+  rootSpaceId: z.string().uuid(),
+  nodes: z.array(
+    z.object({
+      spaceId: z.string().uuid(),
+      parentSpaceId: z.string().uuid().nullable(),
+      sortIndex: z.number().int().min(0)
+    })
+  )
+});
+
 const toggleSpaceBookableSchema = z.object({
   orgSlug: textSchema.min(1),
   spaceId: z.string().uuid(),
@@ -170,10 +298,15 @@ const toggleSpaceBookableSchema = z.object({
 const toggleSpaceOpenClosedSchema = z.object({
   orgSlug: textSchema.min(1),
   spaceId: z.string().uuid(),
-  status: z.enum(["open", "closed"])
+  status: z.enum(["open", "closed", "archived"])
 });
 
 const archiveSpaceSchema = z.object({
+  orgSlug: textSchema.min(1),
+  spaceId: z.string().uuid()
+});
+
+const deleteSpaceSchema = z.object({
   orgSlug: textSchema.min(1),
   spaceId: z.string().uuid()
 });
@@ -255,11 +388,12 @@ export async function createFacilitySpaceAction(input: z.input<typeof createSpac
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "facilities.write");
-    if (payload.parentSpaceId) {
-      const parent = await getFacilitySpaceById(org.orgId, payload.parentSpaceId);
-      if (!parent) {
-        return asError("Parent space not found.");
-      }
+    const nextSpaceKind = payload.spaceKind ?? "custom";
+    const allSpaces = await listFacilitySpacesForManage(org.orgId);
+    const spaceById = new Map(allSpaces.map((space) => [space.id, space]));
+    const parentValidationError = validateFacilityParenting(nextSpaceKind, payload.parentSpaceId ?? null, spaceById);
+    if (parentValidationError) {
+      return asError(parentValidationError);
     }
 
     const created = await createFacilitySpaceRecord({
@@ -267,14 +401,39 @@ export async function createFacilitySpaceAction(input: z.input<typeof createSpac
       parentSpaceId: payload.parentSpaceId ?? null,
       name: payload.name,
       slug: normalizeSlug(payload.slug ?? payload.name),
-      spaceKind: payload.spaceKind ?? "custom",
+      spaceKind: nextSpaceKind,
       status: payload.status ?? "open",
-      isBookable: payload.isBookable ?? true,
+      isBookable: payload.isBookable ?? (nextSpaceKind === "floor" ? false : true),
       timezone: resolveTimezone(payload.timezone),
       capacity: payload.capacity ?? null,
-      metadataJson: {},
+      metadataJson: payload.metadataJson ?? {},
+      statusLabelsJson: normalizeFacilitySpaceStatusLabels(payload.statusLabels),
       sortIndex: payload.sortIndex ?? 0
     });
+
+    if (nextSpaceKind === "building") {
+      await createFacilitySpaceRecord({
+        orgId: org.orgId,
+        parentSpaceId: created.id,
+        name: "Floor 1",
+        slug: normalizeSlug(`${created.slug}-floor-1`),
+        spaceKind: "floor",
+        status: "open",
+        isBookable: false,
+        timezone: created.timezone,
+        capacity: null,
+        metadataJson: {
+          floorPlan: {
+            canvas: {
+              width: 1400,
+              height: 900
+            }
+          }
+        },
+        statusLabelsJson: {},
+        sortIndex: 0
+      });
+    }
 
     const readModel = await refreshFacilitiesData(org.orgSlug, org.orgId);
     return {
@@ -299,34 +458,86 @@ export async function updateFacilitySpaceAction(input: z.input<typeof updateSpac
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "facilities.write");
-    const existing = await getFacilitySpaceById(org.orgId, payload.spaceId);
+    const allSpaces = await listFacilitySpacesForManage(org.orgId);
+    const spaceById = new Map(allSpaces.map((space) => [space.id, space]));
+    const existing = spaceById.get(payload.spaceId) ?? null;
     if (!existing) {
       return asError("Space not found.");
     }
+    const nextParentSpaceId = payload.parentSpaceId === undefined ? existing.parentSpaceId : payload.parentSpaceId;
+    const nextSpaceKind = payload.spaceKind ?? existing.spaceKind;
 
-    if (payload.parentSpaceId) {
-      if (payload.parentSpaceId === payload.spaceId) {
-        return asError("A space cannot be its own parent.");
-      }
+    if (nextParentSpaceId === payload.spaceId) {
+      return asError("A space cannot be its own parent.");
+    }
 
-      const parent = await getFacilitySpaceById(org.orgId, payload.parentSpaceId);
-      if (!parent) {
-        return asError("Parent space not found.");
+    const parentValidationError = validateFacilityParenting(nextSpaceKind, nextParentSpaceId, spaceById);
+    if (parentValidationError) {
+      return asError(parentValidationError);
+    }
+
+    const parentById = new Map(allSpaces.map((space) => [space.id, space.parentSpaceId]));
+    parentById.set(existing.id, nextParentSpaceId);
+    if (hasParentCycle(existing.id, parentById)) {
+      return asError("Invalid hierarchy: recursive parent assignment detected.");
+    }
+
+    const directChildren = allSpaces.filter((space) => space.parentSpaceId === existing.id);
+    if (facilityLeafKinds.has(nextSpaceKind) && directChildren.length > 0) {
+      return asError("Rooms, courts, fields, and custom spaces cannot contain child spaces.");
+    }
+    if (!facilityLeafKinds.has(nextSpaceKind)) {
+      const incompatibleChild = directChildren.find((child) => !canParentContainKind(nextSpaceKind, child.spaceKind));
+      if (incompatibleChild) {
+        return asError(`${nextSpaceKind} spaces cannot contain ${incompatibleChild.spaceKind} spaces.`);
       }
+    }
+
+    const nextStatus = payload.status ?? existing.status;
+    const prospectiveSpaces = allSpaces.map((space) =>
+      space.id === existing.id
+        ? {
+            ...space,
+            parentSpaceId: nextParentSpaceId,
+            spaceKind: nextSpaceKind,
+            status: nextStatus
+          }
+        : space
+    );
+    const affectedBuildingIds = new Set<string>();
+    if (existing.spaceKind === "building" || nextSpaceKind === "building") {
+      affectedBuildingIds.add(existing.id);
+    }
+    if (existing.parentSpaceId) {
+      const parent = spaceById.get(existing.parentSpaceId);
+      if (parent?.spaceKind === "building") {
+        affectedBuildingIds.add(parent.id);
+      }
+    }
+    if (nextParentSpaceId) {
+      const parent = spaceById.get(nextParentSpaceId);
+      if (parent?.spaceKind === "building") {
+        affectedBuildingIds.add(parent.id);
+      }
+    }
+    const floorCoverageError = validateBuildingFloorMinimum(prospectiveSpaces, affectedBuildingIds);
+    if (floorCoverageError) {
+      return asError(floorCoverageError);
     }
 
     await updateFacilitySpaceRecord({
       orgId: org.orgId,
       spaceId: payload.spaceId,
-      parentSpaceId: payload.parentSpaceId ?? null,
+      parentSpaceId: nextParentSpaceId,
       name: payload.name,
       slug: normalizeSlug(payload.slug ?? payload.name),
-      spaceKind: payload.spaceKind ?? existing.spaceKind,
-      status: payload.status ?? existing.status,
-      isBookable: payload.isBookable ?? existing.isBookable,
+      spaceKind: nextSpaceKind,
+      status: nextStatus,
+      isBookable: payload.isBookable ?? (nextSpaceKind === "floor" ? false : existing.isBookable),
       timezone: resolveTimezone(payload.timezone ?? existing.timezone),
       capacity: payload.capacity ?? existing.capacity,
-      metadataJson: existing.metadataJson,
+      metadataJson: payload.metadataJson ?? existing.metadataJson,
+      statusLabelsJson: payload.statusLabels ? normalizeFacilitySpaceStatusLabels(payload.statusLabels) : existing.statusLabelsJson,
       sortIndex: payload.sortIndex ?? existing.sortIndex
     });
 
@@ -352,20 +563,49 @@ export async function moveFacilitySpaceAction(input: z.input<typeof moveSpaceSch
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "facilities.write");
-    const existing = await getFacilitySpaceById(org.orgId, payload.spaceId);
+    const allSpaces = await listFacilitySpacesForManage(org.orgId);
+    const spaceById = new Map(allSpaces.map((space) => [space.id, space]));
+    const existing = spaceById.get(payload.spaceId) ?? null;
     if (!existing) {
       return asError("Space not found.");
     }
+    if (payload.parentSpaceId === payload.spaceId) {
+      return asError("A space cannot be moved under itself.");
+    }
+    const parentValidationError = validateFacilityParenting(existing.spaceKind, payload.parentSpaceId, spaceById);
+    if (parentValidationError) {
+      return asError(parentValidationError);
+    }
+    const parentById = new Map(allSpaces.map((space) => [space.id, space.parentSpaceId]));
+    parentById.set(existing.id, payload.parentSpaceId);
+    if (hasParentCycle(existing.id, parentById)) {
+      return asError("Invalid hierarchy: recursive parent assignment detected.");
+    }
 
+    const prospectiveSpaces = allSpaces.map((space) =>
+      space.id === existing.id
+        ? {
+            ...space,
+            parentSpaceId: payload.parentSpaceId
+          }
+        : space
+    );
+    const affectedBuildingIds = new Set<string>();
+    if (existing.parentSpaceId) {
+      const currentParent = spaceById.get(existing.parentSpaceId);
+      if (currentParent?.spaceKind === "building") {
+        affectedBuildingIds.add(currentParent.id);
+      }
+    }
     if (payload.parentSpaceId) {
-      if (payload.parentSpaceId === payload.spaceId) {
-        return asError("A space cannot be moved under itself.");
+      const targetParent = spaceById.get(payload.parentSpaceId);
+      if (targetParent?.spaceKind === "building") {
+        affectedBuildingIds.add(targetParent.id);
       }
-
-      const parent = await getFacilitySpaceById(org.orgId, payload.parentSpaceId);
-      if (!parent) {
-        return asError("Target parent space not found.");
-      }
+    }
+    const floorCoverageError = validateBuildingFloorMinimum(prospectiveSpaces, affectedBuildingIds);
+    if (floorCoverageError) {
+      return asError(floorCoverageError);
     }
 
     await updateFacilitySpaceRecord({
@@ -380,6 +620,7 @@ export async function moveFacilitySpaceAction(input: z.input<typeof moveSpaceSch
       timezone: existing.timezone,
       capacity: existing.capacity,
       metadataJson: existing.metadataJson,
+      statusLabelsJson: existing.statusLabelsJson,
       sortIndex: existing.sortIndex
     });
 
@@ -396,6 +637,160 @@ export async function moveFacilitySpaceAction(input: z.input<typeof moveSpaceSch
   }
 }
 
+export async function saveFacilityStructureAction(input: z.input<typeof saveStructureSchema>): Promise<FacilitiesActionResult<{ readModel: ReadModelData }>> {
+  const parsed = saveStructureSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid structure payload.");
+  }
+
+  try {
+    const payload = parsed.data;
+    if (payload.nodes.length === 0) {
+      return asError("No structure nodes were provided.");
+    }
+
+    const org = await requireOrgPermission(payload.orgSlug, "facilities.write");
+    const spaces = await listFacilitySpacesForManage(org.orgId);
+    const spaceById = new Map(spaces.map((space) => [space.id, space]));
+    const rootSpace = spaceById.get(payload.rootSpaceId);
+    if (!rootSpace) {
+      return asError("Root space not found.");
+    }
+
+    const existingParentById = new Map(spaces.map((space) => [space.id, space.parentSpaceId]));
+    const descendantIds = collectSpaceDescendantIds(existingParentById, payload.rootSpaceId);
+    if (descendantIds.size === 0) {
+      return asError("No descendant spaces found for this structure.");
+    }
+
+    const uniqueInputIds = new Set(payload.nodes.map((node) => node.spaceId));
+    if (uniqueInputIds.size !== payload.nodes.length) {
+      return asError("Invalid structure payload: duplicate space IDs detected.");
+    }
+
+    if (uniqueInputIds.size !== descendantIds.size || [...descendantIds].some((spaceId) => !uniqueInputIds.has(spaceId))) {
+      return asError("Structure payload is out of date. Refresh and try again.");
+    }
+
+    const nextParentById = new Map(existingParentById);
+    for (const node of payload.nodes) {
+      const target = spaceById.get(node.spaceId);
+      if (!target) {
+        return asError("One or more spaces no longer exist.");
+      }
+
+      if (!descendantIds.has(node.spaceId)) {
+        return asError("Structure changes can only target descendants of the selected facility.");
+      }
+
+      nextParentById.set(node.spaceId, node.parentSpaceId);
+    }
+
+    for (const node of payload.nodes) {
+      const child = spaceById.get(node.spaceId);
+      if (!child) {
+        return asError("Space not found.");
+      }
+
+      if (!node.parentSpaceId) {
+        return asError("Each mapped structure space must have a parent.");
+      }
+
+      if (node.parentSpaceId === node.spaceId) {
+        return asError("A space cannot be its own parent.");
+      }
+
+      if (node.parentSpaceId !== payload.rootSpaceId && !descendantIds.has(node.parentSpaceId)) {
+        return asError("Structure changes cannot move spaces outside of the selected facility subtree.");
+      }
+
+      const parent = spaceById.get(node.parentSpaceId);
+      if (!parent) {
+        return asError("Parent space not found.");
+      }
+
+      if (!canParentContainKind(parent.spaceKind, child.spaceKind)) {
+        return asError(`${parent.name} (${parent.spaceKind}) cannot contain a ${child.spaceKind}.`);
+      }
+    }
+
+    const prospectiveSpaces = spaces.map((space) => ({
+      ...space,
+      parentSpaceId: nextParentById.get(space.id) ?? space.parentSpaceId
+    }));
+    const affectedBuildingIds = new Set<string>();
+    for (const node of payload.nodes) {
+      const current = spaceById.get(node.spaceId);
+      if (current?.parentSpaceId) {
+        const currentParent = spaceById.get(current.parentSpaceId);
+        if (currentParent?.spaceKind === "building") {
+          affectedBuildingIds.add(currentParent.id);
+        }
+      }
+      if (node.parentSpaceId) {
+        const nextParent = spaceById.get(node.parentSpaceId);
+        if (nextParent?.spaceKind === "building") {
+          affectedBuildingIds.add(nextParent.id);
+        }
+      }
+    }
+    const floorCoverageError = validateBuildingFloorMinimum(prospectiveSpaces, affectedBuildingIds);
+    if (floorCoverageError) {
+      return asError(floorCoverageError);
+    }
+
+    for (const spaceId of descendantIds) {
+      if (hasParentCycle(spaceId, nextParentById)) {
+        return asError("Invalid hierarchy: recursive parent assignment detected.");
+      }
+    }
+
+    const existingSortBySpaceId = new Map(spaces.map((space) => [space.id, space.sortIndex]));
+    const grouped = new Map<string, Array<{ spaceId: string; parentSpaceId: string; sortIndex: number }>>();
+    for (const node of payload.nodes) {
+      const key = node.parentSpaceId ?? "__missing__";
+      const current = grouped.get(key) ?? [];
+      current.push({
+        spaceId: node.spaceId,
+        parentSpaceId: node.parentSpaceId as string,
+        sortIndex: node.sortIndex
+      });
+      grouped.set(key, current);
+    }
+
+    for (const group of grouped.values()) {
+      group.sort((a, b) => {
+        if (a.sortIndex !== b.sortIndex) {
+          return a.sortIndex - b.sortIndex;
+        }
+
+        return (existingSortBySpaceId.get(a.spaceId) ?? 0) - (existingSortBySpaceId.get(b.spaceId) ?? 0);
+      });
+
+      for (let index = 0; index < group.length; index += 1) {
+        const item = group[index];
+        await updateFacilitySpaceHierarchyRecord({
+          orgId: org.orgId,
+          spaceId: item.spaceId,
+          parentSpaceId: item.parentSpaceId,
+          sortIndex: index
+        });
+      }
+    }
+
+    const readModel = await refreshFacilitiesData(org.orgSlug, org.orgId);
+    return {
+      ok: true,
+      data: {
+        readModel
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to save facility structure right now.");
+  }
+}
+
 export async function archiveFacilitySpaceAction(input: z.input<typeof archiveSpaceSchema>): Promise<FacilitiesActionResult<{ readModel: ReadModelData }>> {
   const parsed = archiveSpaceSchema.safeParse(input);
   if (!parsed.success) {
@@ -405,9 +800,34 @@ export async function archiveFacilitySpaceAction(input: z.input<typeof archiveSp
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "facilities.write");
-    const existing = await getFacilitySpaceById(org.orgId, payload.spaceId);
+    const allSpaces = await listFacilitySpacesForManage(org.orgId);
+    const existing = allSpaces.find((space) => space.id === payload.spaceId) ?? null;
     if (!existing) {
       return asError("Space not found.");
+    }
+
+    const prospectiveSpaces = allSpaces.map((space) =>
+      space.id === existing.id
+        ? {
+            ...space,
+            status: "archived" as const
+          }
+        : space
+    );
+    const spaceById = new Map(allSpaces.map((space) => [space.id, space]));
+    const affectedBuildingIds = new Set<string>();
+    if (existing.spaceKind === "building") {
+      affectedBuildingIds.add(existing.id);
+    }
+    if (existing.parentSpaceId) {
+      const parent = spaceById.get(existing.parentSpaceId);
+      if (parent?.spaceKind === "building") {
+        affectedBuildingIds.add(parent.id);
+      }
+    }
+    const floorCoverageError = validateBuildingFloorMinimum(prospectiveSpaces, affectedBuildingIds);
+    if (floorCoverageError) {
+      return asError(floorCoverageError);
     }
 
     await updateFacilitySpaceRecord({
@@ -422,6 +842,7 @@ export async function archiveFacilitySpaceAction(input: z.input<typeof archiveSp
       timezone: existing.timezone,
       capacity: existing.capacity,
       metadataJson: existing.metadataJson,
+      statusLabelsJson: existing.statusLabelsJson,
       sortIndex: existing.sortIndex
     });
 
@@ -438,6 +859,61 @@ export async function archiveFacilitySpaceAction(input: z.input<typeof archiveSp
   }
 }
 
+export async function deleteFacilitySpaceAction(input: z.input<typeof deleteSpaceSchema>): Promise<FacilitiesActionResult<{ readModel: ReadModelData }>> {
+  const parsed = deleteSpaceSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid delete request.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireOrgPermission(payload.orgSlug, "facilities.write");
+    const allSpaces = await listFacilitySpacesForManage(org.orgId);
+    const existing = allSpaces.find((space) => space.id === payload.spaceId) ?? null;
+    if (!existing) {
+      return asError("Space not found.");
+    }
+
+    const childCount = allSpaces.filter((space) => space.parentSpaceId === existing.id).length;
+    if (childCount > 0) {
+      return asError("Delete child spaces first.");
+    }
+
+    const prospectiveSpaces = allSpaces.filter((space) => space.id !== existing.id);
+    const spaceById = new Map(allSpaces.map((space) => [space.id, space]));
+    const affectedBuildingIds = new Set<string>();
+    if (existing.spaceKind === "building") {
+      affectedBuildingIds.add(existing.id);
+    }
+    if (existing.parentSpaceId) {
+      const parent = spaceById.get(existing.parentSpaceId);
+      if (parent?.spaceKind === "building") {
+        affectedBuildingIds.add(parent.id);
+      }
+    }
+    const floorCoverageError = validateBuildingFloorMinimum(prospectiveSpaces, affectedBuildingIds);
+    if (floorCoverageError) {
+      return asError(floorCoverageError);
+    }
+
+    await deleteFacilitySpaceRecord({
+      orgId: org.orgId,
+      spaceId: existing.id
+    });
+
+    const readModel = await refreshFacilitiesData(org.orgSlug, org.orgId);
+    return {
+      ok: true,
+      data: {
+        readModel
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to delete this space.");
+  }
+}
+
 export async function toggleFacilitySpaceBookableAction(
   input: z.input<typeof toggleSpaceBookableSchema>
 ): Promise<FacilitiesActionResult<{ readModel: ReadModelData }>> {
@@ -449,7 +925,8 @@ export async function toggleFacilitySpaceBookableAction(
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "facilities.write");
-    const existing = await getFacilitySpaceById(org.orgId, payload.spaceId);
+    const allSpaces = await listFacilitySpacesForManage(org.orgId);
+    const existing = allSpaces.find((space) => space.id === payload.spaceId) ?? null;
     if (!existing) {
       return asError("Space not found.");
     }
@@ -466,6 +943,7 @@ export async function toggleFacilitySpaceBookableAction(
       timezone: existing.timezone,
       capacity: existing.capacity,
       metadataJson: existing.metadataJson,
+      statusLabelsJson: existing.statusLabelsJson,
       sortIndex: existing.sortIndex
     });
 
@@ -493,9 +971,25 @@ export async function toggleFacilitySpaceOpenClosedAction(
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "facilities.write");
-    const existing = await getFacilitySpaceById(org.orgId, payload.spaceId);
+    const allSpaces = await listFacilitySpacesForManage(org.orgId);
+    const existing = allSpaces.find((space) => space.id === payload.spaceId) ?? null;
     if (!existing) {
       return asError("Space not found.");
+    }
+
+    if (existing.spaceKind === "building") {
+      const prospectiveSpaces = allSpaces.map((space) =>
+        space.id === existing.id
+          ? {
+              ...space,
+              status: payload.status
+            }
+          : space
+      );
+      const floorCoverageError = validateBuildingFloorMinimum(prospectiveSpaces, new Set<string>([existing.id]));
+      if (floorCoverageError) {
+        return asError(floorCoverageError);
+      }
     }
 
     await updateFacilitySpaceRecord({
@@ -510,6 +1004,7 @@ export async function toggleFacilitySpaceOpenClosedAction(
       timezone: existing.timezone,
       capacity: existing.capacity,
       metadataJson: existing.metadataJson,
+      statusLabelsJson: existing.statusLabelsJson,
       sortIndex: existing.sortIndex
     });
 

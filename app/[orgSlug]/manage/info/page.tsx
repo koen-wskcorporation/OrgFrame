@@ -2,6 +2,7 @@ import { Alert } from "@/components/ui/alert";
 import type { Metadata } from "next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
+import { PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { Select } from "@/components/ui/select";
 import { SubmitButton } from "@/components/ui/submit-button";
@@ -32,8 +33,8 @@ type InfoFieldProps = {
 function InfoField({ label, value }: InfoFieldProps) {
   return (
     <div className="space-y-1">
-      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{label}</p>
-      <p className="break-all text-sm text-text">{value}</p>
+      <p className="ui-kv-label">{label}</p>
+      <p className="ui-kv-value break-all">{value}</p>
     </div>
   );
 }
@@ -57,7 +58,7 @@ export default async function OrgInfoPage({
   const errorMessage = query.error ? errorMessageByCode[query.error] : null;
 
   return (
-    <>
+    <PageStack>
       <PageHeader description="View and manage organization identity details used across public and staff routes." showBorder={false} title="Org Info" />
       <OrgInfoPageToasts errorMessage={errorMessage} successMessage={successMessage} />
 
@@ -66,7 +67,7 @@ export default async function OrgInfoPage({
           <CardTitle>Organization Details</CardTitle>
           <CardDescription>Set your governing body for header presentation and public brand context.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="app-section-stack">
           <div className="grid gap-4 md:grid-cols-2">
             <InfoField label="Organization name" value={orgContext.orgName} />
             <InfoField label="Organization slug" value={orgContext.orgSlug} />
@@ -108,6 +109,6 @@ export default async function OrgInfoPage({
           </form>
         </CardContent>
       </Card>
-    </>
+    </PageStack>
   );
 }

@@ -1,13 +1,34 @@
-import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
+import tseslint from "typescript-eslint";
 
 const config = [
   {
     ignores: [".next/**", "node_modules/**", "out/**", "dist/**"]
   },
-  ...nextCoreWebVitals,
   {
-    rules: {
-      "react-hooks/set-state-in-effect": "off"
+    plugins: {
+      "@next/next": {
+        rules: {
+          "no-img-element": {
+            meta: { type: "suggestion" },
+            create() {
+              return {};
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    files: ["**/*.{ts,tsx}"],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+        ecmaFeatures: {
+          jsx: true
+        }
+      }
     }
   }
 ];

@@ -1,13 +1,12 @@
 "use client";
 
-import { Copy, Plus, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { Copy, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { type CanvasViewportHandle } from "@/components/ui/canvas-viewport";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Chip } from "@/components/ui/chip";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
@@ -43,8 +42,6 @@ const FLOOR_MIN_HEIGHT = 600;
 const FLOOR_GRID_SIZE = 25;
 const FLOOR_CONTENT_PADDING = FLOOR_GRID_SIZE;
 const FLOOR_EDGE_INSET = FLOOR_GRID_SIZE;
-const FLOOR_LAYER_COLORS = ["#0EA5E9", "#F97316", "#10B981", "#EF4444", "#8B5CF6", "#EAB308", "#14B8A6", "#EC4899"];
-const STRUCTURE_GREY = "#6B7280";
 
 function slugify(value: string) {
   return value
@@ -102,20 +99,6 @@ function areLayoutsEqual(a: RoomLayout, b: RoomLayout) {
 
 function snapToGrid(value: number) {
   return Math.round(value / FLOOR_GRID_SIZE) * FLOOR_GRID_SIZE;
-}
-
-function toRgba(hex: string, alpha: number) {
-  const normalized = hex.replace("#", "");
-  const parsed = normalized.length === 3 ? normalized.split("").map((part) => `${part}${part}`).join("") : normalized;
-  const r = Number.parseInt(parsed.slice(0, 2), 16);
-  const g = Number.parseInt(parsed.slice(2, 4), 16);
-  const b = Number.parseInt(parsed.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function swatchDataUri(color: string) {
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><circle cx='8' cy='8' r='6' fill='${color}'/></svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
 function resolveElementType(space: FacilitySpace | null): StructureElementType {
@@ -237,7 +220,6 @@ export function FacilityStructurePanel({
   const [structureScale, setStructureScale] = useState(1);
   const [structureZoomPercent, setStructureZoomPercent] = useState(100);
   const [showFloorLayering, setShowFloorLayering] = useState(false);
-  const [dragCreateElementType, setDragCreateElementType] = useState<"room" | "structure" | null>(null);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [hoveredRoomId, setHoveredRoomId] = useState<string | null>(null);
   const [draft, setDraft] = useState<SpaceDraft>(() => toDraft(null, selectedSpace.id));
@@ -271,27 +253,6 @@ export function FacilityStructurePanel({
       .filter((space) => space.parentSpaceId === building.id && space.spaceKind === "floor" && space.status !== "archived")
       .sort((a, b) => a.sortIndex - b.sortIndex || a.name.localeCompare(b.name));
   }, [building, spaces]);
-  const floorColorById = useMemo(() => {
-    const map = new Map<string, string>();
-    floors.forEach((floor, index) => {
-      map.set(floor.id, FLOOR_LAYER_COLORS[index % FLOOR_LAYER_COLORS.length]);
-    });
-    return map;
-  }, [floors]);
-  const selectedFloorColor = floorColorById.get(selectedFloorId) ?? FLOOR_LAYER_COLORS[0];
-  const floorOptions = useMemo(
-    () =>
-      floors.map((floor) => {
-        const color = floorColorById.get(floor.id) ?? FLOOR_LAYER_COLORS[0];
-        return {
-          value: floor.id,
-          label: floor.name,
-          imageSrc: swatchDataUri(color),
-          imageAlt: `${floor.name} color`
-        };
-      }),
-    [floorColorById, floors]
-  );
 
   useEffect(() => {
     if (floors.length === 0) {
@@ -435,7 +396,6 @@ export function FacilityStructurePanel({
       .filter((floor) => floor.id !== selectedFloorId)
       .flatMap((floor) =>
         (roomsByFloorId.get(floor.id) ?? []).map((room, index) => ({
-          floorId: floor.id,
           floorName: floor.name,
           room,
           layout: getRoomLayout(room, index)
@@ -626,53 +586,6 @@ export function FacilityStructurePanel({
     setIsCreateOpen(true);
   }
 
-  function createQuickSpace(elementType: "room" | "structure", x: number, y: number) {
-    if (!canWrite || isMutating || !selectedFloor) {
-      return;
-    }
-
-    const nextIndex = rooms.length + 1;
-    const name = elementType === "structure" ? `Structure ${nextIndex}` : `Room ${nextIndex}`;
-    const slugBase = elementType === "structure" ? "structure" : "room";
-    const usedSlugs = new Set(spaces.map((space) => space.slug));
-    let slug = slugify(`${selectedFloor.slug}-${slugBase}-${nextIndex}`);
-    let slugCounter = 2;
-    while (usedSlugs.has(slug)) {
-      slug = slugify(`${selectedFloor.slug}-${slugBase}-${nextIndex}-${slugCounter}`);
-      slugCounter += 1;
-    }
-
-    const snappedX = Math.max(
-      FLOOR_EDGE_INSET,
-      Math.min(renderedCanvasSize.width - FLOOR_GRID_SIZE * 8 - FLOOR_EDGE_INSET, snapToGrid(x))
-    );
-    const snappedY = Math.max(
-      FLOOR_EDGE_INSET,
-      Math.min(renderedCanvasSize.height - FLOOR_GRID_SIZE * 5 - FLOOR_EDGE_INSET, snapToGrid(y))
-    );
-
-    onCreateSpace({
-      parentSpaceId: selectedFloor.id,
-      name,
-      slug,
-      spaceKind: elementType === "structure" ? "custom" : "room",
-      status: "open",
-      isBookable: elementType === "structure" ? false : true,
-      timezone: selectedFloor.timezone,
-      capacity: null,
-      sortIndex: rooms.length,
-      metadataJson: {
-        floorPlan: {
-          x: snappedX,
-          y: snappedY,
-          width: FLOOR_GRID_SIZE * 8,
-          height: FLOOR_GRID_SIZE * 5,
-          elementType: elementType === "structure" ? "structure" : "room"
-        }
-      }
-    });
-  }
-
   function openEditRoomPanel(room: FacilitySpace) {
     setActiveRoomId(room.id);
     setDraft(toDraft(room, room.parentSpaceId ?? selectedFloorId));
@@ -842,10 +755,21 @@ export function FacilityStructurePanel({
             <StructureCanvasShell
               addButtonAriaLabel="Add room"
               addButtonDisabled={!canWrite || isMutating || !selectedFloor}
-              bottomCenterContent={
-                <div className="flex w-[min(96vw,1040px)] items-center justify-between gap-3 rounded-control border bg-surface/95 px-3 py-2 shadow-sm">
+              bottomRightContent={
+                <div className="min-w-[220px] rounded-control border bg-surface/95 p-2 shadow-sm">
+                  <p className="mb-1 text-[11px] uppercase tracking-wide text-text-muted">Floor</p>
                   <div className="flex items-center gap-2">
-                    <Select className="h-9 w-[220px]" onChange={(event) => handleFloorChange(event.target.value)} options={floorOptions} value={selectedFloorId} />
+                    <select
+                      className="h-9 flex-1 rounded-control border border-border bg-surface px-2 text-sm text-text"
+                      onChange={(event) => handleFloorChange(event.target.value)}
+                      value={selectedFloorId}
+                    >
+                      {floors.map((floor) => (
+                        <option key={floor.id} value={floor.id}>
+                          {floor.name}
+                        </option>
+                      ))}
+                    </select>
                     <Button
                       disabled={!canWrite || isMutating || !building}
                       onClick={() => {
@@ -879,57 +803,22 @@ export function FacilityStructurePanel({
                     >
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
-                    <label className="flex items-center gap-2 text-xs text-text-muted">
-                      <Checkbox checked={showFloorLayering} onChange={(event) => setShowFloorLayering(event.target.checked)} />
-                      Layer floors
-                    </label>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="mt-2 flex items-center gap-2">
                     <Button
                       disabled={!canWrite || isMutating || !selectedFloor}
-                      draggable
-                      onClick={() => openCreateRoomPanel("room")}
-                      onDragEnd={() => setDragCreateElementType(null)}
-                      onDragStart={(event) => {
-                        setDragCreateElementType("room");
-                        event.dataTransfer.setData("text/plain", "room");
-                        event.dataTransfer.effectAllowed = "copy";
-                      }}
-                      size="sm"
-                      type="button"
-                      variant="secondary"
-                    >
-                      Room
-                    </Button>
-                    <Button
-                      disabled={!canWrite || isMutating || !selectedFloor}
-                      draggable
                       onClick={() => openCreateRoomPanel("structure")}
-                      onDragEnd={() => setDragCreateElementType(null)}
-                      onDragStart={(event) => {
-                        setDragCreateElementType("structure");
-                        event.dataTransfer.setData("text/plain", "structure");
-                        event.dataTransfer.effectAllowed = "copy";
-                      }}
                       size="sm"
                       type="button"
                       variant="ghost"
                     >
-                      Structure
+                      + Structure
                     </Button>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button onClick={() => structureCanvasRef.current?.zoomOut()} size="sm" type="button" variant="secondary">
-                      <ZoomOut className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button onClick={() => structureCanvasRef.current?.zoomIn()} size="sm" type="button" variant="secondary">
-                      <ZoomIn className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button onClick={() => structureCanvasRef.current?.fitToView()} size="sm" type="button" variant="secondary">
-                      Reset
-                    </Button>
-                    <Chip size="compact">{structureZoomPercent}%</Chip>
-                  </div>
+                  <label className="mt-2 flex items-center gap-2 text-xs text-text-muted">
+                    <Checkbox checked={showFloorLayering} onChange={(event) => setShowFloorLayering(event.target.checked)} />
+                    Layer floors
+                  </label>
                 </div>
               }
               canvasRef={structureCanvasRef}
@@ -946,7 +835,6 @@ export function FacilityStructurePanel({
                 setStructureScale(scale);
                 setStructureZoomPercent(Math.round(scale * 100));
               }}
-              hideDefaultControls
               rootHeader={
                 <div className="w-[320px] max-w-[min(84vw,320px)] rounded-control border bg-surface px-4 py-3 text-center shadow-sm">
                   <p className="text-xs uppercase tracking-wide text-text-muted">Building</p>
@@ -969,24 +857,6 @@ export function FacilityStructurePanel({
                 <div className="rounded-control bg-surface p-1 shadow-sm">
                   <div
                     className="relative overflow-hidden rounded-control border border-border bg-[linear-gradient(0deg,transparent_24px,#e5e7eb_25px),linear-gradient(90deg,transparent_24px,#e5e7eb_25px)] bg-[size:25px_25px]"
-                    onDragOver={(event) => {
-                      if (!dragCreateElementType || !canWrite || isMutating) {
-                        return;
-                      }
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "copy";
-                    }}
-                    onDrop={(event) => {
-                      if (!dragCreateElementType || !canWrite || isMutating) {
-                        return;
-                      }
-                      event.preventDefault();
-                      const rect = event.currentTarget.getBoundingClientRect();
-                      const rawX = (event.clientX - rect.left) / Math.max(0.2, structureScale) - FLOOR_GRID_SIZE * 4;
-                      const rawY = (event.clientY - rect.top) / Math.max(0.2, structureScale) - FLOOR_GRID_SIZE * 2.5;
-                      createQuickSpace(dragCreateElementType, rawX, rawY);
-                      setDragCreateElementType(null);
-                    }}
                     onPointerDown={(event) => {
                       if (event.target !== event.currentTarget) {
                         return;
@@ -1000,39 +870,39 @@ export function FacilityStructurePanel({
                       height: `${renderedCanvasSize.height}px`
                     }}
                   >
-                    {layeredRooms.map(({ floorId, room, layout }) => {
-                      const isStructuralElement = resolveElementType(room) === "structure";
-                      const layerColor = isStructuralElement ? STRUCTURE_GREY : floorColorById.get(floorId) ?? FLOOR_LAYER_COLORS[0];
-
-                      return (
-                        <div
-                          className="pointer-events-none absolute rounded-control border-[3px] border-dotted"
-                          key={`layer:${room.id}`}
-                          style={{
-                            backgroundColor: "transparent",
-                            borderColor: toRgba(layerColor, 0.65),
-                            left: `${layout.x}px`,
-                            top: `${layout.y}px`,
-                            width: `${layout.width}px`,
-                            height: `${layout.height}px`,
-                            zIndex: 0
-                          }}
-                        />
-                      );
-                    })}
+                    {layeredRooms.map(({ floorName, room, layout }) => (
+                      <div
+                        className="pointer-events-none absolute rounded-control border border-dashed border-border/40 bg-surface/35"
+                        key={`layer:${room.id}`}
+                        style={{
+                          left: `${layout.x}px`,
+                          top: `${layout.y}px`,
+                          width: `${layout.width}px`,
+                          height: `${layout.height}px`,
+                          zIndex: 0
+                        }}
+                      >
+                        <p className="truncate px-2 pt-1 text-[10px] font-medium text-text-muted" title={`${floorName} · ${room.name}`}>
+                          {floorName} - {room.name}
+                        </p>
+                      </div>
+                    ))}
                     {rooms.map((room) => {
                       const layout = layoutDraftByRoomId[room.id] ?? getRoomLayout(room, 0);
                       const isActive = activeRoomId === room.id;
                       const showControls = isActive || hoveredRoomId === room.id;
                       const elementType = resolveElementType(room);
                       const isStructuralElement = elementType === "structure";
-                      const nodeColor = isStructuralElement ? STRUCTURE_GREY : selectedFloorColor;
-                      const roomBorderColor = isActive ? nodeColor : toRgba(nodeColor, 0.8);
-                      const roomBackgroundColor = isStructuralElement ? toRgba(nodeColor, isActive ? 0.26 : 0.16) : toRgba(nodeColor, isActive ? 0.25 : 0.16);
 
                       return (
                         <div
-                          className="absolute rounded-control border px-2 py-1 shadow-sm"
+                          className={`absolute rounded-control border px-2 py-1 shadow-sm ${
+                            isActive
+                              ? "border-accent bg-accent/10"
+                              : isStructuralElement
+                                ? "border-dashed border-border/80 bg-surface/70"
+                                : "border-border bg-surface"
+                          }`}
                           key={room.id}
                           onClick={() => setActiveRoomId(room.id)}
                           onDoubleClick={() => openEditRoomPanel(room)}
@@ -1059,8 +929,6 @@ export function FacilityStructurePanel({
                             });
                           }}
                           style={{
-                            backgroundColor: roomBackgroundColor,
-                            borderColor: roomBorderColor,
                             left: `${layout.x}px`,
                             top: `${layout.y}px`,
                             width: `${layout.width}px`,
@@ -1071,13 +939,13 @@ export function FacilityStructurePanel({
                           <p className="truncate text-xs font-semibold text-text" title={room.name}>
                             {room.name}
                           </p>
-                          {room.isBookable ? (
-                            <p className="text-[11px] capitalize text-text-muted">{room.spaceKind.replace(/_/g, " ")}</p>
-                          ) : null}
+                          <p className="text-[11px] text-text-muted">
+                            {isStructuralElement ? elementType : room.isBookable ? "bookable" : "not bookable"}
+                          </p>
                           {showControls ? (
                             <>
                               <Button
-                                className="absolute bottom-1 right-1 h-6 px-2"
+                                className="absolute right-1 top-1 h-6 px-2"
                                 disabled={!canWrite || isMutating}
                                 onPointerDown={(event) => {
                                   event.preventDefault();
@@ -1095,7 +963,7 @@ export function FacilityStructurePanel({
                                 <Copy className="h-3 w-3" />
                               </Button>
                               <Button
-                                className="absolute bottom-1 right-9 h-6 px-2 text-danger"
+                                className="absolute right-9 top-1 h-6 px-2 text-danger"
                                 disabled={!canWrite || isMutating}
                                 onPointerDown={(event) => {
                                   event.preventDefault();

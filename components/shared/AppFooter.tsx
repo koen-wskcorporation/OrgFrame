@@ -5,7 +5,7 @@ export function AppFooter() {
 
   return (
     <footer className="border-t border-white/15 text-white" style={{ backgroundColor: "#000000", color: "#ffffff" }}>
-      <div className="app-shell overflow-x-auto px-6 py-4 md:px-8">
+      <div className="app-container overflow-x-auto py-4">
         <div className="flex min-w-max items-center gap-5">
           <Link className="inline-flex min-w-0 items-center pr-1" href="/">
             <span className="sr-only">Sports SaaS home</span>
@@ -21,7 +21,7 @@ export function AppFooter() {
 
           <span aria-hidden="true" className="ml-auto h-5 w-px bg-black/25" />
 
-          <p className="text-right text-sm text-white/75">{`© ${year} Koen Stewart. This app is experemental and may not behave as expected.`}</p>
+          <p className="text-right text-sm text-white/75">{`© ${year} Koen Stewart. This app is experimental and may not behave as expected.`}</p>
         </div>
       </div>
     </footer>

@@ -114,7 +114,7 @@ export function ButtonConfigDialog({
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               {mode === "edit" && onDelete ? (
-                <Button onClick={onDelete} size="sm" variant="destructive">
+                <Button className="ui-button-danger" onClick={onDelete} size="sm" variant="secondary">
                   <Trash2 className="h-4 w-4" />
                   Delete
                 </Button>

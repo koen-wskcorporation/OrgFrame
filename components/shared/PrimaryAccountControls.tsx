@@ -18,6 +18,12 @@ type HeaderAccountState =
         lastName: string | null;
         avatarUrl: string | null;
       };
+      organizations: {
+        orgId: string;
+        orgName: string;
+        orgSlug: string;
+        iconUrl: string | null;
+      }[];
     };
 
 export function PrimaryAccountControls() {
@@ -66,6 +72,7 @@ export function PrimaryAccountControls() {
         email={state.user.email}
         firstName={state.user.firstName}
         lastName={state.user.lastName}
+        organizations={state.organizations}
         signOutAction={signOutAction}
       />
     );

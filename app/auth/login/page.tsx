@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { AuthLoginPagePopup } from "@/components/auth/AuthLoginPagePopup";
 import { getSessionUser } from "@/lib/auth/getSessionUser";
 import type { AuthMode } from "@/components/auth/AuthDialog";
+import { AppPage } from "@/components/ui/layout";
 
 export const metadata: Metadata = {
   title: "Sign In"
@@ -47,8 +48,8 @@ export default async function LoginPage({
   const initialMode: AuthMode = query.mode === "signup" ? "signup" : "signin";
 
   return (
-    <main className="app-container flex min-h-[60vh] items-center justify-center py-8 md:py-10">
+    <AppPage className="flex min-h-[60vh] items-center justify-center py-8 md:py-10">
       <AuthLoginPagePopup errorMessage={errorMessage} infoMessage={infoMessage} initialMode={initialMode} nextPath={nextPath} />
-    </main>
+    </AppPage>
   );
 }

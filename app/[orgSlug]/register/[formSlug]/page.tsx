@@ -45,7 +45,7 @@ export default async function OrgFormRegistrationPage({
   }
 
   const user = await getSessionUser();
-  const requireSignIn = form.formKind === "program_registration" || form.settingsJson.requireSignIn !== false;
+  const requireSignIn = form.settingsJson.requireSignIn !== false;
 
   if (requireSignIn && !user) {
     redirect(`/auth/login?next=${encodeURIComponent(`/${org.orgSlug}/register/${form.slug}`)}`);
@@ -57,8 +57,8 @@ export default async function OrgFormRegistrationPage({
   ]);
 
   return (
-    <main className="w-full px-6 py-8 md:px-8 md:py-10">
-      <div className="space-y-6">
+    <main className="app-page-shell w-full py-8 md:py-10">
+      <div className="ui-stack-page">
         <PageHeader description={form.description ?? "Complete the form and submit registration."} title={form.name} />
 
         {form.formKind === "program_registration" && players.length === 0 ? (
@@ -68,13 +68,7 @@ export default async function OrgFormRegistrationPage({
         <Card>
           <CardHeader>
             <CardTitle>Registration form</CardTitle>
-            <CardDescription>
-              {user
-                ? `Signed in as ${user.email ?? "your account"}.`
-                : requireSignIn
-                  ? "Sign in is required to submit this form."
-                  : "You can submit without signing in."}
-            </CardDescription>
+            <CardDescription>{user ? `Signed in as ${user.email ?? "your account"}.` : "You can submit without signing in."}</CardDescription>
           </CardHeader>
           <CardContent>
             <RegistrationFormClient form={form} formSlug={form.slug} orgSlug={org.orgSlug} players={players} programNodes={programNodes} />

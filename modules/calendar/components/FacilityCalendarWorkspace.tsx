@@ -199,7 +199,6 @@ export function FacilityCalendarWorkspace({ orgSlug, canWrite, spaceId, spaceNam
 
         <UnifiedCalendar
           canEdit={canWrite}
-          disableWeekCellHover={Boolean(selectedOccurrenceId)}
           getConflictMessage={(draft) => {
             const hasOverlap = filteredItems.some((item) => {
               const start = new Date(item.startsAtUtc).getTime();

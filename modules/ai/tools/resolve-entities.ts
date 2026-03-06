@@ -45,7 +45,7 @@ type FormSubmissionRow = {
   form: { id: string; name: string; slug: string } | { id: string; name: string; slug: string }[] | null;
 };
 
-type EventRow = {
+type CalendarEntryRow = {
   id: string;
   title: string;
 };
@@ -149,7 +149,7 @@ export const resolveEntitiesTool: AiToolDefinition<typeof resolveEntitiesInputSc
       };
     }
 
-    const [governingBodies, programs, programNodes, players, forms, submissions, events] = await Promise.all([
+    const [governingBodies, programs, programNodes, players, forms, submissions, calendarEntries] = await Promise.all([
       supabase.from("governing_bodies").select("id, slug, name").order("name", { ascending: true }),
       supabase.from("programs").select("id, slug, name").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(30),
       supabase
@@ -171,7 +171,7 @@ export const resolveEntitiesTool: AiToolDefinition<typeof resolveEntitiesInputSc
         .eq("form.org_id", orgId)
         .order("created_at", { ascending: false })
         .limit(40),
-      supabase.from("org_events").select("id, title").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(30)
+      supabase.from("calendar_entries").select("id, title").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(30)
     ]);
 
     const resolutions: AiEntityResolution[] = [];
@@ -256,11 +256,11 @@ export const resolveEntitiesTool: AiToolDefinition<typeof resolveEntitiesInputSc
       );
     }
 
-    if (!events.error) {
+    if (!calendarEntries.error) {
       resolutions.push(
         toResolution({
           type: "event",
-          rows: (events.data ?? []) as EventRow[],
+          rows: (calendarEntries.data ?? []) as CalendarEntryRow[],
           freeText: input.freeText,
           getLabel: (row) => row.title,
           getSubtitle: () => null

@@ -2,7 +2,7 @@
 
 import { Sparkles } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Panel } from "@/components/ui/panel";
 import { Textarea } from "@/components/ui/textarea";
@@ -319,10 +319,10 @@ export function AiAssistantLauncher({
 
   return (
     <>
-      <button className={cn(buttonVariants({ size: buttonSize, variant: buttonVariant }), className)} onClick={() => setOpen(true)} type="button">
+      <Button className={className} onClick={() => setOpen(true)} size={buttonSize} type="button" variant={buttonVariant}>
         <Sparkles className="h-4 w-4" />
         {buttonLabel}
-      </button>
+      </Button>
 
       <Panel
         contentClassName="flex flex-col gap-4"
@@ -376,17 +376,18 @@ export function AiAssistantLauncher({
 
           <div className="flex flex-wrap gap-2">
             {suggestions.map((suggestion) => (
-              <button
-                className={buttonVariants({ size: "sm", variant: "ghost" })}
+              <Button
                 key={suggestion}
                 onClick={() => {
                   setInput(suggestion);
                   textareaRef.current?.focus();
                 }}
+                size="sm"
                 type="button"
+                variant="ghost"
               >
                 {suggestion}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -413,14 +414,15 @@ export function AiAssistantLauncher({
                 <p className="text-xs text-text-muted">{pendingProposal.proposal.ambiguity.description}</p>
                 <div className="flex flex-wrap gap-2">
                   {pendingProposal.proposal.ambiguity.candidates.map((candidate) => (
-                    <button
-                      className={buttonVariants({ size: "sm", variant: "secondary" })}
+                    <Button
                       key={candidate.key}
                       onClick={() => void resolveAmbiguity(pendingProposal.proposal.ambiguity?.key ?? "", candidate.key)}
+                      size="sm"
                       type="button"
+                      variant="secondary"
                     >
                       {candidate.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>

@@ -28,6 +28,57 @@ Early-stage Next.js App Router project for multi-tenant sports organizations.
 - Tailwind CSS semantic tokens
 - Supabase (Auth, Postgres, Storage)
 
+## Branching + Deployment Setup
+
+Use this branch strategy:
+
+- `main` = production
+- `develop` = staging/test environment
+- `feature/*` = short-lived feature branches that merge into `develop`
+
+### GitHub settings
+
+1. Keep `main` as default branch.
+2. Protect `main`:
+   - Require pull request before merge
+   - Require status checks to pass
+   - Require branches to be up to date before merging
+3. Protect `develop` with at least required status checks.
+4. CI checks for both branches are defined in `.github/workflows/ci.yml`.
+
+### Vercel settings
+
+1. Connect this repository to one Vercel project.
+2. Production branch: set to `main`.
+3. Create/confirm a Preview deployment flow for `develop` and PR branches.
+4. In Vercel Environment Variables:
+   - Production: set production Supabase keys/URLs
+   - Preview (used by `develop` and PR branches): set staging Supabase keys/URLs
+
+### Supabase settings
+
+1. Keep separate Supabase projects for production and staging.
+2. In staging Supabase Auth settings:
+   - Add staging callback URL: `https://<staging-domain>/auth/callback`
+   - Include local callback URL: `http://localhost:3000/auth/callback`
+3. In production Supabase Auth settings:
+   - Add production callback URL: `https://<production-domain>/auth/callback`
+4. Never reuse production service-role/secret keys in staging.
+
+### Local environment files
+
+- `.env.local`: local development values
+- `.env.production`: production values template/source for deployment env setup
+- `.env.staging.example`: staging values template/source for deployment env setup
+
+### Release flow
+
+1. Branch from `develop` (`feature/*`).
+2. Open PR into `develop`.
+3. Validate in staging deployment.
+4. Open PR `develop` -> `main` for release.
+5. Merge to `main` to deploy production.
+
 ## Canonical Routes
 
 Global routes:

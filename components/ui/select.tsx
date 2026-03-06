@@ -237,7 +237,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           aria-expanded={open}
           aria-haspopup="listbox"
           className={cn(
-            "flex h-10 w-full items-center justify-between gap-2 rounded-control border bg-surface px-3 py-2 text-left text-sm text-text focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-55",
+            "flex h-10 w-full items-center justify-between gap-2 rounded-control border border-border bg-surface px-3 py-2 text-left text-sm text-text shadow-[inset_0_1px_0_hsl(var(--canvas)/0.35)] transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-55",
             !selectedOption ? "text-text-muted" : "",
             className
           )}
@@ -266,8 +266,8 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         </button>
 
         {open ? (
-          <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 overflow-hidden rounded-control border bg-surface shadow-card">
-            <ul className="max-h-60 overflow-y-auto py-1" id={listboxId} role="listbox">
+          <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 overflow-hidden rounded-control border bg-surface shadow-floating">
+            <ul className="max-h-60 overflow-y-auto py-1.5" id={listboxId} role="listbox">
               {options.map((option, index) => {
                 const isSelected = option.value === selectedValue;
                 const isHighlighted = index === highlightedIndex;
@@ -277,7 +277,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                   <li aria-selected={isSelected} key={option.value} role="option">
                     <button
                       className={cn(
-                        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text",
+                        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text transition-colors",
                         itemDisabled ? "cursor-not-allowed opacity-55" : "hover:bg-surface-muted",
                         isHighlighted ? "bg-surface-muted" : ""
                       )}

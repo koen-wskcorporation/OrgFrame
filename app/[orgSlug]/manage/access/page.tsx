@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/ui/page-header";
+import { PageStack } from "@/components/ui/layout";
 import type { Metadata } from "next";
 import { getAccountsAccessPageData } from "@/modules/manage-access/actions";
 import { AccountsAccessPanel } from "@/modules/manage-access/components/AccountsAccessPanel";
@@ -12,7 +13,7 @@ export default async function OrgMembersSettingsPage({ params }: { params: Promi
   const data = await getAccountsAccessPageData(orgSlug);
 
   return (
-    <>
+    <PageStack>
       <PageHeader
         description="Invite users, assign access roles, and handle account recovery."
         showBorder={false}
@@ -27,6 +28,6 @@ export default async function OrgMembersSettingsPage({ params }: { params: Promi
         roles={data.roles}
         serviceRoleConfigured={data.serviceRoleConfigured}
       />
-    </>
+    </PageStack>
   );
 }

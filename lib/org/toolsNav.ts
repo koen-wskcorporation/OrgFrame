@@ -85,10 +85,10 @@ export function getOrgAdminNavItems(orgSlug: string): OrgAdminNavItem[] {
       showInHome: true
     },
     {
-      key: "events",
-      label: "Events",
-      href: `/${orgSlug}/tools/events`,
-      description: "Create and publish events for lists and calendar blocks.",
+      key: "calendar",
+      label: "Calendar",
+      href: `/${orgSlug}/tools/calendar`,
+      description: "Manage events, practices, games, facility bookings, and team invites.",
       icon: "calendar",
       showInHome: true
     },

@@ -173,7 +173,7 @@ export function RuleBuilderPanel({ draft, nodes: _nodes, canWrite, isSaving, onC
           </div>
         ) : null}
 
-        <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+        <label className="ui-inline-toggle">
           <Checkbox
             checked={draft.repeatEnabled}
             disabled={!canWrite}

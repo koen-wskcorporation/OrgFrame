@@ -1,15 +1,15 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { unstable_noStore as noStore } from "next/cache";
 import { Alert } from "@/components/ui/alert";
-import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
+import { PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
+import { PageTabs } from "@/components/ui/page-tabs";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { can } from "@/lib/permissions/can";
 import { getFormGoogleSheetIntegrationAction, getFormSubmissionViewsDataAction } from "@/modules/forms/actions";
-import { FormPageTabs } from "@/modules/forms/components/FormPageTabs";
 import { FormPublishToggleButton } from "@/modules/forms/components/FormPublishToggleButton";
 import { FormSubmissionsPanel } from "@/modules/forms/components/FormSubmissionsPanel";
 import { getFormById, listFormSubmissionsWithEntries } from "@/modules/forms/db/queries";
@@ -59,16 +59,16 @@ export default async function OrgManageFormSubmissionsPage({
   const statusColor = form.status === "published" ? "green" : "yellow";
 
   return (
-    <div className="space-y-6">
+    <PageStack>
       <PageHeader
         actions={
           <>
-            <Link className={buttonVariants({ variant: "secondary" })} href={`/${orgContext.orgSlug}/tools/forms`}>
+            <Button href={`/${orgContext.orgSlug}/tools/forms`} variant="secondary">
               Back to forms
-            </Link>
-            <Link className={buttonVariants({ variant: "secondary" })} href={`/${orgContext.orgSlug}/tools/forms/${form.id}/editor?panel=settings`}>
+            </Button>
+            <Button href={`/${orgContext.orgSlug}/tools/forms/${form.id}/settings`} variant="secondary">
               Settings
-            </Link>
+            </Button>
             <FormPublishToggleButton canWrite={canWriteForms} form={form} orgSlug={orgContext.orgSlug} />
           </>
         }
@@ -83,7 +83,33 @@ export default async function OrgManageFormSubmissionsPage({
           </span>
         }
       />
-      <FormPageTabs active="submissions" formId={form.id} orgSlug={orgContext.orgSlug} />
+      <PageTabs
+        active="submissions"
+        ariaLabel="Form pages"
+        items={[
+          {
+            key: "builder",
+            label: "Builder",
+            description: "Fields, pages, and logic",
+            href: `/${orgContext.orgSlug}/tools/forms/${form.id}/editor`,
+            prefetch: false
+          },
+          {
+            key: "submissions",
+            label: "Submissions",
+            description: "Review, triage, and exports",
+            href: `/${orgContext.orgSlug}/tools/forms/${form.id}/submissions`,
+            prefetch: false
+          },
+          {
+            key: "settings",
+            label: "Settings",
+            description: "Metadata, publishing, and rules",
+            href: `/${orgContext.orgSlug}/tools/forms/${form.id}/settings`,
+            prefetch: false
+          }
+        ]}
+      />
       {!canWriteForms ? <Alert variant="info">You have read-only access to submissions.</Alert> : null}
       <FormSubmissionsPanel
         canWrite={canWriteForms}
@@ -98,6 +124,6 @@ export default async function OrgManageFormSubmissionsPage({
         googleSheetIntegration={googleSheetIntegration}
         googleSheetRecentRuns={googleSheetRecentRuns}
       />
-    </div>
+    </PageStack>
   );
 }

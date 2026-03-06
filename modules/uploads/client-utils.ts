@@ -111,3 +111,115 @@ export async function readImageDimensions(file: File) {
     URL.revokeObjectURL(objectUrl);
   }
 }
+
+function clampByte(value: number) {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function toHex(value: number) {
+  return clampByte(value).toString(16).padStart(2, "0");
+}
+
+export async function extractDominantColorFromImageFile(file: File): Promise<string | null> {
+  if (!isImageFile(file)) {
+    return null;
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await new Promise<HTMLImageElement | null>((resolve) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => resolve(null);
+      element.src = objectUrl;
+    });
+
+    if (!image) {
+      return null;
+    }
+
+    const sampleSize = 64;
+    const canvas = document.createElement("canvas");
+    canvas.width = sampleSize;
+    canvas.height = sampleSize;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+
+    if (!context) {
+      return null;
+    }
+
+    context.drawImage(image, 0, 0, sampleSize, sampleSize);
+    const { data } = context.getImageData(0, 0, sampleSize, sampleSize);
+
+    const buckets = new Map<number, { weight: number; r: number; g: number; b: number; count: number }>();
+    let fallbackWeight = 0;
+    let fallbackR = 0;
+    let fallbackG = 0;
+    let fallbackB = 0;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const alpha = data[i + 3] / 255;
+      if (alpha < 0.2) {
+        continue;
+      }
+
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const saturation = max === 0 ? 0 : (max - min) / max;
+      const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+
+      const baseWeight = alpha * (1 + saturation);
+      fallbackWeight += baseWeight;
+      fallbackR += r * baseWeight;
+      fallbackG += g * baseWeight;
+      fallbackB += b * baseWeight;
+
+      if (luminance <= 0.08 || luminance >= 0.95 || saturation < 0.08) {
+        continue;
+      }
+
+      const bucketKey = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+      const bucketWeight = alpha * (1 + saturation * 1.4);
+      const existing = buckets.get(bucketKey);
+
+      if (existing) {
+        existing.weight += bucketWeight;
+        existing.r += r * bucketWeight;
+        existing.g += g * bucketWeight;
+        existing.b += b * bucketWeight;
+        existing.count += 1;
+      } else {
+        buckets.set(bucketKey, {
+          weight: bucketWeight,
+          r: r * bucketWeight,
+          g: g * bucketWeight,
+          b: b * bucketWeight,
+          count: 1
+        });
+      }
+    }
+
+    let best = Array.from(buckets.values()).sort((a, b) => b.weight - a.weight)[0];
+
+    if (best && best.weight > 0) {
+      const r = best.r / best.weight;
+      const g = best.g / best.weight;
+      const b = best.b / best.weight;
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    }
+
+    if (fallbackWeight <= 0) {
+      return null;
+    }
+
+    return `#${toHex(fallbackR / fallbackWeight)}${toHex(fallbackG / fallbackWeight)}${toHex(fallbackB / fallbackWeight)}`;
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}

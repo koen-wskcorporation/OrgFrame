@@ -303,6 +303,10 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
   const successPage = schemaPages.find((page) => page.pageKey === "generic_success" || page.pageKey === REGISTRATION_PAGE_KEYS.success);
   const flowPages = schemaPages.filter((page) => page.pageKey !== "generic_success" && page.pageKey !== REGISTRATION_PAGE_KEYS.success);
   const nodeById = useMemo(() => new Map(programNodes.map((node) => [node.id, node])), [programNodes]);
+  const hasTeamNodes = useMemo(() => programNodes.some((node) => node.nodeKind === "team"), [programNodes]);
+  const nodeLabel = hasTeamNodes ? "Division / Team" : "Division";
+  const divisionPageTitleFallback = hasTeamNodes ? "Division / Team + Questions" : "Division + Questions";
+  const divisionPageDescriptionFallback = hasTeamNodes ? "Choose divisions or teams and answer registration questions." : "Choose divisions and answer registration questions.";
 
   const [isSubmitting, startSubmitting] = useTransition();
   const [isCreatingPlayer, startCreatingPlayer] = useTransition();
@@ -792,7 +796,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
 
     if (field.type === "checkbox") {
       return (
-        <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text" key={`${keyPrefix}-${field.id}`}>
+        <label className="ui-inline-toggle" key={`${keyPrefix}-${field.id}`}>
           <Checkbox
             checked={value === true || value === "true" || value === "on"}
             onChange={(event) => onChange(field.name, event.target.checked)}
@@ -954,8 +958,12 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
         {requiresPlayers && currentPage?.pageKey === REGISTRATION_PAGE_KEYS.divisionQuestions ? (
           <div className="space-y-3 rounded-card border bg-surface p-4">
             <div>
-              <h3 className="font-semibold text-text">{getPageTitle(registrationDivisionPage, "Division + Questions")}</h3>
-              {registrationDivisionPage?.description ? <p className="text-sm text-text-muted">{registrationDivisionPage.description}</p> : null}
+              <h3 className="font-semibold text-text">{getPageTitle(registrationDivisionPage, divisionPageTitleFallback)}</h3>
+              {registrationDivisionPage?.description ? (
+                <p className="text-sm text-text-muted">{registrationDivisionPage.description}</p>
+              ) : (
+                <p className="text-sm text-text-muted">{divisionPageDescriptionFallback}</p>
+              )}
             </div>
 
             {selectedPlayerIds.length === 0 ? <Alert variant="info">Select at least one player on the previous step to continue.</Alert> : null}
@@ -972,11 +980,11 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
                 <div className="space-y-3 rounded-control border bg-surface-muted p-3" key={playerId}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-text">{player?.label ?? "Selected player"}</p>
-                    {selectedNode ? <p className="text-xs text-text-muted">Node: {selectedNode.name}</p> : null}
+                    {selectedNode ? <p className="text-xs text-text-muted">{nodeLabel}: {selectedNode.name}</p> : null}
                   </div>
 
                   {form.targetMode === "choice" ? (
-                    <FormField label="Node">
+                    <FormField label={nodeLabel}>
                       <Select
                         onChange={(event) =>
                           setSelectedNodeByPlayerId((current) => ({
@@ -1041,7 +1049,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
                 return (
                   <div className="rounded-control border bg-surface-muted px-3 py-2 text-sm text-text" key={`summary-${playerId}`}>
                     <p className="font-medium">{player?.label ?? "Selected player"}</p>
-                    <p className="text-xs text-text-muted">Node: {selectedNode ? `${selectedNode.name} (${selectedNode.nodeKind})` : "Not selected"}</p>
+                    <p className="text-xs text-text-muted">{nodeLabel}: {selectedNode ? `${selectedNode.name} (${selectedNode.nodeKind})` : "Not selected"}</p>
                   </div>
                 );
               })}

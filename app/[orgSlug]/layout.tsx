@@ -3,6 +3,7 @@ import { BrandingCssVarsBridge } from "@/components/shared/BrandingCssVarsBridge
 import { OrgHeader } from "@/components/shared/OrgHeader";
 import { applyBrandingVars } from "@/lib/branding/applyBrandingVars";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
+import { shouldShowBranchHeaders } from "@/lib/env/branchVisibility";
 import { getOrgRequestContext } from "@/lib/org/getOrgRequestContext";
 import { can } from "@/lib/permissions/can";
 import { listOrgPagesForHeader } from "@/modules/site-builder/db/queries";
@@ -46,11 +47,12 @@ export default async function OrgLayout({
     ? can(orgRequest.membership.permissions, "org.branding.write") || can(orgRequest.membership.permissions, "forms.write")
     : false;
   const showAiAssistant = Boolean(orgRequest.membership);
+  const showHeaders = shouldShowBranchHeaders();
 
   return (
     <div className="org-layout-root" style={brandingVars}>
       <BrandingCssVarsBridge vars={brandingVars as Record<string, string>} />
-      {orgRequest.membership ? (
+      {showHeaders ? (
         <OrgHeader
           canActWithAi={canActWithAi}
           canEditPages={canEditPages}
@@ -64,7 +66,7 @@ export default async function OrgLayout({
           orgSlug={orgRequest.org.orgSlug}
         />
       ) : null}
-      {children}
+      <div className="org-layout-content">{children}</div>
     </div>
   );
 }

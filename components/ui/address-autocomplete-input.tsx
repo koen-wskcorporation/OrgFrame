@@ -242,7 +242,7 @@ export function AddressAutocompleteInput({
         <input
           {...props}
           className={cn(
-            "flex h-10 w-full rounded-control border bg-surface pl-9 pr-3 py-2 text-sm text-text placeholder:text-text-muted",
+            "flex h-10 w-full rounded-control border border-border bg-surface py-2 pl-9 pr-3 text-sm text-text shadow-[inset_0_1px_0_hsl(var(--canvas)/0.35)] placeholder:text-text-muted",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas",
             "disabled:cursor-not-allowed disabled:opacity-55",
             className
@@ -262,11 +262,11 @@ export function AddressAutocompleteInput({
         />
 
         {showPredictions ? (
-          <div className="absolute z-30 mt-1 w-full rounded-control border bg-surface shadow-card">
+          <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-control border bg-surface shadow-floating">
             {predictions.map((prediction, index) => (
               <button
                 className={cn(
-                  "flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-text",
+                  "flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-text transition-colors",
                   "hover:bg-surface-muted",
                   index === activeIndex ? "bg-surface-muted" : null
                 )}

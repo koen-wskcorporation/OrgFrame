@@ -1,7 +1,7 @@
 import { getSessionUser } from "@/lib/auth/getSessionUser";
 import { getOrgRequestContext } from "@/lib/org/getOrgRequestContext";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
-import { listPublishedEventsForCatalog } from "@/modules/events/db/queries";
+import { listPublishedCalendarCatalog } from "@/modules/calendar/db/queries";
 import { listFacilityPublicAvailabilitySnapshot } from "@/modules/facilities/db/queries";
 import { listPublishedFormsForOrg } from "@/modules/forms/db/queries";
 import { listPlayersForPicker } from "@/modules/players/db/queries";
@@ -39,10 +39,10 @@ export async function getOrgSitePageForRender({
         .catch(() => [])
     : [];
 
-  const requiresEvents = pageData?.blocks.some((block) => block.type === "events") ?? false;
+  const requiresCalendar = pageData?.blocks.some((block) => block.type === "events") ?? false;
   const now = Date.now();
-  const eventsCatalogItems = requiresEvents
-    ? await listPublishedEventsForCatalog(orgRequest.org.orgId, {
+  const publicCalendarItems = requiresCalendar
+    ? await listPublishedCalendarCatalog(orgRequest.org.orgId, {
         fromUtc: new Date(now - 1825 * 24 * 60 * 60 * 1000).toISOString(),
         toUtc: new Date(now + 1825 * 24 * 60 * 60 * 1000).toISOString(),
         limit: 2000
@@ -81,7 +81,8 @@ export async function getOrgSitePageForRender({
 
   const runtimeData = {
     programCatalogItems,
-    eventsCatalogItems,
+    publicCalendarItems,
+    eventsCatalogItems: publicCalendarItems,
     facilityAvailability,
     formEmbed: requiresFormEmbed
       ? {

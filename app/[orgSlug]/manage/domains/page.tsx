@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { getPlatformHost } from "@/lib/domains/customDomains";
@@ -64,7 +65,7 @@ export default async function OrgManageDomainsPage({
   const statusMessage = customDomain ? statusMessageByCode[customDomain.status] ?? "Pending verification" : null;
 
   return (
-    <>
+    <PageStack>
       <PageHeader
         description="Connect a domain you own to this organization and publish the DNS records needed for routing."
         showBorder={false}
@@ -119,7 +120,7 @@ export default async function OrgManageDomainsPage({
                   </Button>
                 </form>
                 <form action={removeOrgCustomDomainAction.bind(null, orgSlug)}>
-                  <Button type="submit" variant="destructive">
+                  <Button className="ui-button-danger" type="submit" variant="secondary">
                     Remove domain
                   </Button>
                 </form>
@@ -135,31 +136,31 @@ export default async function OrgManageDomainsPage({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">CNAME Target</p>
-              <p className="break-all text-sm text-text">{platformHost}</p>
+              <p className="ui-kv-label">CNAME Target</p>
+              <p className="ui-kv-value break-all">{platformHost}</p>
             </div>
 
             {customDomain ? (
               <>
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Recommended CNAME Host</p>
-                  <p className="break-all text-sm text-text">{customDomain.domain}</p>
+                  <p className="ui-kv-label">Recommended CNAME Host</p>
+                  <p className="ui-kv-value break-all">{customDomain.domain}</p>
                 </div>
 
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Verification TXT Host</p>
-                  <p className="break-all text-sm text-text">{verificationHost}</p>
+                  <p className="ui-kv-label">Verification TXT Host</p>
+                  <p className="ui-kv-value break-all">{verificationHost}</p>
                 </div>
 
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Verification TXT Value</p>
-                  <p className="break-all text-sm text-text">{customDomain.verification_token}</p>
+                  <p className="ui-kv-label">Verification TXT Value</p>
+                  <p className="ui-kv-value break-all">{customDomain.verification_token}</p>
                 </div>
 
                 {customDomain.verified_at ? (
                   <div className="space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Verified At</p>
-                    <p className="break-all text-sm text-text">{new Date(customDomain.verified_at).toLocaleString()}</p>
+                    <p className="ui-kv-label">Verified At</p>
+                    <p className="ui-kv-value break-all">{new Date(customDomain.verified_at).toLocaleString()}</p>
                   </div>
                 ) : null}
 
@@ -176,6 +177,6 @@ export default async function OrgManageDomainsPage({
           </CardContent>
         </Card>
       </div>
-    </>
+    </PageStack>
   );
 }

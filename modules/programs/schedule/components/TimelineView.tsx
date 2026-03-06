@@ -78,7 +78,7 @@ export function TimelineView({ occurrences, canWrite, isMutating, onEditOccurren
                 <div className="min-w-0 space-y-1">
                   <p className="truncate text-sm font-semibold text-text">{occurrence.title || "Program session"}</p>
                   <p className="text-xs text-text-muted">{formatLine(occurrence)}</p>
-                  <Chip color={sourceColor(occurrence.sourceType)} size="small">
+                  <Chip color={sourceColor(occurrence.sourceType)}>
                     {occurrence.sourceType}
                   </Chip>
                 </div>

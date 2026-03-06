@@ -4,6 +4,7 @@ import { ChevronDown, Menu, PanelLeftClose, PanelLeftOpen, type LucideIcon } fro
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Chip } from "@/components/ui/chip";
+import { IconButton } from "@/components/ui/icon-button";
 import { NavItem } from "@/components/ui/nav-item";
 import { cn } from "@/lib/utils";
 
@@ -140,7 +141,7 @@ function shouldAutoCollapse(pathname: string, config: OrgAreaSidebarConfig) {
 }
 
 function SoonBadge() {
-  return <Chip className="normal-case tracking-normal" color="neutral" size="small">Soon</Chip>;
+  return <Chip className="normal-case tracking-normal" color="neutral">Soon</Chip>;
 }
 
 export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }: OrgAreaSidebarNavProps) {
@@ -273,26 +274,19 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
   return (
     <aside
       className={cn(
-        "rounded-card border border-border bg-surface transition-[width,padding] duration-200",
-        mobile ? "p-4 shadow-card" : collapsed ? "w-20 p-3 shadow-floating" : "w-[280px] p-4 shadow-floating"
+        "border border-border bg-surface transition-[width,padding,border-radius] duration-200",
+        mobile ? "rounded-card p-4 shadow-card" : collapsed ? "w-20 rounded-card p-4 shadow-card" : "w-[280px] rounded-card p-4 shadow-card"
       )}
     >
       {showHeader && !collapsed ? (
         <>
           <header className="flex min-h-[44px] items-start justify-between gap-3">
             <div>
-              <h2 className="text-[18px] font-bold leading-tight tracking-tight text-text">{config.title}</h2>
-              <p className="mt-1 text-[12px] text-text-muted">{config.subtitle}</p>
+              <h2 className="text-base font-semibold leading-tight tracking-tight text-text">{config.title}</h2>
+              <p className="mt-1 text-xs text-text-muted">{config.subtitle}</p>
             </div>
             {canCollapse ? (
-              <button
-                aria-label="Collapse sidebar"
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-control border border-border bg-surface-muted text-text-muted transition-colors hover:bg-surface hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-                onClick={() => setCollapsed(true)}
-                type="button"
-              >
-                <PanelLeftClose className="h-4 w-4" />
-              </button>
+              <IconButton icon={<PanelLeftClose />} label="Collapse sidebar" onClick={() => setCollapsed(true)} />
             ) : null}
           </header>
 
@@ -303,14 +297,7 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
       {showHeader && collapsed && canCollapse ? (
         <>
           <header className="flex min-h-[44px] items-center justify-center">
-            <button
-              aria-label="Expand sidebar"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-control border border-border bg-surface-muted text-text-muted transition-colors hover:bg-surface hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-              onClick={() => setCollapsed(false)}
-              type="button"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
+            <IconButton icon={<PanelLeftOpen />} label="Expand sidebar" onClick={() => setCollapsed(false)} />
           </header>
 
           <div className="my-3 border-t border-border" />
@@ -381,7 +368,7 @@ export function OrgAreaSidebarNavMobile({ config }: OrgAreaSidebarNavMobileProps
     <div className="lg:hidden">
       <button
         aria-expanded={open}
-        className="flex h-10 w-full items-center justify-between rounded-control border border-border bg-surface-muted px-3 text-sm font-semibold text-text transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+        className="flex h-10 w-full items-center justify-between rounded-control border border-border bg-surface px-3 text-sm font-semibold text-text transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
         onClick={() => setOpen((current) => !current)}
         type="button"
       >

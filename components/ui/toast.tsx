@@ -219,7 +219,7 @@ function ToastViewport({ toasts }: { toasts: ToastItem[] }) {
           <section
             aria-live={variant === "destructive" ? "assertive" : "polite"}
             className={cn(
-              "pointer-events-auto relative overflow-hidden rounded-card border bg-surface p-4 shadow-card transition-all duration-200",
+              "pointer-events-auto relative overflow-hidden rounded-card border bg-surface p-4 shadow-floating transition-all duration-200",
               item.open ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
             )}
             key={item.id}
@@ -229,9 +229,9 @@ function ToastViewport({ toasts }: { toasts: ToastItem[] }) {
 
             <div className="space-y-3 pl-3">
               <div className="space-y-1">
-                <p className={cn("text-xs font-semibold tracking-wide", variantStyle.badge)}>{variant}</p>
+                <p className={cn("text-[11px] font-semibold uppercase tracking-wide", variantStyle.badge)}>{variant}</p>
                 <p className="text-sm font-semibold text-text">{item.title}</p>
-                {item.description ? <p className="text-sm text-text-muted">{item.description}</p> : null}
+                {item.description ? <p className="text-sm leading-relaxed text-text-muted">{item.description}</p> : null}
               </div>
 
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">

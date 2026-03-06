@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Alert } from "@/components/ui/alert";
-import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
@@ -42,8 +42,8 @@ export default async function OrgProgramsCatalogPage({ params }: { params: Promi
   const programs = await listPublishedProgramsForCatalog(org.orgId);
 
   return (
-    <main className="w-full px-6 py-8 md:px-8 md:py-10">
-      <div className="space-y-6">
+    <main className="app-page-shell w-full py-8 md:py-10">
+      <div className="ui-stack-page">
         <PageHeader description="Browse active programs and open registration details." title="Programs" />
 
         {programs.length === 0 ? <Alert variant="info">No published programs yet.</Alert> : null}
@@ -67,9 +67,9 @@ export default async function OrgProgramsCatalogPage({ params }: { params: Promi
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="text-sm text-text-muted">{program.description ?? "Program details are available on the next page."}</p>
-                <Link className={buttonVariants({ variant: "secondary" })} href={`/${org.orgSlug}/programs/${program.slug}`}>
+                <Button href={`/${org.orgSlug}/programs/${program.slug}`} variant="secondary">
                   View program
-                </Link>
+                </Button>
               </CardContent>
             </Card>
           ))}

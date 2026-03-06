@@ -5,14 +5,12 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { UnifiedCalendar, type UnifiedCalendarQuickAddDraft } from "@/components/calendar/UnifiedCalendar";
 import {
   createCalendarEntryAction,
   createManualOccurrenceAction,
-  deleteCalendarEntryAction,
   getCalendarWorkspaceDataAction,
   inviteTeamToOccurrenceAction,
   setOccurrenceStatusAction,
@@ -260,7 +258,6 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
 
         <UnifiedCalendar
           canEdit={canWrite}
-          disableWeekCellHover={Boolean(selectedOccurrenceId)}
           filterSlot={null}
           getConflictMessage={(draft) => {
             const hasOverlap = calendarItems.some((item) => {
@@ -284,172 +281,140 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
           onQuickAdd={createFromDraft}
           onResizeItem={(input) => resizeOccurrence(input.itemId, input.endsAtUtc)}
           onSelectItem={setSelectedOccurrenceId}
-        />
-        <Panel
-          footer={
-            <>
-              <Button onClick={() => setSelectedOccurrenceId(null)} type="button" variant="ghost">
-                Close
-              </Button>
-              {selectedEntry ? (
-                <Button
-                  className="ui-button-danger"
-                  disabled={!canWrite}
-                  onClick={() => {
-                    const confirmed = window.confirm("Delete this calendar entry and all linked occurrences?");
-                    if (!confirmed) {
-                      return;
-                    }
+          sidePanelSlot={
+            selectedOccurrence && selectedEntry ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{selectedEntry.title}</CardTitle>
+                  <CardDescription>
+                    {selectedEntry.entryType} · {selectedOccurrence.status}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-text-muted">
+                    {new Date(selectedOccurrence.startsAtUtc).toLocaleString()} - {new Date(selectedOccurrence.endsAtUtc).toLocaleString()}
+                  </p>
 
-                    startSaving(async () => {
-                      const result = await deleteCalendarEntryAction({
-                        orgSlug,
-                        entryId: selectedEntry.id
-                      });
+                  {selectedEntry.entryType === "practice" ? (
+                    <div className="space-y-2 rounded-control border p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Invite team</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select
+                          onChange={(event) => setInviteTeamId(event.target.value)}
+                          options={activeTeams.map((team) => ({ label: team.label, value: team.id }))}
+                          value={inviteTeamId}
+                        />
+                        <Button
+                          disabled={!canWrite || !inviteTeamId}
+                          onClick={() => {
+                            startSaving(async () => {
+                              const result = await inviteTeamToOccurrenceAction({
+                                orgSlug,
+                                occurrenceId: selectedOccurrence.id,
+                                teamId: inviteTeamId
+                              });
 
-                      if (!result.ok) {
-                        toast({
-                          title: "Unable to delete entry",
-                          description: result.error,
-                          variant: "destructive"
-                        });
-                        return;
-                      }
+                              if (!result.ok) {
+                                toast({
+                                  title: "Unable to invite team",
+                                  description: result.error,
+                                  variant: "destructive"
+                                });
+                                return;
+                              }
 
-                      setSelectedOccurrenceId(null);
-                      refreshWorkspace("Calendar entry deleted");
-                    });
-                  }}
-                  type="button"
-                  variant="secondary"
-                >
-                  Delete entry
-                </Button>
-              ) : null}
-            </>
-          }
-          onClose={() => setSelectedOccurrenceId(null)}
-          open={Boolean(selectedOccurrence && selectedEntry)}
-          subtitle={selectedOccurrence && selectedEntry ? `${selectedEntry.entryType} · ${selectedOccurrence.status}` : undefined}
-          title={selectedEntry?.title ?? "Details"}
-        >
-          {selectedOccurrence && selectedEntry ? (
-            <div className="space-y-3">
-              <p className="text-sm text-text-muted">
-                {new Date(selectedOccurrence.startsAtUtc).toLocaleString()} - {new Date(selectedOccurrence.endsAtUtc).toLocaleString()}
-              </p>
+                              refreshWorkspace("Invite sent");
+                            });
+                          }}
+                          size="sm"
+                          type="button"
+                        >
+                          Send invite
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
 
-              {selectedEntry.entryType === "practice" ? (
-                <div className="space-y-2 rounded-control border p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Invite team</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Select
-                      onChange={(event) => setInviteTeamId(event.target.value)}
-                      options={activeTeams.map((team) => ({ label: team.label, value: team.id }))}
-                      value={inviteTeamId}
-                    />
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Teams</p>
+                    {selectedInvites.length === 0 ? <p className="text-sm text-text-muted">No team participants.</p> : null}
+                    {selectedInvites.map((invite) => (
+                      <div className="rounded-control border bg-surface px-2 py-1 text-xs" key={invite.id}>
+                        {invite.teamId} · {invite.role} · {invite.inviteStatus}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
                     <Button
-                      disabled={!canWrite || !inviteTeamId}
+                      disabled={!canWrite || selectedOccurrence.status === "cancelled"}
                       onClick={() => {
                         startSaving(async () => {
-                          const result = await inviteTeamToOccurrenceAction({
+                          const result = await setOccurrenceStatusAction({
                             orgSlug,
                             occurrenceId: selectedOccurrence.id,
-                            teamId: inviteTeamId
+                            status: "cancelled"
                           });
 
                           if (!result.ok) {
                             toast({
-                              title: "Unable to invite team",
+                              title: "Unable to cancel occurrence",
                               description: result.error,
                               variant: "destructive"
                             });
                             return;
                           }
 
-                          refreshWorkspace("Invite sent");
+                          refreshWorkspace("Occurrence cancelled");
                         });
                       }}
                       size="sm"
                       type="button"
+                      variant="ghost"
                     >
-                      Send invite
+                      Cancel occurrence
+                    </Button>
+                    <Button
+                      disabled={!canWrite || selectedOccurrence.status === "scheduled"}
+                      onClick={() => {
+                        startSaving(async () => {
+                          const result = await setOccurrenceStatusAction({
+                            orgSlug,
+                            occurrenceId: selectedOccurrence.id,
+                            status: "scheduled"
+                          });
+
+                          if (!result.ok) {
+                            toast({
+                              title: "Unable to restore occurrence",
+                              description: result.error,
+                              variant: "destructive"
+                            });
+                            return;
+                          }
+
+                          refreshWorkspace("Occurrence restored");
+                        });
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      Restore occurrence
                     </Button>
                   </div>
-                </div>
-              ) : null}
-
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Teams</p>
-                {selectedInvites.length === 0 ? <p className="text-sm text-text-muted">No team participants.</p> : null}
-                {selectedInvites.map((invite) => (
-                  <div className="rounded-control border bg-surface px-2 py-1 text-xs" key={invite.id}>
-                    {invite.teamId} · {invite.role} · {invite.inviteStatus}
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  disabled={!canWrite || selectedOccurrence.status === "cancelled"}
-                  onClick={() => {
-                    startSaving(async () => {
-                      const result = await setOccurrenceStatusAction({
-                        orgSlug,
-                        occurrenceId: selectedOccurrence.id,
-                        status: "cancelled"
-                      });
-
-                      if (!result.ok) {
-                        toast({
-                          title: "Unable to cancel occurrence",
-                          description: result.error,
-                          variant: "destructive"
-                        });
-                        return;
-                      }
-
-                      refreshWorkspace("Occurrence cancelled");
-                    });
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  Cancel occurrence
-                </Button>
-                <Button
-                  disabled={!canWrite || selectedOccurrence.status === "scheduled"}
-                  onClick={() => {
-                    startSaving(async () => {
-                      const result = await setOccurrenceStatusAction({
-                        orgSlug,
-                        occurrenceId: selectedOccurrence.id,
-                        status: "scheduled"
-                      });
-
-                      if (!result.ok) {
-                        toast({
-                          title: "Unable to restore occurrence",
-                          description: result.error,
-                          variant: "destructive"
-                        });
-                        return;
-                      }
-
-                      refreshWorkspace("Occurrence restored");
-                    });
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  Restore occurrence
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </Panel>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Details</CardTitle>
+                  <CardDescription>Select a calendar item to manage invites and status.</CardDescription>
+                </CardHeader>
+              </Card>
+            )
+          }
+        />
       </CardContent>
     </Card>
   );

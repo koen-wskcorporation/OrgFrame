@@ -7,6 +7,7 @@ import { requireOrgPermission } from "@/lib/permissions/requireOrgPermission";
 import { createEventRecord, deleteEventRecord, getEventById, updateEventRecord } from "@/modules/events/db/queries";
 import type { EventStatus } from "@/modules/events/types";
 
+// Deprecated: replaced by modules/calendar/actions.ts and new /tools/calendar surfaces.
 const textSchema = z.string().trim();
 const isoDateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
 

@@ -528,6 +528,28 @@ export async function setFormSubmissionStatus(input: { orgId: string; submission
     .eq("org_id", input.orgId)
     .eq("submission_id", input.submissionId);
 
+  const { data: registrations, error: registrationError } = await supabase
+    .from("program_registrations")
+    .select("id")
+    .eq("org_id", input.orgId)
+    .eq("submission_id", input.submissionId);
+
+  if (!registrationError) {
+    const registrationIds = (registrations ?? []).map((row) => row.id).filter(Boolean);
+    if (registrationIds.length > 0) {
+      const teamStatus =
+        input.status === "approved"
+          ? "active"
+          : input.status === "waitlisted"
+            ? "waitlisted"
+            : input.status === "submitted" || input.status === "in_review"
+              ? "pending"
+              : "removed";
+
+      await supabase.from("program_team_members").update({ status: teamStatus }).in("registration_id", registrationIds);
+    }
+  }
+
   return mapSubmission(data as SubmissionRow);
 }
 

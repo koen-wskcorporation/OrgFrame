@@ -140,7 +140,6 @@ export function TeamCalendarWorkspace({ orgSlug, teamId, canWrite, initialReadMo
 
         <UnifiedCalendar
           canEdit={canWrite}
-          disableWeekCellHover={Boolean(selectedOccurrenceId)}
           items={items}
           onCreateRange={(range) =>
             quickAddTeamPractice({

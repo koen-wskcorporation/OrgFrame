@@ -1,6 +1,7 @@
 import { createSupabaseServer } from "@/lib/supabase/server";
 import type { EventCatalogItem, EventStatus, OrgEvent } from "@/modules/events/types";
 
+// Deprecated: legacy org_events read/write helpers retained temporarily for rollback safety.
 const eventSelect =
   "id, org_id, title, summary, location, timezone, status, is_all_day, all_day_start_date, all_day_end_date, starts_at_utc, ends_at_utc, settings_json, created_by, created_at, updated_at";
 

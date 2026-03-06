@@ -145,3 +145,69 @@ export type ProgramScheduleException = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type ProgramTeamStatus = "active" | "archived";
+export type ProgramTeamMemberStatus = "active" | "pending" | "waitlisted" | "removed";
+export type ProgramTeamMemberRole = "player" | "alternate" | "guest";
+export type ProgramTeamStaffRole = "head_coach" | "assistant_coach" | "manager" | "trainer" | "volunteer";
+
+export type ProgramTeam = {
+  id: string;
+  orgId: string;
+  programId: string;
+  programNodeId: string;
+  status: ProgramTeamStatus;
+  teamCode: string | null;
+  levelLabel: string | null;
+  ageGroup: string | null;
+  gender: string | null;
+  colorPrimary: string | null;
+  colorSecondary: string | null;
+  homeFacilityId: string | null;
+  notes: string | null;
+  settingsJson: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProgramTeamMember = {
+  id: string;
+  teamId: string;
+  orgId: string;
+  programId: string;
+  playerId: string;
+  registrationId: string | null;
+  status: ProgramTeamMemberStatus;
+  role: ProgramTeamMemberRole;
+  jerseyNumber: string | null;
+  position: string | null;
+  notes: string | null;
+  assignedByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProgramTeamStaff = {
+  id: string;
+  teamId: string;
+  orgId: string;
+  programId: string;
+  userId: string;
+  role: ProgramTeamStaffRole;
+  isPrimary: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProgramTeamSummary = {
+  team: ProgramTeam;
+  node: {
+    id: string;
+    name: string;
+    slug: string;
+    parentId: string | null;
+  };
+  memberCount: number;
+  staffCount: number;
+};

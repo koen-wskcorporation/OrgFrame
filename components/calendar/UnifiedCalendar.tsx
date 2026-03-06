@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,6 @@ type UnifiedCalendarProps = {
   items: UnifiedCalendarItem[];
   initialView?: UnifiedCalendarView;
   canEdit?: boolean;
-  disableWeekCellHover?: boolean;
   onSelectItem?: (itemId: string) => void;
   onCreateRange?: (input: { startsAtUtc: string; endsAtUtc: string }) => void;
   onMoveItem?: (input: { itemId: string; startsAtUtc: string; endsAtUtc: string }) => void;
@@ -118,28 +117,6 @@ const WEEK_TIME_GUTTER_WIDTH_PX = 80;
 const WEEK_DAY_WIDTH_PX = 180;
 const WEEK_HOUR_HEIGHT_PX = 56;
 const DRAFT_ITEM_ID = "__calendar_draft__";
-const OPTIMISTIC_WINDOW_TTL_MS = 8_000;
-const PENDING_CREATE_TTL_MS = 12_000;
-
-type OptimisticWindow = {
-  startsAtUtc: string;
-  endsAtUtc: string;
-  expiresAt: number;
-};
-
-type PendingCreateItem = {
-  item: UnifiedCalendarItem;
-  expiresAt: number;
-};
-
-type WeekDragState = {
-  kind: "move" | "resize_top" | "resize_bottom";
-  itemId: string;
-  originalStartsAtUtc: string;
-  originalEndsAtUtc: string;
-  originClientX: number;
-  originClientY: number;
-};
 
 function toLocalInputValue(isoUtc: string) {
   const date = new Date(isoUtc);
@@ -162,7 +139,6 @@ export function UnifiedCalendar({
   items,
   initialView = "month",
   canEdit = true,
-  disableWeekCellHover = false,
   onSelectItem,
   onCreateRange,
   onMoveItem,
@@ -182,21 +158,17 @@ export function UnifiedCalendar({
   const [quickAddTitle, setQuickAddTitle] = useState("");
   const [quickAddStartsAtUtc, setQuickAddStartsAtUtc] = useState(() => startOfDay(new Date()).toISOString());
   const [quickAddEndsAtUtc, setQuickAddEndsAtUtc] = useState(() => endOfDay(new Date()).toISOString());
-  const [hoveredWeekCell, setHoveredWeekCell] = useState<{ dayIndex: number; hourIndex: number } | null>(null);
-  const [optimisticWindows, setOptimisticWindows] = useState<Record<string, OptimisticWindow>>({});
-  const [pendingCreates, setPendingCreates] = useState<PendingCreateItem[]>([]);
-  const [weekDrag, setWeekDrag] = useState<WeekDragState | null>(null);
-  const weekScrollRef = useRef<HTMLDivElement | null>(null);
-  const weekScrollCenteredRef = useRef(false);
+  const [resizeDrag, setResizeDrag] = useState<{
+    itemId: string;
+    edge: "top" | "bottom";
+    originY: number;
+    startsAtUtc: string;
+    endsAtUtc: string;
+  } | null>(null);
 
   const monthAnchor = startOfMonth(anchorDate);
   const monthGridStart = startOfWeek(monthAnchor);
   const monthDays = useMemo(() => Array.from({ length: 42 }, (_, index) => addDays(monthGridStart, index)), [monthGridStart]);
-  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(anchorDate), index)), [anchorDate]);
-  const weekGridWidth = weekDays.length * WEEK_DAY_WIDTH_PX;
-  const weekGridHeight = HOURS.length * WEEK_HOUR_HEIGHT_PX;
-  const draftOptimisticWindow = optimisticWindows[DRAFT_ITEM_ID];
-  const hourLabels = useMemo(() => HOURS.map((hour) => new Date(2000, 0, 1, hour).toLocaleTimeString([], { hour: "numeric" })), []);
   const draftItem = useMemo<UnifiedCalendarItem | null>(() => {
     if (!quickAddOpen) {
       return null;
@@ -207,110 +179,12 @@ export function UnifiedCalendar({
       title: quickAddTitle.trim() || "New event",
       entryType: "event",
       status: "scheduled",
-      startsAtUtc: draftOptimisticWindow?.startsAtUtc ?? quickAddStartsAtUtc,
-      endsAtUtc: draftOptimisticWindow?.endsAtUtc ?? quickAddEndsAtUtc,
+      startsAtUtc: quickAddStartsAtUtc,
+      endsAtUtc: quickAddEndsAtUtc,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
     };
-  }, [draftOptimisticWindow?.endsAtUtc, draftOptimisticWindow?.startsAtUtc, quickAddEndsAtUtc, quickAddOpen, quickAddStartsAtUtc, quickAddTitle]);
-  const displayItems = useMemo(() => {
-    const mergedItems = items.map((item) => {
-      const optimistic = optimisticWindows[item.id];
-      if (!optimistic) {
-        return item;
-      }
-      return {
-        ...item,
-        startsAtUtc: optimistic.startsAtUtc,
-        endsAtUtc: optimistic.endsAtUtc
-      };
-    });
-
-    const nextItems = [...mergedItems, ...pendingCreates.map((entry) => entry.item)];
-    if (draftItem) {
-      nextItems.push(draftItem);
-    }
-    return nextItems;
-  }, [draftItem, items, optimisticWindows, pendingCreates]);
-
-  const weekItemsByDay = useMemo(() => {
-    const map = new Map<string, UnifiedCalendarItem[]>();
-    for (const day of weekDays) {
-      map.set(dateKey(day), []);
-    }
-
-    for (const item of displayItems) {
-      for (const day of weekDays) {
-        if (!intersectsDay(item.startsAtUtc, item.endsAtUtc, day)) {
-          continue;
-        }
-        const key = dateKey(day);
-        const list = map.get(key);
-        if (list) {
-          list.push(item);
-        } else {
-          map.set(key, [item]);
-        }
-      }
-    }
-
-    for (const [key, dayItemsForKey] of map.entries()) {
-      map.set(
-        key,
-        dayItemsForKey.sort((left, right) => left.startsAtUtc.localeCompare(right.startsAtUtc))
-      );
-    }
-
-    return map;
-  }, [displayItems, weekDays]);
-
-  const weekPositionedItems = useMemo(() => {
-    const positioned: Array<{
-      item: UnifiedCalendarItem;
-      dayIndex: number;
-      top: number;
-      left: number;
-      width: number;
-      height: number;
-      startsLabel: string;
-      key: string;
-    }> = [];
-
-    for (let dayIndex = 0; dayIndex < weekDays.length; dayIndex += 1) {
-      const day = weekDays[dayIndex];
-      if (!day) {
-        continue;
-      }
-      const dayStart = startOfDay(day);
-      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
-      const dayItemList = weekItemsByDay.get(dateKey(day)) ?? [];
-
-      for (const item of dayItemList) {
-        const itemStart = new Date(item.startsAtUtc);
-        const itemEnd = new Date(item.endsAtUtc);
-        const clampedStartMs = Math.max(itemStart.getTime(), dayStart.getTime());
-        const clampedEndMs = Math.min(itemEnd.getTime(), dayEnd.getTime());
-        const startMinutes = (clampedStartMs - dayStart.getTime()) / (60 * 1000);
-        const endMinutes = (clampedEndMs - dayStart.getTime()) / (60 * 1000);
-        const top = (startMinutes / 60) * WEEK_HOUR_HEIGHT_PX + 1;
-        const height = Math.max(((endMinutes - startMinutes) / 60) * WEEK_HOUR_HEIGHT_PX - 2, 18);
-        const left = dayIndex * WEEK_DAY_WIDTH_PX + 2;
-        const width = WEEK_DAY_WIDTH_PX - 4;
-
-        positioned.push({
-          item,
-          dayIndex,
-          top,
-          left,
-          width,
-          height,
-          startsLabel: itemStart.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
-          key: `${dayIndex}-${item.id}`
-        });
-      }
-    }
-
-    return positioned;
-  }, [weekDays, weekItemsByDay]);
+  }, [quickAddEndsAtUtc, quickAddOpen, quickAddStartsAtUtc, quickAddTitle]);
+  const displayItems = useMemo(() => (draftItem ? [...items, draftItem] : items), [draftItem, items]);
 
   const itemsByDay = useMemo(() => {
     const map = new Map<string, UnifiedCalendarItem[]>();
@@ -343,138 +217,6 @@ export function UnifiedCalendar({
           endsAtUtc: quickAddEndsAtUtc
         })
       : null;
-  const canShowWeekCellHover = !disableWeekCellHover && !quickAddOpen && !weekDrag;
-
-  useEffect(() => {
-    if (view !== "week") {
-      weekScrollCenteredRef.current = false;
-      return;
-    }
-
-    if (weekScrollCenteredRef.current) {
-      return;
-    }
-
-    const node = weekScrollRef.current;
-    if (!node) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      const noonOffset = 12 * WEEK_HOUR_HEIGHT_PX;
-      const centeredTop = Math.max(0, noonOffset - node.clientHeight / 2);
-      node.scrollTop = centeredTop;
-      weekScrollCenteredRef.current = true;
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [view, weekGridHeight]);
-
-  function applyOptimisticWindow(itemId: string, startsAtUtc: string, endsAtUtc: string) {
-    setOptimisticWindows((current) => {
-      const existing = current[itemId];
-      if (existing && existing.startsAtUtc === startsAtUtc && existing.endsAtUtc === endsAtUtc) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [itemId]: {
-          startsAtUtc,
-          endsAtUtc,
-          expiresAt: Date.now() + OPTIMISTIC_WINDOW_TTL_MS
-        }
-      };
-    });
-  }
-
-  useEffect(() => {
-    if (Object.keys(optimisticWindows).length === 0) {
-      return;
-    }
-
-    const now = Date.now();
-    let changed = false;
-    const next: Record<string, OptimisticWindow> = {};
-
-    for (const [itemId, optimistic] of Object.entries(optimisticWindows)) {
-      if (optimistic.expiresAt <= now) {
-        changed = true;
-        continue;
-      }
-      const source = items.find((item) => item.id === itemId);
-      if (source && source.startsAtUtc === optimistic.startsAtUtc && source.endsAtUtc === optimistic.endsAtUtc) {
-        changed = true;
-        continue;
-      }
-      next[itemId] = optimistic;
-    }
-
-    if (changed) {
-      setOptimisticWindows(next);
-    }
-  }, [items, optimisticWindows]);
-
-  useEffect(() => {
-    if (pendingCreates.length === 0) {
-      return;
-    }
-
-    const now = Date.now();
-    let changed = false;
-    const next = pendingCreates.filter((entry) => {
-      if (entry.expiresAt <= now) {
-        changed = true;
-        return false;
-      }
-
-      const matched = items.some((item) => {
-        const sameTitle = item.title.trim().toLowerCase() === entry.item.title.trim().toLowerCase();
-        if (!sameTitle) {
-          return false;
-        }
-        const startDelta = Math.abs(new Date(item.startsAtUtc).getTime() - new Date(entry.item.startsAtUtc).getTime());
-        const endDelta = Math.abs(new Date(item.endsAtUtc).getTime() - new Date(entry.item.endsAtUtc).getTime());
-        return startDelta < 60_000 && endDelta < 60_000;
-      });
-
-      if (matched) {
-        changed = true;
-        return false;
-      }
-
-      return true;
-    });
-
-    if (changed) {
-      setPendingCreates(next);
-    }
-  }, [items, pendingCreates]);
-
-  useEffect(() => {
-    if (Object.keys(optimisticWindows).length === 0 && pendingCreates.length === 0) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      const now = Date.now();
-      setOptimisticWindows((current) => {
-        const next: Record<string, OptimisticWindow> = {};
-        for (const [itemId, optimistic] of Object.entries(current)) {
-          if (optimistic.expiresAt > now) {
-            next[itemId] = optimistic;
-          }
-        }
-        return Object.keys(next).length === Object.keys(current).length ? current : next;
-      });
-      setPendingCreates((current) => {
-        const next = current.filter((entry) => entry.expiresAt > now);
-        return next.length === current.length ? current : next;
-      });
-    }, 1_000);
-
-    return () => window.clearInterval(intervalId);
-  }, [optimisticWindows, pendingCreates.length]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -511,142 +253,46 @@ export function UnifiedCalendar({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [anchorDate, view]);
 
-  function calculateWeekDragWindow(drag: WeekDragState, clientX: number, clientY: number): { startsAtUtc: string; endsAtUtc: string } | null {
-    const startMs = new Date(drag.originalStartsAtUtc).getTime();
-    const endMs = new Date(drag.originalEndsAtUtc).getTime();
-    if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) {
-      return null;
-    }
-
-    const deltaYMinutes = Math.round((((clientY - drag.originClientY) / WEEK_HOUR_HEIGHT_PX) * 60) / 15) * 15;
-
-    if (drag.kind === "move") {
-      const deltaDays = Math.round((clientX - drag.originClientX) / WEEK_DAY_WIDTH_PX);
-      const deltaMinutes = deltaYMinutes + deltaDays * 24 * 60;
-      const nextStartMs = startMs + deltaMinutes * 60 * 1000;
-      const nextEndMs = endMs + deltaMinutes * 60 * 1000;
-      return {
-        startsAtUtc: new Date(nextStartMs).toISOString(),
-        endsAtUtc: new Date(nextEndMs).toISOString()
-      };
-    }
-
-    if (drag.kind === "resize_top") {
-      const nextStartMs = startMs + deltaYMinutes * 60 * 1000;
-      if (nextStartMs >= endMs - 15 * 60 * 1000) {
-        return null;
-      }
-      return {
-        startsAtUtc: new Date(nextStartMs).toISOString(),
-        endsAtUtc: drag.originalEndsAtUtc
-      };
-    }
-
-    const nextEndMs = endMs + deltaYMinutes * 60 * 1000;
-    if (nextEndMs <= startMs + 15 * 60 * 1000) {
-      return null;
-    }
-    return {
-      startsAtUtc: drag.originalStartsAtUtc,
-      endsAtUtc: new Date(nextEndMs).toISOString()
-    };
-  }
-
   useEffect(() => {
-    if (!weekDrag) {
+    if (!resizeDrag) {
       return;
     }
+    const drag = resizeDrag;
 
-    const drag = weekDrag;
-    let latestWindow = {
-      startsAtUtc: drag.originalStartsAtUtc,
-      endsAtUtc: drag.originalEndsAtUtc
-    };
-    let rafId = 0;
-    let pendingMoveEvent: MouseEvent | null = null;
+    function onMouseUp(event: MouseEvent) {
+      const deltaY = event.clientY - drag.originY;
+      const rawMinutes = (deltaY / WEEK_HOUR_HEIGHT_PX) * 60;
+      const snappedMinutes = Math.round(rawMinutes / 15) * 15;
 
-    const applyFromMouse = (clientX: number, clientY: number) => {
-      const nextWindow = calculateWeekDragWindow(drag, clientX, clientY);
-      if (!nextWindow) {
-        return;
-      }
-      latestWindow = nextWindow;
-      applyOptimisticWindow(drag.itemId, nextWindow.startsAtUtc, nextWindow.endsAtUtc);
-      if (drag.itemId === DRAFT_ITEM_ID) {
-        setQuickAddStartsAtUtc(nextWindow.startsAtUtc);
-        setQuickAddEndsAtUtc(nextWindow.endsAtUtc);
-      }
-    };
-
-    function onMouseMove(event: MouseEvent) {
-      pendingMoveEvent = event;
-      if (rafId) {
-        return;
-      }
-      rafId = window.requestAnimationFrame(() => {
-        rafId = 0;
-        if (!pendingMoveEvent) {
-          return;
-        }
-        applyFromMouse(pendingMoveEvent.clientX, pendingMoveEvent.clientY);
-      });
-    }
-
-    function onMouseUp() {
-      if (rafId) {
-        window.cancelAnimationFrame(rafId);
-      }
-
-      const changed = latestWindow.startsAtUtc !== drag.originalStartsAtUtc || latestWindow.endsAtUtc !== drag.originalEndsAtUtc;
-      if (changed) {
-        if (drag.itemId === DRAFT_ITEM_ID) {
-          setQuickAddStartsAtUtc(latestWindow.startsAtUtc);
-          setQuickAddEndsAtUtc(latestWindow.endsAtUtc);
-        }
-
-        if ((drag.kind === "move" || drag.kind === "resize_top") && onMoveItem && drag.itemId !== DRAFT_ITEM_ID) {
+      if (drag.edge === "top" && onMoveItem) {
+        const currentEnd = new Date(drag.endsAtUtc).getTime();
+        const nextStart = new Date(new Date(drag.startsAtUtc).getTime() + snappedMinutes * 60 * 1000).getTime();
+        if (nextStart < currentEnd - 15 * 60 * 1000) {
           onMoveItem({
             itemId: drag.itemId,
-            startsAtUtc: latestWindow.startsAtUtc,
-            endsAtUtc: latestWindow.endsAtUtc
+            startsAtUtc: new Date(nextStart).toISOString(),
+            endsAtUtc: drag.endsAtUtc
           });
         }
+      }
 
-        if (drag.kind === "resize_bottom" && onResizeItem && drag.itemId !== DRAFT_ITEM_ID) {
+      if (drag.edge === "bottom" && onResizeItem) {
+        const currentStart = new Date(drag.startsAtUtc).getTime();
+        const nextEnd = new Date(new Date(drag.endsAtUtc).getTime() + snappedMinutes * 60 * 1000).getTime();
+        if (nextEnd > currentStart + 15 * 60 * 1000) {
           onResizeItem({
             itemId: drag.itemId,
-            endsAtUtc: latestWindow.endsAtUtc
+            endsAtUtc: new Date(nextEnd).toISOString()
           });
         }
       }
 
-      if (drag.itemId === DRAFT_ITEM_ID) {
-        setOptimisticWindows((current) => {
-          if (!current[DRAFT_ITEM_ID]) {
-            return current;
-          }
-          const { [DRAFT_ITEM_ID]: _removed, ...rest } = current;
-          return rest;
-        });
-      }
-
-      setWeekDrag(null);
+      setResizeDrag(null);
     }
 
-    window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp, { once: true });
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = drag.kind === "move" ? "grabbing" : "ns-resize";
-    return () => {
-      if (rafId) {
-        window.cancelAnimationFrame(rafId);
-      }
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-      document.body.style.removeProperty("user-select");
-      document.body.style.removeProperty("cursor");
-    };
-  }, [onMoveItem, onResizeItem, weekDrag]);
+    return () => window.removeEventListener("mouseup", onMouseUp);
+  }, [onMoveItem, onResizeItem, resizeDrag]);
 
   function createFromDrag() {
     if (!dragCreateStart || !dragCreateHover || !onCreateRange) {
@@ -685,41 +331,8 @@ export function UnifiedCalendar({
     setAnchorDate((current) => addDays(current, 1 * multiplier));
   }
 
-  function startWeekDrag(
-    event: React.MouseEvent<HTMLElement>,
-    item: UnifiedCalendarItem,
-    kind: WeekDragState["kind"]
-  ) {
-    if (event.button !== 0) {
-      return;
-    }
-    if (item.id.startsWith("__pending_create__")) {
-      return;
-    }
-    if (kind === "move" && !onMoveItem) {
-      return;
-    }
-    if (kind === "resize_bottom" && !onResizeItem) {
-      return;
-    }
-    if (kind === "resize_top" && !onMoveItem) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    setWeekDrag({
-      kind,
-      itemId: item.id,
-      originalStartsAtUtc: item.startsAtUtc,
-      originalEndsAtUtc: item.endsAtUtc,
-      originClientX: event.clientX,
-      originClientY: event.clientY
-    });
-  }
-
   function selectCalendarItem(itemId: string) {
-    if (itemId === DRAFT_ITEM_ID || itemId.startsWith("__pending_create__")) {
+    if (itemId === DRAFT_ITEM_ID) {
       setQuickAddOpen(true);
       return;
     }
@@ -832,7 +445,7 @@ export function UnifiedCalendar({
                     if (!dragMoveItemId || !onMoveItem) {
                       return;
                     }
-                    const item = displayItems.find((candidate) => candidate.id === dragMoveItemId);
+                    const item = items.find((candidate) => candidate.id === dragMoveItemId);
                     if (!item) {
                       return;
                     }
@@ -847,7 +460,6 @@ export function UnifiedCalendar({
                       startsAtUtc: nextStart,
                       endsAtUtc: nextEnd
                     });
-                    applyOptimisticWindow(item.id, nextStart, nextEnd);
                     setDragMoveItemId(null);
                   }}
                   onMouseDown={(event) => {
@@ -898,163 +510,160 @@ export function UnifiedCalendar({
       ) : null}
 
       {view === "week" ? (
-        <div
-          className="overflow-auto rounded-control border bg-surface"
-          ref={weekScrollRef}
-          style={{ height: `${WEEK_HOUR_HEIGHT_PX * 6 + 40}px` }}
-        >
-          <div className="flex w-fit">
-            <div className="sticky left-0 z-20 shrink-0 border-r bg-surface" style={{ width: `${WEEK_TIME_GUTTER_WIDTH_PX}px` }}>
-              <div className="h-10 border-b px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Time</div>
-              {HOURS.map((hour) => (
-                <div
-                  className="border-b px-2 py-1 text-[11px] font-medium text-text-muted"
-                  key={hour}
-                  style={{ height: `${WEEK_HOUR_HEIGHT_PX}px` }}
-                >
-                  {hourLabels[hour]}
-                </div>
-              ))}
-            </div>
+        <div className="overflow-auto rounded-control border bg-surface">
+          {(() => {
+            const weekDays = Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(anchorDate), index));
+            const gridWidth = weekDays.length * WEEK_DAY_WIDTH_PX;
+            const gridHeight = HOURS.length * WEEK_HOUR_HEIGHT_PX;
 
-            <div className="shrink-0">
-              <div className="sticky top-0 z-10 flex border-b bg-surface">
-                {weekDays.map((day) => (
-                  <button
-                    className="border-r px-2 py-2 text-left text-xs font-semibold text-text hover:bg-surface-muted"
-                    key={dateKey(day)}
-                    onClick={() => setAnchorDate(day)}
-                    style={{ width: `${WEEK_DAY_WIDTH_PX}px`, height: "40px" }}
-                    type="button"
-                  >
-                    {day.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-                  </button>
-                ))}
-              </div>
-
-              <div
-                className="relative"
-                onMouseLeave={() => {
-                  if (hoveredWeekCell) {
-                    setHoveredWeekCell(null);
-                  }
-                }}
-                onMouseMove={(event) => {
-                  if (!canShowWeekCellHover) {
-                    if (hoveredWeekCell) {
-                      setHoveredWeekCell(null);
-                    }
-                    return;
-                  }
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  const x = event.clientX - rect.left;
-                  const y = event.clientY - rect.top;
-                  const dayIndex = Math.floor(x / WEEK_DAY_WIDTH_PX);
-                  const hourIndex = Math.floor(y / WEEK_HOUR_HEIGHT_PX);
-
-                  if (dayIndex < 0 || dayIndex >= weekDays.length || hourIndex < 0 || hourIndex >= HOURS.length) {
-                    if (hoveredWeekCell) {
-                      setHoveredWeekCell(null);
-                    }
-                    return;
-                  }
-
-                  if (!hoveredWeekCell || hoveredWeekCell.dayIndex !== dayIndex || hoveredWeekCell.hourIndex !== hourIndex) {
-                    setHoveredWeekCell({ dayIndex, hourIndex });
-                  }
-                }}
-                onDoubleClick={(event) => {
-                  if (!canEdit || !onQuickAdd) {
-                    return;
-                  }
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  const x = event.clientX - rect.left;
-                  const y = event.clientY - rect.top;
-                  const dayIndex = Math.max(0, Math.min(weekDays.length - 1, Math.floor(x / WEEK_DAY_WIDTH_PX)));
-                  const day = weekDays[dayIndex];
-                  if (!day) {
-                    return;
-                  }
-                  const minutes = Math.floor((Math.max(0, Math.min(y, weekGridHeight - 1)) / WEEK_HOUR_HEIGHT_PX) * 60);
-                  const snappedStartMinutes = Math.floor(minutes / 15) * 15;
-                  const start = new Date(startOfDay(day).getTime() + snappedStartMinutes * 60 * 1000);
-                  const end = new Date(start.getTime() + 60 * 60 * 1000);
-                  setQuickAddStartsAtUtc(start.toISOString());
-                  setQuickAddEndsAtUtc(end.toISOString());
-                  setQuickAddTitle("New event");
-                  setQuickAddOpen(true);
-                  setAnchorDate(day);
-                }}
-                style={{ width: `${weekGridWidth}px`, height: `${weekGridHeight}px` }}
-              >
-                {canShowWeekCellHover && hoveredWeekCell ? (
-                  <div
-                    className="pointer-events-none absolute bg-accent/15"
-                    style={{
-                      left: `${hoveredWeekCell.dayIndex * WEEK_DAY_WIDTH_PX}px`,
-                      top: `${hoveredWeekCell.hourIndex * WEEK_HOUR_HEIGHT_PX}px`,
-                      width: `${WEEK_DAY_WIDTH_PX}px`,
-                      height: `${WEEK_HOUR_HEIGHT_PX}px`
-                    }}
-                  />
-                ) : null}
-                <div className="pointer-events-none absolute inset-0">
+            return (
+              <div className="flex w-fit">
+                <div className="sticky left-0 z-20 shrink-0 border-r bg-surface" style={{ width: `${WEEK_TIME_GUTTER_WIDTH_PX}px` }}>
+                  <div className="h-10 border-b px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Time</div>
                   {HOURS.map((hour) => (
                     <div
-                      className="absolute left-0 right-0 border-b"
-                      key={`h-${hour}`}
-                      style={{ top: `${hour * WEEK_HOUR_HEIGHT_PX}px`, height: `${WEEK_HOUR_HEIGHT_PX}px` }}
-                    />
+                      className="border-b px-2 py-1 text-[11px] font-medium text-text-muted"
+                      key={hour}
+                      style={{ height: `${WEEK_HOUR_HEIGHT_PX}px` }}
+                    >
+                      {new Date(2000, 0, 1, hour).toLocaleTimeString([], { hour: "numeric" })}
+                    </div>
                   ))}
-                  <div className="absolute inset-y-0 left-0 flex">
-                    {weekDays.map((day) => (
-                      <div className="h-full border-r" key={`d-${dateKey(day)}`} style={{ width: `${WEEK_DAY_WIDTH_PX}px` }} />
-                    ))}
-                  </div>
                 </div>
 
-                {weekPositionedItems.map(({ item, key, top, left, width, height, startsLabel }) => (
-                  <button
-                    className={cn(
-                      "absolute overflow-hidden rounded-control px-2 py-1 text-left text-[11px]",
-                      item.entryType === "practice"
-                        ? "bg-emerald-100 text-emerald-800"
-                        : item.entryType === "game"
-                          ? "bg-sky-100 text-sky-800"
-                          : "bg-amber-100 text-amber-800",
-                      item.status === "cancelled" && "line-through opacity-60",
-                      canEdit && onMoveItem && !item.id.startsWith("__pending_create__") && item.id !== DRAFT_ITEM_ID && "cursor-grab active:cursor-grabbing"
-                    )}
-                    key={key}
-                    onClick={() => selectCalendarItem(item.id)}
-                    onDoubleClick={(event) => event.stopPropagation()}
-                    onMouseDown={(event) => startWeekDrag(event, item, "move")}
-                    style={{ top: `${top}px`, left: `${left}px`, width: `${width}px`, height: `${height}px` }}
-                    type="button"
+                <div className="shrink-0">
+                  <div className="sticky top-0 z-10 flex border-b bg-surface">
+                    {weekDays.map((day) => (
+                      <button
+                        className="border-r px-2 py-2 text-left text-xs font-semibold text-text hover:bg-surface-muted"
+                        key={dateKey(day)}
+                        onClick={() => setAnchorDate(day)}
+                        style={{ width: `${WEEK_DAY_WIDTH_PX}px`, height: "40px" }}
+                        type="button"
+                      >
+                        {day.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div
+                    className="relative"
+                    onDoubleClick={(event) => {
+                      if (!canEdit || !onQuickAdd) {
+                        return;
+                      }
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const x = event.clientX - rect.left;
+                      const y = event.clientY - rect.top;
+                      const dayIndex = Math.max(0, Math.min(weekDays.length - 1, Math.floor(x / WEEK_DAY_WIDTH_PX)));
+                      const day = weekDays[dayIndex];
+                      if (!day) {
+                        return;
+                      }
+                      const minutes = Math.floor((Math.max(0, Math.min(y, gridHeight - 1)) / WEEK_HOUR_HEIGHT_PX) * 60);
+                      const snappedStartMinutes = Math.floor(minutes / 15) * 15;
+                      const start = new Date(startOfDay(day).getTime() + snappedStartMinutes * 60 * 1000);
+                      const end = new Date(start.getTime() + 60 * 60 * 1000);
+                      setQuickAddStartsAtUtc(start.toISOString());
+                      setQuickAddEndsAtUtc(end.toISOString());
+                      setQuickAddTitle("New event");
+                      setQuickAddOpen(true);
+                      setAnchorDate(day);
+                    }}
+                    style={{ width: `${gridWidth}px`, height: `${gridHeight}px` }}
                   >
-                    {canEdit && onMoveItem ? (
-                      <span
-                        className="absolute inset-x-1 top-0 h-1.5 cursor-ns-resize rounded-full"
-                        onMouseDown={(event) => {
-                          startWeekDrag(event, item, "resize_top");
-                        }}
-                      />
-                    ) : null}
-                    <p className="truncate font-semibold">{item.title}</p>
-                    <p className="truncate text-[10px]">{startsLabel}</p>
-                    {canEdit && onResizeItem ? (
-                      <span
-                        className="absolute inset-x-1 bottom-0 h-1.5 cursor-ns-resize rounded-full"
-                        onMouseDown={(event) => {
-                          startWeekDrag(event, item, "resize_bottom");
-                        }}
-                      />
-                    ) : null}
-                  </button>
-                ))}
+                    <div className="pointer-events-none absolute inset-0">
+                      {HOURS.map((hour) => (
+                        <div
+                          className="absolute left-0 right-0 border-b"
+                          key={`h-${hour}`}
+                          style={{ top: `${hour * WEEK_HOUR_HEIGHT_PX}px`, height: `${WEEK_HOUR_HEIGHT_PX}px` }}
+                        />
+                      ))}
+                      <div className="absolute inset-y-0 left-0 flex">
+                        {weekDays.map((day) => (
+                          <div className="h-full border-r" key={`d-${dateKey(day)}`} style={{ width: `${WEEK_DAY_WIDTH_PX}px` }} />
+                        ))}
+                      </div>
+                    </div>
+
+                    {weekDays.map((day, dayIndex) => {
+                      const dayStart = startOfDay(day);
+                      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+                      const dayItemList = displayItems.filter((item) => intersectsDay(item.startsAtUtc, item.endsAtUtc, day));
+
+                      return dayItemList.map((item) => {
+                        const itemStart = new Date(item.startsAtUtc);
+                        const itemEnd = new Date(item.endsAtUtc);
+                        const clampedStartMs = Math.max(itemStart.getTime(), dayStart.getTime());
+                        const clampedEndMs = Math.min(itemEnd.getTime(), dayEnd.getTime());
+                        const startMinutes = (clampedStartMs - dayStart.getTime()) / (60 * 1000);
+                        const endMinutes = (clampedEndMs - dayStart.getTime()) / (60 * 1000);
+                        const top = (startMinutes / 60) * WEEK_HOUR_HEIGHT_PX + 1;
+                        const height = Math.max(((endMinutes - startMinutes) / 60) * WEEK_HOUR_HEIGHT_PX - 2, 18);
+                        const left = dayIndex * WEEK_DAY_WIDTH_PX + 2;
+                        const width = WEEK_DAY_WIDTH_PX - 4;
+
+                        return (
+                          <button
+                            className={cn(
+                              "absolute overflow-hidden rounded-control px-2 py-1 text-left text-[11px]",
+                              item.entryType === "practice"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : item.entryType === "game"
+                                  ? "bg-sky-100 text-sky-800"
+                                  : "bg-amber-100 text-amber-800",
+                              item.status === "cancelled" && "line-through opacity-60"
+                            )}
+                            key={`${dayIndex}-${item.id}`}
+                            onClick={() => selectCalendarItem(item.id)}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            style={{ top: `${top}px`, left: `${left}px`, width: `${width}px`, height: `${height}px` }}
+                            type="button"
+                          >
+                            {canEdit && onMoveItem ? (
+                              <span
+                                className="absolute inset-x-1 top-0 h-1.5 cursor-ns-resize rounded-full"
+                                onMouseDown={(event) => {
+                                  event.stopPropagation();
+                                  setResizeDrag({
+                                    itemId: item.id,
+                                    edge: "top",
+                                    originY: event.clientY,
+                                    startsAtUtc: item.startsAtUtc,
+                                    endsAtUtc: item.endsAtUtc
+                                  });
+                                }}
+                              />
+                            ) : null}
+                            <p className="truncate font-semibold">{item.title}</p>
+                            <p className="truncate text-[10px]">
+                              {new Date(item.startsAtUtc).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                            </p>
+                            {canEdit && onResizeItem ? (
+                              <span
+                                className="absolute inset-x-1 bottom-0 h-1.5 cursor-ns-resize rounded-full"
+                                onMouseDown={(event) => {
+                                  event.stopPropagation();
+                                  setResizeDrag({
+                                    itemId: item.id,
+                                    edge: "bottom",
+                                    originY: event.clientY,
+                                    startsAtUtc: item.startsAtUtc,
+                                    endsAtUtc: item.endsAtUtc
+                                  });
+                                }}
+                              />
+                            ) : null}
+                          </button>
+                        );
+                      });
+                    })}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
         </div>
       ) : null}
 
@@ -1079,7 +688,6 @@ export function UnifiedCalendar({
                       className="rounded-control px-2 py-1 text-xs text-text-muted hover:bg-surface-muted"
                       onClick={() => {
                         const nextEnd = new Date(new Date(item.endsAtUtc).getTime() - 15 * 60 * 1000).toISOString();
-                        applyOptimisticWindow(item.id, item.startsAtUtc, nextEnd);
                         onResizeItem({ itemId: item.id, endsAtUtc: nextEnd });
                       }}
                       type="button"
@@ -1090,7 +698,6 @@ export function UnifiedCalendar({
                       className="rounded-control px-2 py-1 text-xs text-text-muted hover:bg-surface-muted"
                       onClick={() => {
                         const nextEnd = new Date(new Date(item.endsAtUtc).getTime() + 15 * 60 * 1000).toISOString();
-                        applyOptimisticWindow(item.id, item.startsAtUtc, nextEnd);
                         onResizeItem({ itemId: item.id, endsAtUtc: nextEnd });
                       }}
                       type="button"
@@ -1118,24 +725,8 @@ export function UnifiedCalendar({
                 if (!onQuickAdd) {
                   return;
                 }
-                const title = quickAddTitle.trim();
-                setPendingCreates((current) => [
-                  ...current,
-                  {
-                    item: {
-                      id: `__pending_create__${Date.now()}`,
-                      title,
-                      entryType: "event",
-                      status: "scheduled",
-                      startsAtUtc: quickAddStartsAtUtc,
-                      endsAtUtc: quickAddEndsAtUtc,
-                      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-                    },
-                    expiresAt: Date.now() + PENDING_CREATE_TTL_MS
-                  }
-                ]);
                 onQuickAdd({
-                  title,
+                  title: quickAddTitle.trim(),
                   startsAtUtc: quickAddStartsAtUtc,
                   endsAtUtc: quickAddEndsAtUtc
                 });

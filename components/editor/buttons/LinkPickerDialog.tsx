@@ -258,7 +258,7 @@ export function LinkPickerDialog({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-text">{option.label}</span>
                   {option.isDraft ? (
-                    <Chip className="normal-case tracking-normal" color="yellow" size="small">
+                    <Chip className="normal-case tracking-normal" color="yellow">
                       Draft
                     </Chip>
                   ) : null}

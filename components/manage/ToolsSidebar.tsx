@@ -72,7 +72,7 @@ function navConfig(orgSlug: string): OrgAreaSidebarConfig {
 
   return {
     title: "Tools",
-    subtitle: "Workspace tools",
+    subtitle: "Manage Your Org",
     mobileLabel: "Tools",
     ariaLabel: "Tools area navigation",
     collapseStorageKey: `tools-sidebar:${orgSlug}:collapsed`,

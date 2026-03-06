@@ -2,68 +2,21 @@
 
 import Link from "next/link";
 import * as React from "react";
-import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-const navItemVariants = cva(
-  "relative inline-flex items-center justify-between gap-2 overflow-hidden rounded-control border border-transparent font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-55",
-  {
-    variants: {
-      variant: {
-        sidebar: "w-full",
-        header: "shrink-0",
-        dropdown: "w-full"
-      },
-      size: {
-        sm: "min-h-9 px-3 py-2 text-sm",
-        md: "min-h-10 px-3 py-2 text-sm"
-      },
-      active: {
-        true: "",
-        false: ""
-      }
-    },
-    compoundVariants: [
-      {
-        active: true,
-        variant: "sidebar",
-        className: "border-border bg-surface text-text"
-      },
-      {
-        active: false,
-        variant: "sidebar",
-        className: "text-text-muted hover:border-border/70 hover:bg-surface hover:text-text"
-      },
-      {
-        active: true,
-        variant: "header",
-        className: "border-border/70 bg-surface-muted text-text"
-      },
-      {
-        active: false,
-        variant: "header",
-        className: "text-text-muted hover:border-border/60 hover:bg-surface-muted hover:text-text"
-      },
-      {
-        active: true,
-        variant: "dropdown",
-        className: "border-border/70 bg-surface-muted text-text"
-      },
-      {
-        active: false,
-        variant: "dropdown",
-        className: "text-text-muted hover:border-border/60 hover:bg-surface-muted hover:text-text"
-      }
-    ],
-    defaultVariants: {
-      active: false,
-      size: "md",
-      variant: "sidebar"
-    }
-  }
-);
+const navItemSizeClass = {
+  sm: "h-9 px-3",
+  md: "h-10 px-3"
+} as const;
 
-type NavItemVariantProps = VariantProps<typeof navItemVariants>;
+const navItemVariantClass = {
+  sidebar: "w-full",
+  header: "shrink-0",
+  dropdown: "w-full"
+} as const;
+
+type NavItemSize = keyof typeof navItemSizeClass;
+type NavItemVariant = keyof typeof navItemVariantClass;
 
 export type NavItemProps = {
   active?: boolean;
@@ -84,30 +37,26 @@ export type NavItemProps = {
   rel?: React.AnchorHTMLAttributes<HTMLAnchorElement>["rel"];
   rightSlot?: React.ReactNode;
   role?: React.AriaRole;
-  size?: NavItemVariantProps["size"];
+  size?: NavItemSize;
   target?: React.AnchorHTMLAttributes<HTMLAnchorElement>["target"];
   title?: string;
   type?: "button" | "submit" | "reset";
-  variant?: NavItemVariantProps["variant"];
+  variant?: NavItemVariant;
 };
 
 function NavItemInner({
-  active,
-  accentWhenActive,
   children,
   contentClassName,
   icon,
   iconOnly,
   rightSlot,
   variant
-}: Pick<NavItemProps, "active" | "accentWhenActive" | "children" | "contentClassName" | "icon" | "iconOnly" | "rightSlot" | "variant">) {
-  const showAccent = Boolean(active && accentWhenActive);
-  const iconNode = icon ? <span className={cn("shrink-0 text-current [&_svg]:h-4 [&_svg]:w-4", variant === "header" ? "opacity-90" : "")}>{icon}</span> : null;
+}: Pick<NavItemProps, "children" | "contentClassName" | "icon" | "iconOnly" | "rightSlot" | "variant">) {
+  const iconNode = icon ? <span className="shrink-0 text-current [&_svg]:h-4 [&_svg]:w-4">{icon}</span> : null;
 
   if (iconOnly) {
     return (
       <>
-        {showAccent ? <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[4px] rounded-r bg-accent" /> : null}
         <span className={cn("flex h-full w-full items-center justify-center", contentClassName)}>{iconNode}</span>
       </>
     );
@@ -115,7 +64,6 @@ function NavItemInner({
 
   return (
     <>
-      {showAccent ? <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[4px] rounded-r bg-accent" /> : null}
       <span className={cn("flex min-w-0 items-center gap-2", contentClassName)}>
         {iconNode}
         <span className="truncate">{children}</span>
@@ -127,7 +75,6 @@ function NavItemInner({
 
 export function NavItem({
   active = false,
-  accentWhenActive,
   ariaLabel,
   ariaControls,
   ariaCurrent,
@@ -150,13 +97,16 @@ export function NavItem({
   type = "button",
   variant = "sidebar"
 }: NavItemProps) {
-  const resolvedAccentWhenActive = accentWhenActive ?? variant === "sidebar";
   const resolvedAriaCurrent = ariaCurrent ?? (href && active ? "page" : undefined);
-  const classes = cn(navItemVariants({ active, size, variant }), className);
+  const classes = cn(
+    "inline-flex items-center justify-between gap-2 whitespace-nowrap rounded-full border border-transparent text-sm font-semibold leading-none transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-55",
+    navItemSizeClass[size],
+    navItemVariantClass[variant],
+    active ? "border-border bg-surface text-text shadow-sm" : "bg-transparent text-text-muted hover:border-border/60 hover:bg-surface-muted hover:text-text",
+    className
+  );
   const inner = (
     <NavItemInner
-      accentWhenActive={resolvedAccentWhenActive}
-      active={active}
       contentClassName={contentClassName}
       icon={icon}
       iconOnly={iconOnly}
@@ -224,5 +174,3 @@ export function NavItem({
     </button>
   );
 }
-
-export { navItemVariants };

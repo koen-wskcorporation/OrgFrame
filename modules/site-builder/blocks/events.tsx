@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { ButtonListEditor } from "@/components/editor/buttons/ButtonListEditor";
+import { PublicCalendarWorkspace } from "@/modules/calendar/components/PublicCalendarWorkspace";
 import { Alert } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,10 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { defaultInternalHref, resolveButtonHref } from "@/lib/links";
+import type { CalendarPublicCatalogItem } from "@/modules/calendar/types";
 import { asBody, asButtons, asNumber, asObject, asText } from "@/modules/site-builder/blocks/helpers";
-import { EventsCalendarClient } from "@/modules/site-builder/blocks/events-calendar.client";
 import type { BlockContext, BlockEditorProps, BlockRenderProps, EventsBlockConfig } from "@/modules/site-builder/types";
-import type { EventCatalogItem } from "@/modules/events/types";
 
 function defaultEventsConfig(_: BlockContext): EventsBlockConfig {
   return {
@@ -89,7 +89,7 @@ function parseIsoDate(value: string | null) {
   return parsed;
 }
 
-function isPastEvent(event: EventCatalogItem, now: Date) {
+function isPastEvent(event: CalendarPublicCatalogItem, now: Date) {
   if (event.isAllDay && event.allDayEndDate) {
     const endDate = parseIsoDate(event.allDayEndDate);
 
@@ -110,7 +110,7 @@ function isPastEvent(event: EventCatalogItem, now: Date) {
   return endUtc.getTime() <= now.getTime();
 }
 
-function sortEvents(events: EventCatalogItem[]) {
+function sortEvents(events: CalendarPublicCatalogItem[]) {
   return [...events].sort((a, b) => {
     const left = new Date(a.startsAtUtc);
     const right = new Date(b.startsAtUtc);
@@ -127,7 +127,7 @@ function sortEvents(events: EventCatalogItem[]) {
   });
 }
 
-function formatEventRange(event: EventCatalogItem) {
+function formatEventRange(event: CalendarPublicCatalogItem) {
   if (event.isAllDay && event.allDayStartDate && event.allDayEndDate) {
     if (event.allDayStartDate === event.allDayEndDate) {
       return `${event.allDayStartDate} (All day)`;
@@ -157,7 +157,7 @@ function formatEventRange(event: EventCatalogItem) {
 
 export function EventsBlockRender({ block, context, runtimeData }: BlockRenderProps<"events">) {
   const now = new Date();
-  const sourceEvents = sortEvents(runtimeData.eventsCatalogItems ?? []);
+  const sourceEvents = sortEvents(runtimeData.publicCalendarItems ?? runtimeData.eventsCatalogItems ?? []);
   const events = block.config.showPastEvents ? sourceEvents : sourceEvents.filter((event) => !isPastEvent(event, now));
 
   return (
@@ -170,20 +170,19 @@ export function EventsBlockRender({ block, context, runtimeData }: BlockRenderPr
           <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
 
           {block.config.style === "calendar" ? (
-            <EventsCalendarClient
-              emptyMessage={block.config.emptyMessage}
-              events={events}
-              initialView={block.config.calendarDefaultView}
-              orgSlug={context.orgSlug}
-            />
+            events.length === 0 ? (
+              <Alert variant="info">{block.config.emptyMessage}</Alert>
+            ) : (
+              <PublicCalendarWorkspace items={events} orgSlug={context.orgSlug} title={block.config.title} />
+            )
           ) : events.length === 0 ? (
             <Alert variant="info">{block.config.emptyMessage}</Alert>
           ) : (
             <div className="space-y-3">
               {events.slice(0, block.config.maxItems).map((eventItem) => (
-                <article className="rounded-control border bg-surface px-3 py-3" key={eventItem.id}>
+                <article className="rounded-control border bg-surface px-3 py-3" key={eventItem.occurrenceId}>
                   <h3 className="font-semibold text-text">
-                    <Link className="hover:underline" href={`/${context.orgSlug}/events/${eventItem.id}`}>
+                    <Link className="hover:underline" href={`/${context.orgSlug}/calendar/${eventItem.occurrenceId}`}>
                       {eventItem.title}
                     </Link>
                   </h3>
@@ -276,7 +275,7 @@ export function EventsBlockEditor({ block, onChange, context }: BlockEditorProps
         />
       </FormField>
 
-      <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text">
+      <label className="ui-inline-toggle">
         <Checkbox
           checked={block.config.showPastEvents}
           onChange={(event) => {

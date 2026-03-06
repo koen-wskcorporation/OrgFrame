@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import type { LinkValue, SiteButton } from "@/lib/links";
-import type { EventCatalogItem } from "@/modules/events/types";
+import type { CalendarPublicCatalogItem } from "@/modules/calendar/types";
 import type { OrgForm } from "@/modules/forms/types";
 import type { PlayerPickerItem } from "@/modules/players/types";
 import type { ProgramCatalogItem } from "@/modules/programs/types";
@@ -159,7 +159,9 @@ export type BlockContext = {
 
 export type OrgSiteRuntimeData = {
   programCatalogItems?: ProgramCatalogItem[];
-  eventsCatalogItems?: EventCatalogItem[];
+  publicCalendarItems?: CalendarPublicCatalogItem[];
+  // Temporary alias while all callsites migrate in one release.
+  eventsCatalogItems?: CalendarPublicCatalogItem[];
   facilityAvailability?: {
     generatedAtUtc: string;
     spaces: Array<{
@@ -167,7 +169,7 @@ export type OrgSiteRuntimeData = {
       parentSpaceId: string | null;
       name: string;
       slug: string;
-      spaceKind: "building" | "room" | "field" | "court" | "custom";
+      spaceKind: "building" | "floor" | "room" | "field" | "court" | "custom";
       status: "open" | "closed" | "archived";
       isBookable: boolean;
       timezone: string;

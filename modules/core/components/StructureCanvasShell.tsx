@@ -34,8 +34,6 @@ type StructureCanvasShellProps = {
   onAdd: () => void;
   zoomPercent: number;
   bottomRightContent?: ReactNode;
-  bottomCenterContent?: ReactNode;
-  hideDefaultControls?: boolean;
 };
 
 export function StructureCanvasShell({
@@ -58,9 +56,7 @@ export function StructureCanvasShell({
   addButtonDisabled,
   onAdd,
   zoomPercent,
-  bottomRightContent,
-  bottomCenterContent,
-  hideDefaultControls = false
+  bottomRightContent
 }: StructureCanvasShellProps) {
   const normalizedSearch = searchQuery.trim();
 
@@ -127,37 +123,28 @@ export function StructureCanvasShell({
         </div>
       </div>
 
-      {!hideDefaultControls ? (
-        <div className="pointer-events-none absolute right-3 top-3 z-30">
-          <div className="pointer-events-auto flex items-center gap-2 rounded-control border bg-surface/95 p-2 shadow-sm" data-canvas-pan-ignore="true">
-            <Button aria-label={addButtonAriaLabel} disabled={addButtonDisabled} onClick={onAdd} size="sm" type="button" variant="primary">
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button onClick={() => canvasRef.current?.zoomOut()} size="sm" type="button" variant="secondary">
-              <ZoomOut className="h-3.5 w-3.5" />
-            </Button>
-            <Button onClick={() => canvasRef.current?.zoomIn()} size="sm" type="button" variant="secondary">
-              <ZoomIn className="h-3.5 w-3.5" />
-            </Button>
-            <Button onClick={() => canvasRef.current?.fitToView()} size="sm" type="button" variant="secondary">
-              Reset
-            </Button>
-            <Chip size="compact">{zoomPercent}%</Chip>
-          </div>
+      <div className="pointer-events-none absolute right-3 top-3 z-30">
+        <div className="pointer-events-auto flex items-center gap-2 rounded-control border bg-surface/95 p-2 shadow-sm" data-canvas-pan-ignore="true">
+          <Button aria-label={addButtonAriaLabel} disabled={addButtonDisabled} onClick={onAdd} size="sm" type="button" variant="primary">
+            <Plus className="h-4 w-4" />
+          </Button>
+          <Button onClick={() => canvasRef.current?.zoomOut()} size="sm" type="button" variant="secondary">
+            <ZoomOut className="h-3.5 w-3.5" />
+          </Button>
+          <Button onClick={() => canvasRef.current?.zoomIn()} size="sm" type="button" variant="secondary">
+            <ZoomIn className="h-3.5 w-3.5" />
+          </Button>
+          <Button onClick={() => canvasRef.current?.fitToView()} size="sm" type="button" variant="secondary">
+            Reset
+          </Button>
+          <Chip size="compact">{zoomPercent}%</Chip>
         </div>
-      ) : null}
+      </div>
 
       {bottomRightContent ? (
         <div className="pointer-events-none absolute bottom-3 right-3 z-30">
           <div className="pointer-events-auto" data-canvas-pan-ignore="true">
             {bottomRightContent}
-          </div>
-        </div>
-      ) : null}
-      {bottomCenterContent ? (
-        <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2">
-          <div className="pointer-events-auto" data-canvas-pan-ignore="true">
-            {bottomCenterContent}
           </div>
         </div>
       ) : null}
