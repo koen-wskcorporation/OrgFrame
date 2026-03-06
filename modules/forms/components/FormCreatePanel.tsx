@@ -54,6 +54,7 @@ export function FormCreatePanel({ open, onClose, orgSlug, programs, canWrite = t
   const resolvedName = isProgramLocked ? lockedName : name;
   const resolvedFormKind = isProgramLocked ? "program_registration" : formKind;
   const resolvedProgramId = isProgramLocked ? fixedProgram?.id ?? "" : programId;
+  const effectiveRequireSignIn = resolvedFormKind === "program_registration" ? true : requireSignIn;
 
   const isSaveDisabled = useMemo(() => {
     if (!canWrite || isSaving) {
@@ -126,7 +127,7 @@ export function FormCreatePanel({ open, onClose, orgSlug, programs, canWrite = t
         targetMode,
         lockedProgramNodeId: null,
         allowMultiplePlayers,
-        requireSignIn
+        requireSignIn: effectiveRequireSignIn
       });
 
       if (!result.ok) {
@@ -242,11 +243,12 @@ export function FormCreatePanel({ open, onClose, orgSlug, programs, canWrite = t
         ) : null}
         <label className="ui-inline-toggle md:col-span-2">
           <Checkbox
-            checked={requireSignIn}
-            disabled={!canWrite}
+            checked={effectiveRequireSignIn}
+            disabled={!canWrite || resolvedFormKind === "program_registration"}
             onChange={(event) => setRequireSignIn(event.target.checked)}
           />
           Require sign-in to submit
+          {resolvedFormKind === "program_registration" ? " (required for registration forms)" : ""}
         </label>
         <FormField className="md:col-span-2" label="Description">
           <Textarea className="min-h-[90px]" disabled={!canWrite} onChange={(event) => setDescription(event.target.value)} value={description} />

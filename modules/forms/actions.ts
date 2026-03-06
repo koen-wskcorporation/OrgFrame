@@ -428,7 +428,7 @@ export async function createFormAction(input: z.input<typeof createFormSchema>):
     const payload = parsed.data;
     const org = await requireFormsReadOrWrite(payload.orgSlug);
     let resolvedName = payload.name;
-    const resolvedRequireSignIn = payload.requireSignIn ?? true;
+    const resolvedRequireSignIn = payload.formKind === "program_registration" ? true : payload.requireSignIn ?? true;
 
     if (payload.formKind === "program_registration") {
       if (!payload.programId) {
@@ -499,7 +499,7 @@ export async function saveFormDraftAction(input: z.input<typeof saveFormDraftSch
 
   const payload = parsed.data;
   let resolvedName = payload.name;
-  const resolvedRequireSignIn = payload.requireSignIn ?? true;
+  const resolvedRequireSignIn = payload.formKind === "program_registration" ? true : payload.requireSignIn ?? true;
 
   try {
     const org = await requireOrgPermission(payload.orgSlug, "forms.write");
@@ -884,7 +884,7 @@ export async function submitFormResponseAction(input: z.input<typeof submitFormS
     }
 
     const user = await getSessionUser();
-    const requireSignIn = form.settingsJson.requireSignIn !== false;
+    const requireSignIn = form.formKind === "program_registration" || form.settingsJson.requireSignIn !== false;
 
     if (requireSignIn && !user) {
       return asError("Please sign in to submit this form.");
@@ -902,6 +902,48 @@ export async function submitFormResponseAction(input: z.input<typeof submitFormS
 
     if (error) {
       if (error.message.includes("AUTH_REQUIRED")) {
+        const allowGuestGenericSubmit = !requireSignIn && !user && form.formKind === "generic";
+        if (allowGuestGenericSubmit) {
+          const serviceRole = createOptionalSupabaseServiceRoleClient();
+          if (!serviceRole) {
+            return asError("Unable to submit this form right now.");
+          }
+
+          const latestVersion = await getLatestFormVersion(form.id);
+          if (!latestVersion) {
+            return asError("Form version is unavailable.");
+          }
+
+          const { data: insertedSubmission, error: insertError } = await serviceRole
+            .from("org_form_submissions")
+            .insert({
+              org_id: org.orgId,
+              form_id: form.id,
+              version_id: latestVersion.id,
+              submitted_by_user_id: null,
+              status: "submitted",
+              answers_json: payload.answers ?? {},
+              metadata_json: payload.metadata ?? {}
+            })
+            .select("id, status")
+            .single();
+
+          if (insertError || !insertedSubmission?.id) {
+            throw new Error(insertError?.message ?? "GUEST_SUBMISSION_INSERT_FAILED");
+          }
+
+          revalidatePath(`/${payload.orgSlug}/register/${payload.formSlug}`);
+          await triggerGoogleSheetSyncBestEffort(org.orgId, form.id);
+
+          return {
+            ok: true,
+            data: {
+              submissionId: insertedSubmission.id,
+              status: typeof insertedSubmission.status === "string" ? insertedSubmission.status : "submitted"
+            }
+          };
+        }
+
         return asError("Please sign in to submit this form.");
       }
 
