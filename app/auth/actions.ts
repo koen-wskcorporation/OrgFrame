@@ -104,7 +104,7 @@ export async function signUpAction(formData: FormData) {
 export async function signOutAction(_formData: FormData) {
   const supabase = await createSupabaseServer();
   await supabase.auth.signOut();
-  redirect("/auth/login");
+  redirect("/website");
 }
 
 export async function requestPasswordResetAction(formData: FormData) {

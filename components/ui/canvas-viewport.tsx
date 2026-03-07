@@ -33,6 +33,10 @@ type CanvasViewportProps = PropsWithChildren<{
   maxScale?: number;
   zoomStep?: number;
   fitPadding?: number;
+  centerInsetLeft?: number;
+  centerInsetRight?: number;
+  centerInsetTop?: number;
+  centerInsetBottom?: number;
   storageKey?: string;
   dragInProgress?: boolean;
   onViewChange?: (view: CanvasView) => void;
@@ -56,6 +60,10 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
     maxScale = 2,
     zoomStep = 0.14,
     fitPadding = 48,
+    centerInsetLeft = 0,
+    centerInsetRight = 0,
+    centerInsetTop = 0,
+    centerInsetBottom = 0,
     storageKey,
     dragInProgress = false,
     onViewChange
@@ -170,13 +178,26 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
       return;
     }
 
-    const innerWidth = Math.max(32, viewportRect.width - fitPadding * 2);
-    const innerHeight = Math.max(32, viewportRect.height - fitPadding * 2);
+    const usableWidth = Math.max(32, viewportRect.width - centerInsetLeft - centerInsetRight);
+    const usableHeight = Math.max(32, viewportRect.height - centerInsetTop - centerInsetBottom);
+    const innerWidth = Math.max(32, usableWidth - fitPadding * 2);
+    const innerHeight = Math.max(32, usableHeight - fitPadding * 2);
     const targetScale = clamp(Math.min(innerWidth / contentWidth, innerHeight / contentHeight), scaleBounds.min, scaleBounds.max);
-    const x = (viewportRect.width - contentWidth * targetScale) / 2;
-    const y = (viewportRect.height - contentHeight * targetScale) / 2;
+    const centerX = centerInsetLeft + usableWidth / 2;
+    const centerY = centerInsetTop + usableHeight / 2;
+    const x = centerX - (contentWidth * targetScale) / 2;
+    const y = centerY - (contentHeight * targetScale) / 2;
     animateTo({ x, y, scale: targetScale });
-  }, [animateTo, fitPadding, scaleBounds.max, scaleBounds.min]);
+  }, [
+    animateTo,
+    centerInsetBottom,
+    centerInsetLeft,
+    centerInsetRight,
+    centerInsetTop,
+    fitPadding,
+    scaleBounds.max,
+    scaleBounds.min
+  ]);
 
   const resetView = useCallback(() => {
     animateTo({ x: 0, y: 0, scale: 1 });
@@ -222,11 +243,15 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
       const elementHeight = elementRect.height / current.scale;
 
       const targetScale = clamp(options?.targetScale ?? Math.max(current.scale, 1), scaleBounds.min, scaleBounds.max);
-      const x = viewportRect.width / 2 - (elementX + elementWidth / 2) * targetScale;
-      const y = viewportRect.height / 2 - (elementY + elementHeight / 2) * targetScale;
+      const usableWidth = Math.max(32, viewportRect.width - centerInsetLeft - centerInsetRight);
+      const usableHeight = Math.max(32, viewportRect.height - centerInsetTop - centerInsetBottom);
+      const centerX = centerInsetLeft + usableWidth / 2;
+      const centerY = centerInsetTop + usableHeight / 2;
+      const x = centerX - (elementX + elementWidth / 2) * targetScale;
+      const y = centerY - (elementY + elementHeight / 2) * targetScale;
       animateTo({ x, y, scale: targetScale });
     },
-    [animateTo, scaleBounds.max, scaleBounds.min]
+    [animateTo, centerInsetBottom, centerInsetLeft, centerInsetRight, centerInsetTop, scaleBounds.max, scaleBounds.min]
   );
 
   useImperativeHandle(
@@ -239,8 +264,12 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
         }
 
         const rect = viewportNode.getBoundingClientRect();
+        const usableWidth = Math.max(32, rect.width - centerInsetLeft - centerInsetRight);
+        const usableHeight = Math.max(32, rect.height - centerInsetTop - centerInsetBottom);
+        const centerX = centerInsetLeft + usableWidth / 2;
+        const centerY = centerInsetTop + usableHeight / 2;
         const next = viewRef.current.scale * (1 + zoomStep);
-        zoomAtPoint(next, rect.width / 2, rect.height / 2);
+        zoomAtPoint(next, centerX, centerY);
       },
       zoomOut: () => {
         const viewportNode = viewportRef.current;
@@ -249,14 +278,28 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
         }
 
         const rect = viewportNode.getBoundingClientRect();
+        const usableWidth = Math.max(32, rect.width - centerInsetLeft - centerInsetRight);
+        const usableHeight = Math.max(32, rect.height - centerInsetTop - centerInsetBottom);
+        const centerX = centerInsetLeft + usableWidth / 2;
+        const centerY = centerInsetTop + usableHeight / 2;
         const next = viewRef.current.scale * (1 - zoomStep);
-        zoomAtPoint(next, rect.width / 2, rect.height / 2);
+        zoomAtPoint(next, centerX, centerY);
       },
       resetView,
       fitToView,
       focusElement
     }),
-    [fitToView, focusElement, resetView, zoomAtPoint, zoomStep]
+    [
+      centerInsetBottom,
+      centerInsetLeft,
+      centerInsetRight,
+      centerInsetTop,
+      fitToView,
+      focusElement,
+      resetView,
+      zoomAtPoint,
+      zoomStep
+    ]
   );
 
   useEffect(() => {

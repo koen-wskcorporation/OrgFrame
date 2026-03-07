@@ -21,6 +21,10 @@ type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   slugAutoSource?: string;
   onSlugAutoChange?: (value: string) => void;
   slugAutoEnabled?: boolean;
+  inline?: boolean;
+  inlinePlaceholder?: string;
+  onInlineActivate?: () => void;
+  onInlineCommit?: (value: string) => void;
 };
 
 type SlugAvailabilityResponse = {
@@ -101,12 +105,33 @@ function resolveSlugPathPrefix(slugValidation: SlugValidationConfig | undefined,
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, slugValidation, persistentPrefix, onChange, value, defaultValue, slugAutoSource, onSlugAutoChange, slugAutoEnabled = true, ...props }, forwardedRef) => {
+  (
+    {
+      className,
+      slugValidation,
+      persistentPrefix,
+      onChange,
+      value,
+      defaultValue,
+      slugAutoSource,
+      onSlugAutoChange,
+      slugAutoEnabled = true,
+      inline = false,
+      inlinePlaceholder,
+      onInlineActivate,
+      onInlineCommit,
+      ...props
+    },
+    forwardedRef
+  ) => {
+    const resolvedInlinePlaceholder = inlinePlaceholder ?? props.placeholder ?? "";
     const inputRef = React.useRef<HTMLInputElement | null>(null);
     const latestRequestId = React.useRef(0);
     const hasCustomizedSlugRef = React.useRef(false);
     const isControlled = value !== undefined;
     const [inputValue, setInputValue] = React.useState(() => (isControlled ? asStringValue(value) : asStringValue(defaultValue)));
+    const [inlineEditing, setInlineEditing] = React.useState(false);
+    const [inlineDraft, setInlineDraft] = React.useState(() => (isControlled ? asStringValue(value) : asStringValue(defaultValue)));
     const [hasSlugBeenEdited, setHasSlugBeenEdited] = React.useState(false);
     const [slugStatus, setSlugStatus] = React.useState<SlugValidationStatus>("idle");
     const [slugMessage, setSlugMessage] = React.useState<string | null>(null);
@@ -124,7 +149,25 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       }
 
       setInputValue(asStringValue(value));
-    }, [isControlled, value]);
+      if (!inlineEditing) {
+        setInlineDraft(asStringValue(value));
+      }
+    }, [inlineEditing, isControlled, value]);
+
+    React.useEffect(() => {
+      if (!inlineEditing) {
+        setInlineDraft(inputValue);
+      }
+    }, [inlineEditing, inputValue]);
+
+    React.useEffect(() => {
+      if (!inline || !inlineEditing) {
+        return;
+      }
+
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }, [inline, inlineEditing]);
 
     React.useEffect(() => {
       if (!slugValidationKind || slugValidationEnabled === false) {
@@ -276,6 +319,80 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
       forwardedRef.current = element;
     };
+
+    if (inline) {
+      const inlineValue = isControlled ? asStringValue(value) : inputValue;
+
+      function commitInlineEdit() {
+        const nextValue = inlineDraft;
+        setInlineEditing(false);
+        onInlineCommit?.(nextValue);
+      }
+
+      function cancelInlineEdit() {
+        setInlineDraft(inlineValue);
+        setInlineEditing(false);
+      }
+
+      if (inlineEditing && !props.disabled) {
+        return (
+          <span className="relative block h-full w-full max-w-full align-top">
+            <input
+              {...props}
+              className={cn(
+                "block h-full w-full max-w-full border-0 bg-transparent p-0 text-text outline-none",
+                "focus-visible:ring-0 focus-visible:outline-none",
+                className
+              )}
+              onBlur={commitInlineEdit}
+              onChange={(event) => {
+                setInlineDraft(event.target.value);
+                onChange?.(event);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commitInlineEdit();
+                  return;
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancelInlineEdit();
+                }
+              }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              ref={assignRef}
+              value={inlineDraft}
+            />
+            <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-0 border-b border-text-muted/70" />
+          </span>
+        );
+      }
+
+      return (
+        <button
+          className={cn(
+            "block h-full w-full max-w-full cursor-text border-0 bg-transparent p-0 text-left text-text disabled:cursor-default disabled:opacity-100",
+            className
+          )}
+          disabled={props.disabled}
+          onClick={() => {
+            onInlineActivate?.();
+            if (!props.disabled) {
+              setInlineEditing(true);
+            }
+          }}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+          }}
+          type="button"
+        >
+          {inlineValue || resolvedInlinePlaceholder}
+        </button>
+      );
+    }
 
     const isSlugUnavailable = slugStatus === "taken" || slugStatus === "invalid";
     const shouldShowStatus = isSlugField && hasSlugBeenEdited && inputValue.trim().length > 0 && slugMessage;

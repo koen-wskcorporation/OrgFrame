@@ -16,6 +16,7 @@ type SelectProps = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "children
   options: SelectOption[];
   placeholder?: string;
   onChange?: (event: React.ChangeEvent<HTMLSelectElement>) => void;
+  inline?: boolean;
 };
 
 function resolveInitialValue(options: SelectOption[], providedValue: string | undefined) {
@@ -47,6 +48,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       required,
       onChange,
       placeholder = "Select an option",
+      inline = false,
       id,
       ...props
     },
@@ -237,7 +239,9 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           aria-expanded={open}
           aria-haspopup="listbox"
           className={cn(
-            "flex h-10 w-full items-center justify-between gap-2 rounded-control border border-border bg-surface px-3 py-2 text-left text-sm text-text shadow-[inset_0_1px_0_hsl(var(--canvas)/0.35)] transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-55",
+            inline
+              ? "flex h-auto w-full items-center justify-between gap-2 rounded-none border-0 border-b border-border/70 bg-transparent px-0 py-0 text-left text-[11px] capitalize text-text-muted shadow-none transition-colors duration-150 focus:outline-none focus:ring-0 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-55"
+              : "flex h-10 w-full items-center justify-between gap-2 rounded-control border border-border bg-surface px-3 py-2 text-left text-sm text-text shadow-[inset_0_1px_0_hsl(var(--canvas)/0.35)] transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-55",
             !selectedOption ? "text-text-muted" : "",
             className
           )}
@@ -266,7 +270,12 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         </button>
 
         {open ? (
-          <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 overflow-hidden rounded-control border bg-surface shadow-floating">
+          <div
+            className={cn(
+              "absolute top-[calc(100%+0.35rem)] z-50 overflow-hidden rounded-control border bg-surface shadow-floating",
+              inline ? "left-0 min-w-[180px]" : "left-0 right-0"
+            )}
+          >
             <ul className="max-h-60 overflow-y-auto py-1.5" id={listboxId} role="listbox">
               {options.map((option, index) => {
                 const isSelected = option.value === selectedValue;

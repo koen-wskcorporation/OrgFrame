@@ -1,7 +1,5 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
-import { AuthDialogTrigger } from "@/components/auth/AuthDialogTrigger";
 import { AppPage } from "@/components/ui/layout";
 import { CenteredStateCard } from "@/components/ui/state";
 
@@ -15,10 +13,10 @@ export default function ForbiddenPage() {
       <CenteredStateCard
         actions={
           <>
-            <Link href="/">
-              <Button>Back to Dashboard</Button>
-            </Link>
-            <AuthDialogTrigger label="Sign in as Different Account" size="md" variant="ghost" />
+            <Button href="/">Back to Home</Button>
+            <Button href="/auth/login" size="md" variant="ghost">
+              Sign in as Different Account
+            </Button>
           </>
         }
         description="You do not have permission to access this page or action."

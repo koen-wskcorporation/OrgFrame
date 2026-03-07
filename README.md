@@ -64,6 +64,8 @@ Use this branch strategy:
 3. In production Supabase Auth settings:
    - Add production callback URL: `https://<production-domain>/auth/callback`
 4. Never reuse production service-role/secret keys in staging.
+5. To clone production into a new dev DB once, use:
+   - `CONFIRM_DEV_DB_CLONE=YES ./scripts/clone-prod-db-to-dev.sh "<PROD_DB_URL>" "<DEV_DB_URL>"`
 
 ### Local environment files
 

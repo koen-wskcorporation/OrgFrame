@@ -1224,15 +1224,20 @@ export async function createInboxItems(
 }
 
 export async function listCalendarReadModel(orgId: string): Promise<CalendarReadModel> {
-  const [entries, rules, occurrences, exceptions, configurations, allocations, invites] = await Promise.all([
+  const [entries, rules, occurrences, exceptions, configurationsResult, allocations, invites] = await Promise.all([
     listCalendarEntries(orgId),
     listCalendarRules(orgId),
     listCalendarOccurrences(orgId, { includeCancelled: true }),
     listCalendarRuleExceptions(orgId),
-    listFacilitySpaceConfigurations(orgId, { includeInactive: true }),
+    listFacilitySpaceConfigurations(orgId, { includeInactive: true }).catch((error: unknown) => {
+      // Avoid hard-failing facility pages when configuration fetch has transient network issues.
+      console.error("[calendar] Falling back to empty facility configurations.", error);
+      return [];
+    }),
     listOccurrenceFacilityAllocations(orgId),
     listOccurrenceTeamInvites(orgId, { includeInactive: true })
   ]);
+  const configurations = configurationsResult;
 
   return {
     entries,

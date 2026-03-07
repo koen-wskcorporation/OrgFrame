@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { CreateOrganizationDialog } from "@/components/dashboard/CreateOrganizationDialog";
 import { DashboardSection, DashboardShell } from "@/components/dashboard/DashboardShell";
@@ -7,14 +8,20 @@ import { Button } from "@/components/ui/button";
 import { CardGrid } from "@/components/ui/layout";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { signOutAction } from "@/app/auth/actions";
+import { getSessionUser } from "@/lib/auth/getSessionUser";
 import { getDashboardContext } from "@/lib/dashboard/getDashboardContext";
-import { AiAssistantLauncher } from "@/modules/ai/components/AiAssistantLauncher";
 
 export const metadata: Metadata = {
   title: "Dashboard"
 };
 
 export default async function HomePage() {
+  const sessionUser = await getSessionUser();
+
+  if (!sessionUser) {
+    redirect("/website");
+  }
+
   const { organizations } = await getDashboardContext();
 
   return (

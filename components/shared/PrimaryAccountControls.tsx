@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { signOutAction } from "@/app/auth/actions";
-import { AuthDialogTrigger } from "@/components/auth/AuthDialogTrigger";
 import { AccountMenu } from "@/components/shared/AccountMenu";
+import { Button } from "@/components/ui/button";
 
 type HeaderAccountState =
   | {
@@ -27,7 +28,11 @@ type HeaderAccountState =
     };
 
 export function PrimaryAccountControls() {
+  const pathname = usePathname();
   const [state, setState] = useState<HeaderAccountState | null>(null);
+  const nextPath = pathname && pathname !== "/website" && !pathname.startsWith("/auth") ? pathname : "/";
+  const signInHref = nextPath === "/" ? "/auth/login" : `/auth/login?next=${encodeURIComponent(nextPath)}`;
+  const signUpHref = nextPath === "/" ? "/auth/login?mode=signup" : `/auth/login?mode=signup&next=${encodeURIComponent(nextPath)}`;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -78,5 +83,14 @@ export function PrimaryAccountControls() {
     );
   }
 
-  return <AuthDialogTrigger />;
+  return (
+    <div className="flex items-center gap-2">
+      <Button href={signInHref} size="sm" variant="secondary">
+        Sign in
+      </Button>
+      <Button className="hidden sm:inline-flex" href={signUpHref} size="sm" variant="ghost">
+        Create account
+      </Button>
+    </div>
+  );
 }
