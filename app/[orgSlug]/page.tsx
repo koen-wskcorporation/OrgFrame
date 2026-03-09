@@ -1,5 +1,7 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { isOrgFeatureEnabled } from "@/lib/org/features";
+import { orgWorkspacePath } from "@/lib/org/routes";
 import { OrgSitePage } from "@/modules/site-builder/components/OrgSitePage";
 import { getOrgSitePageForRender } from "@/modules/site-builder/server/getOrgSitePageForRender";
 
@@ -19,6 +21,10 @@ export default async function OrgPublicHomePage({
   });
 
   if (!pageData.page || !pageData.blocks) {
+    if (!isOrgFeatureEnabled(pageData.orgContext.features, "website")) {
+      redirect(orgWorkspacePath(orgSlug));
+    }
+
     notFound();
   }
 

@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { getOrgPublicContext } from "@/lib/org/getOrgPublicContext";
 import { getOptionalOrgMembershipAccess } from "@/lib/org/getOptionalOrgMembershipAccess";
+import { isOrgFeatureEnabled, normalizeOrgFeatures } from "@/lib/org/features";
 import { getOrgCapabilities } from "@/lib/permissions/orgCapabilities";
 import { requireOrgPermission } from "@/lib/permissions/requireOrgPermission";
 import { rethrowIfNavigationError } from "@/lib/actions/rethrowIfNavigationError";
@@ -22,6 +23,10 @@ import {
 } from "@/modules/site-builder/db/queries";
 import type { LinkPickerPageOption } from "@/lib/links";
 import type { DraftBlockInput, OrgManagePage, OrgPageBlock, OrgSitePage } from "@/modules/site-builder/types";
+
+function assertWebsiteEnabled(org: { features: unknown }) {
+  return isOrgFeatureEnabled(normalizeOrgFeatures(org.features), "website");
+}
 
 export type LoadOrgPageInput = {
   orgSlug: string;
@@ -44,6 +49,12 @@ export async function loadOrgPageAction(input: LoadOrgPageInput): Promise<LoadOr
   try {
     const pageSlug = sanitizePageSlug(input.pageSlug);
     const org = await getOrgPublicContext(input.orgSlug);
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: false,
+        error: "not_found"
+      };
+    }
     const membershipAccess = await getOptionalOrgMembershipAccess(org.orgId);
     const capabilities = membershipAccess ? getOrgCapabilities(membershipAccess.permissions) : null;
     const canReadEditorData = capabilities?.pages.canAccess ?? false;
@@ -115,6 +126,12 @@ export async function saveOrgPageAction(input: SaveOrgPageInput): Promise<SaveOr
   try {
     const pageSlug = sanitizePageSlug(input.pageSlug);
     const org = await requireOrgPermission(input.orgSlug, "org.pages.write");
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: false,
+        error: "Website pages are disabled for this org."
+      };
+    }
 
     const saved = await saveOrgPageAndBlocks({
       orgId: org.orgId,
@@ -157,6 +174,12 @@ type ListOrgPagesForLinkPickerResult =
 export async function listOrgPagesForLinkPickerAction(input: { orgSlug: string }): Promise<ListOrgPagesForLinkPickerResult> {
   try {
     const org = await getOrgPublicContext(input.orgSlug);
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: true,
+        pages: []
+      };
+    }
     const membershipAccess = await getOptionalOrgMembershipAccess(org.orgId);
     const capabilities = membershipAccess ? getOrgCapabilities(membershipAccess.permissions) : null;
     const canReadPages = capabilities?.pages.canAccess ?? false;
@@ -280,6 +303,12 @@ export async function savePageSettingsAction(input: {
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: false,
+        error: "Website pages are disabled for this org."
+      };
+    }
     const currentPage = await getOrgPageById(org.orgId, payload.pageId);
 
     if (!currentPage) {
@@ -382,6 +411,12 @@ export async function createManagedPageAction(input: {
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: false,
+        error: "Website pages are disabled for this org."
+      };
+    }
     const normalizedSlug = sanitizePageSlug(payload.pageSlug);
     const slugError = validatePageSlugForManage(normalizedSlug);
 
@@ -465,6 +500,12 @@ export async function duplicateManagedPageAction(input: { orgSlug: string; pageI
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: false,
+        error: "Website pages are disabled for this org."
+      };
+    }
     const sourcePage = await getOrgPageById(org.orgId, payload.pageId);
 
     if (!sourcePage) {
@@ -530,6 +571,12 @@ export async function deleteManagedPageAction(input: { orgSlug: string; pageId: 
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: false,
+        error: "Website pages are disabled for this org."
+      };
+    }
     const page = await getOrgPageById(org.orgId, payload.pageId);
 
     if (!page) {
@@ -591,6 +638,12 @@ export async function reorderManagedPagesAction(input: { orgSlug: string; pageId
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: false,
+        error: "Website pages are disabled for this org."
+      };
+    }
     const currentPages = await listOrgPagesForManage(org.orgId);
 
     if (currentPages.length !== payload.pageIds.length) {
@@ -725,6 +778,12 @@ export async function saveOrgPagesAction(input: z.infer<typeof saveOrgPagesActio
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: false,
+        error: "Website pages are disabled for this org."
+      };
+    }
 
     if (payload.action.type === "reorder") {
       const currentPages = await listOrgPagesForManage(org.orgId);
@@ -971,6 +1030,12 @@ export async function createOrgPageAction(input: {
     const normalizedPageSlug = sanitizePageSlug(payload.pageSlug);
     const normalizedIsPublished = normalizedPageSlug === "home" ? true : payload.isPublished;
     const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: false,
+        error: "Website pages are disabled for this org."
+      };
+    }
 
     if (normalizedPageSlug !== "home" && isReservedPageSlug(normalizedPageSlug)) {
       return {
@@ -1075,6 +1140,12 @@ export async function setOrgHomePageAction(input: { orgSlug: string; targetPageS
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: false,
+        error: "Website pages are disabled for this org."
+      };
+    }
     const normalizedTargetSlug = sanitizePageSlug(payload.targetPageSlug);
 
     if (normalizedTargetSlug === "home") {
@@ -1182,6 +1253,12 @@ export async function deleteOrgPagesBySlugsAction(input: { orgSlug: string; page
   try {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
+    if (!assertWebsiteEnabled(org)) {
+      return {
+        ok: false,
+        error: "Website pages are disabled for this org."
+      };
+    }
     const uniqueSlugs = [...new Set(payload.pageSlugs.map((slug) => sanitizePageSlug(slug)))].filter((slug) => slug !== "home");
     const deletedSlugs: string[] = [];
 

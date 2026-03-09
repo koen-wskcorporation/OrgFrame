@@ -145,7 +145,7 @@ export function FormCreatePanel({ open, onClose, orgSlug, programs, canWrite = t
       });
       resetState();
       onClose();
-      router.push(`/${orgSlug}/tools/forms/${result.data.formId}/editor`);
+      router.push(`/${orgSlug}/workspace/forms/${result.data.formId}/editor`);
     });
   }
 

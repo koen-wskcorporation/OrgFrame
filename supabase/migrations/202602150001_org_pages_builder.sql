@@ -155,14 +155,36 @@ create policy org_site_assets_manager_delete on storage.objects
     and public.has_org_role((split_part(name, '/', 1))::uuid, 'manager')
   );
 
-insert into public.org_pages (org_id, slug, title, is_published)
-select
-  org.id,
-  'home',
-  org.name || ' Home',
-  true
-from public.orgs org
-on conflict (org_id, slug) do nothing;
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'org_pages'
+      and column_name = 'sort_index'
+  ) then
+    insert into public.org_pages (org_id, slug, title, is_published, sort_index)
+    select
+      org.id,
+      'home',
+      org.name || ' Home',
+      true,
+      0
+    from public.orgs org
+    on conflict (org_id, slug) do nothing;
+  else
+    insert into public.org_pages (org_id, slug, title, is_published)
+    select
+      org.id,
+      'home',
+      org.name || ' Home',
+      true
+    from public.orgs org
+    on conflict (org_id, slug) do nothing;
+  end if;
+end
+$$;
 
 with home_pages as (
   select

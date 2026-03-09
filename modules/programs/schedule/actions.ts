@@ -133,8 +133,8 @@ const restoreOccurrenceSchema = z.object({
 
 async function refreshScheduleData(orgSlug: string, programId: string) {
   const readModel = await listProgramScheduleReadModelV2(programId);
-  revalidatePath(`/${orgSlug}/tools/programs/${programId}`);
-  revalidatePath(`/${orgSlug}/tools/programs/${programId}/schedule`);
+  revalidatePath(`/${orgSlug}/workspace/programs/${programId}`);
+  revalidatePath(`/${orgSlug}/workspace/programs/${programId}/schedule`);
   return readModel;
 }
 

@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { notFound } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { normalizeOrgFeatures } from "@/lib/org/features";
 import { getGoverningBodyLogoUrl } from "@/lib/org/getGoverningBodyLogoUrl";
 import { isReservedOrgSlug } from "@/lib/org/reservedSlugs";
 import type { OrgBranding, OrgGoverningBody, OrgPublicContext } from "@/lib/org/types";
@@ -56,7 +57,7 @@ export const getOrgPublicContext = cache(async (orgSlug: string): Promise<OrgPub
   const supabase = await createSupabaseServer();
   const { data: org, error: orgError } = await supabase
     .from("orgs")
-    .select("id, slug, name, logo_path, icon_path, brand_primary, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
+    .select("id, slug, name, logo_path, icon_path, brand_primary, features_json, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
     .eq("slug", orgSlug)
     .maybeSingle();
 
@@ -73,6 +74,7 @@ export const getOrgPublicContext = cache(async (orgSlug: string): Promise<OrgPub
     orgSlug: org.slug,
     orgName: org.name,
     branding: mapBranding(org),
-    governingBody: mapGoverningBody(org.governing_body)
+    governingBody: mapGoverningBody(org.governing_body),
+    features: normalizeOrgFeatures(org.features_json)
   };
 });

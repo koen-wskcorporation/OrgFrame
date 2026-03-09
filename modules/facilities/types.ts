@@ -1,117 +1,87 @@
-export type FacilitySpaceKind = "building" | "floor" | "room" | "field" | "court" | "custom";
+export type FacilityStatus = "open" | "closed" | "archived";
 
-export type FacilitySpaceStatus = "open" | "closed" | "archived";
+export type FacilityType = "park" | "complex" | "building" | "campus" | "field_cluster" | "gym" | "indoor" | "custom";
 
-export type FacilityReservationKind = "booking" | "blackout";
+export type FacilityNodeKind =
+  | "facility"
+  | "zone"
+  | "building"
+  | "section"
+  | "field"
+  | "court"
+  | "diamond"
+  | "rink"
+  | "room"
+  | "amenity"
+  | "parking"
+  | "support_area"
+  | "custom";
 
-export type FacilityReservationStatus = "pending" | "approved" | "rejected" | "cancelled";
+export type FacilityNodeShape = "rect" | "pill";
 
-export type FacilityReservationRuleMode = "single_date" | "multiple_specific_dates" | "repeating_pattern" | "continuous_date_range" | "custom_advanced";
+export type FacilityNodeLayout = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  z: number;
+  shape: FacilityNodeShape;
+  containerMode: "free" | "stack";
+};
 
-export type FacilityReservationRuleIntervalUnit = "day" | "week" | "month";
-
-export type FacilityReservationRuleEndMode = "never" | "until_date" | "after_occurrences";
-
-export type FacilityReservationExceptionKind = "skip" | "override";
-
-export type FacilitySpace = {
+export type Facility = {
   id: string;
   orgId: string;
-  parentSpaceId: string | null;
   name: string;
   slug: string;
-  spaceKind: FacilitySpaceKind;
-  status: FacilitySpaceStatus;
-  isBookable: boolean;
+  facilityType: FacilityType;
+  status: FacilityStatus;
   timezone: string;
-  capacity: number | null;
   metadataJson: Record<string, unknown>;
-  statusLabelsJson: Record<string, unknown>;
   sortIndex: number;
   createdAt: string;
   updatedAt: string;
 };
 
-export type FacilityReservationRule = {
+export type FacilityNode = {
   id: string;
   orgId: string;
-  spaceId: string;
-  mode: FacilityReservationRuleMode;
-  reservationKind: FacilityReservationKind;
-  defaultStatus: FacilityReservationStatus;
-  publicLabel: string | null;
-  internalNotes: string | null;
-  timezone: string;
-  startDate: string | null;
-  endDate: string | null;
-  startTime: string | null;
-  endTime: string | null;
-  intervalCount: number;
-  intervalUnit: FacilityReservationRuleIntervalUnit | null;
-  byWeekday: number[] | null;
-  byMonthday: number[] | null;
-  endMode: FacilityReservationRuleEndMode;
-  untilDate: string | null;
-  maxOccurrences: number | null;
-  eventId: string | null;
-  programId: string | null;
-  conflictOverride: boolean;
+  facilityId: string;
+  parentNodeId: string | null;
+  name: string;
+  slug: string;
+  nodeKind: FacilityNodeKind;
+  status: FacilityStatus;
+  isBookable: boolean;
+  capacity: number | null;
+  layout: FacilityNodeLayout;
+  metadataJson: Record<string, unknown>;
   sortIndex: number;
-  isActive: boolean;
-  configJson: Record<string, unknown>;
-  ruleHash: string;
-  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type FacilityReservation = {
-  id: string;
-  orgId: string;
-  spaceId: string;
-  sourceRuleId: string | null;
-  sourceKey: string;
-  reservationKind: FacilityReservationKind;
-  status: FacilityReservationStatus;
-  timezone: string;
-  localDate: string;
-  localStartTime: string | null;
-  localEndTime: string | null;
+export type FacilityMapReadModel = {
+  facilities: Facility[];
+  nodes: FacilityNode[];
+};
+
+export type FacilityBookingSelectionPayload = {
+  occurrenceId: string;
+  facilityId: string;
+  nodeIds: string[];
+};
+
+export type FacilityNodeAvailabilityState = "available" | "unavailable" | "selected" | "non_bookable";
+
+export type FacilityBookingMapSnapshot = {
+  occurrenceId: string;
   startsAtUtc: string;
   endsAtUtc: string;
-  publicLabel: string | null;
-  internalNotes: string | null;
-  eventId: string | null;
-  programId: string | null;
-  conflictOverride: boolean;
-  approvedBy: string | null;
-  approvedAt: string | null;
-  rejectedBy: string | null;
-  rejectedAt: string | null;
-  metadataJson: Record<string, unknown>;
-  createdBy: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type FacilityReservationException = {
-  id: string;
-  orgId: string;
-  ruleId: string;
-  sourceKey: string;
-  kind: FacilityReservationExceptionKind;
-  overrideReservationId: string | null;
-  payloadJson: Record<string, unknown>;
-  createdBy: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type FacilityReservationReadModel = {
-  spaces: FacilitySpace[];
-  rules: FacilityReservationRule[];
-  reservations: FacilityReservation[];
-  exceptions: FacilityReservationException[];
+  facilities: Facility[];
+  nodes: FacilityNode[];
+  selectedNodeIds: string[];
+  unavailableNodeIds: string[];
 };
 
 export type FacilityPublicSpaceStatus = "open" | "closed" | "booked";
@@ -119,8 +89,8 @@ export type FacilityPublicSpaceStatus = "open" | "closed" | "booked";
 export type FacilityPublicReservation = {
   id: string;
   spaceId: string;
-  reservationKind: FacilityReservationKind;
-  status: Extract<FacilityReservationStatus, "pending" | "approved">;
+  reservationKind: "booking";
+  status: "approved";
   publicLabel: string | null;
   startsAtUtc: string;
   endsAtUtc: string;
@@ -132,8 +102,9 @@ export type FacilityPublicSpaceAvailability = {
   parentSpaceId: string | null;
   name: string;
   slug: string;
-  spaceKind: FacilitySpaceKind;
-  status: FacilitySpaceStatus;
+  spaceKind: FacilityNodeKind;
+  spaceTypeKey: FacilityNodeKind;
+  status: FacilityStatus;
   isBookable: boolean;
   timezone: string;
   currentStatus: FacilityPublicSpaceStatus;

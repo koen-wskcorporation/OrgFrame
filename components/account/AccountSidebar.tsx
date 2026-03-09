@@ -2,7 +2,7 @@
 
 import { LayoutDashboard, Users } from "lucide-react";
 import { useMemo } from "react";
-import { OrgAreaSidebarNav, OrgAreaSidebarNavMobile, type OrgAreaSidebarConfig } from "@/components/manage/OrgAreaSidebarNav";
+import { OrgAreaSidebarNav, OrgAreaSidebarNavMobile, type OrgAreaSidebarConfig } from "@/components/workspace/OrgAreaSidebarNav";
 
 type AccountSidebarProps = {
   mobile?: boolean;

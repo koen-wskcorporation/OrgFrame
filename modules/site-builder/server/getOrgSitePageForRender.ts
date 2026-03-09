@@ -1,5 +1,6 @@
 import { getSessionUser } from "@/lib/auth/getSessionUser";
 import { getOrgRequestContext } from "@/lib/org/getOrgRequestContext";
+import { isOrgFeatureEnabled } from "@/lib/org/features";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
 import { listPublishedCalendarCatalog } from "@/modules/calendar/db/queries";
 import { listFacilityPublicAvailabilitySnapshot } from "@/modules/facilities/db/queries";
@@ -17,6 +18,22 @@ export async function getOrgSitePageForRender({
   pageSlug: string;
 }) {
   const orgRequest = await getOrgRequestContext(orgSlug);
+  if (!isOrgFeatureEnabled(orgRequest.org.features, "website")) {
+    return {
+      orgContext: orgRequest.org,
+      page: null,
+      blocks: null,
+      runtimeData: {
+        programCatalogItems: [],
+        publicCalendarItems: [],
+        eventsCatalogItems: [],
+        facilityAvailability: undefined,
+        formEmbed: undefined
+      },
+      canEdit: false
+    };
+  }
+
   const pageData = await getPublishedOrgPageBySlug({
     orgId: orgRequest.org.orgId,
     pageSlug,
@@ -100,7 +117,7 @@ export async function getOrgSitePageForRender({
       page: null,
       blocks: null,
       runtimeData,
-      canEdit: orgRequest.capabilities?.pages.canWrite ?? false
+      canEdit: false
     };
   }
 

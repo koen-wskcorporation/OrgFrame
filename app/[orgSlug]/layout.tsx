@@ -4,6 +4,7 @@ import { OrgHeader } from "@/components/shared/OrgHeader";
 import { applyBrandingVars } from "@/lib/branding/applyBrandingVars";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
 import { shouldShowBranchHeaders } from "@/lib/env/branchVisibility";
+import { isOrgFeatureEnabled } from "@/lib/org/features";
 import { getOrgRequestContext } from "@/lib/org/getOrgRequestContext";
 import { can } from "@/lib/permissions/can";
 import { listOrgPagesForHeader } from "@/modules/site-builder/db/queries";
@@ -33,16 +34,19 @@ export default async function OrgLayout({
 }) {
   const { orgSlug } = await params;
   const orgRequest = await getOrgRequestContext(orgSlug);
-  const canEditPages = orgRequest.capabilities?.pages.canWrite ?? false;
+  const websiteEnabled = isOrgFeatureEnabled(orgRequest.org.features, "website");
+  const canEditPages = websiteEnabled && (orgRequest.capabilities?.pages.canWrite ?? false);
   const orgLogoUrl = getOrgAssetPublicUrl(orgRequest.org.branding.logoPath);
-  const pages = await listOrgPagesForHeader({
-    orgId: orgRequest.org.orgId,
-    includeUnpublished: canEditPages
-  }).catch(() => []);
+  const pages = websiteEnabled
+    ? await listOrgPagesForHeader({
+        orgId: orgRequest.org.orgId,
+        includeUnpublished: canEditPages
+      }).catch(() => [])
+    : [];
 
   const brandingVars = applyBrandingVars({ accent: orgRequest.org.branding.accent });
   const capabilities = orgRequest.capabilities;
-  const canManageOrg = capabilities?.manage.canAccessArea ?? false;
+  const canManageOrg = capabilities?.workspace.canAccessArea ?? false;
   const canActWithAi = orgRequest.membership
     ? can(orgRequest.membership.permissions, "org.branding.write") || can(orgRequest.membership.permissions, "forms.write")
     : false;
@@ -64,6 +68,7 @@ export default async function OrgLayout({
           orgLogoUrl={orgLogoUrl}
           orgName={orgRequest.org.orgName}
           orgSlug={orgRequest.org.orgSlug}
+          features={orgRequest.org.features}
         />
       ) : null}
       <div className="org-layout-content">{children}</div>

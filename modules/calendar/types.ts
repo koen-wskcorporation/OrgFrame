@@ -16,8 +16,6 @@ export type CalendarOccurrenceStatus = "scheduled" | "cancelled";
 
 export type CalendarRuleExceptionKind = "skip" | "override";
 
-export type FacilityLockMode = "exclusive" | "shared_invite_only";
-
 export type OccurrenceTeamRole = "host" | "participant";
 
 export type OccurrenceInviteStatus = "accepted" | "pending" | "declined" | "left";
@@ -101,30 +99,11 @@ export type CalendarRuleException = {
   updatedAt: string;
 };
 
-export type FacilitySpaceConfiguration = {
-  id: string;
-  orgId: string;
-  spaceId: string;
-  name: string;
-  slug: string;
-  capacityTeams: number | null;
-  isActive: boolean;
-  sortIndex: number;
-  metadataJson: Record<string, unknown>;
-  createdBy: string | null;
-  updatedBy: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type FacilityAllocation = {
   id: string;
   orgId: string;
   occurrenceId: string;
-  spaceId: string;
-  configurationId: string;
-  lockMode: FacilityLockMode;
-  allowShared: boolean;
+  nodeId: string;
   startsAtUtc: string;
   endsAtUtc: string;
   isActive: boolean;
@@ -185,7 +164,7 @@ export type CalendarPublicCatalogItem = {
 export type CalendarOccurrenceReadModel = {
   occurrence: CalendarOccurrence;
   entry: CalendarEntry;
-  allocation: FacilityAllocation | null;
+  allocations: FacilityAllocation[];
   teams: OccurrenceTeamInvite[];
 };
 
@@ -194,7 +173,6 @@ export type CalendarReadModel = {
   rules: CalendarRule[];
   occurrences: CalendarOccurrence[];
   exceptions: CalendarRuleException[];
-  configurations: FacilitySpaceConfiguration[];
   allocations: FacilityAllocation[];
   invites: OccurrenceTeamInvite[];
 };

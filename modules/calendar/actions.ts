@@ -9,7 +9,6 @@ import { can } from "@/lib/permissions/can";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import {
   createCalendarEntryRecord,
-  createFacilitySpaceConfiguration,
   deleteCalendarEntryRecord,
   deleteCalendarRuleRecord,
   deleteCalendarRuleException,
@@ -17,22 +16,17 @@ import {
   getCalendarOccurrenceById,
   getCalendarRuleById,
   getOccurrenceTeamInvite,
-  getOrCreateDefaultFacilitySpaceConfiguration,
   insertCalendarOccurrenceRecord,
-  listCalendarEntries,
-  listCalendarOccurrences,
   listCalendarReadModel,
   listCalendarRuleExceptions,
-  listFacilitySpaceConfigurations,
-  listOccurrenceTeamInvites,
   listOrgActiveTeams,
+  setOccurrenceFacilityAllocations,
   setCalendarOccurrenceStatus,
   setCalendarOccurrenceStatusBySourceKey,
   updateCalendarEntryRecord,
   updateCalendarOccurrenceRecord,
   upsertCalendarRuleException,
   upsertCalendarRuleRecord,
-  upsertOccurrenceFacilityAllocation,
   upsertOccurrenceTeamInvite,
   upsertRuleGeneratedOccurrences
 } from "@/modules/calendar/db/queries";
@@ -46,12 +40,12 @@ import type {
   CalendarOccurrenceStatus,
   CalendarReadModel,
   CalendarRuleEndMode,
-  CalendarRuleMode,
-  FacilityLockMode
+  CalendarRuleMode
 } from "@/modules/calendar/types";
 
 const textSchema = z.string().trim();
 const localDateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
+const usageTagValues = ["game", "practice", "meeting", "event", "other"] as const;
 
 type CalendarActionResult<TData = undefined> =
   | {
@@ -172,9 +166,9 @@ async function canManageEntry(orgId: string, userId: string, entry: CalendarEntr
 }
 
 function revalidateCalendarRoutes(orgSlug: string) {
-  revalidatePath(`/${orgSlug}/tools/calendar`);
-  revalidatePath(`/${orgSlug}/tools/facilities`);
-  revalidatePath(`/${orgSlug}/tools/programs`);
+  revalidatePath(`/${orgSlug}/workspace/events`);
+  revalidatePath(`/${orgSlug}/workspace/facilities`);
+  revalidatePath(`/${orgSlug}/workspace/programs`);
   revalidatePath(`/${orgSlug}`);
   revalidatePath(`/${orgSlug}`, "layout");
 }
@@ -182,6 +176,7 @@ function revalidateCalendarRoutes(orgSlug: string) {
 const createEntrySchema = z.object({
   orgSlug: textSchema.min(1),
   entryType: z.enum(["event", "practice", "game"] satisfies CalendarEntryType[]),
+  usageTag: z.enum(usageTagValues).optional(),
   title: textSchema.min(2).max(160),
   summary: textSchema.max(2400).optional(),
   visibility: z.enum(["internal", "published"]),
@@ -247,13 +242,11 @@ const occurrenceStatusSchema = z.object({
   status: z.enum(["scheduled", "cancelled"] satisfies CalendarOccurrenceStatus[])
 });
 
-const allocationSchema = z.object({
+const setOccurrenceAllocationsSchema = z.object({
   orgSlug: textSchema.min(1),
   occurrenceId: z.string().uuid(),
-  spaceId: z.string().uuid(),
-  configurationId: z.string().uuid().optional(),
-  lockMode: z.enum(["exclusive", "shared_invite_only"] satisfies FacilityLockMode[]).optional(),
-  allowShared: z.boolean().optional()
+  facilityId: z.string().uuid(),
+  nodeIds: z.array(z.string().uuid()).max(64)
 });
 
 const inviteSchema = z.object({
@@ -331,7 +324,8 @@ export async function createCalendarEntryAction(input: z.input<typeof createEntr
       hostTeamId: payload.hostTeamId ?? null,
       defaultTimezone: resolveTimezone(payload.timezone),
       settingsJson: {
-        location: normalizeOptional(payload.location)
+        location: normalizeOptional(payload.location),
+        usageTag: payload.usageTag ?? null
       },
       createdBy: actor.userId
     });
@@ -383,7 +377,8 @@ export async function updateCalendarEntryAction(input: z.input<typeof updateEntr
       defaultTimezone: resolveTimezone(payload.timezone),
       settingsJson: {
         ...existing.settingsJson,
-        location: normalizeOptional(payload.location)
+        location: normalizeOptional(payload.location),
+        usageTag: payload.usageTag ?? ((existing.settingsJson?.usageTag as string | null | undefined) ?? null)
       },
       updatedBy: actor.userId
     });
@@ -770,11 +765,13 @@ export async function setOccurrenceStatusAction(input: z.input<typeof occurrence
   }
 }
 
-export async function assignFacilityAllocationAction(input: z.input<typeof allocationSchema>): Promise<CalendarActionResult<{ occurrenceId: string }>> {
-  const parsed = allocationSchema.safeParse(input);
+export async function setOccurrenceFacilityAllocationsAction(
+  input: z.input<typeof setOccurrenceAllocationsSchema>
+): Promise<CalendarActionResult<{ occurrenceId: string }>> {
+  const parsed = setOccurrenceAllocationsSchema.safeParse(input);
 
   if (!parsed.success) {
-    return asError("Please review the facility allocation details.");
+    return asError("Please review the facility selection details.");
   }
 
   try {
@@ -796,25 +793,38 @@ export async function assignFacilityAllocationAction(input: z.input<typeof alloc
       return asError("You do not have permission to assign this facility.");
     }
 
-    const configuration = payload.configurationId
-      ? (await listFacilitySpaceConfigurations(actor.orgId, { spaceId: payload.spaceId, includeInactive: true })).find((item) => item.id === payload.configurationId)
-      : null;
+    const nodeIds = Array.from(new Set(payload.nodeIds));
+    if (nodeIds.length > 0) {
+      const supabase = await createSupabaseServer();
+      const { data: nodeRows, error: nodeError } = await supabase
+        .from("facility_nodes")
+        .select("id, facility_id, status, is_bookable")
+        .eq("org_id", actor.orgId)
+        .in("id", nodeIds);
 
-    const resolvedConfiguration =
-      configuration ??
-      (await getOrCreateDefaultFacilitySpaceConfiguration({
-        orgId: actor.orgId,
-        spaceId: payload.spaceId,
-        actorUserId: actor.userId
-      }));
+      if (nodeError) {
+        throw new Error(`Failed to validate facility nodes: ${nodeError.message}`);
+      }
 
-    await upsertOccurrenceFacilityAllocation({
+      if ((nodeRows ?? []).length !== nodeIds.length) {
+        return asError("One or more selected spaces no longer exist.");
+      }
+
+      const mixedFacilityNodes = (nodeRows ?? []).some((node) => node.facility_id !== payload.facilityId);
+      if (mixedFacilityNodes) {
+        return asError("Selected spaces must belong to the chosen facility.");
+      }
+
+      const invalidBookingNodes = (nodeRows ?? []).some((node) => node.status !== "open" || node.is_bookable !== true);
+      if (invalidBookingNodes) {
+        return asError("One or more selected spaces are not currently bookable.");
+      }
+    }
+
+    await setOccurrenceFacilityAllocations({
       orgId: actor.orgId,
       occurrenceId: payload.occurrenceId,
-      spaceId: payload.spaceId,
-      configurationId: resolvedConfiguration.id,
-      lockMode: payload.lockMode ?? "exclusive",
-      allowShared: payload.allowShared ?? false,
+      nodeIds,
       actorUserId: actor.userId
     });
 
@@ -829,11 +839,15 @@ export async function assignFacilityAllocationAction(input: z.input<typeof alloc
   } catch (error) {
     rethrowIfNavigationError(error);
 
-    if (error instanceof Error && error.message.includes("calendar_occurrence_facility_allocations_no_overlap")) {
-      return asError("This facility configuration is already reserved for that time window.");
+    if (
+      error instanceof Error &&
+      (error.message.includes("calendar_occurrence_facility_allocations_no_overlap") ||
+        error.message.includes("CALENDAR_OCCURRENCE_FACILITY_ALLOCATIONS_HIERARCHY_CONFLICT"))
+    ) {
+      return asError("This space or a related parent/child space is already reserved for that time window.");
     }
 
-    return asError("Unable to assign this facility allocation.");
+    return asError("Unable to save facility space selections.");
   }
 }
 
@@ -1036,45 +1050,5 @@ export async function leaveSharedOccurrenceAction(input: z.input<typeof leaveSch
   } catch (error) {
     rethrowIfNavigationError(error);
     return asError("Unable to leave the shared occurrence.");
-  }
-}
-
-export async function ensureFacilityConfigurationAction(input: {
-  orgSlug: string;
-  spaceId: string;
-  name: string;
-  capacityTeams?: number | null;
-}): Promise<CalendarActionResult<{ configurationId: string }>> {
-  try {
-    const actor = await requireCalendarActor(input.orgSlug);
-
-    if (!actor.hasCalendarWrite) {
-      return asError("You do not have permission to create facility configurations.");
-    }
-
-    const created = await createFacilitySpaceConfiguration({
-      orgId: actor.orgId,
-      spaceId: input.spaceId,
-      name: input.name,
-      slug: input.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, ""),
-      capacityTeams: input.capacityTeams ?? 1,
-      actorUserId: actor.userId
-    });
-
-    revalidateCalendarRoutes(actor.orgSlug);
-
-    return {
-      ok: true,
-      data: {
-        configurationId: created.id
-      }
-    };
-  } catch (error) {
-    rethrowIfNavigationError(error);
-    return asError("Unable to create facility configuration.");
   }
 }

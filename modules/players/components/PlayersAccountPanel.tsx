@@ -207,9 +207,20 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
         ])
       );
 
-      toast({
-        title: "Player created",
-        variant: "success"
+      const createdPlayer = result.data.player;
+
+      toast.success({
+        title: "Player Registered",
+        description: `${createdPlayer.firstName} ${createdPlayer.lastName} profile created`,
+        meta: createdPlayer.dateOfBirth ? `DOB • ${createdPlayer.dateOfBirth}` : undefined,
+        entityKind: "player",
+        primaryAction: {
+          label: "View Player",
+          onClick: () => {
+            openEdit(createdPlayer);
+          }
+        },
+        groupLabel: "Players Registered"
       });
       closeCreate();
     });
@@ -243,9 +254,10 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
 
       updatePlayerInState(result.data.player);
 
-      toast({
-        title: "Player updated",
-        variant: "success"
+      toast.success({
+        title: "Player Updated",
+        description: `${result.data.player.firstName} ${result.data.player.lastName} saved`,
+        entityKind: "player"
       });
       closeEdit();
     })();
@@ -289,9 +301,10 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
         })
       );
 
-      toast({
-        title: "Guardian linked",
-        variant: "success"
+      toast.success({
+        title: "Guardian Linked",
+        description: "Guardian access connected to this player",
+        entityKind: "player"
       });
       closeGuardianLinkDialog();
     })();

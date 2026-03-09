@@ -399,7 +399,7 @@ export async function listTeamStaffCandidates(orgId: string): Promise<ProgramTea
 export async function listTeamFacilityOptions(orgId: string): Promise<ProgramTeamFacilityOption[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_spaces")
+    .from("facilities")
     .select("id, name, status")
     .eq("org_id", orgId)
     .order("sort_index", { ascending: true })

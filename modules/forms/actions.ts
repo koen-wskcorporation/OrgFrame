@@ -477,7 +477,7 @@ export async function createFormAction(input: z.input<typeof createFormSchema>):
       });
     }
 
-    revalidatePath(`/${org.orgSlug}/tools/forms`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms`);
 
     return {
       ok: true,
@@ -545,8 +545,8 @@ export async function saveFormDraftAction(input: z.input<typeof saveFormDraftSch
       }
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms`);
-    revalidatePath(`/${org.orgSlug}/tools/forms/${updated.id}/editor`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${updated.id}/editor`);
 
     return {
       ok: true,
@@ -601,8 +601,8 @@ export async function publishFormVersionAction(input: z.input<typeof publishForm
       settingsJson: form.settingsJson
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms`);
-    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/editor`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/editor`);
     revalidatePath(`/${org.orgSlug}/register/${form.slug}`);
 
     return {
@@ -650,7 +650,7 @@ export async function setSubmissionStatusAction(input: z.input<typeof submission
       status: payload.status
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${payload.formId}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${payload.formId}/submissions`);
     await triggerGoogleSheetSyncBestEffort(org.orgId, payload.formId);
 
     return {
@@ -682,7 +682,7 @@ export async function updateSubmissionAdminNotesAction(
       adminNotes: normalizeOptional(payload.adminNotes ?? null)
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${payload.formId}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${payload.formId}/submissions`);
     await triggerGoogleSheetSyncBestEffort(org.orgId, payload.formId);
 
     return {
@@ -719,7 +719,7 @@ export async function deleteFormSubmissionAction(
       return asError("Submission not found.");
     }
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${payload.formId}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${payload.formId}/submissions`);
     await triggerGoogleSheetSyncBestEffort(org.orgId, payload.formId);
     return {
       ok: true,
@@ -824,7 +824,7 @@ export async function updateSubmissionAnswerAction(
         answersJson: nextAnswers
       });
 
-      revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+      revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/submissions`);
       await triggerGoogleSheetSyncBestEffort(org.orgId, form.id);
       return {
         ok: true,
@@ -850,7 +850,7 @@ export async function updateSubmissionAnswerAction(
       answersJson: nextAnswers
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/submissions`);
     await triggerGoogleSheetSyncBestEffort(org.orgId, form.id);
     return {
       ok: true,
@@ -1187,7 +1187,7 @@ export async function createFormSubmissionViewAction(
       createdByUserId: org.userId
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/submissions`);
 
     return {
       ok: true,
@@ -1240,7 +1240,7 @@ export async function updateFormSubmissionViewLayoutAction(
       }
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/submissions`);
 
     return {
       ok: true,
@@ -1306,7 +1306,7 @@ export async function updateFormSubmissionViewSettingsAction(
       targetUserId: payload.visibilityScope === "specific_admin" ? payload.targetUserId ?? null : null
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/submissions`);
     return {
       ok: true,
       data: {
@@ -1352,7 +1352,7 @@ export async function deleteFormSubmissionViewAction(
       viewId: payload.viewId
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/submissions`);
     return {
       ok: true,
       data: {
@@ -1402,7 +1402,7 @@ export async function reorderFormSubmissionViewsAction(
       viewOrder: nextIds
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/submissions`);
     return {
       ok: true,
       data: {
@@ -1505,7 +1505,7 @@ export async function connectFormGoogleSheetAction(
       return asError("Google Sheets integration was not saved.");
     }
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/submissions`);
 
     return {
       ok: true,
@@ -1546,7 +1546,7 @@ export async function disconnectFormGoogleSheetAction(
       lastError: null
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/submissions`);
 
     return {
       ok: true,
@@ -1584,7 +1584,7 @@ export async function syncFormGoogleSheetNowAction(
       allowOutbound: true
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/submissions`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/submissions`);
 
     return {
       ok: true,
@@ -1796,7 +1796,7 @@ export async function addFormToPageAction(input: z.input<typeof addFormToPageSch
     }
 
     const pageSlug = String(pageData.slug);
-    revalidatePath(`/${org.orgSlug}/tools/forms/${form.id}/editor`);
+    revalidatePath(`/${org.orgSlug}/workspace/forms/${form.id}/editor`);
     revalidatePath(pageSlug === "home" ? `/${org.orgSlug}` : `/${org.orgSlug}/${pageSlug}`);
 
     return {

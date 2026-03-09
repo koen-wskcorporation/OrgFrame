@@ -5,7 +5,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
-import { UnifiedCalendar, type UnifiedCalendarQuickAddDraft } from "@/components/calendar/UnifiedCalendar";
+import { UnifiedCalendar, type UnifiedCalendarQuickAddDraft } from "@/modules/calendar/components/UnifiedCalendar";
 import {
   createCalendarEntryAction,
   createManualOccurrenceAction,

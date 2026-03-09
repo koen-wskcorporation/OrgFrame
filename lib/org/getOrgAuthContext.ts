@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth/getSessionUser";
 import { resolveOrgRolePermissions } from "@/lib/org/customRoles";
+import { normalizeOrgFeatures } from "@/lib/org/features";
 import { getGoverningBodyLogoUrl } from "@/lib/org/getGoverningBodyLogoUrl";
 import { isReservedOrgSlug } from "@/lib/org/reservedSlugs";
 import type { OrgRole } from "@/modules/core/access";
@@ -65,7 +66,7 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
   const supabase = await createSupabaseServer();
   const { data: org, error: orgError } = await supabase
     .from("orgs")
-    .select("id, slug, name, logo_path, icon_path, brand_primary, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
+    .select("id, slug, name, logo_path, icon_path, brand_primary, features_json, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
     .eq("slug", orgSlug)
     .maybeSingle();
 
@@ -99,7 +100,8 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
     membershipRole,
     membershipPermissions,
     branding: mapBranding(org),
-    governingBody: mapGoverningBody(org.governing_body)
+    governingBody: mapGoverningBody(org.governing_body),
+    features: normalizeOrgFeatures(org.features_json)
   };
 });
 

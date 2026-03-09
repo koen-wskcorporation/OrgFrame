@@ -18,7 +18,7 @@ import { useToast } from "@/components/ui/toast";
 import { createEventAction, deleteEventAction, updateEventAction } from "@/modules/events/actions";
 import type { OrgEvent } from "@/modules/events/types";
 
-// Deprecated: old events UI; active routing now redirects to /tools/calendar.
+// Deprecated: old events UI; active routing now redirects to /workspace/events.
 type EventsManagePanelProps = {
   orgSlug: string;
   events: OrgEvent[];
@@ -115,6 +115,40 @@ function formatEventRange(event: OrgEvent) {
   return `${dateLabel} ${startTime} to ${endDateLabel} ${endTime}`;
 }
 
+function formatDraftMeta(draft: DraftState) {
+  if (draft.isAllDay && draft.allDayStartDate && draft.allDayEndDate) {
+    const dayLabel =
+      draft.allDayStartDate === draft.allDayEndDate ? `${draft.allDayStartDate} (All day)` : `${draft.allDayStartDate} to ${draft.allDayEndDate}`;
+    return draft.location ? `${draft.location} • ${dayLabel}` : dayLabel;
+  }
+
+  if (!draft.startsAtLocal || !draft.endsAtLocal) {
+    return draft.location || undefined;
+  }
+
+  const startsAt = new Date(draft.startsAtLocal);
+  const endsAt = new Date(draft.endsAtLocal);
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
+    return draft.location || undefined;
+  }
+
+  const dateLabel = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric"
+  }).format(startsAt);
+  const startTime = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(startsAt);
+  const endTime = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(endsAt);
+
+  const when = `${dateLabel} • ${startTime} to ${endTime}`;
+  return draft.location ? `${draft.location} • ${when}` : when;
+}
+
 function defaultDraft(timezone: string): DraftState {
   return {
     title: "",
@@ -200,10 +234,11 @@ export function EventsManagePanel({ orgSlug, events, canWrite = true }: EventsMa
     setPanelOpen(true);
   }
 
-  function refreshWithToast(title: string) {
-    toast({
+  function refreshWithToast(title: string, description?: string) {
+    toast.success({
       title,
-      variant: "success"
+      description,
+      entityKind: "event"
     });
     router.refresh();
   }
@@ -277,7 +312,56 @@ export function EventsManagePanel({ orgSlug, events, canWrite = true }: EventsMa
       }
 
       closePanel();
-      refreshWithToast(editingEventId ? "Event updated" : "Event created");
+
+      if (!editingEventId) {
+        const eventId = result.data.eventId;
+        const eventTitle = payloadBase.title;
+        const meta = formatDraftMeta(draft);
+
+        toast.success({
+          title: "Event Created",
+          description: `${eventTitle} added`,
+          meta,
+          entityKind: "event",
+          primaryAction: {
+            label: "View Events",
+            onClick: () => {
+              router.push(`/${orgSlug}/workspace/events`);
+            }
+          },
+          undoAction: {
+            label: "Undo",
+            onClick: () => {
+              void (async () => {
+                const undoResult = await deleteEventAction({
+                  orgSlug,
+                  eventId
+                });
+
+                if (!undoResult.ok) {
+                  toast.error({
+                    title: "Unable to undo event",
+                    description: undoResult.error,
+                    entityKind: "event"
+                  });
+                  return;
+                }
+
+                toast.info({
+                  title: "Event removed",
+                  description: `${eventTitle} was removed.`,
+                  entityKind: "event"
+                });
+                router.refresh();
+              })();
+            }
+          }
+        });
+        router.refresh();
+        return;
+      }
+
+      refreshWithToast("Event Updated", `${payloadBase.title} saved`);
     });
   }
 
@@ -316,7 +400,7 @@ export function EventsManagePanel({ orgSlug, events, canWrite = true }: EventsMa
         return;
       }
 
-      refreshWithToast(nextStatus === "published" ? "Event published" : "Event unpublished");
+      refreshWithToast(nextStatus === "published" ? "Event Published" : "Event Unpublished", event.title);
     });
   }
 
@@ -340,8 +424,9 @@ export function EventsManagePanel({ orgSlug, events, canWrite = true }: EventsMa
         return;
       }
 
+      const deletedTitle = editingEvent?.title ?? "Event";
       closePanel();
-      refreshWithToast("Event deleted");
+      refreshWithToast("Event Deleted", `${deletedTitle} removed`);
     });
   }
 

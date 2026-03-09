@@ -1,4 +1,5 @@
 import type { OrgRole, Permission } from "@/modules/core/access";
+import type { OrgFeatures } from "@/lib/org/features";
 
 export type OrgBranding = {
   logoPath: string | null;
@@ -20,6 +21,7 @@ export type OrgPublicContext = {
   orgName: string;
   branding: OrgBranding;
   governingBody: OrgGoverningBody | null;
+  features: OrgFeatures;
 };
 
 export type OrgAuthContext = OrgPublicContext & {

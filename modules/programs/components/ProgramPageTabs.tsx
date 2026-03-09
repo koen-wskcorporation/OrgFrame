@@ -12,17 +12,17 @@ export function ProgramPageTabs({ orgSlug, programId, active }: ProgramPageTabsP
     {
       key: "structure",
       label: "Structure",
-      href: `/${orgSlug}/tools/programs/${programId}/structure`
+      href: `/${orgSlug}/workspace/programs/${programId}/structure`
     },
     {
       key: "schedule",
       label: "Schedule",
-      href: `/${orgSlug}/tools/programs/${programId}/schedule`
+      href: `/${orgSlug}/workspace/programs/${programId}/schedule`
     },
     {
       key: "registration",
       label: "Registration",
-      href: `/${orgSlug}/tools/programs/${programId}/registration`
+      href: `/${orgSlug}/workspace/programs/${programId}/registration`
     }
   ] as const;
 

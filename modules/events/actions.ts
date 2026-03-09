@@ -7,7 +7,7 @@ import { requireOrgPermission } from "@/lib/permissions/requireOrgPermission";
 import { createEventRecord, deleteEventRecord, getEventById, updateEventRecord } from "@/modules/events/db/queries";
 import type { EventStatus } from "@/modules/events/types";
 
-// Deprecated: replaced by modules/calendar/actions.ts and new /tools/calendar surfaces.
+// Deprecated: replaced by modules/calendar/actions.ts and new /workspace/events surfaces.
 const textSchema = z.string().trim();
 const isoDateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -187,8 +187,7 @@ function resolveEventWindow(payload: z.infer<typeof baseEventSchema>) {
 }
 
 function revalidateEventsRoutes(orgSlug: string) {
-  revalidatePath(`/${orgSlug}/tools/events`);
-  revalidatePath(`/${orgSlug}/manage/events`);
+  revalidatePath(`/${orgSlug}/workspace/events`);
   revalidatePath(`/${orgSlug}`);
 }
 

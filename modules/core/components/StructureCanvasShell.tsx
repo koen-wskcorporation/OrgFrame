@@ -15,7 +15,9 @@ export type StructureSearchItem = {
 
 type StructureCanvasShellProps = {
   storageKey: string;
-  canvasRef: RefObject<CanvasViewportHandle | null>;
+  canvasRef?: RefObject<CanvasViewportHandle | null>;
+  viewportMode?: "canvas" | "static";
+  staticFill?: boolean;
   searchInputRef?: RefObject<HTMLInputElement | null>;
   dragInProgress?: boolean;
   onViewScaleChange: (scale: number) => void;
@@ -33,12 +35,19 @@ type StructureCanvasShellProps = {
   addButtonDisabled?: boolean;
   onAdd: () => void;
   zoomPercent: number;
+  onZoomOut?: () => void;
+  onZoomIn?: () => void;
+  onResetView?: () => void;
+  clearSearchOnSubmit?: boolean;
+  toolbarSlot?: ReactNode;
   bottomRightContent?: ReactNode;
 };
 
 export function StructureCanvasShell({
   storageKey,
   canvasRef,
+  viewportMode = "canvas",
+  staticFill = false,
   searchInputRef,
   dragInProgress,
   onViewScaleChange,
@@ -56,6 +65,11 @@ export function StructureCanvasShell({
   addButtonDisabled,
   onAdd,
   zoomPercent,
+  onZoomOut,
+  onZoomIn,
+  onResetView,
+  clearSearchOnSubmit = true,
+  toolbarSlot,
   bottomRightContent
 }: StructureCanvasShellProps) {
   const normalizedSearch = searchQuery.trim();
@@ -65,22 +79,36 @@ export function StructureCanvasShell({
 
   return (
     <div className="relative h-[68vh] min-h-[460px]" onPointerEnter={onCanvasEnter} onPointerLeave={onCanvasLeave}>
-      <CanvasViewport
-        centerInsetRight={centerInsetRightPx}
-        contentClassName="min-w-max"
-        dragInProgress={Boolean(dragInProgress)}
-        onViewChange={(view) => {
-          onViewScaleChange(view.scale);
-        }}
-        ref={canvasRef}
-        storageKey={storageKey}
-      >
-        <div className="flex w-full min-w-[840px] flex-col items-center gap-3">
-          {rootHeader}
-          {emptyState}
-          {children}
+      {viewportMode === "canvas" ? (
+        <CanvasViewport
+          centerInsetRight={centerInsetRightPx}
+          contentClassName="min-w-max"
+          dragInProgress={Boolean(dragInProgress)}
+          onViewChange={(view) => {
+            onViewScaleChange(view.scale);
+          }}
+          ref={canvasRef}
+          storageKey={storageKey}
+        >
+          <div className="flex w-full min-w-[840px] flex-col items-center gap-3">
+            {rootHeader}
+            {emptyState}
+            {children}
+          </div>
+        </CanvasViewport>
+      ) : (
+        <div className="h-full overflow-hidden rounded-control border bg-surface">
+          {staticFill ? (
+            <div className="h-full w-full">{children}</div>
+          ) : (
+            <div className="flex h-full w-full min-w-[840px] flex-col items-center gap-3">
+              {rootHeader}
+              {emptyState}
+              {children}
+            </div>
+          )}
         </div>
-      </CanvasViewport>
+      )}
 
       <div className="pointer-events-none absolute right-3 top-3 z-30 w-[320px]">
         <div className="pointer-events-auto flex flex-col gap-2" data-canvas-pan-ignore="true">
@@ -97,7 +125,9 @@ export function StructureCanvasShell({
 
                   event.preventDefault();
                   onSearchSubmit(event.currentTarget.value);
-                  onSearchQueryChange("");
+                  if (clearSearchOnSubmit) {
+                    onSearchQueryChange("");
+                  }
                 }}
                 placeholder={searchPlaceholder}
                 ref={searchInputRef}
@@ -126,21 +156,23 @@ export function StructureCanvasShell({
               </div>
             ) : null}
           </div>
-          <div className="flex items-center gap-2 rounded-control border bg-surface/95 p-2 shadow-sm">
-            <Button aria-label={addButtonAriaLabel} disabled={addButtonDisabled} onClick={onAdd} size="sm" type="button" variant="primary">
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button onClick={() => canvasRef.current?.zoomOut()} size="sm" type="button" variant="secondary">
-              <ZoomOut className="h-3.5 w-3.5" />
-            </Button>
-            <Button onClick={() => canvasRef.current?.zoomIn()} size="sm" type="button" variant="secondary">
-              <ZoomIn className="h-3.5 w-3.5" />
-            </Button>
-            <Button onClick={() => canvasRef.current?.fitToView()} size="sm" type="button" variant="secondary">
-              Reset
-            </Button>
-            <Chip size="compact">{zoomPercent}%</Chip>
-          </div>
+          {toolbarSlot ?? (
+            <div className="flex items-center gap-2 rounded-control border bg-surface/95 p-2 shadow-sm">
+              <Button aria-label={addButtonAriaLabel} disabled={addButtonDisabled} onClick={onAdd} size="sm" type="button" variant="primary">
+                <Plus className="h-4 w-4" />
+              </Button>
+              <Button onClick={() => (onZoomOut ? onZoomOut() : canvasRef?.current?.zoomOut())} size="sm" type="button" variant="secondary">
+                <ZoomOut className="h-3.5 w-3.5" />
+              </Button>
+              <Button onClick={() => (onZoomIn ? onZoomIn() : canvasRef?.current?.zoomIn())} size="sm" type="button" variant="secondary">
+                <ZoomIn className="h-3.5 w-3.5" />
+              </Button>
+              <Button onClick={() => (onResetView ? onResetView() : canvasRef?.current?.fitToView())} size="sm" type="button" variant="secondary">
+                Reset
+              </Button>
+              <Chip size="compact">{zoomPercent}%</Chip>
+            </div>
+          )}
           {bottomRightContent}
         </div>
       </div>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
+  BriefcaseBusiness,
   Building2,
   CalendarDays,
   ChevronDown,
@@ -19,7 +20,6 @@ import {
   Settings,
   SlidersHorizontal,
   Users,
-  Wrench,
   type LucideIcon
 } from "lucide-react";
 import { SortableCanvas, type SortableRenderMeta } from "@/components/editor/SortableCanvas";
@@ -31,7 +31,8 @@ import { Input } from "@/components/ui/input";
 import { NavItem } from "@/components/ui/nav-item";
 import { PublishStatusIcon } from "@/components/ui/publish-status-icon";
 import { useToast } from "@/components/ui/toast";
-import { getOrgAdminNavItems, type OrgAdminNavIcon } from "@/lib/org/toolsNav";
+import type { OrgFeatures } from "@/lib/org/features";
+import { getOrgWorkspaceNavItems, type OrgWorkspaceNavIcon } from "@/lib/org/workspaceNav";
 import { cn } from "@/lib/utils";
 import { AiAssistantLauncher } from "@/modules/ai/components/AiAssistantLauncher";
 import { saveOrgPagesAction, savePageSettingsAction } from "@/modules/site-builder/actions";
@@ -55,10 +56,11 @@ type OrgHeaderProps = {
   showAiAssistant: boolean;
   canActWithAi: boolean;
   pages: OrgManagePage[];
+  features: OrgFeatures;
 };
 
-const toolsNavIconMap: Record<OrgAdminNavIcon, LucideIcon> = {
-  wrench: Wrench,
+const toolsNavIconMap: Record<OrgWorkspaceNavIcon, LucideIcon> = {
+  briefcase: BriefcaseBusiness,
   settings: Settings,
   building: Building2,
   globe: Globe,
@@ -68,7 +70,8 @@ const toolsNavIconMap: Record<OrgAdminNavIcon, LucideIcon> = {
   layout: LayoutDashboard,
   calendar: CalendarDays,
   "file-text": FileText,
-  map: MapPinned
+  map: MapPinned,
+  sliders: SlidersHorizontal
 };
 
 function getOrgInitial(orgName: string) {
@@ -113,7 +116,7 @@ function isEditablePublicOrgPath(pathname: string, orgBasePath: string) {
     return false;
   }
 
-  return !pathname.startsWith(`${orgBasePath}/manage`) && !pathname.startsWith(`${orgBasePath}/tools`) && !pathname.startsWith(`${orgBasePath}/icon`);
+  return !pathname.startsWith(`${orgBasePath}/workspace`) && !pathname.startsWith(`${orgBasePath}/icon`);
 }
 
 function sortedPages(pages: OrgManagePage[]) {
@@ -209,7 +212,8 @@ export function OrgHeader({
   canEditPages,
   showAiAssistant,
   canActWithAi,
-  pages
+  pages,
+  features
 }: OrgHeaderProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const pathname = usePathname();
@@ -246,7 +250,7 @@ export function OrgHeader({
     setHasHydrated(true);
   }, []);
 
-  const toolsNavItems = useMemo(() => getOrgAdminNavItems(orgSlug), [orgSlug]);
+  const toolsNavItems = useMemo(() => getOrgWorkspaceNavItems(orgSlug, features), [features, orgSlug]);
   const toolsNavTopLevelItems = useMemo(() => toolsNavItems.filter((item) => !item.parentKey), [toolsNavItems]);
   const toolsNavChildrenByParent = useMemo(() => {
     const map = new Map<string, typeof toolsNavItems>();
@@ -501,20 +505,6 @@ export function OrgHeader({
         <div className="flex min-h-[64px] items-center gap-3 pb-2.5 pl-4 pr-2.5 pt-2.5 md:pb-4 md:pl-6 md:pr-4 md:pt-4">
           <div className="shrink-0 self-stretch">
             <Link className="flex h-full min-w-0 items-center gap-3 leading-none" href={orgBasePath} prefetch>
-              {governingBodyLogoUrl ? (
-                <>
-                  <span className="flex h-7 shrink-0 items-center leading-none md:h-8">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      alt={`${governingBodyName ?? "Governing body"} seal`}
-                      className="block h-full w-auto max-w-[44px] align-middle object-contain"
-                      src={governingBodyLogoUrl}
-                    />
-                  </span>
-                  <span aria-hidden className="h-6 w-px shrink-0 bg-border" />
-                </>
-              ) : null}
-
               <span className="flex h-7 max-w-[220px] shrink-0 items-center leading-none md:h-8">
                 {orgLogoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -636,13 +626,13 @@ export function OrgHeader({
               >
                 <Button
                   aria-expanded={isToolsMenuOpen}
-                  aria-label="Open admin menu"
+                  aria-label="Open workspace menu"
                   onClick={() => setIsToolsMenuOpen((current) => !current)}
                   size="md"
                   type="button"
                 >
-                  <Wrench className="h-4 w-4" />
-                  Tools
+                  <BriefcaseBusiness className="h-4 w-4" />
+                  Workspace
                   <ChevronDown className={cn("h-4 w-4 transition-transform", isToolsMenuOpen ? "rotate-180" : "rotate-0")} />
                 </Button>
                 {isToolsMenuOpen ? (

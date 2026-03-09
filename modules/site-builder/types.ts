@@ -169,7 +169,22 @@ export type OrgSiteRuntimeData = {
       parentSpaceId: string | null;
       name: string;
       slug: string;
-      spaceKind: "building" | "floor" | "room" | "field" | "court" | "custom";
+      spaceKind:
+        | "facility"
+        | "zone"
+        | "building"
+        | "section"
+        | "field"
+        | "court"
+        | "diamond"
+        | "rink"
+        | "room"
+        | "amenity"
+        | "parking"
+        | "support_area"
+        | "floor"
+        | "custom";
+      spaceTypeKey: string;
       status: "open" | "closed" | "archived";
       isBookable: boolean;
       timezone: string;

@@ -1,5 +1,5 @@
 import type { CalendarOccurrence, CalendarReadModel, CalendarVisibility, CalendarEntryType } from "@/modules/calendar/types";
-import type { UnifiedCalendarItem } from "@/components/calendar/UnifiedCalendar";
+import type { UnifiedCalendarItem } from "@/modules/calendar/components/UnifiedCalendar";
 
 export function findOccurrence(readModel: CalendarReadModel, occurrenceId: string) {
   return readModel.occurrences.find((item) => item.id === occurrenceId) ?? null;

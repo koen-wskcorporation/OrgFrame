@@ -1,23 +1,26 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { UnifiedCalendar, type UnifiedCalendarQuickAddDraft } from "@/components/calendar/UnifiedCalendar";
+import { UnifiedCalendar, type UnifiedCalendarQuickAddDraft } from "@/modules/calendar/components/UnifiedCalendar";
 import {
   createCalendarEntryAction,
   createManualOccurrenceAction,
   getCalendarWorkspaceDataAction,
   inviteTeamToOccurrenceAction,
+  setOccurrenceFacilityAllocationsAction,
   setOccurrenceStatusAction,
   updateOccurrenceAction
 } from "@/modules/calendar/actions";
 import type { CalendarReadModel, CalendarVisibility, CalendarEntryType } from "@/modules/calendar/types";
 import { findEntryForOccurrence, findOccurrence, toCalendarItems, toLocalParts } from "@/modules/calendar/components/workspace-utils";
+import { getFacilityBookingMapSnapshotAction } from "@/modules/facilities/actions";
+import { FacilityBookingMapPanel } from "@/modules/facilities/booking/FacilityBookingMapPanel";
+import type { FacilityBookingMapSnapshot } from "@/modules/facilities/types";
 
 type OrgCalendarWorkspaceProps = {
   orgSlug: string;
@@ -25,6 +28,29 @@ type OrgCalendarWorkspaceProps = {
   initialReadModel: CalendarReadModel;
   activeTeams: Array<{ id: string; label: string }>;
 };
+
+function formatOccurrenceMeta(startsAtUtc: string, endsAtUtc: string) {
+  const start = new Date(startsAtUtc);
+  const end = new Date(endsAtUtc);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return undefined;
+  }
+
+  const dateLabel = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric"
+  }).format(start);
+  const startTime = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(start);
+  const endTime = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(end);
+
+  return `${dateLabel} • ${startTime} to ${endTime}`;
+}
 
 export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, activeTeams }: OrgCalendarWorkspaceProps) {
   const { toast } = useToast();
@@ -35,7 +61,10 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
   const [quickEntryType, setQuickEntryType] = useState<CalendarEntryType>("event");
   const [quickHostTeamId, setQuickHostTeamId] = useState<string>(activeTeams[0]?.id ?? "");
   const [inviteTeamId, setInviteTeamId] = useState<string>(activeTeams[0]?.id ?? "");
+  const [bookingPanelOpen, setBookingPanelOpen] = useState(false);
+  const [bookingSnapshot, setBookingSnapshot] = useState<FacilityBookingMapSnapshot | null>(null);
   const [isSaving, startSaving] = useTransition();
+  const [isLoadingBookingSnapshot, startLoadingBookingSnapshot] = useTransition();
 
   const selectedOccurrence = useMemo(() => (selectedOccurrenceId ? findOccurrence(readModel, selectedOccurrenceId) : null), [readModel, selectedOccurrenceId]);
   const selectedEntry = useMemo(
@@ -46,6 +75,22 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
     () => (selectedOccurrence ? readModel.invites.filter((item) => item.occurrenceId === selectedOccurrence.id) : []),
     [readModel.invites, selectedOccurrence]
   );
+  const selectedOccurrenceNodeIds = useMemo(
+    () => (selectedOccurrence ? readModel.allocations.filter((item) => item.occurrenceId === selectedOccurrence.id).map((item) => item.nodeId) : []),
+    [readModel.allocations, selectedOccurrence]
+  );
+  const selectedOccurrenceNodeLabels = useMemo(() => {
+    if (!selectedOccurrence || !bookingSnapshot || bookingSnapshot.occurrenceId !== selectedOccurrence.id) {
+      return [];
+    }
+    const selected = new Set(bookingSnapshot.selectedNodeIds);
+    return bookingSnapshot.nodes.filter((node) => selected.has(node.id)).map((node) => node.name);
+  }, [bookingSnapshot, selectedOccurrence]);
+
+  useEffect(() => {
+    setBookingPanelOpen(false);
+    setBookingSnapshot(null);
+  }, [selectedOccurrenceId]);
 
   const calendarItems = useMemo(
     () =>
@@ -55,6 +100,16 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
       }),
     [entryTypeFilter, readModel, visibilityFilter]
   );
+
+  function hasDraftConflict(draft: UnifiedCalendarQuickAddDraft) {
+    const newStart = new Date(draft.startsAtUtc).getTime();
+    const newEnd = new Date(draft.endsAtUtc).getTime();
+    return calendarItems.some((item) => {
+      const start = new Date(item.startsAtUtc).getTime();
+      const end = new Date(item.endsAtUtc).getTime();
+      return newStart < end && newEnd > start;
+    });
+  }
 
   function refreshWorkspace(successTitle?: string) {
     startSaving(async () => {
@@ -79,6 +134,27 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
   }
 
   function createFromDraft(draft: UnifiedCalendarQuickAddDraft) {
+    if (hasDraftConflict(draft)) {
+      toast.warning({
+        title: "Schedule Conflict",
+        description: "This time overlaps an existing item.",
+        entityKind: "booking",
+        sticky: true,
+        primaryAction: {
+          label: "View Conflict",
+          onClick: () => {
+            setSelectedOccurrenceId(calendarItems[0]?.id ?? null);
+          },
+          closeOnClick: false
+        },
+        secondaryAction: {
+          label: "Change Field",
+          closeOnClick: false
+        }
+      });
+      return;
+    }
+
     startSaving(async () => {
       const entryResult = await createCalendarEntryAction({
         orgSlug,
@@ -128,7 +204,20 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
         return;
       }
 
-      refreshWorkspace("Calendar item created");
+      toast.success({
+        title: "Event Created",
+        description: `${draft.title} added`,
+        meta: formatOccurrenceMeta(draft.startsAtUtc, draft.endsAtUtc),
+        entityKind: "event",
+        primaryAction: {
+          label: "View Event",
+          onClick: () => {
+            setSelectedOccurrenceId(occurrenceResult.data.occurrenceId);
+          },
+          closeOnClick: false
+        }
+      });
+      refreshWorkspace();
     });
   }
 
@@ -202,6 +291,31 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
       }
 
       refreshWorkspace("Occurrence updated");
+    });
+  }
+
+  function openFacilityBookingMap() {
+    if (!selectedOccurrence) {
+      return;
+    }
+
+    startLoadingBookingSnapshot(async () => {
+      const result = await getFacilityBookingMapSnapshotAction({
+        orgSlug,
+        occurrenceId: selectedOccurrence.id
+      });
+
+      if (!result.ok) {
+        toast({
+          title: "Unable to load facility map",
+          description: result.error,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setBookingSnapshot(result.data.snapshot);
+      setBookingPanelOpen(true);
     });
   }
 
@@ -345,6 +459,27 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
                     ))}
                   </div>
 
+                  <div className="space-y-2 rounded-control border p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Facility spaces</p>
+                    <p className="text-sm text-text-muted">
+                      {selectedOccurrenceNodeIds.length > 0
+                        ? `${selectedOccurrenceNodeIds.length} selected`
+                        : "No spaces selected for this occurrence."}
+                    </p>
+                    {selectedOccurrenceNodeLabels.length > 0 ? (
+                      <p className="text-xs text-text-muted">{selectedOccurrenceNodeLabels.join(", ")}</p>
+                    ) : null}
+                    <Button
+                      disabled={!canWrite || isLoadingBookingSnapshot}
+                      onClick={openFacilityBookingMap}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
+                      {isLoadingBookingSnapshot ? "Loading map..." : "Select spaces on map"}
+                    </Button>
+                  </div>
+
                   <div className="flex flex-wrap gap-2">
                     <Button
                       disabled={!canWrite || selectedOccurrence.status === "cancelled"}
@@ -415,6 +550,69 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
             )
           }
         />
+        {selectedOccurrence && bookingSnapshot ? (
+          <FacilityBookingMapPanel
+            canWrite={canWrite}
+            facilities={bookingSnapshot.facilities}
+            nodes={bookingSnapshot.nodes}
+            onClose={() => setBookingPanelOpen(false)}
+            onConfirm={(input) => {
+              startSaving(async () => {
+                const result = await setOccurrenceFacilityAllocationsAction({
+                  orgSlug,
+                  occurrenceId: selectedOccurrence.id,
+                  facilityId: input.facilityId,
+                  nodeIds: input.nodeIds
+                });
+
+                if (!result.ok) {
+                  toast.warning({
+                    title: "Schedule Conflict",
+                    description: result.error,
+                    entityKind: "booking",
+                    sticky: true,
+                    primaryAction: {
+                      label: "View Conflict",
+                      onClick: () => {
+                        setBookingPanelOpen(true);
+                      },
+                      closeOnClick: false
+                    },
+                    secondaryAction: {
+                      label: "Change Field",
+                      onClick: () => {
+                        setBookingPanelOpen(true);
+                      },
+                      closeOnClick: false
+                    }
+                  });
+                  return;
+                }
+
+                setBookingPanelOpen(false);
+                setBookingSnapshot(null);
+                toast.success({
+                  title: "Field Booked",
+                  description: input.nodeIds.length === 1 ? "1 space reserved" : `${input.nodeIds.length} spaces reserved`,
+                  meta: formatOccurrenceMeta(selectedOccurrence.startsAtUtc, selectedOccurrence.endsAtUtc),
+                  entityKind: "booking",
+                  primaryAction: {
+                    label: "View Booking",
+                    onClick: () => {
+                      setSelectedOccurrenceId(selectedOccurrence.id);
+                      setBookingPanelOpen(true);
+                    },
+                    closeOnClick: false
+                  }
+                });
+                refreshWorkspace();
+              });
+            }}
+            open={bookingPanelOpen}
+            selectedNodeIds={bookingSnapshot.selectedNodeIds}
+            unavailableNodeIds={bookingSnapshot.unavailableNodeIds}
+          />
+        ) : null}
       </CardContent>
     </Card>
   );

@@ -126,7 +126,9 @@ export function FacilitySpaceListBlockRender({ block, runtimeData }: BlockRender
                   style={{ marginLeft: `${depth * 12}px` }}
                 >
                   <p className="font-medium text-text">{space.name}</p>
-                  <span className="text-xs text-text-muted">{space.spaceKind}</span>
+                  <span className="text-xs text-text-muted">
+                    {space.spaceTypeKey} · {space.spaceKind}
+                  </span>
                   <FacilityStatusBadge status={space.currentStatus} />
                   {!space.isBookable ? <FacilityStatusBadge status="closed" /> : null}
                   <span className="text-xs text-text-muted">

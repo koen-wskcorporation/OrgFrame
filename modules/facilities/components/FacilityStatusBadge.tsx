@@ -4,22 +4,24 @@ import { Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { FacilityPublicSpaceStatus, FacilityReservationStatus, FacilitySpaceStatus } from "@/modules/facilities/types";
+import type { FacilityPublicSpaceStatus, FacilityStatus } from "@/modules/facilities/types";
 
 type FacilitySpaceStatusOption = {
-  value: FacilitySpaceStatus;
+  value: FacilityStatus;
   label: string;
 };
 
+type StatusValue = FacilityStatus | FacilityPublicSpaceStatus | "pending" | "approved" | "rejected" | "cancelled";
+
 type FacilityStatusBadgeProps = {
-  status: FacilitySpaceStatus | FacilityReservationStatus | FacilityPublicSpaceStatus;
+  status: StatusValue;
   label?: string;
   disabled?: boolean;
-  onSelectSpaceStatus?: (status: FacilitySpaceStatus) => void;
+  onSelectSpaceStatus?: (status: FacilityStatus) => void;
   spaceStatusOptions?: FacilitySpaceStatusOption[];
 };
 
-function resolveVariant(status: FacilityStatusBadgeProps["status"]) {
+function resolveVariant(status: StatusValue) {
   if (status === "open" || status === "approved") {
     return "success" as const;
   }
@@ -35,7 +37,7 @@ function resolveVariant(status: FacilityStatusBadgeProps["status"]) {
   return "neutral" as const;
 }
 
-function resolveLabel(status: FacilityStatusBadgeProps["status"]) {
+function resolveLabel(status: StatusValue) {
   return status.replace(/_/g, " ");
 }
 

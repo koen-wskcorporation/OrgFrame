@@ -10,7 +10,6 @@ import type {
   CalendarRule,
   CalendarRuleException,
   FacilityAllocation,
-  FacilitySpaceConfiguration,
   InboxItem,
   OccurrenceInviteStatus,
   OccurrenceTeamInvite,
@@ -26,10 +25,8 @@ const occurrenceSelect =
   "id, org_id, entry_id, source_rule_id, source_type, source_key, timezone, local_date, local_start_time, local_end_time, starts_at_utc, ends_at_utc, status, metadata_json, created_by, updated_by, created_at, updated_at";
 const exceptionSelect =
   "id, org_id, rule_id, source_key, kind, override_occurrence_id, payload_json, created_by, updated_by, created_at, updated_at";
-const configurationSelect =
-  "id, org_id, space_id, name, slug, capacity_teams, is_active, sort_index, metadata_json, created_by, updated_by, created_at, updated_at";
 const allocationSelect =
-  "id, org_id, occurrence_id, space_id, configuration_id, lock_mode, allow_shared, starts_at_utc, ends_at_utc, is_active, metadata_json, created_by, updated_by, created_at, updated_at";
+  "id, org_id, occurrence_id, node_id, starts_at_utc, ends_at_utc, is_active, metadata_json, created_by, updated_by, created_at, updated_at";
 const inviteSelect =
   "id, org_id, occurrence_id, team_id, role, invite_status, invited_by_user_id, invited_at, responded_by_user_id, responded_at, created_at, updated_at";
 const inboxSelect =
@@ -114,30 +111,11 @@ type ExceptionRow = {
   updated_at: string;
 };
 
-type ConfigurationRow = {
-  id: string;
-  org_id: string;
-  space_id: string;
-  name: string;
-  slug: string;
-  capacity_teams: number | null;
-  is_active: boolean;
-  sort_index: number;
-  metadata_json: unknown;
-  created_by: string | null;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
 type AllocationRow = {
   id: string;
   org_id: string;
   occurrence_id: string;
-  space_id: string;
-  configuration_id: string;
-  lock_mode: FacilityAllocation["lockMode"];
-  allow_shared: boolean;
+  node_id: string;
   starts_at_utc: string;
   ends_at_utc: string;
   is_active: boolean;
@@ -274,33 +252,12 @@ function mapException(row: ExceptionRow): CalendarRuleException {
   };
 }
 
-function mapConfiguration(row: ConfigurationRow): FacilitySpaceConfiguration {
-  return {
-    id: row.id,
-    orgId: row.org_id,
-    spaceId: row.space_id,
-    name: row.name,
-    slug: row.slug,
-    capacityTeams: row.capacity_teams,
-    isActive: row.is_active,
-    sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
-    metadataJson: asObject(row.metadata_json),
-    createdBy: row.created_by,
-    updatedBy: row.updated_by,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}
-
 function mapAllocation(row: AllocationRow): FacilityAllocation {
   return {
     id: row.id,
     orgId: row.org_id,
     occurrenceId: row.occurrence_id,
-    spaceId: row.space_id,
-    configurationId: row.configuration_id,
-    lockMode: row.lock_mode,
-    allowShared: row.allow_shared,
+    nodeId: row.node_id,
     startsAtUtc: row.starts_at_utc,
     endsAtUtc: row.ends_at_utc,
     isActive: row.is_active,
@@ -899,121 +856,6 @@ export async function deleteCalendarRuleException(input: { orgId: string; ruleId
   }
 }
 
-export async function listFacilitySpaceConfigurations(
-  orgId: string,
-  options?: {
-    spaceId?: string;
-    includeInactive?: boolean;
-  }
-): Promise<FacilitySpaceConfiguration[]> {
-  const supabase = await createSupabaseServer();
-  let query = supabase
-    .from("facility_space_configurations")
-    .select(configurationSelect)
-    .eq("org_id", orgId)
-    .order("sort_index", { ascending: true })
-    .order("created_at", { ascending: true });
-
-  if (options?.spaceId) {
-    query = query.eq("space_id", options.spaceId);
-  }
-
-  if (!options?.includeInactive) {
-    query = query.eq("is_active", true);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(`Failed to list facility space configurations: ${error.message}`);
-  }
-
-  return (data ?? []).map((row) => mapConfiguration(row as ConfigurationRow));
-}
-
-export async function createFacilitySpaceConfiguration(input: {
-  orgId: string;
-  spaceId: string;
-  name: string;
-  slug: string;
-  capacityTeams: number | null;
-  isActive?: boolean;
-  sortIndex?: number;
-  metadataJson?: Record<string, unknown>;
-  actorUserId: string;
-}): Promise<FacilitySpaceConfiguration> {
-  const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
-    .from("facility_space_configurations")
-    .insert({
-      org_id: input.orgId,
-      space_id: input.spaceId,
-      name: input.name,
-      slug: input.slug,
-      capacity_teams: input.capacityTeams,
-      is_active: input.isActive ?? true,
-      sort_index: input.sortIndex ?? 0,
-      metadata_json: input.metadataJson ?? {},
-      created_by: input.actorUserId,
-      updated_by: input.actorUserId
-    })
-    .select(configurationSelect)
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to create facility space configuration: ${error.message}`);
-  }
-
-  return mapConfiguration(data as ConfigurationRow);
-}
-
-function toSlug(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-export async function getOrCreateDefaultFacilitySpaceConfiguration(input: {
-  orgId: string;
-  spaceId: string;
-  actorUserId: string;
-}): Promise<FacilitySpaceConfiguration> {
-  const existing = await listFacilitySpaceConfigurations(input.orgId, {
-    spaceId: input.spaceId,
-    includeInactive: true
-  });
-
-  if (existing[0]) {
-    return existing[0];
-  }
-
-  const supabase = await createSupabaseServer();
-  const { data: spaceRow, error: spaceError } = await supabase
-    .from("facility_spaces")
-    .select("name")
-    .eq("org_id", input.orgId)
-    .eq("id", input.spaceId)
-    .maybeSingle();
-
-  if (spaceError) {
-    throw new Error(`Failed to load facility space while creating default configuration: ${spaceError.message}`);
-  }
-
-  const spaceName = (spaceRow?.name as string | undefined) ?? "Configuration";
-
-  return createFacilitySpaceConfiguration({
-    orgId: input.orgId,
-    spaceId: input.spaceId,
-    name: "Default",
-    slug: toSlug(`${spaceName}-default`),
-    capacityTeams: 1,
-    actorUserId: input.actorUserId
-  });
-}
-
 export async function listOccurrenceFacilityAllocations(
   orgId: string,
   options?: {
@@ -1040,43 +882,51 @@ export async function listOccurrenceFacilityAllocations(
   return (data ?? []).map((row) => mapAllocation(row as AllocationRow));
 }
 
-export async function upsertOccurrenceFacilityAllocation(input: {
+export async function setOccurrenceFacilityAllocations(input: {
   orgId: string;
   occurrenceId: string;
-  spaceId: string;
-  configurationId: string;
-  lockMode: FacilityAllocation["lockMode"];
-  allowShared: boolean;
+  nodeIds: string[];
   metadataJson?: Record<string, unknown>;
   actorUserId: string;
-}): Promise<FacilityAllocation> {
+}): Promise<FacilityAllocation[]> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
-    .from("calendar_occurrence_facility_allocations")
-    .upsert(
-      {
-        org_id: input.orgId,
-        occurrence_id: input.occurrenceId,
-        space_id: input.spaceId,
-        configuration_id: input.configurationId,
-        lock_mode: input.lockMode,
-        allow_shared: input.allowShared,
-        metadata_json: input.metadataJson ?? {},
-        created_by: input.actorUserId,
-        updated_by: input.actorUserId
-      },
-      {
-        onConflict: "occurrence_id"
-      }
-    )
-    .select(allocationSelect)
-    .single();
+  const nextNodeIds = Array.from(new Set(input.nodeIds));
+  const existing = await listOccurrenceFacilityAllocations(input.orgId, { occurrenceId: input.occurrenceId });
+  const nodeIdsToDelete = existing.filter((allocation) => !nextNodeIds.includes(allocation.nodeId)).map((allocation) => allocation.nodeId);
 
-  if (error) {
-    throw new Error(`Failed to save facility allocation: ${error.message}`);
+  if (nodeIdsToDelete.length > 0) {
+    const { error } = await supabase
+      .from("calendar_occurrence_facility_allocations")
+      .delete()
+      .eq("org_id", input.orgId)
+      .eq("occurrence_id", input.occurrenceId)
+      .in("node_id", nodeIdsToDelete);
+
+    if (error) {
+      throw new Error(`Failed to remove facility allocations: ${error.message}`);
+    }
   }
 
-  return mapAllocation(data as AllocationRow);
+  const nodesToUpsert = nextNodeIds.map((nodeId) => ({
+    org_id: input.orgId,
+    occurrence_id: input.occurrenceId,
+    node_id: nodeId,
+    metadata_json: input.metadataJson ?? {},
+    created_by: input.actorUserId,
+    updated_by: input.actorUserId
+  }));
+
+  if (nodesToUpsert.length > 0) {
+    const { error } = await supabase.from("calendar_occurrence_facility_allocations").upsert(nodesToUpsert, {
+      onConflict: "occurrence_id,node_id"
+    });
+
+    if (error) {
+      throw new Error(`Failed to save facility allocations: ${error.message}`);
+    }
+  }
+
+  return listOccurrenceFacilityAllocations(input.orgId, { occurrenceId: input.occurrenceId });
 }
 
 export async function listOccurrenceTeamInvites(
@@ -1224,27 +1074,20 @@ export async function createInboxItems(
 }
 
 export async function listCalendarReadModel(orgId: string): Promise<CalendarReadModel> {
-  const [entries, rules, occurrences, exceptions, configurationsResult, allocations, invites] = await Promise.all([
+  const [entries, rules, occurrences, exceptions, allocations, invites] = await Promise.all([
     listCalendarEntries(orgId),
     listCalendarRules(orgId),
     listCalendarOccurrences(orgId, { includeCancelled: true }),
     listCalendarRuleExceptions(orgId),
-    listFacilitySpaceConfigurations(orgId, { includeInactive: true }).catch((error: unknown) => {
-      // Avoid hard-failing facility pages when configuration fetch has transient network issues.
-      console.error("[calendar] Falling back to empty facility configurations.", error);
-      return [];
-    }),
     listOccurrenceFacilityAllocations(orgId),
     listOccurrenceTeamInvites(orgId, { includeInactive: true })
   ]);
-  const configurations = configurationsResult;
 
   return {
     entries,
     rules,
     occurrences,
     exceptions,
-    configurations,
     allocations,
     invites
   };
@@ -1256,9 +1099,9 @@ export async function getCalendarOccurrenceReadModel(orgId: string, occurrenceId
     return null;
   }
 
-  const [entry, allocation, teams] = await Promise.all([
+  const [entry, allocations, teams] = await Promise.all([
     getCalendarEntryById(orgId, occurrence.entryId),
-    listOccurrenceFacilityAllocations(orgId, { occurrenceId }).then((items) => items[0] ?? null),
+    listOccurrenceFacilityAllocations(orgId, { occurrenceId }),
     listOccurrenceTeamInvites(orgId, { occurrenceId, includeInactive: true })
   ]);
 
@@ -1269,7 +1112,7 @@ export async function getCalendarOccurrenceReadModel(orgId: string, occurrenceId
   return {
     occurrence,
     entry,
-    allocation,
+    allocations,
     teams
   };
 }

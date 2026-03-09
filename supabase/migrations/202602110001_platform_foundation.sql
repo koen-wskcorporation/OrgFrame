@@ -40,7 +40,25 @@ create table if not exists public.org_events (
 );
 
 create index if not exists org_events_org_created_idx on public.org_events (org_id, created_at desc);
-create index if not exists org_events_entity_idx on public.org_events (org_id, entity_type, entity_id);
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'org_events'
+      and column_name = 'entity_type'
+  ) and exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'org_events'
+      and column_name = 'entity_id'
+  ) then
+    execute 'create index if not exists org_events_entity_idx on public.org_events (org_id, entity_type, entity_id)';
+  end if;
+end
+$$;
 
 do $$
 begin

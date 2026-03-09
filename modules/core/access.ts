@@ -17,14 +17,14 @@ export type Permission =
   | "events.write"
   | "calendar.read"
   | "calendar.write"
-  | "facilities.read"
-  | "facilities.write";
+  | "spaces.read"
+  | "spaces.write";
 
 export type PermissionDefinition = {
   permission: Permission;
   label: string;
   description: string;
-  group: "Organization" | "Site Builder" | "Programs" | "Forms" | "Calendar" | "Events" | "Facilities";
+  group: "Organization" | "Site Builder" | "Programs" | "Forms" | "Calendar" | "Events" | "Spaces";
 };
 
 export type CustomRolePermissionSource = {
@@ -47,8 +47,8 @@ export const allPermissions: Permission[] = [
   "events.write",
   "calendar.read",
   "calendar.write",
-  "facilities.read",
-  "facilities.write"
+  "spaces.read",
+  "spaces.write"
 ];
 
 const permissionSet = new Set(allPermissions);
@@ -139,16 +139,16 @@ export const permissionDefinitions: PermissionDefinition[] = [
     group: "Calendar"
   },
   {
-    permission: "facilities.read",
-    label: "Facilities read",
-    description: "Read spaces, bookings, and blackouts in the facilities manager.",
-    group: "Facilities"
+    permission: "spaces.read",
+    label: "Spaces read",
+    description: "Read spaces, taxonomy, structure, and calendar-linked availability.",
+    group: "Spaces"
   },
   {
-    permission: "facilities.write",
-    label: "Facilities write",
-    description: "Create and manage spaces, bookings, approvals, rules, and blackouts.",
-    group: "Facilities"
+    permission: "spaces.write",
+    label: "Spaces write",
+    description: "Create and manage spaces, taxonomy, structure, and allocation settings.",
+    group: "Spaces"
   }
 ];
 

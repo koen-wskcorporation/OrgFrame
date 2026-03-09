@@ -34,6 +34,8 @@ const legacyManagerPermissions: Permission[] = [
   "forms.write",
   "calendar.read",
   "calendar.write",
+  "spaces.read",
+  "spaces.write",
   "events.read",
   "events.write"
 ];

@@ -67,31 +67,31 @@ export async function ProgramManageDetailPage({
       key: "structure",
       label: "Structure",
       description: "Hierarchy, divisions, and teams",
-      href: `/${orgContext.orgSlug}/tools/programs/${details.program.id}/structure`
+      href: `/${orgContext.orgSlug}/workspace/programs/${details.program.id}/structure`
     },
     {
       key: "schedule",
       label: "Schedule",
       description: "Rules, sessions, and timeline",
-      href: `/${orgContext.orgSlug}/tools/programs/${details.program.id}/schedule`
+      href: `/${orgContext.orgSlug}/workspace/programs/${details.program.id}/schedule`
     },
     {
       key: "registration",
       label: "Registration",
       description: "Forms, eligibility, and intake",
-      href: `/${orgContext.orgSlug}/tools/programs/${details.program.id}/registration`
+      href: `/${orgContext.orgSlug}/workspace/programs/${details.program.id}/registration`
     },
     {
       key: "teams",
       label: "Teams",
       description: "Roster and staff assignments",
-      href: `/${orgContext.orgSlug}/tools/programs/${details.program.id}/teams`
+      href: `/${orgContext.orgSlug}/workspace/programs/${details.program.id}/teams`
     },
     {
       key: "settings",
       label: "Settings",
       description: "Metadata, media, and publish state",
-      href: `/${orgContext.orgSlug}/tools/programs/${details.program.id}/settings`
+      href: `/${orgContext.orgSlug}/workspace/programs/${details.program.id}/settings`
     }
   ] as const;
 
@@ -100,7 +100,7 @@ export async function ProgramManageDetailPage({
       <PageHeader
         actions={
           <>
-            <Button href={`/${orgContext.orgSlug}/tools/programs`} variant="secondary">
+            <Button href={`/${orgContext.orgSlug}/workspace/programs`} variant="secondary">
               Back to programs
             </Button>
             <ProgramPublishToggleButton canWrite={canWritePrograms} orgSlug={orgContext.orgSlug} program={details.program} />

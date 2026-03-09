@@ -12,12 +12,12 @@ export function FormPageTabs({ orgSlug, formId, active }: FormPageTabsProps) {
     {
       key: "builder",
       label: "Builder",
-      href: `/${orgSlug}/tools/forms/${formId}/editor`
+      href: `/${orgSlug}/workspace/forms/${formId}/editor`
     },
     {
       key: "submissions",
       label: "Submissions",
-      href: `/${orgSlug}/tools/forms/${formId}/submissions`
+      href: `/${orgSlug}/workspace/forms/${formId}/submissions`
     }
   ] as const;
 

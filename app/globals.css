@@ -117,6 +117,10 @@ body.panel-open .org-layout-content {
   margin-right: calc(var(--panel-active-width, 325px) + var(--layout-gap));
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 @media (max-width: 1023px) {
   body.panel-open .org-layout-content {
     margin-right: 0;
@@ -134,6 +138,12 @@ body.panel-open .org-layout-content {
   .org-layout-content {
     transition: none;
   }
+
+  .ui-modal-overlay,
+  .ui-modal-card,
+  .ui-onboarding-step {
+    animation: none !important;
+  }
 }
 
 .app-panel [class*="grid-cols-"] {
@@ -143,6 +153,64 @@ body.panel-open .org-layout-content {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+@keyframes ui-modal-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ui-modal-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ui-onboarding-step-forward {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ui-onboarding-step-backward {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.ui-modal-overlay {
+  animation: ui-modal-overlay-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ui-modal-card {
+  animation: ui-modal-card-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ui-onboarding-step[data-direction="forward"] {
+  animation: ui-onboarding-step-forward 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ui-onboarding-step[data-direction="backward"] {
+  animation: ui-onboarding-step-backward 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @layer base {

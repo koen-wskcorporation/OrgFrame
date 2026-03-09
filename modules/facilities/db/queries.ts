@@ -1,113 +1,47 @@
 import { createSupabaseServer } from "@/lib/supabase/server";
 import type {
+  Facility,
+  FacilityBookingMapSnapshot,
+  FacilityMapReadModel,
+  FacilityNode,
   FacilityPublicAvailabilitySnapshot,
   FacilityPublicReservation,
-  FacilityPublicSpaceAvailability,
-  FacilityReservation,
-  FacilityReservationException,
-  FacilityReservationRule,
-  FacilitySpace
+  FacilityPublicSpaceAvailability
 } from "@/modules/facilities/types";
-import type { GeneratedFacilityReservationInput } from "@/modules/facilities/schedule/rule-engine";
+import { normalizeFacilityNodeLayout, collectNodeAncestorIds, collectNodeDescendantIds } from "@/modules/facilities/utils";
 
-const spaceSelect =
-  "id, org_id, parent_space_id, name, slug, space_kind, status, is_bookable, timezone, capacity, metadata_json, status_labels_json, sort_index, created_at, updated_at";
-const ruleSelect =
-  "id, org_id, space_id, mode, reservation_kind, default_status, public_label, internal_notes, timezone, start_date, end_date, start_time, end_time, interval_count, interval_unit, by_weekday, by_monthday, end_mode, until_date, max_occurrences, event_id, program_id, conflict_override, sort_index, is_active, config_json, rule_hash, created_by, created_at, updated_at";
-const reservationSelect =
-  "id, org_id, space_id, source_rule_id, source_key, reservation_kind, status, timezone, local_date, local_start_time, local_end_time, starts_at_utc, ends_at_utc, public_label, internal_notes, event_id, program_id, conflict_override, approved_by, approved_at, rejected_by, rejected_at, metadata_json, created_by, created_at, updated_at";
-const exceptionSelect =
-  "id, org_id, rule_id, source_key, kind, override_reservation_id, payload_json, created_by, created_at, updated_at";
+const facilitySelect = "id, org_id, name, slug, facility_type, status, timezone, metadata_json, sort_index, created_at, updated_at";
+const nodeSelect =
+  "id, org_id, facility_id, parent_node_id, name, slug, node_kind, status, is_bookable, capacity, layout_json, metadata_json, sort_index, created_at, updated_at";
 
-type SpaceRow = {
+type FacilityRow = {
   id: string;
   org_id: string;
-  parent_space_id: string | null;
   name: string;
   slug: string;
-  space_kind: FacilitySpace["spaceKind"];
-  status: FacilitySpace["status"];
+  facility_type: Facility["facilityType"];
+  status: Facility["status"];
+  timezone: string;
+  metadata_json: unknown;
+  sort_index: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type FacilityNodeRow = {
+  id: string;
+  org_id: string;
+  facility_id: string;
+  parent_node_id: string | null;
+  name: string;
+  slug: string;
+  node_kind: FacilityNode["nodeKind"];
+  status: FacilityNode["status"];
   is_bookable: boolean;
-  timezone: string;
   capacity: number | null;
+  layout_json: unknown;
   metadata_json: unknown;
-  status_labels_json: unknown;
   sort_index: number;
-  created_at: string;
-  updated_at: string;
-};
-
-type RuleRow = {
-  id: string;
-  org_id: string;
-  space_id: string;
-  mode: FacilityReservationRule["mode"];
-  reservation_kind: FacilityReservationRule["reservationKind"];
-  default_status: FacilityReservationRule["defaultStatus"];
-  public_label: string | null;
-  internal_notes: string | null;
-  timezone: string;
-  start_date: string | null;
-  end_date: string | null;
-  start_time: string | null;
-  end_time: string | null;
-  interval_count: number;
-  interval_unit: FacilityReservationRule["intervalUnit"] | null;
-  by_weekday: number[] | null;
-  by_monthday: number[] | null;
-  end_mode: FacilityReservationRule["endMode"];
-  until_date: string | null;
-  max_occurrences: number | null;
-  event_id: string | null;
-  program_id: string | null;
-  conflict_override: boolean;
-  sort_index: number;
-  is_active: boolean;
-  config_json: unknown;
-  rule_hash: string;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-type ReservationRow = {
-  id: string;
-  org_id: string;
-  space_id: string;
-  source_rule_id: string | null;
-  source_key: string;
-  reservation_kind: FacilityReservation["reservationKind"];
-  status: FacilityReservation["status"];
-  timezone: string;
-  local_date: string;
-  local_start_time: string | null;
-  local_end_time: string | null;
-  starts_at_utc: string;
-  ends_at_utc: string;
-  public_label: string | null;
-  internal_notes: string | null;
-  event_id: string | null;
-  program_id: string | null;
-  conflict_override: boolean;
-  approved_by: string | null;
-  approved_at: string | null;
-  rejected_by: string | null;
-  rejected_at: string | null;
-  metadata_json: unknown;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-type ExceptionRow = {
-  id: string;
-  org_id: string;
-  rule_id: string;
-  source_key: string;
-  kind: FacilityReservationException["kind"];
-  override_reservation_id: string | null;
-  payload_json: unknown;
-  created_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -119,734 +53,398 @@ function asObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function mapSpace(row: SpaceRow): FacilitySpace {
+function mapFacility(row: FacilityRow): Facility {
   return {
     id: row.id,
     orgId: row.org_id,
-    parentSpaceId: row.parent_space_id,
     name: row.name,
     slug: row.slug,
-    spaceKind: row.space_kind,
+    facilityType: row.facility_type,
+    status: row.status,
+    timezone: row.timezone,
+    metadataJson: asObject(row.metadata_json),
+    sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapNode(row: FacilityNodeRow): FacilityNode {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    facilityId: row.facility_id,
+    parentNodeId: row.parent_node_id,
+    name: row.name,
+    slug: row.slug,
+    nodeKind: row.node_kind,
     status: row.status,
     isBookable: row.is_bookable,
-    timezone: row.timezone,
     capacity: row.capacity,
+    layout: normalizeFacilityNodeLayout(row.layout_json),
     metadataJson: asObject(row.metadata_json),
-    statusLabelsJson: asObject(row.status_labels_json),
     sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
 }
 
-function mapRule(row: RuleRow): FacilityReservationRule {
-  return {
-    id: row.id,
-    orgId: row.org_id,
-    spaceId: row.space_id,
-    mode: row.mode,
-    reservationKind: row.reservation_kind,
-    defaultStatus: row.default_status,
-    publicLabel: row.public_label,
-    internalNotes: row.internal_notes,
-    timezone: row.timezone,
-    startDate: row.start_date,
-    endDate: row.end_date,
-    startTime: row.start_time,
-    endTime: row.end_time,
-    intervalCount: Number.isFinite(row.interval_count) ? row.interval_count : 1,
-    intervalUnit: row.interval_unit,
-    byWeekday: Array.isArray(row.by_weekday) ? row.by_weekday : null,
-    byMonthday: Array.isArray(row.by_monthday) ? row.by_monthday : null,
-    endMode: row.end_mode,
-    untilDate: row.until_date,
-    maxOccurrences: row.max_occurrences,
-    eventId: row.event_id,
-    programId: row.program_id,
-    conflictOverride: row.conflict_override,
-    sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
-    isActive: row.is_active,
-    configJson: asObject(row.config_json),
-    ruleHash: row.rule_hash ?? "",
-    createdBy: row.created_by,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}
-
-function mapReservation(row: ReservationRow): FacilityReservation {
-  return {
-    id: row.id,
-    orgId: row.org_id,
-    spaceId: row.space_id,
-    sourceRuleId: row.source_rule_id,
-    sourceKey: row.source_key,
-    reservationKind: row.reservation_kind,
-    status: row.status,
-    timezone: row.timezone,
-    localDate: row.local_date,
-    localStartTime: row.local_start_time,
-    localEndTime: row.local_end_time,
-    startsAtUtc: row.starts_at_utc,
-    endsAtUtc: row.ends_at_utc,
-    publicLabel: row.public_label,
-    internalNotes: row.internal_notes,
-    eventId: row.event_id,
-    programId: row.program_id,
-    conflictOverride: row.conflict_override,
-    approvedBy: row.approved_by,
-    approvedAt: row.approved_at,
-    rejectedBy: row.rejected_by,
-    rejectedAt: row.rejected_at,
-    metadataJson: asObject(row.metadata_json),
-    createdBy: row.created_by,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}
-
-function mapException(row: ExceptionRow): FacilityReservationException {
-  return {
-    id: row.id,
-    orgId: row.org_id,
-    ruleId: row.rule_id,
-    sourceKey: row.source_key,
-    kind: row.kind,
-    overrideReservationId: row.override_reservation_id,
-    payloadJson: asObject(row.payload_json),
-    createdBy: row.created_by,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}
-
-export async function listFacilitySpacesForManage(orgId: string): Promise<FacilitySpace[]> {
+export async function listFacilitiesForManage(orgId: string): Promise<Facility[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_spaces")
-    .select(spaceSelect)
+    .from("facilities")
+    .select(facilitySelect)
     .eq("org_id", orgId)
     .order("sort_index", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (error) {
-    throw new Error(`Failed to list facility spaces: ${error.message}`);
+    throw new Error(`Failed to list facilities: ${error.message}`);
   }
 
-  return (data ?? []).map((row) => mapSpace(row as SpaceRow));
+  return (data ?? []).map((row) => mapFacility(row as FacilityRow));
 }
 
-export async function getFacilitySpaceById(orgId: string, spaceId: string): Promise<FacilitySpace | null> {
+export async function getFacilityById(orgId: string, facilityId: string): Promise<Facility | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_spaces")
-    .select(spaceSelect)
+    .from("facilities")
+    .select(facilitySelect)
     .eq("org_id", orgId)
-    .eq("id", spaceId)
+    .eq("id", facilityId)
     .maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to load facility space: ${error.message}`);
+    throw new Error(`Failed to load facility: ${error.message}`);
   }
 
-  return data ? mapSpace(data as SpaceRow) : null;
+  return data ? mapFacility(data as FacilityRow) : null;
 }
 
-export async function createFacilitySpaceRecord(input: {
+export async function createFacilityRecord(input: {
   orgId: string;
-  parentSpaceId: string | null;
   name: string;
   slug: string;
-  spaceKind: FacilitySpace["spaceKind"];
-  status: FacilitySpace["status"];
-  isBookable: boolean;
+  facilityType: Facility["facilityType"];
+  status: Facility["status"];
   timezone: string;
-  capacity: number | null;
   metadataJson?: Record<string, unknown>;
-  statusLabelsJson?: Record<string, unknown>;
   sortIndex?: number;
-}): Promise<FacilitySpace> {
+}): Promise<Facility> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_spaces")
+    .from("facilities")
     .insert({
       org_id: input.orgId,
-      parent_space_id: input.parentSpaceId,
       name: input.name,
       slug: input.slug,
-      space_kind: input.spaceKind,
+      facility_type: input.facilityType,
       status: input.status,
-      is_bookable: input.isBookable,
       timezone: input.timezone,
-      capacity: input.capacity,
       metadata_json: input.metadataJson ?? {},
-      status_labels_json: input.statusLabelsJson ?? {},
       sort_index: input.sortIndex ?? 0
     })
-    .select(spaceSelect)
+    .select(facilitySelect)
     .single();
 
   if (error) {
-    throw new Error(`Failed to create facility space: ${error.message}`);
+    throw new Error(`Failed to create facility: ${error.message}`);
   }
 
-  return mapSpace(data as SpaceRow);
+  return mapFacility(data as FacilityRow);
 }
 
-export async function updateFacilitySpaceRecord(input: {
+export async function updateFacilityRecord(input: {
   orgId: string;
-  spaceId: string;
-  parentSpaceId: string | null;
+  facilityId: string;
   name: string;
   slug: string;
-  spaceKind: FacilitySpace["spaceKind"];
-  status: FacilitySpace["status"];
-  isBookable: boolean;
+  facilityType: Facility["facilityType"];
+  status: Facility["status"];
   timezone: string;
-  capacity: number | null;
   metadataJson?: Record<string, unknown>;
-  statusLabelsJson?: Record<string, unknown>;
   sortIndex?: number;
-}): Promise<FacilitySpace> {
+}): Promise<Facility> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_spaces")
+    .from("facilities")
     .update({
-      parent_space_id: input.parentSpaceId,
       name: input.name,
       slug: input.slug,
-      space_kind: input.spaceKind,
+      facility_type: input.facilityType,
       status: input.status,
-      is_bookable: input.isBookable,
       timezone: input.timezone,
-      capacity: input.capacity,
       metadata_json: input.metadataJson ?? {},
-      status_labels_json: input.statusLabelsJson ?? {},
       sort_index: input.sortIndex ?? 0
     })
     .eq("org_id", input.orgId)
-    .eq("id", input.spaceId)
-    .select(spaceSelect)
+    .eq("id", input.facilityId)
+    .select(facilitySelect)
     .single();
 
   if (error) {
-    throw new Error(`Failed to update facility space: ${error.message}`);
+    throw new Error(`Failed to update facility: ${error.message}`);
   }
 
-  return mapSpace(data as SpaceRow);
+  return mapFacility(data as FacilityRow);
 }
 
-export async function updateFacilitySpaceHierarchyRecord(input: {
-  orgId: string;
-  spaceId: string;
-  parentSpaceId: string | null;
-  sortIndex: number;
-}): Promise<void> {
+export async function deleteFacilityRecord(input: { orgId: string; facilityId: string }): Promise<void> {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase
-    .from("facility_spaces")
-    .update({
-      parent_space_id: input.parentSpaceId,
-      sort_index: input.sortIndex
-    })
-    .eq("org_id", input.orgId)
-    .eq("id", input.spaceId);
-
+  const { error } = await supabase.from("facilities").delete().eq("org_id", input.orgId).eq("id", input.facilityId);
   if (error) {
-    throw new Error(`Failed to update facility space hierarchy: ${error.message}`);
+    throw new Error(`Failed to delete facility: ${error.message}`);
   }
 }
 
-export async function deleteFacilitySpaceRecord(input: { orgId: string; spaceId: string }): Promise<void> {
-  const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("facility_spaces").delete().eq("org_id", input.orgId).eq("id", input.spaceId);
-
-  if (error) {
-    throw new Error(`Failed to delete facility space: ${error.message}`);
-  }
-}
-
-export async function listFacilityReservationRules(orgId: string, options?: { spaceId?: string }): Promise<FacilityReservationRule[]> {
-  const supabase = await createSupabaseServer();
-  let query = supabase
-    .from("facility_reservation_rules")
-    .select(ruleSelect)
-    .eq("org_id", orgId)
-    .order("sort_index", { ascending: true })
-    .order("created_at", { ascending: true });
-
-  if (options?.spaceId) {
-    query = query.eq("space_id", options.spaceId);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(`Failed to list facility reservation rules: ${error.message}`);
-  }
-
-  return (data ?? []).map((row) => mapRule(row as RuleRow));
-}
-
-export async function getFacilityReservationRuleById(orgId: string, ruleId: string): Promise<FacilityReservationRule | null> {
-  const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
-    .from("facility_reservation_rules")
-    .select(ruleSelect)
-    .eq("org_id", orgId)
-    .eq("id", ruleId)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Failed to load facility reservation rule: ${error.message}`);
-  }
-
-  return data ? mapRule(data as RuleRow) : null;
-}
-
-export async function upsertFacilityReservationRule(input: {
-  orgId: string;
-  ruleId?: string;
-  spaceId: string;
-  mode: FacilityReservationRule["mode"];
-  reservationKind: FacilityReservationRule["reservationKind"];
-  defaultStatus: FacilityReservationRule["defaultStatus"];
-  publicLabel: string | null;
-  internalNotes: string | null;
-  timezone: string;
-  startDate: string | null;
-  endDate: string | null;
-  startTime: string | null;
-  endTime: string | null;
-  intervalCount: number;
-  intervalUnit: FacilityReservationRule["intervalUnit"];
-  byWeekday: number[] | null;
-  byMonthday: number[] | null;
-  endMode: FacilityReservationRule["endMode"];
-  untilDate: string | null;
-  maxOccurrences: number | null;
-  eventId: string | null;
-  programId: string | null;
-  conflictOverride: boolean;
-  sortIndex: number;
-  isActive: boolean;
-  configJson: Record<string, unknown>;
-  ruleHash: string;
-  createdBy: string;
-}): Promise<FacilityReservationRule> {
-  const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
-    .from("facility_reservation_rules")
-    .upsert({
-      id: input.ruleId,
-      org_id: input.orgId,
-      space_id: input.spaceId,
-      mode: input.mode,
-      reservation_kind: input.reservationKind,
-      default_status: input.defaultStatus,
-      public_label: input.publicLabel,
-      internal_notes: input.internalNotes,
-      timezone: input.timezone,
-      start_date: input.startDate,
-      end_date: input.endDate,
-      start_time: input.startTime,
-      end_time: input.endTime,
-      interval_count: input.intervalCount,
-      interval_unit: input.intervalUnit,
-      by_weekday: input.byWeekday,
-      by_monthday: input.byMonthday,
-      end_mode: input.endMode,
-      until_date: input.untilDate,
-      max_occurrences: input.maxOccurrences,
-      event_id: input.eventId,
-      program_id: input.programId,
-      conflict_override: input.conflictOverride,
-      sort_index: input.sortIndex,
-      is_active: input.isActive,
-      config_json: input.configJson,
-      rule_hash: input.ruleHash,
-      created_by: input.createdBy
-    })
-    .select(ruleSelect)
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to save facility reservation rule: ${error.message}`);
-  }
-
-  return mapRule(data as RuleRow);
-}
-
-export async function deleteFacilityReservationRule(orgId: string, ruleId: string): Promise<void> {
-  const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("facility_reservation_rules").delete().eq("org_id", orgId).eq("id", ruleId);
-  if (error) {
-    throw new Error(`Failed to delete facility reservation rule: ${error.message}`);
-  }
-}
-
-export async function listFacilityReservations(
+export async function listFacilityNodes(
   orgId: string,
   options?: {
-    spaceId?: string;
-    includeInactive?: boolean;
-    fromUtc?: string;
-    toUtc?: string;
+    facilityId?: string;
+    includeArchived?: boolean;
   }
-): Promise<FacilityReservation[]> {
+): Promise<FacilityNode[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("facility_reservations")
-    .select(reservationSelect)
+    .from("facility_nodes")
+    .select(nodeSelect)
     .eq("org_id", orgId)
-    .order("starts_at_utc", { ascending: true })
+    .order("sort_index", { ascending: true })
     .order("created_at", { ascending: true });
 
-  if (options?.spaceId) {
-    query = query.eq("space_id", options.spaceId);
+  if (options?.facilityId) {
+    query = query.eq("facility_id", options.facilityId);
   }
 
-  if (!options?.includeInactive) {
-    query = query.in("status", ["pending", "approved"]);
-  }
-
-  if (options?.fromUtc) {
-    query = query.gte("ends_at_utc", options.fromUtc);
-  }
-
-  if (options?.toUtc) {
-    query = query.lte("starts_at_utc", options.toUtc);
+  if (!options?.includeArchived) {
+    query = query.neq("status", "archived");
   }
 
   const { data, error } = await query;
   if (error) {
-    throw new Error(`Failed to list facility reservations: ${error.message}`);
+    throw new Error(`Failed to list facility nodes: ${error.message}`);
   }
 
-  return (data ?? []).map((row) => mapReservation(row as ReservationRow));
+  return (data ?? []).map((row) => mapNode(row as FacilityNodeRow));
 }
 
-export async function getFacilityReservationById(orgId: string, reservationId: string): Promise<FacilityReservation | null> {
+export async function getFacilityNodeById(orgId: string, nodeId: string): Promise<FacilityNode | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_reservations")
-    .select(reservationSelect)
+    .from("facility_nodes")
+    .select(nodeSelect)
     .eq("org_id", orgId)
-    .eq("id", reservationId)
+    .eq("id", nodeId)
     .maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to load facility reservation: ${error.message}`);
+    throw new Error(`Failed to load facility node: ${error.message}`);
   }
 
-  return data ? mapReservation(data as ReservationRow) : null;
+  return data ? mapNode(data as FacilityNodeRow) : null;
 }
 
-export async function createFacilityReservationRecord(input: {
+export async function createFacilityNodeRecord(input: {
   orgId: string;
-  spaceId: string;
-  sourceRuleId: string | null;
-  sourceKey: string;
-  reservationKind: FacilityReservation["reservationKind"];
-  status: FacilityReservation["status"];
-  timezone: string;
-  localDate: string;
-  localStartTime: string | null;
-  localEndTime: string | null;
-  startsAtUtc: string;
-  endsAtUtc: string;
-  publicLabel: string | null;
-  internalNotes: string | null;
-  eventId: string | null;
-  programId: string | null;
-  conflictOverride: boolean;
+  facilityId: string;
+  parentNodeId: string | null;
+  name: string;
+  slug: string;
+  nodeKind: FacilityNode["nodeKind"];
+  status: FacilityNode["status"];
+  isBookable: boolean;
+  capacity: number | null;
+  layoutJson?: Record<string, unknown>;
   metadataJson?: Record<string, unknown>;
-  createdBy: string;
-}): Promise<FacilityReservation> {
+  sortIndex?: number;
+}): Promise<FacilityNode> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_reservations")
+    .from("facility_nodes")
     .insert({
       org_id: input.orgId,
-      space_id: input.spaceId,
-      source_rule_id: input.sourceRuleId,
-      source_key: input.sourceKey,
-      reservation_kind: input.reservationKind,
+      facility_id: input.facilityId,
+      parent_node_id: input.parentNodeId,
+      name: input.name,
+      slug: input.slug,
+      node_kind: input.nodeKind,
       status: input.status,
-      timezone: input.timezone,
-      local_date: input.localDate,
-      local_start_time: input.localStartTime,
-      local_end_time: input.localEndTime,
-      starts_at_utc: input.startsAtUtc,
-      ends_at_utc: input.endsAtUtc,
-      public_label: input.publicLabel,
-      internal_notes: input.internalNotes,
-      event_id: input.eventId,
-      program_id: input.programId,
-      conflict_override: input.conflictOverride,
+      is_bookable: input.isBookable,
+      capacity: input.capacity,
+      layout_json: input.layoutJson ?? {},
       metadata_json: input.metadataJson ?? {},
-      created_by: input.createdBy
+      sort_index: input.sortIndex ?? 0
     })
-    .select(reservationSelect)
+    .select(nodeSelect)
     .single();
 
   if (error) {
-    throw new Error(`Failed to create facility reservation: ${error.message}`);
+    throw new Error(`Failed to create facility node: ${error.message}`);
   }
 
-  return mapReservation(data as ReservationRow);
+  return mapNode(data as FacilityNodeRow);
 }
 
-export async function updateFacilityReservationRecord(input: {
+export async function updateFacilityNodeRecord(input: {
   orgId: string;
-  reservationId: string;
-  spaceId: string;
-  reservationKind: FacilityReservation["reservationKind"];
-  status: FacilityReservation["status"];
-  timezone: string;
-  localDate: string;
-  localStartTime: string | null;
-  localEndTime: string | null;
+  nodeId: string;
+  parentNodeId: string | null;
+  name: string;
+  slug: string;
+  nodeKind: FacilityNode["nodeKind"];
+  status: FacilityNode["status"];
+  isBookable: boolean;
+  capacity: number | null;
+  layoutJson?: Record<string, unknown>;
+  metadataJson?: Record<string, unknown>;
+  sortIndex?: number;
+}): Promise<FacilityNode> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("facility_nodes")
+    .update({
+      parent_node_id: input.parentNodeId,
+      name: input.name,
+      slug: input.slug,
+      node_kind: input.nodeKind,
+      status: input.status,
+      is_bookable: input.isBookable,
+      capacity: input.capacity,
+      layout_json: input.layoutJson ?? {},
+      metadata_json: input.metadataJson ?? {},
+      sort_index: input.sortIndex ?? 0
+    })
+    .eq("org_id", input.orgId)
+    .eq("id", input.nodeId)
+    .select(nodeSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update facility node: ${error.message}`);
+  }
+
+  return mapNode(data as FacilityNodeRow);
+}
+
+export async function deleteFacilityNodeRecord(input: { orgId: string; nodeId: string }): Promise<void> {
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase.from("facility_nodes").delete().eq("org_id", input.orgId).eq("id", input.nodeId);
+  if (error) {
+    throw new Error(`Failed to delete facility node: ${error.message}`);
+  }
+}
+
+export async function listFacilityMapReadModel(orgId: string): Promise<FacilityMapReadModel> {
+  const [facilities, nodes] = await Promise.all([listFacilitiesForManage(orgId), listFacilityNodes(orgId, { includeArchived: true })]);
+  return { facilities, nodes };
+}
+
+export async function getFacilityMapReadModel(orgId: string, facilityId: string): Promise<FacilityMapReadModel> {
+  const [facility, nodes] = await Promise.all([getFacilityById(orgId, facilityId), listFacilityNodes(orgId, { facilityId, includeArchived: true })]);
+  return {
+    facilities: facility ? [facility] : [],
+    nodes
+  };
+}
+
+export async function listOccurrenceAllocatedNodeIds(orgId: string, occurrenceId: string): Promise<string[]> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("calendar_occurrence_facility_allocations")
+    .select("node_id")
+    .eq("org_id", orgId)
+    .eq("occurrence_id", occurrenceId)
+    .eq("is_active", true);
+
+  if (error) {
+    throw new Error(`Failed to list occurrence facility allocations: ${error.message}`);
+  }
+
+  return (data ?? [])
+    .map((row) => (typeof (row as { node_id?: unknown }).node_id === "string" ? ((row as { node_id: string }).node_id) : null))
+    .filter((value): value is string => Boolean(value));
+}
+
+export async function listOverlappingAllocationNodeIds(input: {
+  orgId: string;
   startsAtUtc: string;
   endsAtUtc: string;
-  publicLabel: string | null;
-  internalNotes: string | null;
-  eventId: string | null;
-  programId: string | null;
-  conflictOverride: boolean;
-  metadataJson?: Record<string, unknown>;
-  approvedBy?: string | null;
-  approvedAt?: string | null;
-  rejectedBy?: string | null;
-  rejectedAt?: string | null;
-}): Promise<FacilityReservation> {
-  const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
-    .from("facility_reservations")
-    .update({
-      space_id: input.spaceId,
-      reservation_kind: input.reservationKind,
-      status: input.status,
-      timezone: input.timezone,
-      local_date: input.localDate,
-      local_start_time: input.localStartTime,
-      local_end_time: input.localEndTime,
-      starts_at_utc: input.startsAtUtc,
-      ends_at_utc: input.endsAtUtc,
-      public_label: input.publicLabel,
-      internal_notes: input.internalNotes,
-      event_id: input.eventId,
-      program_id: input.programId,
-      conflict_override: input.conflictOverride,
-      metadata_json: input.metadataJson ?? {},
-      approved_by: input.approvedBy ?? null,
-      approved_at: input.approvedAt ?? null,
-      rejected_by: input.rejectedBy ?? null,
-      rejected_at: input.rejectedAt ?? null
-    })
-    .eq("org_id", input.orgId)
-    .eq("id", input.reservationId)
-    .select(reservationSelect)
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to update facility reservation: ${error.message}`);
-  }
-
-  return mapReservation(data as ReservationRow);
-}
-
-export async function setFacilityReservationStatus(input: {
-  orgId: string;
-  reservationId: string;
-  status: FacilityReservation["status"];
-  actorUserId: string;
-}): Promise<FacilityReservation> {
-  const supabase = await createSupabaseServer();
-  const patch: Record<string, unknown> = {
-    status: input.status
-  };
-
-  if (input.status === "approved") {
-    patch.approved_by = input.actorUserId;
-    patch.approved_at = new Date().toISOString();
-    patch.rejected_by = null;
-    patch.rejected_at = null;
-  } else if (input.status === "rejected") {
-    patch.rejected_by = input.actorUserId;
-    patch.rejected_at = new Date().toISOString();
-    patch.approved_by = null;
-    patch.approved_at = null;
-  } else {
-    patch.approved_by = null;
-    patch.approved_at = null;
-    patch.rejected_by = null;
-    patch.rejected_at = null;
-  }
-
-  const { data, error } = await supabase
-    .from("facility_reservations")
-    .update(patch)
-    .eq("org_id", input.orgId)
-    .eq("id", input.reservationId)
-    .select(reservationSelect)
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to update facility reservation status: ${error.message}`);
-  }
-
-  return mapReservation(data as ReservationRow);
-}
-
-export async function listFacilityReservationExceptions(
-  orgId: string,
-  options?: { ruleId?: string }
-): Promise<FacilityReservationException[]> {
+  excludeOccurrenceId?: string;
+}): Promise<string[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("facility_reservation_exceptions")
-    .select(exceptionSelect)
-    .eq("org_id", orgId)
-    .order("created_at", { ascending: true });
+    .from("calendar_occurrence_facility_allocations")
+    .select("node_id")
+    .eq("org_id", input.orgId)
+    .eq("is_active", true)
+    .lt("starts_at_utc", input.endsAtUtc)
+    .gt("ends_at_utc", input.startsAtUtc);
 
-  if (options?.ruleId) {
-    query = query.eq("rule_id", options.ruleId);
+  if (input.excludeOccurrenceId) {
+    query = query.neq("occurrence_id", input.excludeOccurrenceId);
   }
 
   const { data, error } = await query;
   if (error) {
-    throw new Error(`Failed to list facility reservation exceptions: ${error.message}`);
+    throw new Error(`Failed to list overlapping allocation nodes: ${error.message}`);
   }
 
-  return (data ?? []).map((row) => mapException(row as ExceptionRow));
+  return (data ?? [])
+    .map((row) => (typeof (row as { node_id?: unknown }).node_id === "string" ? ((row as { node_id: string }).node_id) : null))
+    .filter((value): value is string => Boolean(value));
 }
 
-export async function upsertFacilityReservationException(input: {
-  orgId: string;
-  ruleId: string;
-  sourceKey: string;
-  kind: FacilityReservationException["kind"];
-  overrideReservationId: string | null;
-  payloadJson?: Record<string, unknown>;
-  createdBy: string;
-}): Promise<FacilityReservationException> {
+export async function getFacilityBookingMapSnapshotForOccurrence(orgId: string, occurrenceId: string): Promise<FacilityBookingMapSnapshot | null> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
-    .from("facility_reservation_exceptions")
-    .upsert({
-      org_id: input.orgId,
-      rule_id: input.ruleId,
-      source_key: input.sourceKey,
-      kind: input.kind,
-      override_reservation_id: input.overrideReservationId,
-      payload_json: input.payloadJson ?? {},
-      created_by: input.createdBy
-    })
-    .select(exceptionSelect)
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to upsert facility reservation exception: ${error.message}`);
-  }
-
-  return mapException(data as ExceptionRow);
-}
-
-export async function deleteFacilityReservationException(input: { orgId: string; ruleId: string; sourceKey: string; kind?: FacilityReservationException["kind"] }) {
-  const supabase = await createSupabaseServer();
-  let query = supabase
-    .from("facility_reservation_exceptions")
-    .delete()
-    .eq("org_id", input.orgId)
-    .eq("rule_id", input.ruleId)
-    .eq("source_key", input.sourceKey);
-  if (input.kind) {
-    query = query.eq("kind", input.kind);
-  }
-
-  const { error } = await query;
-  if (error) {
-    throw new Error(`Failed to delete facility reservation exception: ${error.message}`);
-  }
-}
-
-export async function upsertRuleGeneratedReservations(
-  orgId: string,
-  ruleId: string,
-  reservations: GeneratedFacilityReservationInput[]
-) {
-  const supabase = await createSupabaseServer();
-  const sourceKeys = new Set(reservations.map((item) => item.sourceKey));
-
-  if (reservations.length > 0) {
-    const { error: upsertError } = await supabase.from("facility_reservations").upsert(
-      reservations.map((reservation) => ({
-        org_id: orgId,
-        space_id: reservation.spaceId,
-        source_rule_id: reservation.sourceRuleId,
-        source_key: reservation.sourceKey,
-        reservation_kind: reservation.reservationKind,
-        status: reservation.status,
-        timezone: reservation.timezone,
-        local_date: reservation.localDate,
-        local_start_time: reservation.localStartTime,
-        local_end_time: reservation.localEndTime,
-        starts_at_utc: reservation.startsAtUtc,
-        ends_at_utc: reservation.endsAtUtc,
-        public_label: reservation.publicLabel,
-        internal_notes: reservation.internalNotes,
-        event_id: reservation.eventId,
-        program_id: reservation.programId,
-        conflict_override: reservation.conflictOverride,
-        metadata_json: reservation.metadataJson
-      })),
-      {
-        onConflict: "org_id,source_key"
-      }
-    );
-
-    if (upsertError) {
-      throw new Error(`Failed to upsert generated facility reservations: ${upsertError.message}`);
-    }
-  }
-
-  const { data: existingRows, error: existingError } = await supabase
-    .from("facility_reservations")
-    .select("id, source_key")
+  const { data: occurrenceRow, error: occurrenceError } = await supabase
+    .from("calendar_occurrences")
+    .select("id, starts_at_utc, ends_at_utc")
     .eq("org_id", orgId)
-    .eq("source_rule_id", ruleId);
+    .eq("id", occurrenceId)
+    .maybeSingle();
 
-  if (existingError) {
-    throw new Error(`Failed to read generated facility reservations: ${existingError.message}`);
+  if (occurrenceError) {
+    throw new Error(`Failed to load occurrence for facility map: ${occurrenceError.message}`);
   }
 
-  const staleIds = (existingRows ?? [])
-    .filter((row) => typeof row.source_key === "string" && !sourceKeys.has(row.source_key))
-    .map((row) => row.id)
-    .filter((value): value is string => typeof value === "string");
-
-  if (staleIds.length > 0) {
-    const { error: staleError } = await supabase.from("facility_reservations").update({ status: "cancelled" }).in("id", staleIds);
-    if (staleError) {
-      throw new Error(`Failed to cancel stale generated facility reservations: ${staleError.message}`);
-    }
+  if (!occurrenceRow) {
+    return null;
   }
-}
 
-export async function listFacilityReservationReadModel(orgId: string) {
-  const [spaces, rules, reservations, exceptions] = await Promise.all([
-    listFacilitySpacesForManage(orgId),
-    listFacilityReservationRules(orgId),
-    listFacilityReservations(orgId, { includeInactive: true }),
-    listFacilityReservationExceptions(orgId)
+  const startsAtUtc = (occurrenceRow as { starts_at_utc: string }).starts_at_utc;
+  const endsAtUtc = (occurrenceRow as { ends_at_utc: string }).ends_at_utc;
+
+  const [mapReadModel, selectedNodeIds, overlappingNodeIds] = await Promise.all([
+    listFacilityMapReadModel(orgId),
+    listOccurrenceAllocatedNodeIds(orgId, occurrenceId),
+    listOverlappingAllocationNodeIds({ orgId, startsAtUtc, endsAtUtc, excludeOccurrenceId: occurrenceId })
   ]);
 
+  const unavailableSet = new Set<string>();
+  for (const nodeId of overlappingNodeIds) {
+    unavailableSet.add(nodeId);
+    const ancestors = collectNodeAncestorIds(mapReadModel.nodes, nodeId);
+    for (const ancestorId of ancestors) {
+      unavailableSet.add(ancestorId);
+    }
+    const descendants = collectNodeDescendantIds(mapReadModel.nodes, nodeId);
+    for (const descendantId of descendants) {
+      unavailableSet.add(descendantId);
+    }
+  }
+
+  for (const selectedId of selectedNodeIds) {
+    unavailableSet.delete(selectedId);
+  }
+
   return {
-    spaces,
-    rules,
-    reservations,
-    exceptions
+    occurrenceId,
+    startsAtUtc,
+    endsAtUtc,
+    facilities: mapReadModel.facilities,
+    nodes: mapReadModel.nodes,
+    selectedNodeIds,
+    unavailableNodeIds: Array.from(unavailableSet)
   };
 }
 
@@ -859,22 +457,21 @@ function overlapsNow(reservation: FacilityPublicReservation, now: Date) {
   return startsAt.getTime() <= now.getTime() && now.getTime() < endsAt.getTime();
 }
 
-function getCurrentStatusForSpace(space: FacilitySpace, reservations: FacilityPublicReservation[], now: Date): FacilityPublicSpaceAvailability["currentStatus"] {
-  if (space.status !== "open" || !space.isBookable) {
+function getCurrentStatusForNode(node: FacilityNode, reservations: FacilityPublicReservation[], now: Date): FacilityPublicSpaceAvailability["currentStatus"] {
+  if (node.status !== "open" || !node.isBookable) {
     return "closed";
   }
-
-  const hasActiveReservation = reservations.some((reservation) => reservation.spaceId === space.id && overlapsNow(reservation, now));
+  const hasActiveReservation = reservations.some((reservation) => reservation.spaceId === node.id && overlapsNow(reservation, now));
   return hasActiveReservation ? "booked" : "open";
 }
 
-function getNextAvailableAtUtcForSpace(space: FacilitySpace, reservations: FacilityPublicReservation[], now: Date) {
-  if (space.status !== "open" || !space.isBookable) {
+function getNextAvailableAtUtcForNode(node: FacilityNode, reservations: FacilityPublicReservation[], now: Date) {
+  if (node.status !== "open" || !node.isBookable) {
     return null;
   }
 
   const future = reservations
-    .filter((reservation) => reservation.spaceId === space.id)
+    .filter((reservation) => reservation.spaceId === node.id)
     .map((reservation) => ({
       startsAt: new Date(reservation.startsAtUtc),
       endsAt: new Date(reservation.endsAtUtc)
@@ -912,47 +509,91 @@ export async function listFacilityPublicAvailabilitySnapshot(
   const now = new Date();
   const fromUtc = options?.fromUtc ?? new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
   const toUtc = options?.toUtc ?? new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString();
-  const [spaces, reservations] = await Promise.all([
-    listFacilitySpacesForManage(orgId).then((items) => items.filter((item) => item.status !== "archived")),
-    listFacilityReservations(orgId, {
-      includeInactive: false,
-      fromUtc,
-      toUtc
-    })
+
+  const [nodes, allocationRowsResult] = await Promise.all([
+    listFacilityNodes(orgId).then((items) => items.filter((item) => item.status !== "archived")),
+    (async () => {
+      const supabase = await createSupabaseServer();
+      return supabase
+        .from("calendar_occurrence_facility_allocations")
+        .select("id, occurrence_id, node_id, starts_at_utc, ends_at_utc")
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+        .gte("ends_at_utc", fromUtc)
+        .lte("starts_at_utc", toUtc)
+        .order("starts_at_utc", { ascending: true });
+    })()
   ]);
 
-  const publicReservations: FacilityPublicReservation[] = reservations
-    .filter(
-      (reservation): reservation is FacilityReservation & { status: FacilityPublicReservation["status"] } =>
-        reservation.status === "pending" || reservation.status === "approved"
-    )
-    .map((reservation) => ({
-      id: reservation.id,
-      spaceId: reservation.spaceId,
-      reservationKind: reservation.reservationKind,
-      status: reservation.status,
-      publicLabel: reservation.publicLabel,
-      startsAtUtc: reservation.startsAtUtc,
-      endsAtUtc: reservation.endsAtUtc,
-      timezone: reservation.timezone
+  if (allocationRowsResult.error) {
+    throw new Error(`Failed to list node allocations: ${allocationRowsResult.error.message}`);
+  }
+
+  const allocationRows = (allocationRowsResult.data ?? []) as Array<{
+    id: string;
+    occurrence_id: string;
+    node_id: string;
+    starts_at_utc: string;
+    ends_at_utc: string;
+  }>;
+
+  const occurrenceIds = Array.from(new Set(allocationRows.map((row) => row.occurrence_id)));
+  const occurrenceById = new Map<string, { status: string; timezone: string }>();
+
+  if (occurrenceIds.length > 0) {
+    const supabase = await createSupabaseServer();
+    const { data: occurrenceRows, error: occurrenceError } = await supabase
+      .from("calendar_occurrences")
+      .select("id, status, timezone")
+      .eq("org_id", orgId)
+      .in("id", occurrenceIds);
+
+    if (occurrenceError) {
+      throw new Error(`Failed to list allocated occurrences: ${occurrenceError.message}`);
+    }
+
+    for (const row of occurrenceRows ?? []) {
+      const id = (row as { id?: unknown }).id;
+      if (typeof id !== "string") {
+        continue;
+      }
+      occurrenceById.set(id, {
+        status: typeof (row as { status?: unknown }).status === "string" ? ((row as { status: string }).status) : "scheduled",
+        timezone: typeof (row as { timezone?: unknown }).timezone === "string" ? ((row as { timezone: string }).timezone) : "UTC"
+      });
+    }
+  }
+
+  const publicReservations: FacilityPublicReservation[] = allocationRows
+    .filter((row) => occurrenceById.get(row.occurrence_id)?.status === "scheduled")
+    .map((row) => ({
+      id: row.id,
+      spaceId: row.node_id,
+      reservationKind: "booking",
+      status: "approved",
+      publicLabel: null,
+      startsAtUtc: row.starts_at_utc,
+      endsAtUtc: row.ends_at_utc,
+      timezone: occurrenceById.get(row.occurrence_id)?.timezone ?? "UTC"
     }));
 
-  const publicSpaces: FacilityPublicSpaceAvailability[] = spaces.map((space) => ({
-    id: space.id,
-    parentSpaceId: space.parentSpaceId,
-    name: space.name,
-    slug: space.slug,
-    spaceKind: space.spaceKind,
-    status: space.status,
-    isBookable: space.isBookable,
-    timezone: space.timezone,
-    currentStatus: getCurrentStatusForSpace(space, publicReservations, now),
-    nextAvailableAtUtc: getNextAvailableAtUtcForSpace(space, publicReservations, now)
+  const spaces: FacilityPublicSpaceAvailability[] = nodes.map((node) => ({
+    id: node.id,
+    parentSpaceId: node.parentNodeId,
+    name: node.name,
+    slug: node.slug,
+    spaceKind: node.nodeKind,
+    spaceTypeKey: node.nodeKind,
+    status: node.status,
+    isBookable: node.isBookable,
+    timezone: "UTC",
+    currentStatus: getCurrentStatusForNode(node, publicReservations, now),
+    nextAvailableAtUtc: getNextAvailableAtUtcForNode(node, publicReservations, now)
   }));
 
   return {
     generatedAtUtc: now.toISOString(),
-    spaces: publicSpaces,
+    spaces,
     reservations: publicReservations
   };
 }

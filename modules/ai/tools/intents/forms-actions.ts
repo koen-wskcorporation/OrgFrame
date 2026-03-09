@@ -330,7 +330,7 @@ function createFormChangeset(input: {
         }
       }
     ],
-    revalidatePaths: [`/${input.org.slug}/tools/forms`, `/${input.org.slug}/manage/forms`]
+    revalidatePaths: [`/${input.org.slug}/workspace/forms`, `/${input.org.slug}/workspace/forms`]
   };
 }
 
@@ -492,7 +492,7 @@ export async function proposeUpdateFormBuilderAction(input: {
         }
       }
     ],
-    revalidatePaths: [`/${org.slug}/tools/forms`, `/${org.slug}/tools/forms/${resolved.form.id}/editor`, `/${org.slug}/manage/forms`]
+    revalidatePaths: [`/${org.slug}/workspace/forms`, `/${org.slug}/workspace/forms/${resolved.form.id}/editor`, `/${org.slug}/workspace/forms`]
   };
 
   return {
@@ -670,7 +670,7 @@ export async function proposeUpdateResponseStatusAction(input: {
         }
       }
     ],
-    revalidatePaths: [`/${org.slug}/tools/forms`, `/${org.slug}/manage/forms`]
+    revalidatePaths: [`/${org.slug}/workspace/forms`, `/${org.slug}/workspace/forms`]
   };
 
   return {

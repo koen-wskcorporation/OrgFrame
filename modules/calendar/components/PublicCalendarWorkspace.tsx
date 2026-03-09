@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UnifiedCalendar } from "@/components/calendar/UnifiedCalendar";
+import { UnifiedCalendar } from "@/modules/calendar/components/UnifiedCalendar";
 import type { CalendarPublicCatalogItem } from "@/modules/calendar/types";
 
 type PublicCalendarWorkspaceProps = {

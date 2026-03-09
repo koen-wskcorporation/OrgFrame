@@ -2,6 +2,15 @@ import { can } from "@/lib/permissions/can";
 import type { Permission } from "@/modules/core/access";
 
 export type OrgCapabilities = {
+  workspace: {
+    canRead: boolean;
+    canAccessArea: boolean;
+  };
+  settings: {
+    canRead: boolean;
+    canAccess: boolean;
+  };
+  // Backward-compat alias while callsites migrate.
   manage: {
     canRead: boolean;
     canAccessArea: boolean;
@@ -31,6 +40,12 @@ export type OrgCapabilities = {
     canWrite: boolean;
     canAccess: boolean;
   };
+  spaces: {
+    canRead: boolean;
+    canWrite: boolean;
+    canAccess: boolean;
+  };
+  // Backward-compat alias while callsites migrate.
   facilities: {
     canRead: boolean;
     canWrite: boolean;
@@ -55,19 +70,31 @@ export function getOrgCapabilities(permissions: Permission[]): OrgCapabilities {
   const forms = resolveReadWriteAccess(permissions, "forms.read", "forms.write");
   const calendar = resolveReadWriteAccess(permissions, "calendar.read", "calendar.write");
   const events = resolveReadWriteAccess(permissions, "events.read", "events.write");
-  const facilities = resolveReadWriteAccess(permissions, "facilities.read", "facilities.write");
+  const spaces = resolveReadWriteAccess(permissions, "spaces.read", "spaces.write");
   const canManage = can(permissions, "org.manage.read");
+  const canAccessArea = canManage || pages.canAccess || programs.canAccess || forms.canAccess || calendar.canAccess || events.canAccess || spaces.canAccess;
+  const settings = {
+    canRead: canManage,
+    canAccess: canManage
+  };
 
   return {
+    workspace: {
+      canRead: canAccessArea,
+      canAccessArea
+    },
+    settings,
     manage: {
       canRead: canManage,
-      canAccessArea: canManage || pages.canAccess || programs.canAccess || forms.canAccess || calendar.canAccess || events.canAccess || facilities.canAccess
+      canAccessArea
     },
     pages,
     programs,
     forms,
     calendar,
     events,
-    facilities
+    spaces,
+    // Backward-compat alias while callsites migrate.
+    facilities: spaces
   };
 }
