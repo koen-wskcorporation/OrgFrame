@@ -5,8 +5,11 @@ import { z } from "zod";
 import { rethrowIfNavigationError } from "@/lib/actions/rethrowIfNavigationError";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { can } from "@/lib/permissions/can";
-import { getInboxConversationDetail, listInboxConversations, searchCommContacts } from "@/modules/communications/db/queries";
+import { createOptionalSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { getInboxConversationDetail, listChannelIntegrations, listInboxConversations, searchCommContacts } from "@/modules/communications/db/queries";
 import {
+  connectFacebookPageIntegration,
+  disconnectChannelIntegration,
   createContactFromConversation,
   dismissConversationSuggestions,
   linkChannelIdentityToContact,
@@ -74,6 +77,22 @@ const mergeSchema = z.object({
 const searchSchema = z.object({
   orgSlug: textSchema.min(1),
   query: textSchema.max(120).optional()
+});
+
+const connectionsSchema = z.object({
+  orgSlug: textSchema.min(1)
+});
+
+const connectFacebookSchema = z.object({
+  orgSlug: textSchema.min(1),
+  pageId: textSchema.min(1).max(64),
+  pageName: textSchema.max(180).optional(),
+  pageAccessToken: textSchema.min(10).max(2048)
+});
+
+const disconnectIntegrationSchema = z.object({
+  orgSlug: textSchema.min(1),
+  integrationId: z.string().uuid()
 });
 
 export type CommunicationsActionResult<TData = undefined> =
@@ -419,5 +438,104 @@ export async function searchInboxContactsAction(
   } catch (error) {
     rethrowIfNavigationError(error);
     return asError("Unable to search contacts.");
+  }
+}
+
+export async function getInboxConnectionsDataAction(
+  input: z.input<typeof connectionsSchema>
+): Promise<CommunicationsActionResult<{ integrations: Awaited<ReturnType<typeof listChannelIntegrations>> }>> {
+  const parsed = connectionsSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid connections request.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireCommunicationsRead(payload.orgSlug);
+    const serviceRoleClient = createOptionalSupabaseServiceRoleClient();
+    const integrations = await listChannelIntegrations(org.orgId, "facebook_messenger", serviceRoleClient ?? undefined);
+
+    return {
+      ok: true,
+      data: {
+        integrations
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to load inbox connections.");
+  }
+}
+
+export async function connectFacebookPageAction(
+  input: z.input<typeof connectFacebookSchema>
+): Promise<CommunicationsActionResult<{ integrationId: string; providerAccountId: string; providerAccountName: string | null; webhookSubscribed: boolean }>> {
+  const parsed = connectFacebookSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid Facebook connection request.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireCommunicationsWrite(payload.orgSlug);
+
+    const result = await connectFacebookPageIntegration({
+      orgId: org.orgId,
+      actorUserId: org.userId,
+      pageId: payload.pageId,
+      pageName: normalizeOptional(payload.pageName),
+      pageAccessToken: payload.pageAccessToken
+    });
+
+    revalidateInboxPaths(org.orgSlug);
+    revalidatePath(`/${org.orgSlug}/tools/inbox/connections`);
+    revalidatePath(`/${org.orgSlug}/manage/inbox/connections`);
+
+    return {
+      ok: true,
+      data: {
+        integrationId: result.integrationId,
+        providerAccountId: result.providerAccountId,
+        providerAccountName: result.providerAccountName,
+        webhookSubscribed: result.webhookSubscribed
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError(error instanceof Error ? error.message : "Unable to connect Facebook page.");
+  }
+}
+
+export async function disconnectInboxIntegrationAction(
+  input: z.input<typeof disconnectIntegrationSchema>
+): Promise<CommunicationsActionResult<{ integrationId: string }>> {
+  const parsed = disconnectIntegrationSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid disconnect request.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireCommunicationsWrite(payload.orgSlug);
+
+    await disconnectChannelIntegration({
+      orgId: org.orgId,
+      integrationId: payload.integrationId,
+      actorUserId: org.userId
+    });
+
+    revalidateInboxPaths(org.orgSlug);
+    revalidatePath(`/${org.orgSlug}/tools/inbox/connections`);
+    revalidatePath(`/${org.orgSlug}/manage/inbox/connections`);
+
+    return {
+      ok: true,
+      data: {
+        integrationId: payload.integrationId
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to disconnect integration.");
   }
 }

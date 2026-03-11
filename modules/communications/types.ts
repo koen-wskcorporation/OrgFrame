@@ -6,6 +6,8 @@ export type CommDirection = "inbound" | "outbound" | "system";
 
 export type CommMatchStatus = "pending" | "accepted" | "rejected" | "expired" | "deferred";
 
+export type CommChannelIntegrationStatus = "active" | "disconnected" | "error";
+
 export type ContactMatchReasonCode =
   | "authenticated_claim"
   | "exact_primary_email"
@@ -113,6 +115,25 @@ export type CommResolutionEvent = {
   eventType: string;
   eventDetailJson: Record<string, unknown>;
   createdAt: string;
+};
+
+export type CommChannelIntegration = {
+  id: string;
+  orgId: string;
+  channelType: CommChannelType;
+  provider: string;
+  providerAccountId: string;
+  providerAccountName: string | null;
+  status: CommChannelIntegrationStatus;
+  connectedByUserId: string | null;
+  connectedAt: string;
+  disconnectedAt: string | null;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  configJson: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  tokenHint: string | null;
 };
 
 export type CommSuggestionWithContact = {

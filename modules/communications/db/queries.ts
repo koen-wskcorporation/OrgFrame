@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import type {
+  CommChannelIntegration,
   CommChannelIdentity,
   CommChannelType,
   CommContact,
@@ -27,6 +28,8 @@ const messageSelect =
 const suggestionSelect =
   "id, org_id, conversation_id, channel_identity_id, suggested_contact_id, confidence_score, confidence_reason_codes, status, created_at, decided_at, decided_by_user_id";
 const eventSelect = "id, org_id, conversation_id, channel_identity_id, contact_id, actor_user_id, event_type, event_detail_json, created_at";
+const integrationSelect =
+  "id, org_id, channel_type, provider, provider_account_id, provider_account_name, status, connected_by_user_id, connected_at, disconnected_at, last_sync_at, last_error, config_json, created_at, updated_at";
 
 type ContactRow = {
   id: string;
@@ -126,6 +129,24 @@ type EventRow = {
   event_type: string;
   event_detail_json: unknown;
   created_at: string;
+};
+
+type IntegrationRow = {
+  id: string;
+  org_id: string;
+  channel_type: CommChannelType;
+  provider: string;
+  provider_account_id: string;
+  provider_account_name: string | null;
+  status: "active" | "disconnected" | "error";
+  connected_by_user_id: string | null;
+  connected_at: string;
+  disconnected_at: string | null;
+  last_sync_at: string | null;
+  last_error: string | null;
+  config_json: unknown;
+  created_at: string;
+  updated_at: string;
 };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -265,6 +286,27 @@ function mapEvent(row: EventRow): CommResolutionEvent {
   };
 }
 
+function mapIntegration(row: IntegrationRow & { token_hint?: string | null }): CommChannelIntegration {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    channelType: row.channel_type,
+    provider: row.provider,
+    providerAccountId: row.provider_account_id,
+    providerAccountName: row.provider_account_name,
+    status: row.status,
+    connectedByUserId: row.connected_by_user_id,
+    connectedAt: row.connected_at,
+    disconnectedAt: row.disconnected_at,
+    lastSyncAt: row.last_sync_at,
+    lastError: row.last_error,
+    configJson: asObject(row.config_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    tokenHint: typeof row.token_hint === "string" ? row.token_hint : null
+  };
+}
+
 async function getSupabase(client?: SupabaseClient<any>) {
   if (client) {
     return client;
@@ -281,6 +323,230 @@ export async function resolveOrgIdFromSlug(orgSlug: string, client?: SupabaseCli
   }
 
   return data?.id ?? null;
+}
+
+export async function listChannelIntegrations(
+  orgId: string,
+  channelType?: CommChannelType,
+  client?: SupabaseClient<any>
+): Promise<CommChannelIntegration[]> {
+  const supabase = await getSupabase(client);
+
+  let request = supabase.from("org_comm_channel_integrations").select(integrationSelect).eq("org_id", orgId).order("updated_at", { ascending: false });
+  if (channelType) {
+    request = request.eq("channel_type", channelType);
+  }
+
+  const { data, error } = await request;
+  if (error) {
+    throw new Error(`Failed to list channel integrations: ${error.message}`);
+  }
+
+  const integrations = (data ?? []).map((row) => mapIntegration(row as IntegrationRow));
+  if (integrations.length === 0) {
+    return [];
+  }
+
+  const integrationIds = integrations.map((item) => item.id);
+  const { data: secretsData, error: secretsError } = await supabase
+    .from("org_comm_channel_integration_secrets")
+    .select("integration_id, token_hint")
+    .eq("org_id", orgId)
+    .in("integration_id", integrationIds);
+
+  if (secretsError) {
+    return integrations;
+  }
+
+  const hintsByIntegrationId = new Map((secretsData ?? []).map((row) => [String(row.integration_id), (row.token_hint as string | null) ?? null]));
+
+  return integrations.map((integration) => ({
+    ...integration,
+    tokenHint: hintsByIntegrationId.get(integration.id) ?? null
+  }));
+}
+
+export async function findActiveChannelIntegrationByProviderAccount(input: {
+  channelType: CommChannelType;
+  providerAccountId: string;
+  client?: SupabaseClient<any>;
+}) {
+  const supabase = await getSupabase(input.client);
+  const { data, error } = await supabase
+    .from("org_comm_channel_integrations")
+    .select(integrationSelect)
+    .eq("channel_type", input.channelType)
+    .eq("provider_account_id", input.providerAccountId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load active integration by provider account: ${error.message}`);
+  }
+
+  return data ? mapIntegration(data as IntegrationRow) : null;
+}
+
+export async function upsertChannelIntegration(input: {
+  orgId: string;
+  channelType: CommChannelType;
+  provider: string;
+  providerAccountId: string;
+  providerAccountName?: string | null;
+  status: "active" | "disconnected" | "error";
+  connectedByUserId?: string | null;
+  disconnectedAt?: string | null;
+  lastSyncAt?: string | null;
+  lastError?: string | null;
+  configJson?: Record<string, unknown>;
+  client?: SupabaseClient<any>;
+}) {
+  const supabase = await getSupabase(input.client);
+
+  const { data, error } = await supabase
+    .from("org_comm_channel_integrations")
+    .upsert(
+      {
+        org_id: input.orgId,
+        channel_type: input.channelType,
+        provider: input.provider,
+        provider_account_id: input.providerAccountId,
+        provider_account_name: input.providerAccountName ?? null,
+        status: input.status,
+        connected_by_user_id: input.connectedByUserId ?? null,
+        disconnected_at: input.disconnectedAt ?? null,
+        last_sync_at: input.lastSyncAt ?? null,
+        last_error: input.lastError ?? null,
+        config_json: input.configJson ?? {},
+        connected_at: input.status === "active" ? new Date().toISOString() : undefined
+      },
+      {
+        onConflict: "org_id,channel_type,provider_account_id"
+      }
+    )
+    .select(integrationSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to upsert channel integration: ${error.message}`);
+  }
+
+  return mapIntegration(data as IntegrationRow);
+}
+
+export async function markChannelIntegrationDisconnected(input: {
+  orgId: string;
+  integrationId: string;
+  client?: SupabaseClient<any>;
+}) {
+  const supabase = await getSupabase(input.client);
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("org_comm_channel_integrations")
+    .update({
+      status: "disconnected",
+      disconnected_at: now
+    })
+    .eq("org_id", input.orgId)
+    .eq("id", input.integrationId)
+    .select(integrationSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to disconnect channel integration: ${error.message}`);
+  }
+
+  return mapIntegration(data as IntegrationRow);
+}
+
+export async function updateChannelIntegrationSyncState(input: {
+  orgId: string;
+  integrationId: string;
+  lastSyncAt?: string | null;
+  lastError?: string | null;
+  status?: "active" | "disconnected" | "error";
+  client?: SupabaseClient<any>;
+}) {
+  const supabase = await getSupabase(input.client);
+  const payload: Record<string, unknown> = {};
+  if (input.lastSyncAt !== undefined) payload.last_sync_at = input.lastSyncAt;
+  if (input.lastError !== undefined) payload.last_error = input.lastError;
+  if (input.status !== undefined) payload.status = input.status;
+
+  const { data, error } = await supabase
+    .from("org_comm_channel_integrations")
+    .update(payload)
+    .eq("org_id", input.orgId)
+    .eq("id", input.integrationId)
+    .select(integrationSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update channel integration state: ${error.message}`);
+  }
+
+  return mapIntegration(data as IntegrationRow);
+}
+
+export async function upsertChannelIntegrationSecret(input: {
+  orgId: string;
+  integrationId: string;
+  encryptedAccessToken: string;
+  tokenHint?: string | null;
+  client?: SupabaseClient<any>;
+}) {
+  const supabase = await getSupabase(input.client);
+  const { error } = await supabase.from("org_comm_channel_integration_secrets").upsert(
+    {
+      org_id: input.orgId,
+      integration_id: input.integrationId,
+      encrypted_access_token: input.encryptedAccessToken,
+      token_hint: input.tokenHint ?? null
+    },
+    { onConflict: "integration_id" }
+  );
+
+  if (error) {
+    throw new Error(`Failed to upsert channel integration secret: ${error.message}`);
+  }
+}
+
+export async function getChannelIntegrationSecret(input: { orgId: string; integrationId: string; client?: SupabaseClient<any> }) {
+  const supabase = await getSupabase(input.client);
+  const { data, error } = await supabase
+    .from("org_comm_channel_integration_secrets")
+    .select("integration_id, org_id, encrypted_access_token, token_hint")
+    .eq("org_id", input.orgId)
+    .eq("integration_id", input.integrationId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load channel integration secret: ${error.message}`);
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return {
+    integrationId: String(data.integration_id),
+    orgId: String(data.org_id),
+    encryptedAccessToken: String(data.encrypted_access_token),
+    tokenHint: (data.token_hint as string | null) ?? null
+  };
+}
+
+export async function deleteChannelIntegrationSecret(input: { orgId: string; integrationId: string; client?: SupabaseClient<any> }) {
+  const supabase = await getSupabase(input.client);
+  const { error } = await supabase
+    .from("org_comm_channel_integration_secrets")
+    .delete()
+    .eq("org_id", input.orgId)
+    .eq("integration_id", input.integrationId);
+
+  if (error) {
+    throw new Error(`Failed to delete channel integration secret: ${error.message}`);
+  }
 }
 
 export async function findCommContactById(orgId: string, contactId: string, client?: SupabaseClient<any>): Promise<CommContact | null> {

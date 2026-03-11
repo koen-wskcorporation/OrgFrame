@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { PageStack } from "@/components/ui/layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
@@ -39,6 +40,11 @@ export default async function OrgManageInboxPage({ params }: { params: Promise<{
   return (
     <PageStack>
       <PageHeader
+        actions={
+          <Button href={`/${orgContext.orgSlug}/tools/inbox/connections`} size="sm" variant="secondary">
+            Connections
+          </Button>
+        }
         description="Unified inbox for email, SMS, social, and web chat conversations with contact identity resolution."
         showBorder={false}
         title="Inbox"

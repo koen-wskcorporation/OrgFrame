@@ -1,31 +1,42 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createOptionalSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 import {
   acceptPendingSuggestionsForConversationContact,
   createCommAuditLog,
   createCommContact,
   createConversation,
   createResolutionEvent,
+  deleteChannelIntegrationSecret,
   expirePendingSuggestionsForConversation,
+  findActiveChannelIntegrationByProviderAccount,
   findCommContactById,
   findConversationByExternalThread,
   findConversationById,
+  getChannelIntegrationSecret,
   findIdentityById,
   findIdentityByExternal,
+  listChannelIntegrations,
   findMostRecentConversationByIdentity,
   getConversationSuggestions,
   getIdentityByConversation,
   linkIdentityToContact,
   listMatchingContacts,
   mergeContactsViaRpc,
+  markChannelIntegrationDisconnected,
   rejectAllOtherPendingSuggestions,
   replaceConversationSuggestions,
   setSuggestionStatus,
   unlinkIdentity,
+  upsertChannelIntegration,
+  upsertChannelIntegrationSecret,
+  updateChannelIntegrationSyncState,
   updateConversation,
   updateConversationsForIdentity,
   upsertIdentity,
   upsertInboundMessage
 } from "@/modules/communications/db/queries";
+import { decryptAccessToken, encryptAccessToken, maskToken } from "@/modules/communications/integrations/credentials";
+import { fetchFacebookMessengerUserName, subscribeFacebookPageWebhook, verifyFacebookPageAccessToken } from "@/modules/communications/integrations/facebook";
 import { normalizeDisplayName, normalizeEmail, normalizePhone, splitName } from "@/modules/communications/normalization";
 import { defaultMatchScoringConfig, pickAutoLinkCandidate, rankContactCandidates } from "@/modules/communications/scoring";
 import type {
@@ -705,6 +716,213 @@ export async function mergeContacts(input: {
     strategy: input.strategy,
     client: input.client
   });
+}
+
+export async function listInboxConnections(input: {
+  orgId: string;
+  channelType?: "facebook_messenger";
+  client?: SupabaseClient<any>;
+}) {
+  return listChannelIntegrations(input.orgId, input.channelType, input.client);
+}
+
+export async function connectFacebookPageIntegration(input: {
+  orgId: string;
+  actorUserId: string;
+  pageId: string;
+  pageAccessToken: string;
+  pageName?: string | null;
+  client?: SupabaseClient<any>;
+}) {
+  const trimmedPageId = input.pageId.trim();
+  const trimmedToken = input.pageAccessToken.trim();
+  if (!trimmedPageId || !trimmedToken) {
+    throw new Error("FACEBOOK_PAGE_ID_AND_TOKEN_REQUIRED");
+  }
+
+  const verifiedPage = await verifyFacebookPageAccessToken({
+    pageId: trimmedPageId,
+    pageAccessToken: trimmedToken
+  });
+
+  const integration = await upsertChannelIntegration({
+    orgId: input.orgId,
+    channelType: "facebook_messenger",
+    provider: "meta",
+    providerAccountId: verifiedPage.id,
+    providerAccountName: input.pageName?.trim() || verifiedPage.name || null,
+    status: "active",
+    connectedByUserId: input.actorUserId,
+    disconnectedAt: null,
+    lastError: null,
+    client: input.client
+  });
+
+  const serviceRoleClient = createOptionalSupabaseServiceRoleClient();
+  if (!serviceRoleClient) {
+    throw new Error("SERVICE_ROLE_NOT_CONFIGURED");
+  }
+
+  await upsertChannelIntegrationSecret({
+    orgId: input.orgId,
+    integrationId: integration.id,
+    encryptedAccessToken: encryptAccessToken(trimmedToken),
+    tokenHint: maskToken(trimmedToken),
+    client: serviceRoleClient
+  });
+
+  let webhookSubscribed = false;
+  let subscribeError: string | null = null;
+  try {
+    webhookSubscribed = await subscribeFacebookPageWebhook({
+      pageId: verifiedPage.id,
+      pageAccessToken: trimmedToken
+    });
+  } catch (error) {
+    subscribeError = error instanceof Error ? error.message : "unknown_webhook_subscribe_error";
+  }
+
+  await updateChannelIntegrationSyncState({
+    orgId: input.orgId,
+    integrationId: integration.id,
+    lastSyncAt: new Date().toISOString(),
+    lastError: subscribeError,
+    status: "active",
+    client: input.client
+  });
+
+  await createResolutionEvent({
+    orgId: input.orgId,
+    actorUserId: input.actorUserId,
+    eventType: "channel_integration_connected",
+    eventDetailJson: {
+      channelType: "facebook_messenger",
+      provider: "meta",
+      providerAccountId: verifiedPage.id,
+      providerAccountName: input.pageName?.trim() || verifiedPage.name || null,
+      webhookSubscribed
+    },
+    client: input.client
+  });
+
+  await createCommAuditLog({
+    orgId: input.orgId,
+    actorUserId: input.actorUserId,
+    action: "communications.channel_connected",
+    entityType: "org_comm_channel_integration",
+    entityId: integration.id,
+    detailJson: {
+      channelType: "facebook_messenger",
+      provider: "meta",
+      providerAccountId: verifiedPage.id,
+      webhookSubscribed,
+      subscribeError
+    },
+    client: input.client
+  });
+
+  return {
+    integrationId: integration.id,
+    providerAccountId: verifiedPage.id,
+    providerAccountName: input.pageName?.trim() || verifiedPage.name || null,
+    webhookSubscribed,
+    subscribeError
+  };
+}
+
+export async function disconnectChannelIntegration(input: {
+  orgId: string;
+  integrationId: string;
+  actorUserId: string;
+  client?: SupabaseClient<any>;
+}) {
+  const integration = await markChannelIntegrationDisconnected({
+    orgId: input.orgId,
+    integrationId: input.integrationId,
+    client: input.client
+  });
+
+  const serviceRoleClient = createOptionalSupabaseServiceRoleClient();
+  if (serviceRoleClient) {
+    await deleteChannelIntegrationSecret({
+      orgId: input.orgId,
+      integrationId: input.integrationId,
+      client: serviceRoleClient
+    });
+  }
+
+  await createResolutionEvent({
+    orgId: input.orgId,
+    actorUserId: input.actorUserId,
+    eventType: "channel_integration_disconnected",
+    eventDetailJson: {
+      integrationId: input.integrationId,
+      providerAccountId: integration.providerAccountId,
+      channelType: integration.channelType
+    },
+    client: input.client
+  });
+
+  await createCommAuditLog({
+    orgId: input.orgId,
+    actorUserId: input.actorUserId,
+    action: "communications.channel_disconnected",
+    entityType: "org_comm_channel_integration",
+    entityId: input.integrationId,
+    detailJson: {
+      providerAccountId: integration.providerAccountId,
+      channelType: integration.channelType
+    },
+    client: input.client
+  });
+}
+
+export async function resolveFacebookIdentityLabelForWebhook(input: {
+  pageId: string;
+  externalIdentityId: string;
+  client?: SupabaseClient<any>;
+}) {
+  const integration = await findActiveChannelIntegrationByProviderAccount({
+    channelType: "facebook_messenger",
+    providerAccountId: input.pageId,
+    client: input.client
+  });
+  if (!integration) {
+    return {
+      orgId: null,
+      identityDisplayLabel: null
+    };
+  }
+
+  const secret = await getChannelIntegrationSecret({
+    orgId: integration.orgId,
+    integrationId: integration.id,
+    client: input.client
+  });
+  if (!secret) {
+    return {
+      orgId: integration.orgId,
+      identityDisplayLabel: null
+    };
+  }
+
+  try {
+    const pageAccessToken = decryptAccessToken(secret.encryptedAccessToken);
+    const displayName = await fetchFacebookMessengerUserName({
+      pageAccessToken,
+      userId: input.externalIdentityId
+    });
+
+    return {
+      orgId: integration.orgId,
+      identityDisplayLabel: displayName
+    };
+  } catch {
+    return {
+      orgId: integration.orgId,
+      identityDisplayLabel: null
+    };
+  }
 }
 
 export function mapReasonsToLabel(reasons: ContactMatchReasonCode[]) {
