@@ -1,3 +1,6 @@
+-- Repair migration: replays communications inbox foundation under a new version.
+-- This is required when version 202603100001 was consumed by a different migration
+-- in remote history, preventing the communications schema from being applied.
 begin;
 
 update public.org_custom_roles custom_role
