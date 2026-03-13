@@ -1,7 +1,7 @@
 "use client";
 
 import { Filter, GripVertical, Plus, RefreshCw, Trash2, X } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/alert";
 import { CalendarPicker } from "@/components/ui/calendar-picker";
@@ -674,8 +674,27 @@ export function FormSubmissionsPanel({
   googleSheetConfigured,
   canWrite = true
 }: FormSubmissionsPanelProps) {
-  const showGoogleSheetsUi = false;
+  const showGoogleSheetsUi = true;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const deepLinkedSubmissionId = useMemo(() => {
+    const value = searchParams.get("submissionId");
+    if (!value) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }, [searchParams]);
+  const deepLinkedEntryId = useMemo(() => {
+    const value = searchParams.get("entryId");
+    if (!value) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }, [searchParams]);
   const { toast } = useToast();
   const [isRefreshingSubmissions, startRefreshingSubmissions] = useTransition();
   const [isSaving, startSaving] = useTransition();
@@ -802,6 +821,19 @@ export function FormSubmissionsPanel({
     setGoogleSheetState(googleSheetIntegration);
     setGoogleSheetRunRows(googleSheetRecentRuns);
   }, [googleSheetIntegration, googleSheetRecentRuns]);
+
+  useEffect(() => {
+    if (!deepLinkedSubmissionId) {
+      return;
+    }
+
+    const exists = submissions.some((submission) => submission.id === deepLinkedSubmissionId);
+    if (!exists) {
+      return;
+    }
+
+    setSelectedSubmissionId((current) => current ?? deepLinkedSubmissionId);
+  }, [deepLinkedSubmissionId, submissions]);
 
   const selectedSubmissionIdSet = useMemo(() => new Set(selectedSubmissionIds), [selectedSubmissionIds]);
 
@@ -3255,7 +3287,10 @@ function addSummaryCard() {
                 <p className="text-sm font-semibold text-text">Per-player entries</p>
                 {selectedSubmissionEntries.length === 0 ? <Alert variant="warning">No player entries on this registration.</Alert> : null}
                 {selectedSubmissionEntries.map((entry) => (
-                  <Card className="shadow-none" key={entry.id}>
+                  <Card
+                    className={entry.id === deepLinkedEntryId ? "border-primary/60 shadow-none" : "shadow-none"}
+                    key={entry.id}
+                  >
                     <CardContent className="space-y-3 py-4">
                       <div className="space-y-1">
                         <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Player ID</p>

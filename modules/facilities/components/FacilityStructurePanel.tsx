@@ -253,8 +253,15 @@ export function FacilityStructurePanel({
       .filter((space) => space.parentSpaceId === building.id && space.spaceKind === "floor" && space.status !== "archived")
       .sort((a, b) => a.sortIndex - b.sortIndex || a.name.localeCompare(b.name));
   }, [building, spaces]);
+  const hasFloorLayers = Boolean(building && floors.length > 0);
+  const mappingRoot = building ?? selectedSpace;
 
   useEffect(() => {
+    if (!hasFloorLayers) {
+      setSelectedFloorId(selectedSpace.id);
+      return;
+    }
+
     if (floors.length === 0) {
       setSelectedFloorId("");
       return;
@@ -263,7 +270,7 @@ export function FacilityStructurePanel({
     if (!selectedFloorId || !floors.some((floor) => floor.id === selectedFloorId)) {
       setSelectedFloorId(floors[0]?.id ?? "");
     }
-  }, [floors, selectedFloorId]);
+  }, [floors, hasFloorLayers, selectedFloorId, selectedSpace.id]);
 
   useEffect(() => {
     if (!building || floors.length > 0 || !canWrite || isMutating || autoFloorSeededForBuildingId === building.id) {
@@ -292,9 +299,13 @@ export function FacilityStructurePanel({
     });
   }, [autoFloorSeededForBuildingId, building, canWrite, floors.length, isMutating, onCreateSpace]);
 
-  const selectedFloor = selectedFloorId ? (spaceById.get(selectedFloorId) ?? null) : null;
+  const selectedFloor = hasFloorLayers ? (selectedFloorId ? (spaceById.get(selectedFloorId) ?? null) : null) : selectedSpace;
   const roomsByFloorId = useMemo(() => {
     const grouped = new Map<string, FacilitySpace[]>();
+    if (!hasFloorLayers) {
+      grouped.set(selectedSpace.id, []);
+    }
+
     for (const floor of floors) {
       grouped.set(floor.id, []);
     }
@@ -320,14 +331,14 @@ export function FacilityStructurePanel({
     }
 
     return grouped;
-  }, [floors, spaces]);
+  }, [floors, hasFloorLayers, selectedSpace.id, spaces]);
 
   const rooms = useMemo(() => {
-    if (!selectedFloorId) {
+    if (!selectedFloor?.id) {
       return [];
     }
-    return roomsByFloorId.get(selectedFloorId) ?? [];
-  }, [roomsByFloorId, selectedFloorId]);
+    return roomsByFloorId.get(selectedFloor.id) ?? [];
+  }, [roomsByFloorId, selectedFloor]);
 
   const largestFloorCanvasSize = useMemo(() => {
     let width = FLOOR_MIN_WIDTH;
@@ -376,7 +387,7 @@ export function FacilityStructurePanel({
 
     layoutDraftByRoomIdRef.current = nextDraft;
     setLayoutDraftByRoomId(nextDraft);
-  }, [rooms, selectedFloorId]);
+  }, [rooms, selectedFloor?.id]);
 
   const normalizedSearch = structureSearch.trim().toLowerCase();
   const matchingRooms = useMemo(() => {
@@ -739,93 +750,99 @@ export function FacilityStructurePanel({
     }
   }
 
-  const rootLabel = building ? `${building.name}` : selectedSpace.name;
+  const rootLabel = mappingRoot.name;
 
   return (
     <>
       <Card>
         <CardHeader className="pb-6">
           <CardTitle>Facility structure</CardTitle>
-          <CardDescription>Top-down floor planning for room layout and bookable space mapping.</CardDescription>
+          <CardDescription>Top-down space planning for rooms, zones, and bookable layout mapping.</CardDescription>
         </CardHeader>
         <CardContent>
-          {!building ? (
-            <Alert variant="info">Select a building-level facility to map floor plans.</Alert>
-          ) : (
-            <StructureCanvasShell
-              addButtonAriaLabel="Add room"
+          <StructureCanvasShell
+              addButtonAriaLabel="Add space"
               addButtonDisabled={!canWrite || isMutating || !selectedFloor}
               bottomRightContent={
-                <div className="min-w-[220px] rounded-control border bg-surface/95 p-2 shadow-sm">
-                  <p className="mb-1 text-[11px] uppercase tracking-wide text-text-muted">Floor</p>
-                  <div className="flex items-center gap-2">
-                    <select
-                      className="h-9 flex-1 rounded-control border border-border bg-surface px-2 text-sm text-text"
-                      onChange={(event) => handleFloorChange(event.target.value)}
-                      value={selectedFloorId}
-                    >
-                      {floors.map((floor) => (
-                        <option key={floor.id} value={floor.id}>
-                          {floor.name}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      disabled={!canWrite || isMutating || !building}
-                      onClick={() => {
-                        if (!building) {
-                          return;
-                        }
+                <div className="flex min-w-[220px] items-center gap-2">
+                  {hasFloorLayers ? (
+                    <>
+                      <span className="text-xs text-text-muted">Floor</span>
+                      <select
+                        className="h-9 min-w-[120px] rounded-control border border-border bg-surface px-2 text-sm text-text"
+                        onChange={(event) => handleFloorChange(event.target.value)}
+                        value={selectedFloorId}
+                      >
+                        {floors.map((floor) => (
+                          <option key={floor.id} value={floor.id}>
+                            {floor.name}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        disabled={!canWrite || isMutating || !building}
+                        onClick={() => {
+                          if (!building) {
+                            return;
+                          }
 
-                        onCreateSpace({
-                          parentSpaceId: building.id,
-                          name: `Floor ${floors.length + 1}`,
-                          slug: slugify(`${building.slug}-floor-${floors.length + 1}`),
-                          spaceKind: "floor",
-                          status: "open",
-                          isBookable: false,
-                          timezone: building.timezone,
-                          capacity: null,
-                          sortIndex: floors.length,
-                          metadataJson: {
-                            floorPlan: {
-                              canvas: {
-                                width: 1400,
-                                height: 900
+                          onCreateSpace({
+                            parentSpaceId: building.id,
+                            name: `Floor ${floors.length + 1}`,
+                            slug: slugify(`${building.slug}-floor-${floors.length + 1}`),
+                            spaceKind: "floor",
+                            status: "open",
+                            isBookable: false,
+                            timezone: building.timezone,
+                            capacity: null,
+                            sortIndex: floors.length,
+                            metadataJson: {
+                              floorPlan: {
+                                canvas: {
+                                  width: 1400,
+                                  height: 900
+                                }
                               }
                             }
-                          }
-                        });
-                      }}
-                      size="sm"
-                      type="button"
-                      variant="secondary"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <Button
-                      disabled={!canWrite || isMutating || !selectedFloor}
-                      onClick={() => openCreateRoomPanel("structure")}
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      + Structure
-                    </Button>
-                  </div>
-                  <label className="mt-2 flex items-center gap-2 text-xs text-text-muted">
-                    <Checkbox checked={showFloorLayering} onChange={(event) => setShowFloorLayering(event.target.checked)} />
-                    Layer floors
-                  </label>
+                          });
+                        }}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-text-muted">Canvas root</span>
+                      <p className="max-w-[200px] truncate text-sm font-medium text-text" title={selectedSpace.name}>
+                        {selectedSpace.name}
+                      </p>
+                    </>
+                  )}
+                  <Button
+                    disabled={!canWrite || isMutating || !selectedFloor}
+                    onClick={() => openCreateRoomPanel("structure")}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    + Structure
+                  </Button>
+                  {hasFloorLayers ? (
+                    <label className="flex items-center gap-2 text-xs text-text-muted">
+                      <Checkbox checked={showFloorLayering} onChange={(event) => setShowFloorLayering(event.target.checked)} />
+                      Layer floors
+                    </label>
+                  ) : null}
                 </div>
               }
               canvasRef={structureCanvasRef}
               dragInProgress={Boolean(dragState)}
               emptyState={
                 selectedFloor && rooms.length === 0 ? (
-                  <Alert variant="info">No rooms yet on this floor. Add one to start mapping.</Alert>
+                  <Alert variant="info">No mapped spaces yet. Add one to start building this layout.</Alert>
                 ) : null
               }
               onAdd={openCreateRoomPanel}
@@ -837,39 +854,44 @@ export function FacilityStructurePanel({
               }}
               rootHeader={
                 <div className="w-[320px] max-w-[min(84vw,320px)] rounded-control border bg-surface px-4 py-3 text-center shadow-sm">
-                  <p className="text-xs uppercase tracking-wide text-text-muted">Building</p>
+                  <p className="text-xs uppercase tracking-wide text-text-muted">Facility</p>
                   <p className="font-semibold text-text">{rootLabel}</p>
-                  <p className="text-xs text-text-muted">{selectedFloor ? selectedFloor.name : "No floor selected"}</p>
+                  <p className="text-xs text-text-muted">
+                    {hasFloorLayers ? (selectedFloor ? selectedFloor.name : "No floor selected") : selectedSpace.spaceKind}
+                  </p>
                 </div>
               }
               searchInputRef={structureSearchInputRef}
-              searchPlaceholder="Search rooms"
+              searchPlaceholder="Search spaces"
               searchQuery={structureSearch}
               searchResults={matchingRooms.map((room) => ({
                 id: room.id,
                 name: room.name,
                 kindLabel: resolveElementType(room)
               }))}
-              storageKey={`facility-floorplan-canvas:${orgSlug}:${building.id}`}
+              storageKey={`facility-floorplan-canvas:${orgSlug}:${mappingRoot.id}`}
+              canvasLayoutMode="free"
+              canvasContentClassName="min-w-max p-0"
+              canvasGridSize={FLOOR_GRID_SIZE}
+              canvasGridColor="#e5e7eb"
               zoomPercent={structureZoomPercent}
             >
               {selectedFloor ? (
-                <div className="rounded-control bg-surface p-1 shadow-sm">
-                  <div
-                    className="relative overflow-hidden rounded-control border border-border bg-[linear-gradient(0deg,transparent_24px,#e5e7eb_25px),linear-gradient(90deg,transparent_24px,#e5e7eb_25px)] bg-[size:25px_25px]"
-                    onPointerDown={(event) => {
-                      if (event.target !== event.currentTarget) {
-                        return;
-                      }
+                <div
+                  className="relative"
+                  onPointerDown={(event) => {
+                    if (event.target !== event.currentTarget) {
+                      return;
+                    }
 
-                      setActiveRoomId(null);
-                      setHoveredRoomId(null);
-                    }}
-                    style={{
-                      width: `${renderedCanvasSize.width}px`,
-                      height: `${renderedCanvasSize.height}px`
-                    }}
-                  >
+                    setActiveRoomId(null);
+                    setHoveredRoomId(null);
+                  }}
+                  style={{
+                    width: `${renderedCanvasSize.width}px`,
+                    height: `${renderedCanvasSize.height}px`
+                  }}
+                >
                     {layeredRooms.map(({ floorName, room, layout }) => (
                       <div
                         className="pointer-events-none absolute rounded-control border border-dashed border-border/40 bg-surface/35"
@@ -1022,13 +1044,11 @@ export function FacilityStructurePanel({
                         </div>
                       );
                     })}
-                  </div>
                 </div>
               ) : (
-                <Alert variant="info">At least one floor is required. Create a floor to start mapping rooms.</Alert>
+                <Alert variant="info">Select a space to start mapping.</Alert>
               )}
             </StructureCanvasShell>
-          )}
         </CardContent>
       </Card>
 
@@ -1046,7 +1066,7 @@ export function FacilityStructurePanel({
         onClose={() => setIsCreateOpen(false)}
         open={isCreateOpen}
         panelClassName="ml-auto max-w-[320px]"
-        subtitle="Add a room or structural element to this floor plan."
+        subtitle="Add a room, zone, or structural element to this layout."
         title="Add space"
       >
         <div className="grid gap-3">
@@ -1056,7 +1076,7 @@ export function FacilityStructurePanel({
           <FormField hint="Optional, auto-generated if blank." label="Slug">
             <Input onChange={(event) => setDraft((current) => ({ ...current, slug: slugify(event.target.value) }))} value={draft.slug} />
           </FormField>
-          <FormField label="Room type">
+          <FormField label="Space type">
             <Select
               onChange={(event) => setDraft((current) => ({ ...current, elementType: event.target.value as StructureElementType }))}
               options={[
@@ -1094,7 +1114,7 @@ export function FacilityStructurePanel({
         onClose={() => setIsEditOpen(false)}
         open={isEditOpen}
         panelClassName="ml-auto max-w-[320px]"
-        subtitle="Update room details, booking, or archive this element."
+        subtitle="Update space details, booking, or archive this element."
         title="Edit space"
       >
         <div className="grid gap-3">
@@ -1149,7 +1169,7 @@ export function FacilityStructurePanel({
                 type="button"
                 variant="ghost"
               >
-                Duplicate room
+                Duplicate space
               </Button>
               <Button
                 className="text-danger"
@@ -1162,7 +1182,7 @@ export function FacilityStructurePanel({
                 type="button"
                 variant="ghost"
               >
-                Delete room
+                Delete space
               </Button>
               <Button
                 disabled={!canWrite || isMutating}
@@ -1173,7 +1193,7 @@ export function FacilityStructurePanel({
                 type="button"
                 variant="ghost"
               >
-                Archive room
+                Archive space
               </Button>
             </div>
           ) : null}

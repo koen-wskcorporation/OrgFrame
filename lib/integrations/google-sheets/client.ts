@@ -3,7 +3,6 @@ import { createSign } from "node:crypto";
 type GoogleSheetsServiceAccountConfig = {
   clientEmail: string;
   privateKey: string;
-  clientId: string;
 };
 
 type GoogleAccessToken = {
@@ -11,12 +10,19 @@ type GoogleAccessToken = {
   expiresAtUnix: number;
 };
 
+type GoogleSheetsAuthMode = "service_account_key" | "gcp_metadata" | "vercel_oidc";
+
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
+const GOOGLE_METADATA_TOKEN_ENDPOINT = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts";
+const GOOGLE_STS_TOKEN_ENDPOINT = "https://sts.googleapis.com/v1/token";
+const GOOGLE_IAM_CREDENTIALS_ENDPOINT = "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts";
+const GOOGLE_CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const DEFAULT_SCOPES = [GOOGLE_SHEETS_SCOPE, GOOGLE_DRIVE_SCOPE];
+const METADATA_TIMEOUT_MS = 4000;
 
-let cachedToken: GoogleAccessToken | null = null;
+const cachedTokensByKey = new Map<string, GoogleAccessToken>();
 
 function readEnv(name: string): string {
   const value = process.env[name];
@@ -25,6 +31,65 @@ function readEnv(name: string): string {
 
 function parsePrivateKey(value: string): string {
   return value.replace(/\\n/g, "\n");
+}
+
+function parseBoolean(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function hasServiceAccountKeyConfig(): boolean {
+  return Boolean(
+    readEnv("GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL") &&
+      readEnv("GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY") &&
+      readEnv("GOOGLE_SHEETS_SERVICE_ACCOUNT_CLIENT_ID")
+  );
+}
+
+function hasVercelOidcConfig(): boolean {
+  return Boolean(
+    readEnv("GCP_PROJECT_NUMBER") &&
+      readEnv("GCP_SERVICE_ACCOUNT_EMAIL") &&
+      readEnv("GCP_WORKLOAD_IDENTITY_POOL_ID") &&
+      readEnv("GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID")
+  );
+}
+
+function getConfiguredAuthMode(): GoogleSheetsAuthMode | null {
+  const authMode = readEnv("GOOGLE_SHEETS_AUTH_MODE").toLowerCase();
+  if (authMode === "service_account_key") {
+    return hasServiceAccountKeyConfig() ? "service_account_key" : null;
+  }
+
+  if (authMode === "gcp_metadata") {
+    return "gcp_metadata";
+  }
+
+  if (authMode === "vercel_oidc") {
+    return hasVercelOidcConfig() ? "vercel_oidc" : null;
+  }
+
+  if (hasServiceAccountKeyConfig()) {
+    return "service_account_key";
+  }
+
+  if (hasVercelOidcConfig()) {
+    return "vercel_oidc";
+  }
+
+  if (parseBoolean(readEnv("GOOGLE_SHEETS_KEYLESS"))) {
+    return "gcp_metadata";
+  }
+
+  return null;
+}
+
+function normalizeScopes(scopes: string[]): string[] {
+  return Array.from(new Set(scopes.map((scope) => scope.trim()).filter(Boolean))).sort();
+}
+
+function getTokenCacheKey(mode: GoogleSheetsAuthMode, scopes: string[]): string {
+  return `${mode}:${scopes.join(" ")}`;
 }
 
 function base64UrlEncode(value: string): string {
@@ -76,31 +141,65 @@ function getServiceAccountConfig(): GoogleSheetsServiceAccountConfig {
 
   if (!clientEmail || !privateKeyRaw || !clientId) {
     throw new Error(
-      "Google Sheets service account is not configured. Set GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL, GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY, and GOOGLE_SHEETS_SERVICE_ACCOUNT_CLIENT_ID."
+      "Google Sheets service account key auth is not configured. Set GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL, GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY, and GOOGLE_SHEETS_SERVICE_ACCOUNT_CLIENT_ID, or use GOOGLE_SHEETS_AUTH_MODE=gcp_metadata/vercel_oidc."
     );
   }
 
   return {
     clientEmail,
-    privateKey: parsePrivateKey(privateKeyRaw),
-    clientId
+    privateKey: parsePrivateKey(privateKeyRaw)
   };
 }
 
-export function isGoogleSheetsConfigured(): boolean {
-  return Boolean(
-    readEnv("GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL") &&
-      readEnv("GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY") &&
-      readEnv("GOOGLE_SHEETS_SERVICE_ACCOUNT_CLIENT_ID")
+function requireEnv(name: string): string {
+  const value = readEnv(name);
+  if (!value) {
+    throw new Error(`Missing required env var: ${name}`);
+  }
+
+  return value;
+}
+
+function getVercelWifAudience(): string {
+  const projectNumber = requireEnv("GCP_PROJECT_NUMBER");
+  const poolId = requireEnv("GCP_WORKLOAD_IDENTITY_POOL_ID");
+  const providerId = requireEnv("GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID");
+  return `//iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}/providers/${providerId}`;
+}
+
+async function tryGetRuntimeVercelOidcTokenFromHeaders(): Promise<string | null> {
+  try {
+    const nextHeadersModule = await import("next/headers");
+    const headerStore = await nextHeadersModule.headers();
+    const token = headerStore.get("x-vercel-oidc-token")?.trim();
+    return token || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getVercelOidcSubjectToken(): Promise<string> {
+  const headerToken = await tryGetRuntimeVercelOidcTokenFromHeaders();
+  if (headerToken) {
+    return headerToken;
+  }
+
+  const envToken = readEnv("VERCEL_OIDC_TOKEN");
+  if (envToken) {
+    return envToken;
+  }
+
+  throw new Error(
+    "Unable to resolve Vercel OIDC subject token. Ensure OIDC federation is enabled in Vercel and this code is running in a Vercel Function context."
   );
 }
 
-async function getAccessToken(scopes = DEFAULT_SCOPES): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  if (cachedToken && cachedToken.expiresAtUnix - 30 > now) {
-    return cachedToken.accessToken;
-  }
+export function isGoogleSheetsConfigured(): boolean {
+  return getConfiguredAuthMode() !== null;
+}
 
+async function fetchAccessTokenFromServiceAccountKey(scopes: string[]): Promise<GoogleAccessToken> {
+  const now = Math.floor(Date.now() / 1000);
   const config = getServiceAccountConfig();
   const assertion = createSignedJwt(config, scopes);
 
@@ -129,12 +228,163 @@ async function getAccessToken(scopes = DEFAULT_SCOPES): Promise<string> {
     throw new Error("Google OAuth token response was invalid.");
   }
 
-  cachedToken = {
+  return {
     accessToken: payload.access_token,
     expiresAtUnix: now + payload.expires_in
   };
+}
 
-  return payload.access_token;
+async function fetchAccessTokenFromVercelOidc(scopes: string[]): Promise<GoogleAccessToken> {
+  const audience = getVercelWifAudience();
+  const serviceAccountEmail = requireEnv("GCP_SERVICE_ACCOUNT_EMAIL");
+  const subjectToken = await getVercelOidcSubjectToken();
+
+  const stsResponse = await fetch(GOOGLE_STS_TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+      requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+      subject_token: subjectToken,
+      audience,
+      scope: GOOGLE_CLOUD_PLATFORM_SCOPE
+    })
+  });
+
+  if (!stsResponse.ok) {
+    const body = await stsResponse.text();
+    throw new Error(`Google STS token exchange failed (${stsResponse.status}): ${body}`);
+  }
+
+  const stsPayload = (await stsResponse.json()) as {
+    access_token?: string;
+  };
+
+  if (!stsPayload.access_token) {
+    throw new Error("Google STS token response was invalid.");
+  }
+
+  const impersonationResponse = await fetch(
+    `${GOOGLE_IAM_CREDENTIALS_ENDPOINT}/${encodeURIComponent(serviceAccountEmail)}:generateAccessToken`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${stsPayload.access_token}`
+      },
+      body: JSON.stringify({
+        scope: scopes
+      })
+    }
+  );
+
+  if (!impersonationResponse.ok) {
+    const body = await impersonationResponse.text();
+    throw new Error(`Service account impersonation failed (${impersonationResponse.status}): ${body}`);
+  }
+
+  const impersonationPayload = (await impersonationResponse.json()) as {
+    accessToken?: string;
+    expireTime?: string;
+  };
+
+  if (!impersonationPayload.accessToken || !impersonationPayload.expireTime) {
+    throw new Error("Service account impersonation response was invalid.");
+  }
+
+  const expiresAtUnix = Math.floor(new Date(impersonationPayload.expireTime).getTime() / 1000);
+  if (!Number.isFinite(expiresAtUnix) || expiresAtUnix <= 0) {
+    throw new Error("Service account impersonation expiry was invalid.");
+  }
+
+  return {
+    accessToken: impersonationPayload.accessToken,
+    expiresAtUnix
+  };
+}
+
+async function fetchAccessTokenFromMetadata(scopes: string[]): Promise<GoogleAccessToken> {
+  const serviceAccountSelector = readEnv("GOOGLE_SHEETS_RUNTIME_SERVICE_ACCOUNT_EMAIL") || "default";
+  const encodedServiceAccount = encodeURIComponent(serviceAccountSelector);
+  const scopedUrl = `${GOOGLE_METADATA_TOKEN_ENDPOINT}/${encodedServiceAccount}/token?scopes=${encodeURIComponent(scopes.join(","))}`;
+  const unscopedUrl = `${GOOGLE_METADATA_TOKEN_ENDPOINT}/${encodedServiceAccount}/token`;
+  const urls = [scopedUrl, unscopedUrl];
+  let lastError = "metadata_token_unavailable";
+
+  for (const url of urls) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), METADATA_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Metadata-Flavor": "Google"
+        },
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        lastError = `Metadata token request failed (${response.status}): ${body}`;
+        continue;
+      }
+
+      const payload = (await response.json()) as {
+        access_token?: string;
+        expires_in?: number;
+      };
+
+      if (!payload.access_token || typeof payload.expires_in !== "number") {
+        lastError = "Metadata token response was invalid.";
+        continue;
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      return {
+        accessToken: payload.access_token,
+        expiresAtUnix: now + payload.expires_in
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : "metadata_request_failed";
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  throw new Error(
+    `Unable to fetch Google OAuth token from metadata server. Ensure this runtime has a GCP service account attached with Sheets/Drive access. Last error: ${lastError}`
+  );
+}
+
+async function getAccessToken(scopes = DEFAULT_SCOPES): Promise<string> {
+  const normalizedScopes = normalizeScopes(scopes);
+  const mode = getConfiguredAuthMode();
+
+  if (!mode) {
+    throw new Error(
+      "Google Sheets auth is not configured. Configure one mode: service_account_key, gcp_metadata, or vercel_oidc."
+    );
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const cacheKey = getTokenCacheKey(mode, normalizedScopes);
+  const cached = cachedTokensByKey.get(cacheKey);
+  if (cached && cached.expiresAtUnix - 30 > now) {
+    return cached.accessToken;
+  }
+
+  const nextToken =
+    mode === "service_account_key"
+      ? await fetchAccessTokenFromServiceAccountKey(normalizedScopes)
+      : mode === "gcp_metadata"
+        ? await fetchAccessTokenFromMetadata(normalizedScopes)
+        : await fetchAccessTokenFromVercelOidc(normalizedScopes);
+  cachedTokensByKey.set(cacheKey, nextToken);
+  return nextToken.accessToken;
 }
 
 async function googleFetch<TResponse>(url: string, init?: RequestInit, scopes?: string[]): Promise<TResponse> {

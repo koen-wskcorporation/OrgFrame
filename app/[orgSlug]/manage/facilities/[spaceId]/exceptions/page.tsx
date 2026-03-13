@@ -1,8 +1,8 @@
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { FacilityManageDetailPage } from "@/modules/facilities/components/FacilityManageDetailPage";
 
 export const metadata: Metadata = {
-  title: "Facility Exceptions"
+  title: "Calendar"
 };
 
 export default async function OrgManageFacilityExceptionsPage({
@@ -10,7 +10,6 @@ export default async function OrgManageFacilityExceptionsPage({
 }: {
   params: Promise<{ orgSlug: string; spaceId: string }>;
 }) {
-  const { orgSlug, spaceId } = await params;
-
-  return <FacilityManageDetailPage activeSection="exceptions" orgSlug={orgSlug} spaceId={spaceId} />;
+  const { orgSlug } = await params;
+  redirect(`/${orgSlug}/tools/calendar`);
 }

@@ -8,6 +8,7 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  type CSSProperties,
   type PropsWithChildren
 } from "react";
 
@@ -28,6 +29,7 @@ export type CanvasViewportHandle = {
 type CanvasViewportProps = PropsWithChildren<{
   className?: string;
   viewportClassName?: string;
+  viewportStyle?: CSSProperties;
   contentClassName?: string;
   minScale?: number;
   maxScale?: number;
@@ -35,7 +37,10 @@ type CanvasViewportProps = PropsWithChildren<{
   fitPadding?: number;
   storageKey?: string;
   dragInProgress?: boolean;
+  interactive?: boolean;
   onViewChange?: (view: CanvasView) => void;
+  gridSize?: number;
+  gridColor?: string;
 }>;
 
 function clamp(value: number, min: number, max: number) {
@@ -51,6 +56,7 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
     children,
     className,
     viewportClassName,
+    viewportStyle,
     contentClassName,
     minScale = 0.5,
     maxScale = 2,
@@ -58,7 +64,10 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
     fitPadding = 48,
     storageKey,
     dragInProgress = false,
-    onViewChange
+    interactive = true,
+    onViewChange,
+    gridSize,
+    gridColor = "#e5e7eb"
   },
   ref
 ) {
@@ -95,6 +104,14 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
       // Use 2D transforms to keep text/vector content sharp while zooming.
       // Persistent 3D compositing can rasterize the layer and introduce pixelation on zoom-in.
       transformNode.style.transform = `translate(${next.x}px, ${next.y}px) scale(${next.scale})`;
+      const viewportNode = viewportRef.current;
+      if (viewportNode && gridSize && gridSize > 0) {
+        const scaledGridSize = gridSize * next.scale;
+        viewportNode.style.backgroundImage = `linear-gradient(to right, ${gridColor} 1px, transparent 1px), linear-gradient(to bottom, ${gridColor} 1px, transparent 1px)`;
+        viewportNode.style.backgroundSize = `${scaledGridSize}px ${scaledGridSize}px`;
+        viewportNode.style.backgroundPosition = `${next.x}px ${next.y}px`;
+        viewportNode.style.backgroundOrigin = "content-box";
+      }
 
       if (storageKey && !options?.skipPersist) {
         try {
@@ -115,7 +132,7 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
         }
       });
     },
-    [storageKey]
+    [gridColor, gridSize, storageKey]
   );
 
   const animateTo = useCallback(
@@ -321,6 +338,10 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
 
   const handleWheel = useCallback(
     (event: WheelEvent) => {
+      if (!interactive) {
+        return;
+      }
+
       if (dragInProgress) {
         event.preventDefault();
         event.stopPropagation();
@@ -342,7 +363,7 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
       const intensity = Math.exp(-event.deltaY * 0.0018);
       zoomAtPoint(viewRef.current.scale * intensity, pointX, pointY);
     },
-    [dragInProgress, zoomAtPoint]
+    [dragInProgress, interactive, zoomAtPoint]
   );
 
   useEffect(() => {
@@ -358,6 +379,10 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
   }, [handleWheel]);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!interactive) {
+      return;
+    }
+
     const isMiddleMouse = event.button === 1;
     const canPanFromPointer = isMiddleMouse || canStartBackgroundPan(event.target);
     if (!canPanFromPointer) {
@@ -412,10 +437,11 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
     >
       <div
         className={cn(
-          "h-full w-full cursor-grab overflow-hidden overscroll-contain rounded-control border bg-surface-muted/20 active:cursor-grabbing",
+          `h-full w-full overflow-hidden overscroll-contain rounded-control border bg-surface-muted/20 ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`,
           viewportClassName
         )}
         ref={viewportRef}
+        style={viewportStyle}
       >
         <div ref={transformRef} style={{ transformOrigin: "0 0" }}>
           <div className={cn("inline-block p-8", contentClassName)} ref={contentRef}>

@@ -14,7 +14,9 @@ import { parseFormSchema } from "@/modules/forms/schema";
 import {
   GOOGLE_SHEET_BASE_READ_COLUMNS,
   GOOGLE_SHEET_ENTRY_BASE_COLUMNS,
+  GOOGLE_SHEET_ENTRY_LINK_COLUMNS,
   GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS,
+  GOOGLE_SHEET_LINK_COLUMNS,
   GOOGLE_SHEET_MUTABLE_COLUMNS,
   GOOGLE_SHEET_SUBMISSION_STATUS_VALUES,
   GOOGLE_SHEET_SYSTEM_COLUMNS,
@@ -138,6 +140,47 @@ function toIsoNow() {
   return new Date().toISOString();
 }
 
+function normalizeOrigin(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+
+  return value.trim().replace(/\/+$/, "");
+}
+
+function resolveAppOrigin(): string {
+  const configured = normalizeOrigin(process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL);
+  if (configured) {
+    return configured;
+  }
+
+  return "http://localhost:3000";
+}
+
+function buildSubmissionManageUrl(input: {
+  appOrigin: string;
+  orgSlug: string;
+  formId: string;
+  submissionId: string;
+  entryId?: string | null;
+  section?: string;
+}): string {
+  const params = new URLSearchParams({
+    submissionId: input.submissionId
+  });
+
+  if (input.entryId) {
+    params.set("entryId", input.entryId);
+  }
+
+  if (input.section) {
+    params.set("section", input.section);
+  }
+
+  const basePath = `/${input.orgSlug}/tools/forms/${input.formId}/submissions`;
+  return `${input.appOrigin}${basePath}?${params.toString()}`;
+}
+
 async function insertSyncRun(input: {
   orgId: string;
   formId: string;
@@ -201,6 +244,18 @@ async function loadForm(orgId: string, formId: string): Promise<FormRow | null> 
   }
 
   return (data as FormRow | null) ?? null;
+}
+
+async function loadOrgSlug(orgId: string): Promise<string | null> {
+  const supabase = createSupabaseServiceRoleClient();
+  const { data, error } = await supabase.from("orgs").select("slug").eq("id", orgId).maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load org slug for Sheets sync: ${error.message}`);
+  }
+
+  const slug = typeof data?.slug === "string" ? data.slug.trim() : "";
+  return slug || null;
 }
 
 async function loadIntegration(orgId: string, formId: string): Promise<IntegrationRow | null> {
@@ -366,6 +421,10 @@ async function ensureSpreadsheetStructure(
   );
 
   const statusColumnIndex = GOOGLE_SHEET_SYSTEM_COLUMNS.length;
+  const adminNotesColumnIndex = statusColumnIndex + 1;
+  const submissionsColumnCount = columns.submissionHeaders.length;
+  const entriesColumnCount = columns.entryHeaders.length;
+
   requests.push({
     setDataValidation: {
       range: {
@@ -385,70 +444,112 @@ async function ensureSpreadsheetStructure(
     }
   });
 
-  const submissionsColumnCount = columns.submissionHeaders.length;
-  const adminNotesColumnIndex = statusColumnIndex + 1;
-
-  requests.push({
-    addProtectedRange: {
-      protectedRange: {
-        description: `${managedProtectionPrefix}submissions-header`,
-        warningOnly: false,
+  requests.push(
+    {
+      repeatCell: {
         range: {
           sheetId: submissionsSheetId,
-          startRowIndex: 0,
+          startRowIndex: 1,
           endRowIndex: 2,
           startColumnIndex: 0,
           endColumnIndex: submissionsColumnCount
-        }
-      }
-    }
-  });
-
-  if (statusColumnIndex > 0) {
-    requests.push({
-      addProtectedRange: {
-        protectedRange: {
-          description: `${managedProtectionPrefix}submissions-readonly-left`,
-          warningOnly: false,
-          range: {
-            sheetId: submissionsSheetId,
-            startRowIndex: 2,
-            startColumnIndex: 0,
-            endColumnIndex: statusColumnIndex
+        },
+        cell: {
+          userEnteredFormat: {
+            textFormat: {
+              bold: true
+            },
+            backgroundColor: {
+              red: 0.95,
+              green: 0.96,
+              blue: 0.98
+            }
           }
-        }
+        },
+        fields: "userEnteredFormat(textFormat,backgroundColor)"
       }
-    });
-  }
-
-  if (adminNotesColumnIndex + 1 <= submissionsColumnCount) {
-    requests.push({
-      addProtectedRange: {
-        protectedRange: {
-          description: `${managedProtectionPrefix}submissions-readonly-right`,
-          warningOnly: false,
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId: submissionsSheetId,
+          startRowIndex: 2,
+          startColumnIndex: statusColumnIndex,
+          endColumnIndex: adminNotesColumnIndex + 1
+        },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: {
+              red: 0.93,
+              green: 0.97,
+              blue: 1
+            }
+          }
+        },
+        fields: "userEnteredFormat(backgroundColor)"
+      }
+    },
+    {
+      setBasicFilter: {
+        filter: {
           range: {
             sheetId: submissionsSheetId,
-            startRowIndex: 2,
-            startColumnIndex: adminNotesColumnIndex + 1,
+            startRowIndex: 1,
+            startColumnIndex: 0,
             endColumnIndex: submissionsColumnCount
           }
         }
       }
-    });
-  }
-
-  const entriesColumnCount = columns.entryHeaders.length;
-  requests.push(
+    },
     {
       addProtectedRange: {
         protectedRange: {
-          description: `${managedProtectionPrefix}entries-header`,
+          description: `${managedProtectionPrefix}submissions-sheet`,
           warningOnly: false,
           range: {
+            sheetId: submissionsSheetId
+          },
+          unprotectedRanges: [
+            {
+              sheetId: submissionsSheetId,
+              startRowIndex: 2,
+              startColumnIndex: statusColumnIndex,
+              endColumnIndex: adminNotesColumnIndex + 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId: entriesSheetId,
+          startRowIndex: 1,
+          endRowIndex: 2,
+          startColumnIndex: 0,
+          endColumnIndex: entriesColumnCount
+        },
+        cell: {
+          userEnteredFormat: {
+            textFormat: {
+              bold: true
+            },
+            backgroundColor: {
+              red: 0.95,
+              green: 0.96,
+              blue: 0.98
+            }
+          }
+        },
+        fields: "userEnteredFormat(textFormat,backgroundColor)"
+      }
+    },
+    {
+      setBasicFilter: {
+        filter: {
+          range: {
             sheetId: entriesSheetId,
-            startRowIndex: 0,
-            endRowIndex: 2,
+            startRowIndex: 1,
             startColumnIndex: 0,
             endColumnIndex: entriesColumnCount
           }
@@ -458,13 +559,10 @@ async function ensureSpreadsheetStructure(
     {
       addProtectedRange: {
         protectedRange: {
-          description: `${managedProtectionPrefix}entries-readonly`,
+          description: `${managedProtectionPrefix}entries-sheet`,
           warningOnly: false,
           range: {
-            sheetId: entriesSheetId,
-            startRowIndex: 2,
-            startColumnIndex: 0,
-            endColumnIndex: entriesColumnCount
+            sheetId: entriesSheetId
           }
         }
       }
@@ -537,22 +635,43 @@ function buildColumnSet(form: FormRow): SheetColumnSet {
     submissionHeaders: [
       ...GOOGLE_SHEET_SYSTEM_COLUMNS,
       ...GOOGLE_SHEET_MUTABLE_COLUMNS,
+      ...GOOGLE_SHEET_LINK_COLUMNS,
       ...GOOGLE_SHEET_BASE_READ_COLUMNS,
       ...answerFields
     ],
     submissionAnswerFields: answerFields,
-    entryHeaders: [...GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS, ...GOOGLE_SHEET_ENTRY_BASE_COLUMNS, ...answerFields],
+    entryHeaders: [
+      ...GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS,
+      ...GOOGLE_SHEET_ENTRY_BASE_COLUMNS,
+      ...GOOGLE_SHEET_ENTRY_LINK_COLUMNS,
+      ...answerFields
+    ],
     entryAnswerFields: answerFields
   };
 }
 
 function buildSubmissionRow(input: {
+  orgSlug: string;
+  appOrigin: string;
   formId: string;
   submission: SubmissionRow;
   answerFields: string[];
   syncedAt: string;
 }): Array<string | number> {
   const answers = asObject(input.submission.answers_json);
+  const submissionUrl = buildSubmissionManageUrl({
+    appOrigin: input.appOrigin,
+    orgSlug: input.orgSlug,
+    formId: input.formId,
+    submissionId: input.submission.id
+  });
+  const playersLinkedUrl = buildSubmissionManageUrl({
+    appOrigin: input.appOrigin,
+    orgSlug: input.orgSlug,
+    formId: input.formId,
+    submissionId: input.submission.id,
+    section: "players"
+  });
 
   const rowHash = buildRowHash([
     input.submission.id,
@@ -572,6 +691,8 @@ function buildSubmissionRow(input: {
     input.formId,
     input.submission.status,
     input.submission.admin_notes ?? "",
+    playersLinkedUrl,
+    submissionUrl,
     input.submission.created_at,
     input.submission.updated_at,
     ...input.answerFields.map((field) => normalizeSheetCell(answers[field]))
@@ -579,6 +700,8 @@ function buildSubmissionRow(input: {
 }
 
 function buildEntryRow(input: {
+  orgSlug: string;
+  appOrigin: string;
   formId: string;
   submission: SubmissionRow;
   entry: SubmissionEntryRow;
@@ -586,6 +709,21 @@ function buildEntryRow(input: {
   syncedAt: string;
 }): Array<string | number> {
   const answers = asObject(input.entry.answers_json);
+  const entryManageUrl = buildSubmissionManageUrl({
+    appOrigin: input.appOrigin,
+    orgSlug: input.orgSlug,
+    formId: input.formId,
+    submissionId: input.submission.id,
+    entryId: input.entry.id,
+    section: "players"
+  });
+  const entryActionsUrl = buildSubmissionManageUrl({
+    appOrigin: input.appOrigin,
+    orgSlug: input.orgSlug,
+    formId: input.formId,
+    submissionId: input.submission.id,
+    entryId: input.entry.id
+  });
 
   const rowHash = buildRowHash([
     input.entry.id,
@@ -607,11 +745,15 @@ function buildEntryRow(input: {
     input.entry.player_id,
     input.entry.program_node_id ?? "",
     input.entry.created_at,
+    entryManageUrl,
+    entryActionsUrl,
     ...input.answerFields.map((field) => normalizeSheetCell(answers[field]))
   ];
 }
 
 async function writeCanonicalSheets(input: {
+  orgSlug: string;
+  appOrigin: string;
   form: FormRow;
   integration: IntegrationRow;
   columns: SheetColumnSet;
@@ -621,21 +763,25 @@ async function writeCanonicalSheets(input: {
 }): Promise<void> {
   const syncedAt = toIsoNow();
   const warning =
-    "Managed by Sports SaaS. Edit only 'status' and 'admin_notes' on existing rows. Deleting rows will be repaired by sync.";
+    "Managed by Sports SaaS. Edit only 'status' and 'admin_notes' on existing rows. Do not add/delete columns. Link columns open managed views in the app.";
 
-  const submissionRows = input.submissions.map((submission) =>
-    buildSubmissionRow({
+  const submissionRows = input.submissions.map((submission) => {
+    return buildSubmissionRow({
+      orgSlug: input.orgSlug,
+      appOrigin: input.appOrigin,
       formId: input.form.id,
       submission,
       answerFields: input.columns.submissionAnswerFields,
       syncedAt
-    })
-  );
+    });
+  });
 
   const entryRows = input.submissions.flatMap((submission) => {
     const entries = input.entriesBySubmissionId.get(submission.id) ?? [];
     return entries.map((entry) =>
       buildEntryRow({
+        orgSlug: input.orgSlug,
+        appOrigin: input.appOrigin,
         formId: input.form.id,
         submission,
         entry,
@@ -856,6 +1002,10 @@ export async function runGoogleSheetSyncForForm(input: SyncFormInput): Promise<S
   if (!form) {
     throw new Error("Form not found.");
   }
+  const orgSlug = await loadOrgSlug(form.org_id);
+  if (!orgSlug) {
+    throw new Error("Organization slug not found for Google Sheets sync.");
+  }
 
   const integration = await loadIntegration(input.orgId, input.formId);
   if (!integration || integration.status !== "active") {
@@ -885,6 +1035,8 @@ export async function runGoogleSheetSyncForForm(input: SyncFormInput): Promise<S
     if (input.allowOutbound) {
       const data = await loadSubmissionsWithEntries(input.orgId, input.formId);
       await writeCanonicalSheets({
+        orgSlug,
+        appOrigin: resolveAppOrigin(),
         form,
         integration,
         columns,

@@ -27,7 +27,7 @@ export default async function OrgManageFacilitiesPage({ params }: { params: Prom
   return (
     <PageStack>
       <PageHeader
-        description="Manage facility spaces, booking schedules, blackouts, and approvals."
+        description="Manage facility spaces and structure."
         showBorder={false}
         title="Facilities"
       />

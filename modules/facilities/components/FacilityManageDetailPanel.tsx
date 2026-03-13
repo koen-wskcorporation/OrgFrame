@@ -15,19 +15,15 @@ import {
 import { FacilityStatusBadge } from "@/modules/facilities/components/FacilityStatusBadge";
 import { FacilityStructurePanel } from "@/modules/facilities/components/FacilityStructurePanel";
 import { buildFacilitySpaceStatusOptions, formatFacilitySpaceStatusLabel, resolveFacilitySpaceStatusLabels } from "@/modules/facilities/status";
-import type { FacilityReservationException, FacilityReservationReadModel, FacilitySpace } from "@/modules/facilities/types";
-import { FacilityCalendarWorkspace } from "@/modules/calendar/components/FacilityCalendarWorkspace";
-import type { CalendarReadModel } from "@/modules/calendar/types";
+import type { FacilityReservationReadModel, FacilitySpace } from "@/modules/facilities/types";
 
-export type FacilityManageDetailSection = "overview" | "structure" | "schedule" | "exceptions" | "settings";
+export type FacilityManageDetailSection = "overview" | "structure" | "settings";
 
 type FacilityManageDetailPanelProps = {
   orgSlug: string;
   canWrite: boolean;
   selectedSpace: FacilitySpace;
   initialReadModel: FacilityReservationReadModel;
-  initialCalendarReadModel: CalendarReadModel;
-  activeTeams: Array<{ id: string; label: string }>;
   activeSection: FacilityManageDetailSection;
 };
 
@@ -36,8 +32,6 @@ export function FacilityManageDetailPanel({
   canWrite,
   selectedSpace,
   initialReadModel,
-  initialCalendarReadModel,
-  activeTeams,
   activeSection
 }: FacilityManageDetailPanelProps) {
   const { toast } = useToast();
@@ -51,16 +45,6 @@ export function FacilityManageDetailPanel({
 
   const selectedSpaceStatusLabels = useMemo(() => resolveFacilitySpaceStatusLabels(currentSelectedSpace), [currentSelectedSpace]);
   const selectedSpaceStatusOptions = useMemo(() => buildFacilitySpaceStatusOptions(selectedSpaceStatusLabels), [selectedSpaceStatusLabels]);
-
-  const scopedRuleIds = useMemo(
-    () => new Set(readModel.rules.filter((rule) => rule.spaceId === currentSelectedSpace.id).map((rule) => rule.id)),
-    [currentSelectedSpace.id, readModel.rules]
-  );
-
-  const scopedExceptions = useMemo(
-    () => readModel.exceptions.filter((exception) => scopedRuleIds.has(exception.ruleId)),
-    [readModel.exceptions, scopedRuleIds]
-  );
 
   function applyReadModel(next: FacilityReservationReadModel) {
     setReadModel(next);
@@ -89,16 +73,6 @@ export function FacilityManageDetailPanel({
         });
       }
     });
-  }
-
-  function handleExceptionSummary(exceptions: FacilityReservationException[]) {
-    if (exceptions.length === 0) {
-      return "No exceptions";
-    }
-
-    const skipCount = exceptions.filter((item) => item.kind === "skip").length;
-    const overrideCount = exceptions.filter((item) => item.kind === "override").length;
-    return `${exceptions.length} exception${exceptions.length === 1 ? "" : "s"} (${skipCount} skip, ${overrideCount} override)`;
   }
 
   return (
@@ -136,7 +110,7 @@ export function FacilityManageDetailPanel({
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-text-muted">Use the tabs to manage bookings, review exceptions, and update settings for this facility.</p>
+            <p className="text-sm text-text-muted">Use the tabs to manage structure and settings for this facility.</p>
           </CardContent>
         </Card>
       ) : null}
@@ -257,36 +231,6 @@ export function FacilityManageDetailPanel({
           selectedSpace={currentSelectedSpace}
           spaces={readModel.spaces}
         />
-      ) : null}
-
-      {activeSection === "schedule" ? (
-        <FacilityCalendarWorkspace
-          activeTeams={activeTeams}
-          canWrite={canWrite}
-          initialReadModel={initialCalendarReadModel}
-          orgSlug={orgSlug}
-          spaceId={currentSelectedSpace.id}
-          spaceName={currentSelectedSpace.name}
-        />
-      ) : null}
-
-      {activeSection === "exceptions" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Rule Exceptions</CardTitle>
-            <CardDescription>{handleExceptionSummary(scopedExceptions)}</CardDescription>
-          </CardHeader>
-          <CardContent className="ui-list-stack">
-            {scopedExceptions.length === 0 ? <p className="text-sm text-text-muted">No skip/override exceptions configured.</p> : null}
-            <div className="ui-list-stack">
-              {scopedExceptions.map((exception) => (
-                <div className="ui-list-item py-2 text-sm text-text" key={exception.id}>
-                  {exception.kind} - {exception.sourceKey}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       ) : null}
     </div>
   );

@@ -23,6 +23,8 @@ export const GOOGLE_SHEET_SYSTEM_COLUMNS = [
 
 export const GOOGLE_SHEET_MUTABLE_COLUMNS = ["status", "admin_notes"] as const;
 
+export const GOOGLE_SHEET_LINK_COLUMNS = ["players_linked", "actions"] as const;
+
 export const GOOGLE_SHEET_BASE_READ_COLUMNS = ["submitted_at", "updated_at"] as const;
 
 export const GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS = [
@@ -35,6 +37,8 @@ export const GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS = [
 ] as const;
 
 export const GOOGLE_SHEET_ENTRY_BASE_COLUMNS = ["player_id", "program_node_id", "created_at"] as const;
+
+export const GOOGLE_SHEET_ENTRY_LINK_COLUMNS = ["players_linked", "actions"] as const;
 
 export type ParsedSubmissionSheetRow = {
   sheetRowNumber: number;

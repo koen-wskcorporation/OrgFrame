@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { createOptionalSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { isGoogleSheetsConfigured } from "@/lib/integrations/google-sheets/client";
 import { rethrowIfNavigationError } from "@/lib/actions/rethrowIfNavigationError";
 import { getSessionUser } from "@/lib/auth/getSessionUser";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
@@ -1449,11 +1450,7 @@ export async function getFormGoogleSheetIntegrationAction(
       data: {
         integration,
         recentRuns,
-        configured: Boolean(
-          process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL &&
-            process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY &&
-            process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_CLIENT_ID
-        )
+        configured: isGoogleSheetsConfigured()
       }
     };
   } catch (error) {
