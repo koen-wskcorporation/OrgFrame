@@ -38,9 +38,55 @@ body {
   font-family: 'Avenir Next', 'Segoe UI', sans-serif;
 }
 
-.hero-backdrop {
-  background: radial-gradient(70% 60% at 20% 15%, hsl(var(--accent) / 0.18), transparent 60%),
-    linear-gradient(135deg, #f8fafc 0%, #eff6ff 45%, #ecfeff 100%);
+.landing-dramatic {
+  background:
+    radial-gradient(68rem 36rem at -10% 18%, hsl(var(--accent) / 0.26), transparent 64%),
+    radial-gradient(56rem 34rem at 116% 82%, hsl(var(--accent) / 0.18), transparent 66%),
+    linear-gradient(160deg, hsl(var(--canvas)) 0%, hsl(0 0% 100%) 48%, hsl(var(--surface-muted)) 100%);
+}
+
+.landing-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, hsl(var(--border) / 0.2) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(var(--border) / 0.2) 1px, transparent 1px);
+  background-size: 52px 52px;
+  mask-image: radial-gradient(circle at center, black 38%, transparent 92%);
+  pointer-events: none;
+}
+
+.landing-orb {
+  position: absolute;
+  width: 34rem;
+  height: 34rem;
+  border-radius: 9999px;
+  filter: blur(48px);
+  opacity: 0.42;
+  pointer-events: none;
+  animation: drift 12s ease-in-out infinite alternate;
+}
+
+.landing-orb-left {
+  left: -10rem;
+  top: -6rem;
+  background: hsl(var(--accent) / 0.42);
+}
+
+.landing-orb-right {
+  right: -12rem;
+  bottom: -10rem;
+  background: hsl(var(--accent) / 0.3);
+  animation-delay: 1.8s;
+}
+
+@keyframes drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(0, 20px, 0) scale(1.08);
+  }
 }
 
 @layer components {
