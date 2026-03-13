@@ -189,6 +189,20 @@ Execution model:
 5. For executable actions, emit a versioned `AiChangesetV1` and wire confirm-time execution through `execute_changes`.
 6. Add/extend migrations or RPCs as needed for transactional writes and stale-precondition checks.
 
+## Google Sheets (User-Owned)
+
+Forms -> Submissions -> Connect Google Sheets now uses a Google OAuth popup and creates the spreadsheet as the signed-in user.
+To enable this flow, set:
+
+- `GOOGLE_SHEETS_OAUTH_CLIENT_ID`
+- `GOOGLE_SHEETS_OAUTH_CLIENT_SECRET`
+- `GOOGLE_SHEETS_OAUTH_STATE_SECRET` (recommended; defaults to client secret if omitted)
+- `GOOGLE_SHEETS_OAUTH_REDIRECT_URI` (optional; defaults to `/api/integrations/google-sheets/oauth/callback` on current origin)
+
+The app still needs its runtime Sheets identity for ongoing sync/reconcile after the user-owned sheet is created:
+
+- `GCP_SERVICE_ACCOUNT_EMAIL` or `GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL`
+
 ## Site Management
 
 - Use `/{orgSlug}/manage/site` to manage pages and navigation.

@@ -19,7 +19,6 @@ import { Chip } from "@orgframe/ui/ui/chip";
 import { Select } from "@orgframe/ui/ui/select";
 import { useToast } from "@orgframe/ui/ui/toast";
 import {
-  connectFormGoogleSheetAction,
   createFormSubmissionViewAction,
   deleteFormSubmissionAction,
   deleteFormSubmissionViewAction,
@@ -212,6 +211,18 @@ type SubmissionSummaryMetricOption = {
   value: FormSubmissionViewSummaryMetricKey;
   label: string;
   description: string;
+};
+
+type GoogleSheetsConnectedMessage = {
+  type: "orgframe:google-sheets-connected";
+  orgSlug: string;
+  formId: string;
+  spreadsheetUrl?: string;
+};
+
+type GoogleSheetsOauthErrorMessage = {
+  type: "orgframe:google-sheets-oauth-error";
+  error: string;
 };
 
 const DEFAULT_VIEW_FILTERS: FormSubmissionViewFilters = {
@@ -780,6 +791,7 @@ export function FormSubmissionsPanel({
   const [googleSheetState, setGoogleSheetState] = useState<OrgFormGoogleSheetIntegration | null>(googleSheetIntegration);
   const [googleSheetRunRows, setGoogleSheetRunRows] = useState<OrgFormGoogleSheetSyncRun[]>(googleSheetRecentRuns);
   const [isSavingGoogleSheet, startSavingGoogleSheet] = useTransition();
+  const [isGoogleSheetsOauthInFlight, setIsGoogleSheetsOauthInFlight] = useState(false);
   const handleTableConfigChange = useCallback((nextConfig: DataTableViewConfig) => {
     tableConfigDraftRef.current = nextConfig;
     setTableConfigDraft(nextConfig);
@@ -788,6 +800,7 @@ export function FormSubmissionsPanel({
   const autoSaveRequestIdRef = useRef(0);
   const appliedFiltersSignatureRef = useRef<string | null>(null);
   const appliedSummaryCardsSignatureRef = useRef<string | null>(null);
+  const googleSheetsOauthWatchRef = useRef<number | null>(null);
 
   useEffect(() => {
     setSubmissionRows(submissions);
@@ -1183,28 +1196,40 @@ export function FormSubmissionsPanel({
       return;
     }
 
-    startSavingGoogleSheet(async () => {
-      const result = await connectFormGoogleSheetAction({
-        orgSlug,
-        formId
-      });
+    const width = 620;
+    const height = 760;
+    const left = Math.max(0, Math.floor(window.screenX + (window.outerWidth - width) / 2));
+    const top = Math.max(0, Math.floor(window.screenY + (window.outerHeight - height) / 2));
 
-      if (!result.ok) {
-        toast({
-          title: "Unable to connect Google Sheets",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
+    const popup = window.open(
+      `/api/integrations/google-sheets/oauth/start?orgSlug=${encodeURIComponent(orgSlug)}&formId=${encodeURIComponent(formId)}`,
+      "orgframe-google-sheets-oauth",
+      `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
 
-      setGoogleSheetState(result.data.integration);
-      await refreshGoogleSheetState(false);
+    if (!popup) {
       toast({
-        title: "Google Sheets connected",
-        variant: "success"
+        title: "Popup blocked",
+        description: "Allow popups for this site to connect Google Sheets.",
+        variant: "destructive"
       });
-    });
+      return;
+    }
+
+    setIsGoogleSheetsOauthInFlight(true);
+    if (googleSheetsOauthWatchRef.current !== null) {
+      window.clearInterval(googleSheetsOauthWatchRef.current);
+    }
+    googleSheetsOauthWatchRef.current = window.setInterval(() => {
+      if (popup.closed) {
+        if (googleSheetsOauthWatchRef.current !== null) {
+          window.clearInterval(googleSheetsOauthWatchRef.current);
+          googleSheetsOauthWatchRef.current = null;
+        }
+        setIsGoogleSheetsOauthInFlight(false);
+      }
+    }, 500);
+    popup.focus();
   }
 
   function handleDisconnectGoogleSheet() {
@@ -1268,6 +1293,63 @@ export function FormSubmissionsPanel({
       });
     });
   }
+
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+
+      const payload = event.data as GoogleSheetsConnectedMessage | GoogleSheetsOauthErrorMessage | null;
+      if (!payload || typeof payload !== "object" || typeof payload.type !== "string") {
+        return;
+      }
+
+      if (payload.type === "orgframe:google-sheets-oauth-error") {
+        if (googleSheetsOauthWatchRef.current !== null) {
+          window.clearInterval(googleSheetsOauthWatchRef.current);
+          googleSheetsOauthWatchRef.current = null;
+        }
+        setIsGoogleSheetsOauthInFlight(false);
+        toast({
+          title: "Unable to connect Google Sheets",
+          description: payload.error,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (payload.type !== "orgframe:google-sheets-connected") {
+        return;
+      }
+
+      if (payload.orgSlug !== orgSlug || payload.formId !== formId) {
+        return;
+      }
+
+      if (googleSheetsOauthWatchRef.current !== null) {
+        window.clearInterval(googleSheetsOauthWatchRef.current);
+        googleSheetsOauthWatchRef.current = null;
+      }
+      setIsGoogleSheetsOauthInFlight(false);
+      startSavingGoogleSheet(async () => {
+        await refreshGoogleSheetState(false);
+        toast({
+          title: "Google Sheets connected",
+          variant: "success"
+        });
+      });
+    }
+
+    window.addEventListener("message", onMessage);
+    return () => {
+      if (googleSheetsOauthWatchRef.current !== null) {
+        window.clearInterval(googleSheetsOauthWatchRef.current);
+        googleSheetsOauthWatchRef.current = null;
+      }
+      window.removeEventListener("message", onMessage);
+    };
+  }, [formId, orgSlug, startSavingGoogleSheet, toast]);
 
   function toCellKey(submissionId: string, fieldName: string, submissionEntryId?: string) {
     return `${submissionId}:${submissionEntryId ?? "submission"}:${fieldName}`;
@@ -2684,7 +2766,13 @@ function addSummaryCard() {
                   </Button>
                 </>
               ) : (
-                <Button disabled={!canWrite || !googleSheetConfigured || isSavingGoogleSheet} loading={isSavingGoogleSheet} onClick={handleConnectGoogleSheet} size="sm" variant="secondary">
+                <Button
+                  disabled={!canWrite || !googleSheetConfigured || isSavingGoogleSheet || isGoogleSheetsOauthInFlight}
+                  loading={isSavingGoogleSheet || isGoogleSheetsOauthInFlight}
+                  onClick={handleConnectGoogleSheet}
+                  size="sm"
+                  variant="secondary"
+                >
                   Connect Google Sheets
                 </Button>
               )}
@@ -2692,7 +2780,7 @@ function addSummaryCard() {
           </div>
           {!googleSheetConfigured ? (
             <Alert className="mt-3" variant="warning">
-              Google Sheets is not configured on the server. Missing service-account environment variables.
+              Google Sheets is not configured on the server. Missing auth and/or OAuth environment variables.
             </Alert>
           ) : null}
           {googleSheetRunRows.length > 0 ? (

@@ -4,10 +4,12 @@ import {
   batchUpdateSpreadsheet,
   clearSheetRange,
   createSpreadsheet,
+  createSpreadsheetWithAccessToken,
   getSpreadsheetMetadata,
   getSheetValues,
   isGoogleSheetsConfigured,
   shareSpreadsheetWithUser,
+  shareSpreadsheetWithUserAccessToken,
   updateSheetValues
 } from "@/lib/integrations/google-sheets/client";
 import { parseFormSchema } from "@/modules/forms/schema";
@@ -155,6 +157,23 @@ function resolveAppOrigin(): string {
   }
 
   return "http://localhost:3000";
+}
+
+function resolveGoogleSheetsServiceAccountEmail(): string | null {
+  const candidates = [
+    process.env.GCP_SERVICE_ACCOUNT_EMAIL,
+    process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL,
+    process.env.GOOGLE_SHEETS_RUNTIME_SERVICE_ACCOUNT_EMAIL
+  ];
+
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+
+  return null;
 }
 
 function buildSubmissionManageUrl(input: {
@@ -1184,6 +1203,7 @@ export async function connectFormToGoogleSheet(input: {
   formKind: FormRow["form_kind"];
   createdByUserId: string;
   shareWithEmail?: string | null;
+  ownerAccessToken?: string | null;
 }): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
   if (!isGoogleSheetsConfigured()) {
     throw new Error("Google Sheets integration is not configured on the server.");
@@ -1208,18 +1228,47 @@ export async function connectFormToGoogleSheet(input: {
   }
 
   const title = `${input.formName} - Submissions`;
-  const created = await createSpreadsheet({
-    title,
-    sheets: [
-      {
-        title: GOOGLE_SHEETS_TAB_SUBMISSIONS
-      },
-      {
-        title: GOOGLE_SHEETS_TAB_ENTRIES,
-        hidden: input.formKind === "generic"
+  const created = input.ownerAccessToken
+    ? await createSpreadsheetWithAccessToken(input.ownerAccessToken, {
+        title,
+        sheets: [
+          {
+            title: GOOGLE_SHEETS_TAB_SUBMISSIONS
+          },
+          {
+            title: GOOGLE_SHEETS_TAB_ENTRIES,
+            hidden: input.formKind === "generic"
+          }
+        ]
+      })
+    : await createSpreadsheet({
+        title,
+        sheets: [
+          {
+            title: GOOGLE_SHEETS_TAB_SUBMISSIONS
+          },
+          {
+            title: GOOGLE_SHEETS_TAB_ENTRIES,
+            hidden: input.formKind === "generic"
+          }
+        ]
+      });
+
+  if (input.ownerAccessToken) {
+    const appServiceAccountEmail = resolveGoogleSheetsServiceAccountEmail();
+    if (!appServiceAccountEmail) {
+      throw new Error(
+        "Google Sheets service account email is not configured. Set GCP_SERVICE_ACCOUNT_EMAIL or GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL."
+      );
+    }
+
+    await shareSpreadsheetWithUserAccessToken(input.ownerAccessToken, created.spreadsheetId, appServiceAccountEmail).catch(
+      (error) => {
+        const message = error instanceof Error ? error.message : "unknown_share_error";
+        throw new Error(`Google Sheets created as user, but failed to grant app sync access: ${message}`);
       }
-    ]
-  });
+    );
+  }
 
   if (input.shareWithEmail && input.shareWithEmail.trim()) {
     await shareSpreadsheetWithUser(created.spreadsheetId, input.shareWithEmail.trim().toLowerCase()).catch(() => {
