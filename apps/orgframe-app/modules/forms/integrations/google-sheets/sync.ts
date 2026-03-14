@@ -114,6 +114,11 @@ type EnsureResult = {
 
 const GOOGLE_SHEETS_PUBLIC_ORIGIN = "https://web.wskcorporation.com";
 
+type OrgSheetBranding = {
+  slug: string;
+  accentHex: string | null;
+};
+
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
@@ -235,6 +240,23 @@ function resolveGoogleSheetsServiceAccountEmail(): string | null {
   return null;
 }
 
+function parseHexColorToRgb(hex: string): { red: number; green: number; blue: number } | null {
+  const normalized = hex.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return null;
+  }
+
+  const red = Number.parseInt(normalized.slice(0, 2), 16) / 255;
+  const green = Number.parseInt(normalized.slice(2, 4), 16) / 255;
+  const blue = Number.parseInt(normalized.slice(4, 6), 16) / 255;
+  return { red, green, blue };
+}
+
+function deriveHeaderTextColor(accent: { red: number; green: number; blue: number }): { red: number; green: number; blue: number } {
+  const luminance = (0.2126 * accent.red) + (0.7152 * accent.green) + (0.0722 * accent.blue);
+  return luminance > 0.6 ? { red: 0.08, green: 0.12, blue: 0.18 } : { red: 1, green: 1, blue: 1 };
+}
+
 function buildSubmissionManageUrl(input: {
   appOrigin: string;
   orgSlug: string;
@@ -324,16 +346,24 @@ async function loadForm(orgId: string, formId: string): Promise<FormRow | null> 
   return (data as FormRow | null) ?? null;
 }
 
-async function loadOrgSlug(orgId: string): Promise<string | null> {
+async function loadOrgSheetBranding(orgId: string): Promise<OrgSheetBranding | null> {
   const supabase = createSupabaseServiceRoleClient();
-  const { data, error } = await supabase.from("orgs").select("slug").eq("id", orgId).maybeSingle();
+  const { data, error } = await supabase.from("orgs").select("slug, brand_primary").eq("id", orgId).maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to load org slug for Sheets sync: ${error.message}`);
+    throw new Error(`Failed to load org branding for Sheets sync: ${error.message}`);
   }
 
   const slug = typeof data?.slug === "string" ? data.slug.trim() : "";
-  return slug || null;
+  if (!slug) {
+    return null;
+  }
+
+  const accentHex = typeof data?.brand_primary === "string" ? data.brand_primary.trim() : "";
+  return {
+    slug,
+    accentHex: accentHex.length > 0 ? accentHex : null
+  };
 }
 
 async function loadIntegration(orgId: string, formId: string): Promise<IntegrationRow | null> {
@@ -444,6 +474,18 @@ async function ensureSpreadsheetStructure(
     });
   });
 
+  const submissionsColumnCount = columns.submissionHeaders.length;
+  const entriesColumnCount = columns.entryHeaders.length;
+  const submissionHeaderIndex = new Map(columns.submissionHeaders.map((header, index) => [header, index]));
+  const entryHeaderIndex = new Map(columns.entryHeaders.map((header, index) => [header, index]));
+  const statusColumnIndex = submissionHeaderIndex.get("status") ?? -1;
+  const adminNotesColumnIndex = submissionHeaderIndex.get("admin_notes") ?? -1;
+  const submissionsAnswerStartIndex =
+    columns.submissionAnswerFields.length > 0 ? (submissionHeaderIndex.get(columns.submissionAnswerFields[0]) ?? -1) : -1;
+  const entriesAnswerStartIndex = columns.entryAnswerFields.length > 0 ? (entryHeaderIndex.get(columns.entryAnswerFields[0]) ?? -1) : -1;
+  const submissionsSystemStartIndex = submissionsColumnCount - GOOGLE_SHEET_SYSTEM_COLUMNS.length;
+  const entriesSystemStartIndex = entriesColumnCount - GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS.length;
+
   requests.push(
     {
       updateSheetProperties: {
@@ -473,8 +515,8 @@ async function ensureSpreadsheetStructure(
         range: {
           sheetId: submissionsSheetId,
           dimension: "COLUMNS",
-          startIndex: 0,
-          endIndex: GOOGLE_SHEET_SYSTEM_COLUMNS.length
+          startIndex: submissionsSystemStartIndex,
+          endIndex: submissionsColumnCount
         },
         properties: {
           hiddenByUser: true
@@ -487,8 +529,8 @@ async function ensureSpreadsheetStructure(
         range: {
           sheetId: entriesSheetId,
           dimension: "COLUMNS",
-          startIndex: 0,
-          endIndex: GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS.length
+          startIndex: entriesSystemStartIndex,
+          endIndex: entriesColumnCount
         },
         properties: {
           hiddenByUser: true
@@ -498,32 +540,26 @@ async function ensureSpreadsheetStructure(
     }
   );
 
-  const statusColumnIndex = GOOGLE_SHEET_SYSTEM_COLUMNS.length;
-  const adminNotesColumnIndex = statusColumnIndex + 1;
-  const submissionsColumnCount = columns.submissionHeaders.length;
-  const entriesColumnCount = columns.entryHeaders.length;
-  const submissionsAnswerStartIndex =
-    GOOGLE_SHEET_SYSTEM_COLUMNS.length + GOOGLE_SHEET_MUTABLE_COLUMNS.length + GOOGLE_SHEET_LINK_COLUMNS.length + GOOGLE_SHEET_BASE_READ_COLUMNS.length;
-  const entriesAnswerStartIndex = GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS.length + GOOGLE_SHEET_ENTRY_BASE_COLUMNS.length + GOOGLE_SHEET_ENTRY_LINK_COLUMNS.length;
-
-  requests.push({
-    setDataValidation: {
-      range: {
-        sheetId: submissionsSheetId,
-        startRowIndex: 2,
-        startColumnIndex: statusColumnIndex,
-        endColumnIndex: statusColumnIndex + 1
-      },
-      rule: {
-        condition: {
-          type: "ONE_OF_LIST",
-          values: GOOGLE_SHEET_SUBMISSION_STATUS_VALUES.map((value) => ({ userEnteredValue: value }))
+  if (statusColumnIndex >= 0) {
+    requests.push({
+      setDataValidation: {
+        range: {
+          sheetId: submissionsSheetId,
+          startRowIndex: 2,
+          startColumnIndex: statusColumnIndex,
+          endColumnIndex: statusColumnIndex + 1
         },
-        strict: true,
-        showCustomUi: true
+        rule: {
+          condition: {
+            type: "ONE_OF_LIST",
+            values: GOOGLE_SHEET_SUBMISSION_STATUS_VALUES.map((value) => ({ userEnteredValue: value }))
+          },
+          strict: true,
+          showCustomUi: true
+        }
       }
-    }
-  });
+    });
+  }
 
   requests.push(
     {
@@ -531,8 +567,11 @@ async function ensureSpreadsheetStructure(
         range: {
           sheetId: submissionsSheetId,
           startRowIndex: 2,
-          startColumnIndex: submissionsAnswerStartIndex,
-          endColumnIndex: submissionsColumnCount
+          startColumnIndex: submissionsAnswerStartIndex >= 0 ? submissionsAnswerStartIndex : submissionsColumnCount,
+          endColumnIndex:
+            submissionsAnswerStartIndex >= 0
+              ? submissionsAnswerStartIndex + columns.submissionAnswerFields.length
+              : submissionsColumnCount
         },
         cell: {
           dataValidation: null
@@ -545,8 +584,8 @@ async function ensureSpreadsheetStructure(
         range: {
           sheetId: entriesSheetId,
           startRowIndex: 2,
-          startColumnIndex: entriesAnswerStartIndex,
-          endColumnIndex: entriesColumnCount
+          startColumnIndex: entriesAnswerStartIndex >= 0 ? entriesAnswerStartIndex : entriesColumnCount,
+          endColumnIndex: entriesAnswerStartIndex >= 0 ? entriesAnswerStartIndex + columns.entryAnswerFields.length : entriesColumnCount
         },
         cell: {
           dataValidation: null
@@ -556,9 +595,14 @@ async function ensureSpreadsheetStructure(
     }
   );
 
-  columns.submissionAnswerFields.forEach((fieldName, answerFieldIndex) => {
+  columns.submissionAnswerFields.forEach((fieldName) => {
     const options = columns.selectOptionsByFieldName[fieldName] ?? [];
+    const submissionColumnIndex = submissionHeaderIndex.get(fieldName);
+    const entryColumnIndex = entryHeaderIndex.get(fieldName);
     if (options.length === 0) {
+      return;
+    }
+    if (typeof submissionColumnIndex !== "number" || typeof entryColumnIndex !== "number") {
       return;
     }
 
@@ -568,8 +612,8 @@ async function ensureSpreadsheetStructure(
           range: {
             sheetId: submissionsSheetId,
             startRowIndex: 2,
-            startColumnIndex: submissionsAnswerStartIndex + answerFieldIndex,
-            endColumnIndex: submissionsAnswerStartIndex + answerFieldIndex + 1
+            startColumnIndex: submissionColumnIndex,
+            endColumnIndex: submissionColumnIndex + 1
           },
           rule: {
             condition: {
@@ -586,8 +630,8 @@ async function ensureSpreadsheetStructure(
           range: {
             sheetId: entriesSheetId,
             startRowIndex: 2,
-            startColumnIndex: entriesAnswerStartIndex + answerFieldIndex,
-            endColumnIndex: entriesAnswerStartIndex + answerFieldIndex + 1
+            startColumnIndex: entryColumnIndex,
+            endColumnIndex: entryColumnIndex + 1
           },
           rule: {
             condition: {
@@ -896,18 +940,18 @@ function buildColumnSet(form: FormRow): SheetColumnSet {
 
   return {
     submissionHeaders: [
-      ...GOOGLE_SHEET_SYSTEM_COLUMNS,
       ...GOOGLE_SHEET_MUTABLE_COLUMNS,
       ...GOOGLE_SHEET_LINK_COLUMNS,
       ...GOOGLE_SHEET_BASE_READ_COLUMNS,
-      ...answerFields
+      ...answerFields,
+      ...GOOGLE_SHEET_SYSTEM_COLUMNS
     ],
     submissionAnswerFields: answerFields,
     entryHeaders: [
-      ...GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS,
       ...GOOGLE_SHEET_ENTRY_BASE_COLUMNS,
       ...GOOGLE_SHEET_ENTRY_LINK_COLUMNS,
-      ...answerFields
+      ...answerFields,
+      ...GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS
     ],
     entryAnswerFields: answerFields,
     selectOptionsByFieldName
@@ -935,18 +979,18 @@ function buildSubmissionRow(input: {
   ]);
 
   return [
-    input.submission.id,
-    input.submission.sync_rev,
-    rowHash,
-    input.syncedAt,
-    input.formId,
     input.submission.status,
     input.submission.admin_notes ?? "",
     "View players",
     "Open submission",
     input.submission.created_at,
     input.submission.updated_at,
-    ...input.answerFields.map((field) => normalizeSheetCell(answers[field]))
+    ...input.answerFields.map((field) => normalizeSheetCell(answers[field])),
+    input.submission.id,
+    input.submission.sync_rev,
+    rowHash,
+    input.syncedAt,
+    input.formId
   ];
 }
 
@@ -972,18 +1016,18 @@ function buildEntryRow(input: {
   ]);
 
   return [
-    input.entry.id,
-    input.submission.id,
-    input.submission.sync_rev,
-    rowHash,
-    input.syncedAt,
-    input.formId,
     input.entry.player_id,
     input.entry.program_node_id ?? "",
     input.entry.created_at,
     "View player",
     "Open entry",
-    ...input.answerFields.map((field) => normalizeSheetCell(answers[field]))
+    ...input.answerFields.map((field) => normalizeSheetCell(answers[field])),
+    input.entry.id,
+    input.submission.id,
+    input.submission.sync_rev,
+    rowHash,
+    input.syncedAt,
+    input.formId
   ];
 }
 
@@ -1064,12 +1108,16 @@ async function applyManagedLinkFormulas(input: {
   orgSlug: string;
   appOrigin: string;
   formId: string;
+  columns: SheetColumnSet;
   submissions: SubmissionRow[];
   entriesBySubmissionId: Map<string, SubmissionEntryRow[]>;
   playerLabelById: Map<string, string>;
 }): Promise<void> {
-  const submissionsLinkStartIndex = GOOGLE_SHEET_SYSTEM_COLUMNS.length + GOOGLE_SHEET_MUTABLE_COLUMNS.length;
-  const entriesLinkStartIndex = GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS.length + GOOGLE_SHEET_ENTRY_BASE_COLUMNS.length;
+  const submissionsLinkStartIndex = input.columns.submissionHeaders.indexOf("players_linked");
+  const entriesLinkStartIndex = input.columns.entryHeaders.indexOf("players_linked");
+  if (submissionsLinkStartIndex < 0 || entriesLinkStartIndex < 0) {
+    return;
+  }
   const submissionsLinkStartColumn = toA1ColumnLabel(submissionsLinkStartIndex);
   const submissionsLinkEndColumn = toA1ColumnLabel(submissionsLinkStartIndex + GOOGLE_SHEET_LINK_COLUMNS.length - 1);
   const entriesLinkStartColumn = toA1ColumnLabel(entriesLinkStartIndex);
@@ -1082,7 +1130,7 @@ async function applyManagedLinkFormulas(input: {
         submissionEntries.map((entry) => input.playerLabelById.get(entry.player_id) ?? `Player ${entry.player_id.slice(0, 8)}`)
       )
     );
-    const playersLabel = playerNames.length > 0 ? playerNames.join(", ") : "No players";
+    const playersLabel = playerNames.length > 0 ? playerNames.join(", ") : "";
 
     const playersLinkedUrl = buildSubmissionManageUrl({
       appOrigin: input.appOrigin,
@@ -1098,7 +1146,10 @@ async function applyManagedLinkFormulas(input: {
       submissionId: submission.id
     });
 
-    return [buildHyperlinkFormula(playersLinkedUrl, playersLabel), buildHyperlinkFormula(submissionUrl, "Open submission")];
+    return [
+      playersLabel.length > 0 ? buildHyperlinkFormula(playersLinkedUrl, playersLabel) : "",
+      buildHyperlinkFormula(submissionUrl, "Open submission")
+    ];
   });
 
   const entryLinkValues = input.submissions.flatMap((submission) => {
@@ -1174,94 +1225,210 @@ async function applyBrandingHeaderFormulas(input: {
   });
 }
 
-async function applyHeaderColumnSizing(input: {
+async function applyBrandingHeaderLayout(input: {
   spreadsheetId: string;
   submissionsSheetId: number;
   entriesSheetId: number;
+  submissionsColumnCount: number;
+  entriesColumnCount: number;
+  accentHex: string | null;
 }): Promise<void> {
+  const accentRgb = input.accentHex ? parseHexColorToRgb(input.accentHex) : null;
+  const headerTextRgb = accentRgb ? deriveHeaderTextColor(accentRgb) : { red: 0.08, green: 0.12, blue: 0.18 };
+
+  const buildRequestsForSheet = (sheetId: number, columnCount: number): Array<Record<string, unknown>> => {
+    const titleEnd = Math.min(6, columnCount);
+    const instructionsStart = Math.min(6, columnCount - 1);
+    const instructionsEnd = columnCount;
+    const requests: Array<Record<string, unknown>> = [];
+
+    requests.push({
+      unmergeCells: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: columnCount
+        }
+      }
+    });
+
+    if (titleEnd > 2) {
+      requests.push({
+        mergeCells: {
+          range: {
+            sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: 2,
+            endColumnIndex: titleEnd
+          },
+          mergeType: "MERGE_ALL"
+        }
+      });
+    }
+
+    if (instructionsEnd > instructionsStart) {
+      requests.push({
+        mergeCells: {
+          range: {
+            sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: instructionsStart,
+            endColumnIndex: instructionsEnd
+          },
+          mergeType: "MERGE_ALL"
+        }
+      });
+    }
+
+    requests.push({
+      mergeCells: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: 2
+        },
+        mergeType: "MERGE_ALL"
+      }
+    });
+
+    requests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: columnCount
+        },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: accentRgb ?? { red: 0.94, green: 0.97, blue: 1 },
+            textFormat: {
+              bold: true,
+              foregroundColor: headerTextRgb
+            },
+            horizontalAlignment: "LEFT",
+            wrapStrategy: "WRAP",
+            verticalAlignment: "MIDDLE"
+          }
+        },
+        fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,wrapStrategy,verticalAlignment)"
+      }
+    });
+
+    requests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: 2
+        },
+        cell: {
+          userEnteredFormat: {
+            horizontalAlignment: "CENTER"
+          }
+        },
+        fields: "userEnteredFormat(horizontalAlignment)"
+      }
+    });
+
+    if (titleEnd > 2) {
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: 2,
+            endColumnIndex: titleEnd
+          },
+          cell: {
+            userEnteredFormat: {
+              textFormat: {
+                bold: true,
+                fontSize: 16,
+                foregroundColor: headerTextRgb
+              }
+            }
+          },
+          fields: "userEnteredFormat(textFormat)"
+        }
+      });
+    }
+
+    if (instructionsEnd > instructionsStart) {
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: instructionsStart,
+            endColumnIndex: instructionsEnd
+          },
+          cell: {
+            userEnteredFormat: {
+              textFormat: {
+                bold: false,
+                fontSize: 10,
+                foregroundColor: headerTextRgb
+              }
+            }
+          },
+          fields: "userEnteredFormat(textFormat)"
+        }
+      });
+    }
+
+    requests.push({
+      updateDimensionProperties: {
+        range: {
+          sheetId,
+          dimension: "ROWS",
+          startIndex: 0,
+          endIndex: 1
+        },
+        properties: {
+          pixelSize: 96
+        },
+        fields: "pixelSize"
+      }
+    });
+
+    return requests;
+  };
+
   const requests: Array<Record<string, unknown>> = [
+    ...buildRequestsForSheet(input.submissionsSheetId, input.submissionsColumnCount),
+    ...buildRequestsForSheet(input.entriesSheetId, input.entriesColumnCount),
     {
-      updateDimensionProperties: {
-        range: {
+      updateSheetProperties: {
+        properties: {
           sheetId: input.submissionsSheetId,
-          dimension: "COLUMNS",
-          startIndex: 0,
-          endIndex: 2
+          tabColorStyle: {
+            rgbColor: accentRgb ?? { red: 0.25, green: 0.47, blue: 0.92 }
+          }
         },
-        properties: {
-          pixelSize: 132
-        },
-        fields: "pixelSize"
+        fields: "tabColorStyle"
       }
     },
     {
-      updateDimensionProperties: {
-        range: {
-          sheetId: input.submissionsSheetId,
-          dimension: "COLUMNS",
-          startIndex: 2,
-          endIndex: 3
-        },
+      updateSheetProperties: {
         properties: {
-          pixelSize: 380
-        },
-        fields: "pixelSize"
-      }
-    },
-    {
-      updateDimensionProperties: {
-        range: {
-          sheetId: input.submissionsSheetId,
-          dimension: "COLUMNS",
-          startIndex: 3,
-          endIndex: 4
-        },
-        properties: {
-          pixelSize: 700
-        },
-        fields: "pixelSize"
-      }
-    },
-    {
-      updateDimensionProperties: {
-        range: {
           sheetId: input.entriesSheetId,
-          dimension: "COLUMNS",
-          startIndex: 0,
-          endIndex: 2
+          tabColorStyle: {
+            rgbColor: accentRgb ?? { red: 0.25, green: 0.47, blue: 0.92 }
+          }
         },
-        properties: {
-          pixelSize: 132
-        },
-        fields: "pixelSize"
-      }
-    },
-    {
-      updateDimensionProperties: {
-        range: {
-          sheetId: input.entriesSheetId,
-          dimension: "COLUMNS",
-          startIndex: 2,
-          endIndex: 3
-        },
-        properties: {
-          pixelSize: 380
-        },
-        fields: "pixelSize"
-      }
-    },
-    {
-      updateDimensionProperties: {
-        range: {
-          sheetId: input.entriesSheetId,
-          dimension: "COLUMNS",
-          startIndex: 3,
-          endIndex: 4
-        },
-        properties: {
-          pixelSize: 700
-        },
-        fields: "pixelSize"
+        fields: "tabColorStyle"
       }
     }
   ];
@@ -1279,6 +1446,7 @@ async function writeCanonicalSheets(input: {
   submissions: SubmissionRow[];
   entriesBySubmissionId: Map<string, SubmissionEntryRow[]>;
   playerLabelById: Map<string, string>;
+  orgAccentHex: string | null;
   stats: SyncStats;
 }): Promise<void> {
   const syncedAt = toIsoNow();
@@ -1289,11 +1457,11 @@ async function writeCanonicalSheets(input: {
 
   const submissionsBrandRow = Array<string>(input.columns.submissionHeaders.length).fill("");
   submissionsBrandRow[2] = submissionsTitle;
-  submissionsBrandRow[3] = instructions;
+  submissionsBrandRow[6] = instructions;
 
   const entriesBrandRow = Array<string>(input.columns.entryHeaders.length).fill("");
   entriesBrandRow[2] = entriesTitle;
-  entriesBrandRow[3] = instructions;
+  entriesBrandRow[6] = instructions;
 
   const submissionRows = input.submissions.map((submission) => {
     return buildSubmissionRow({
@@ -1343,10 +1511,13 @@ async function writeCanonicalSheets(input: {
     orgSlug: input.orgSlug
   });
 
-  await applyHeaderColumnSizing({
+  await applyBrandingHeaderLayout({
     spreadsheetId: input.integration.spreadsheet_id,
     submissionsSheetId: input.structure.submissionsSheetId,
-    entriesSheetId: input.structure.entriesSheetId
+    entriesSheetId: input.structure.entriesSheetId,
+    submissionsColumnCount: input.columns.submissionHeaders.length,
+    entriesColumnCount: input.columns.entryHeaders.length,
+    accentHex: input.orgAccentHex
   });
 
   await applyManagedLinkFormulas({
@@ -1354,6 +1525,7 @@ async function writeCanonicalSheets(input: {
     orgSlug: input.orgSlug,
     appOrigin: input.appOrigin,
     formId: input.form.id,
+    columns: input.columns,
     submissions: input.submissions,
     entriesBySubmissionId: input.entriesBySubmissionId,
     playerLabelById: input.playerLabelById
@@ -1566,8 +1738,8 @@ export async function runGoogleSheetSyncForForm(input: SyncFormInput): Promise<S
   if (!form) {
     throw new Error("Form not found.");
   }
-  const orgSlug = await loadOrgSlug(form.org_id);
-  if (!orgSlug) {
+  const orgBranding = await loadOrgSheetBranding(form.org_id);
+  if (!orgBranding) {
     throw new Error("Organization slug not found for Google Sheets sync.");
   }
 
@@ -1599,7 +1771,7 @@ export async function runGoogleSheetSyncForForm(input: SyncFormInput): Promise<S
     if (input.allowOutbound) {
       const data = await loadSubmissionsWithEntries(input.orgId, input.formId);
       await writeCanonicalSheets({
-        orgSlug,
+        orgSlug: orgBranding.slug,
         appOrigin: resolveAppOrigin(),
         form,
         integration,
@@ -1608,6 +1780,7 @@ export async function runGoogleSheetSyncForForm(input: SyncFormInput): Promise<S
         submissions: data.submissions,
         entriesBySubmissionId: data.entriesBySubmissionId,
         playerLabelById: data.playerLabelById,
+        orgAccentHex: orgBranding.accentHex,
         stats
       });
     }
