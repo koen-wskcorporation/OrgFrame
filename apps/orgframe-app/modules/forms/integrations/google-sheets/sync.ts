@@ -102,6 +102,7 @@ type SheetColumnSet = {
   submissionAnswerFields: string[];
   entryHeaders: string[];
   entryAnswerFields: string[];
+  selectOptionsByFieldName: Record<string, string[]>;
 };
 
 type EnsureResult = {
@@ -138,8 +139,64 @@ function parseFieldNames(schemaJson: unknown, formKind: FormRow["form_kind"]): s
   return fieldNames;
 }
 
+function parseSelectOptionsByFieldName(schemaJson: unknown, formKind: FormRow["form_kind"]): Record<string, string[]> {
+  const schema = parseFormSchema(schemaJson, "Form", formKind);
+  const seen = new Set<string>();
+  const selectOptionsByFieldName: Record<string, string[]> = {};
+
+  schema.pages.forEach((page) => {
+    page.fields.forEach((field) => {
+      if (!field.name || seen.has(field.name)) {
+        return;
+      }
+
+      seen.add(field.name);
+      if (field.type !== "select") {
+        return;
+      }
+
+      const options = Array.from(
+        new Set(
+          (field.options ?? [])
+            .map((option) => option.value.trim())
+            .filter((value) => value.length > 0)
+        )
+      );
+      if (options.length > 0) {
+        selectOptionsByFieldName[field.name] = options;
+      }
+    });
+  });
+
+  return selectOptionsByFieldName;
+}
+
 function toIsoNow() {
   return new Date().toISOString();
+}
+
+function toA1ColumnLabel(index: number): string {
+  let value = index + 1;
+  let label = "";
+
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    label = String.fromCharCode(65 + remainder) + label;
+    value = Math.floor((value - 1) / 26);
+  }
+
+  return label;
+}
+
+function buildHyperlinkFormula(url: string, label: string): string {
+  const safeUrl = url.replace(/"/g, "\"\"");
+  const safeLabel = label.replace(/"/g, "\"\"");
+  return `=HYPERLINK("${safeUrl}","${safeLabel}")`;
+}
+
+function buildImageFormula(url: string): string {
+  const safeUrl = url.replace(/"/g, "\"\"");
+  return `=IFERROR(IMAGE("${safeUrl}",4,44,44),"")`;
 }
 
 function normalizeOrigin(value: string | null | undefined): string {
@@ -443,6 +500,9 @@ async function ensureSpreadsheetStructure(
   const adminNotesColumnIndex = statusColumnIndex + 1;
   const submissionsColumnCount = columns.submissionHeaders.length;
   const entriesColumnCount = columns.entryHeaders.length;
+  const submissionsAnswerStartIndex =
+    GOOGLE_SHEET_SYSTEM_COLUMNS.length + GOOGLE_SHEET_MUTABLE_COLUMNS.length + GOOGLE_SHEET_LINK_COLUMNS.length + GOOGLE_SHEET_BASE_READ_COLUMNS.length;
+  const entriesAnswerStartIndex = GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS.length + GOOGLE_SHEET_ENTRY_BASE_COLUMNS.length + GOOGLE_SHEET_ENTRY_LINK_COLUMNS.length;
 
   requests.push({
     setDataValidation: {
@@ -464,6 +524,123 @@ async function ensureSpreadsheetStructure(
   });
 
   requests.push(
+    {
+      repeatCell: {
+        range: {
+          sheetId: submissionsSheetId,
+          startRowIndex: 2,
+          startColumnIndex: submissionsAnswerStartIndex,
+          endColumnIndex: submissionsColumnCount
+        },
+        cell: {
+          dataValidation: null
+        },
+        fields: "dataValidation"
+      }
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId: entriesSheetId,
+          startRowIndex: 2,
+          startColumnIndex: entriesAnswerStartIndex,
+          endColumnIndex: entriesColumnCount
+        },
+        cell: {
+          dataValidation: null
+        },
+        fields: "dataValidation"
+      }
+    }
+  );
+
+  columns.submissionAnswerFields.forEach((fieldName, answerFieldIndex) => {
+    const options = columns.selectOptionsByFieldName[fieldName] ?? [];
+    if (options.length === 0) {
+      return;
+    }
+
+    requests.push(
+      {
+        setDataValidation: {
+          range: {
+            sheetId: submissionsSheetId,
+            startRowIndex: 2,
+            startColumnIndex: submissionsAnswerStartIndex + answerFieldIndex,
+            endColumnIndex: submissionsAnswerStartIndex + answerFieldIndex + 1
+          },
+          rule: {
+            condition: {
+              type: "ONE_OF_LIST",
+              values: options.map((value) => ({ userEnteredValue: value }))
+            },
+            strict: true,
+            showCustomUi: true
+          }
+        }
+      },
+      {
+        setDataValidation: {
+          range: {
+            sheetId: entriesSheetId,
+            startRowIndex: 2,
+            startColumnIndex: entriesAnswerStartIndex + answerFieldIndex,
+            endColumnIndex: entriesAnswerStartIndex + answerFieldIndex + 1
+          },
+          rule: {
+            condition: {
+              type: "ONE_OF_LIST",
+              values: options.map((value) => ({ userEnteredValue: value }))
+            },
+            strict: true,
+            showCustomUi: true
+          }
+        }
+      }
+    );
+  });
+
+  requests.push(
+    {
+      repeatCell: {
+        range: {
+          sheetId: submissionsSheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: submissionsColumnCount
+        },
+        cell: {
+          userEnteredFormat: {
+            wrapStrategy: "WRAP",
+            verticalAlignment: "MIDDLE",
+            backgroundColor: {
+              red: 0.94,
+              green: 0.97,
+              blue: 1
+            },
+            textFormat: {
+              bold: true
+            }
+          }
+        },
+        fields: "userEnteredFormat(wrapStrategy,verticalAlignment,backgroundColor,textFormat)"
+      }
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: submissionsSheetId,
+          dimension: "ROWS",
+          startIndex: 0,
+          endIndex: 1
+        },
+        properties: {
+          pixelSize: 78
+        },
+        fields: "pixelSize"
+      }
+    },
     {
       repeatCell: {
         range: {
@@ -537,6 +714,46 @@ async function ensureSpreadsheetStructure(
             }
           ]
         }
+      }
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId: entriesSheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: entriesColumnCount
+        },
+        cell: {
+          userEnteredFormat: {
+            wrapStrategy: "WRAP",
+            verticalAlignment: "MIDDLE",
+            backgroundColor: {
+              red: 0.94,
+              green: 0.97,
+              blue: 1
+            },
+            textFormat: {
+              bold: true
+            }
+          }
+        },
+        fields: "userEnteredFormat(wrapStrategy,verticalAlignment,backgroundColor,textFormat)"
+      }
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: entriesSheetId,
+          dimension: "ROWS",
+          startIndex: 0,
+          endIndex: 1
+        },
+        properties: {
+          pixelSize: 78
+        },
+        fields: "pixelSize"
       }
     },
     {
@@ -649,6 +866,7 @@ async function loadSubmissionsWithEntries(orgId: string, formId: string): Promis
 
 function buildColumnSet(form: FormRow): SheetColumnSet {
   const answerFields = parseFieldNames(form.schema_json, form.form_kind);
+  const selectOptionsByFieldName = parseSelectOptionsByFieldName(form.schema_json, form.form_kind);
 
   return {
     submissionHeaders: [
@@ -665,7 +883,8 @@ function buildColumnSet(form: FormRow): SheetColumnSet {
       ...GOOGLE_SHEET_ENTRY_LINK_COLUMNS,
       ...answerFields
     ],
-    entryAnswerFields: answerFields
+    entryAnswerFields: answerFields,
+    selectOptionsByFieldName
   };
 }
 
@@ -678,19 +897,6 @@ function buildSubmissionRow(input: {
   syncedAt: string;
 }): Array<string | number> {
   const answers = asObject(input.submission.answers_json);
-  const submissionUrl = buildSubmissionManageUrl({
-    appOrigin: input.appOrigin,
-    orgSlug: input.orgSlug,
-    formId: input.formId,
-    submissionId: input.submission.id
-  });
-  const playersLinkedUrl = buildSubmissionManageUrl({
-    appOrigin: input.appOrigin,
-    orgSlug: input.orgSlug,
-    formId: input.formId,
-    submissionId: input.submission.id,
-    section: "players"
-  });
 
   const rowHash = buildRowHash([
     input.submission.id,
@@ -710,8 +916,8 @@ function buildSubmissionRow(input: {
     input.formId,
     input.submission.status,
     input.submission.admin_notes ?? "",
-    playersLinkedUrl,
-    submissionUrl,
+    "View players",
+    "Open submission",
     input.submission.created_at,
     input.submission.updated_at,
     ...input.answerFields.map((field) => normalizeSheetCell(answers[field]))
@@ -728,21 +934,6 @@ function buildEntryRow(input: {
   syncedAt: string;
 }): Array<string | number> {
   const answers = asObject(input.entry.answers_json);
-  const entryManageUrl = buildSubmissionManageUrl({
-    appOrigin: input.appOrigin,
-    orgSlug: input.orgSlug,
-    formId: input.formId,
-    submissionId: input.submission.id,
-    entryId: input.entry.id,
-    section: "players"
-  });
-  const entryActionsUrl = buildSubmissionManageUrl({
-    appOrigin: input.appOrigin,
-    orgSlug: input.orgSlug,
-    formId: input.formId,
-    submissionId: input.submission.id,
-    entryId: input.entry.id
-  });
 
   const rowHash = buildRowHash([
     input.entry.id,
@@ -764,10 +955,187 @@ function buildEntryRow(input: {
     input.entry.player_id,
     input.entry.program_node_id ?? "",
     input.entry.created_at,
-    entryManageUrl,
-    entryActionsUrl,
+    "View player",
+    "Open entry",
     ...input.answerFields.map((field) => normalizeSheetCell(answers[field]))
   ];
+}
+
+async function applyDefaultSheetSizing(input: {
+  spreadsheetId: string;
+  submissionsSheetId: number;
+  entriesSheetId: number;
+  submissionsColumnCount: number;
+  entriesColumnCount: number;
+  submissionsRowCount: number;
+  entriesRowCount: number;
+}): Promise<void> {
+  const minimumSizedRows = 50;
+  const defaultRowHeightPx = 32;
+
+  const requests: Array<Record<string, unknown>> = [
+    {
+      autoResizeDimensions: {
+        dimensions: {
+          sheetId: input.submissionsSheetId,
+          dimension: "COLUMNS",
+          startIndex: 0,
+          endIndex: input.submissionsColumnCount
+        }
+      }
+    },
+    {
+      autoResizeDimensions: {
+        dimensions: {
+          sheetId: input.entriesSheetId,
+          dimension: "COLUMNS",
+          startIndex: 0,
+          endIndex: input.entriesColumnCount
+        }
+      }
+    }
+  ];
+
+  const submissionRowsToSize = Math.max(input.submissionsRowCount + 2, minimumSizedRows);
+  const entryRowsToSize = Math.max(input.entriesRowCount + 2, minimumSizedRows);
+
+  requests.push(
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: input.submissionsSheetId,
+          dimension: "ROWS",
+          startIndex: 1,
+          endIndex: submissionRowsToSize
+        },
+        properties: {
+          pixelSize: defaultRowHeightPx
+        },
+        fields: "pixelSize"
+      }
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: input.entriesSheetId,
+          dimension: "ROWS",
+          startIndex: 1,
+          endIndex: entryRowsToSize
+        },
+        properties: {
+          pixelSize: defaultRowHeightPx
+        },
+        fields: "pixelSize"
+      }
+    }
+  );
+
+  await batchUpdateSpreadsheet(input.spreadsheetId, requests);
+}
+
+async function applyManagedLinkFormulas(input: {
+  spreadsheetId: string;
+  orgSlug: string;
+  appOrigin: string;
+  formId: string;
+  submissions: SubmissionRow[];
+  entriesBySubmissionId: Map<string, SubmissionEntryRow[]>;
+}): Promise<void> {
+  const submissionsLinkStartIndex = GOOGLE_SHEET_SYSTEM_COLUMNS.length + GOOGLE_SHEET_MUTABLE_COLUMNS.length;
+  const entriesLinkStartIndex = GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS.length + GOOGLE_SHEET_ENTRY_BASE_COLUMNS.length;
+  const submissionsLinkStartColumn = toA1ColumnLabel(submissionsLinkStartIndex);
+  const submissionsLinkEndColumn = toA1ColumnLabel(submissionsLinkStartIndex + GOOGLE_SHEET_LINK_COLUMNS.length - 1);
+  const entriesLinkStartColumn = toA1ColumnLabel(entriesLinkStartIndex);
+  const entriesLinkEndColumn = toA1ColumnLabel(entriesLinkStartIndex + GOOGLE_SHEET_ENTRY_LINK_COLUMNS.length - 1);
+
+  const submissionLinkValues = input.submissions.map((submission) => {
+    const playersLinkedUrl = buildSubmissionManageUrl({
+      appOrigin: input.appOrigin,
+      orgSlug: input.orgSlug,
+      formId: input.formId,
+      submissionId: submission.id,
+      section: "players"
+    });
+    const submissionUrl = buildSubmissionManageUrl({
+      appOrigin: input.appOrigin,
+      orgSlug: input.orgSlug,
+      formId: input.formId,
+      submissionId: submission.id
+    });
+
+    return [buildHyperlinkFormula(playersLinkedUrl, "View players"), buildHyperlinkFormula(submissionUrl, "Open submission")];
+  });
+
+  const entryLinkValues = input.submissions.flatMap((submission) => {
+    const entries = input.entriesBySubmissionId.get(submission.id) ?? [];
+    return entries.map((entry) => {
+      const entryManageUrl = buildSubmissionManageUrl({
+        appOrigin: input.appOrigin,
+        orgSlug: input.orgSlug,
+        formId: input.formId,
+        submissionId: submission.id,
+        entryId: entry.id,
+        section: "players"
+      });
+      const entryActionsUrl = buildSubmissionManageUrl({
+        appOrigin: input.appOrigin,
+        orgSlug: input.orgSlug,
+        formId: input.formId,
+        submissionId: submission.id,
+        entryId: entry.id
+      });
+
+      return [buildHyperlinkFormula(entryManageUrl, "View player"), buildHyperlinkFormula(entryActionsUrl, "Open entry")];
+    });
+  });
+
+  if (submissionLinkValues.length > 0) {
+    const submissionRowStart = 3;
+    const submissionRowEnd = submissionRowStart + submissionLinkValues.length - 1;
+    await updateSheetValues({
+      spreadsheetId: input.spreadsheetId,
+      range: `${GOOGLE_SHEETS_TAB_SUBMISSIONS}!${submissionsLinkStartColumn}${submissionRowStart}:${submissionsLinkEndColumn}${submissionRowEnd}`,
+      valueInputOption: "USER_ENTERED",
+      values: submissionLinkValues
+    });
+  }
+
+  if (entryLinkValues.length > 0) {
+    const entryRowStart = 3;
+    const entryRowEnd = entryRowStart + entryLinkValues.length - 1;
+    await updateSheetValues({
+      spreadsheetId: input.spreadsheetId,
+      range: `${GOOGLE_SHEETS_TAB_ENTRIES}!${entriesLinkStartColumn}${entryRowStart}:${entriesLinkEndColumn}${entryRowEnd}`,
+      valueInputOption: "USER_ENTERED",
+      values: entryLinkValues
+    });
+  }
+}
+
+async function applyBrandingHeaderFormulas(input: {
+  spreadsheetId: string;
+  appOrigin: string;
+  orgSlug: string;
+}): Promise<void> {
+  const orgFrameLogoUrl = `${input.appOrigin}/brand/logo.svg`;
+  const orgLogoUrl = `${input.appOrigin}/${input.orgSlug}/logo`;
+
+  const submissionsLogoValues = [[buildImageFormula(orgFrameLogoUrl), buildImageFormula(orgLogoUrl)]];
+  const entriesLogoValues = [[buildImageFormula(orgFrameLogoUrl), buildImageFormula(orgLogoUrl)]];
+
+  await updateSheetValues({
+    spreadsheetId: input.spreadsheetId,
+    range: `${GOOGLE_SHEETS_TAB_SUBMISSIONS}!A1:B1`,
+    valueInputOption: "USER_ENTERED",
+    values: submissionsLogoValues
+  });
+
+  await updateSheetValues({
+    spreadsheetId: input.spreadsheetId,
+    range: `${GOOGLE_SHEETS_TAB_ENTRIES}!A1:B1`,
+    valueInputOption: "USER_ENTERED",
+    values: entriesLogoValues
+  });
 }
 
 async function writeCanonicalSheets(input: {
@@ -775,14 +1143,25 @@ async function writeCanonicalSheets(input: {
   appOrigin: string;
   form: FormRow;
   integration: IntegrationRow;
+  structure: EnsureResult;
   columns: SheetColumnSet;
   submissions: SubmissionRow[];
   entriesBySubmissionId: Map<string, SubmissionEntryRow[]>;
   stats: SyncStats;
 }): Promise<void> {
   const syncedAt = toIsoNow();
-  const warning =
-    "Managed by Sports SaaS. Edit only 'status' and 'admin_notes' on existing rows. Do not add/delete columns. Link columns open managed views in the app.";
+  const instructions =
+    "OrgFrame managed sync sheet.\nDo: use dropdowns, update status/admin notes, and use link columns for actions.\nDo NOT: delete columns/tabs, edit hidden app_* columns, or overwrite header rows.";
+  const submissionsTitle = `${input.form.name} - Submissions`;
+  const entriesTitle = `${input.form.name} - Player Entries`;
+
+  const submissionsBrandRow = Array<string>(input.columns.submissionHeaders.length).fill("");
+  submissionsBrandRow[2] = submissionsTitle;
+  submissionsBrandRow[3] = instructions;
+
+  const entriesBrandRow = Array<string>(input.columns.entryHeaders.length).fill("");
+  entriesBrandRow[2] = entriesTitle;
+  entriesBrandRow[3] = instructions;
 
   const submissionRows = input.submissions.map((submission) => {
     return buildSubmissionRow({
@@ -815,7 +1194,7 @@ async function writeCanonicalSheets(input: {
     spreadsheetId: input.integration.spreadsheet_id,
     range: `${GOOGLE_SHEETS_TAB_SUBMISSIONS}!A1`,
     valueInputOption: "RAW",
-    values: [[warning], input.columns.submissionHeaders, ...submissionRows]
+    values: [submissionsBrandRow, input.columns.submissionHeaders, ...submissionRows]
   });
 
   await clearSheetRange(input.integration.spreadsheet_id, `${GOOGLE_SHEETS_TAB_ENTRIES}!A1:ZZ`);
@@ -823,8 +1202,35 @@ async function writeCanonicalSheets(input: {
     spreadsheetId: input.integration.spreadsheet_id,
     range: `${GOOGLE_SHEETS_TAB_ENTRIES}!A1`,
     valueInputOption: "RAW",
-    values: [[warning], input.columns.entryHeaders, ...entryRows]
+    values: [entriesBrandRow, input.columns.entryHeaders, ...entryRows]
   });
+
+  await applyBrandingHeaderFormulas({
+    spreadsheetId: input.integration.spreadsheet_id,
+    appOrigin: input.appOrigin,
+    orgSlug: input.orgSlug
+  });
+
+  await applyManagedLinkFormulas({
+    spreadsheetId: input.integration.spreadsheet_id,
+    orgSlug: input.orgSlug,
+    appOrigin: input.appOrigin,
+    formId: input.form.id,
+    submissions: input.submissions,
+    entriesBySubmissionId: input.entriesBySubmissionId
+  });
+
+  if (!input.integration.last_synced_at) {
+    await applyDefaultSheetSizing({
+      spreadsheetId: input.integration.spreadsheet_id,
+      submissionsSheetId: input.structure.submissionsSheetId,
+      entriesSheetId: input.structure.entriesSheetId,
+      submissionsColumnCount: input.columns.submissionHeaders.length,
+      entriesColumnCount: input.columns.entryHeaders.length,
+      submissionsRowCount: submissionRows.length,
+      entriesRowCount: entryRows.length
+    });
+  }
 
   input.stats.outboundRowsCount = submissionRows.length + entryRows.length;
 }
@@ -1040,7 +1446,7 @@ export async function runGoogleSheetSyncForForm(input: SyncFormInput): Promise<S
 
   try {
     const columns = buildColumnSet(form);
-    await ensureSpreadsheetStructure(integration, columns, form.form_kind);
+    const structure = await ensureSpreadsheetStructure(integration, columns, form.form_kind);
 
     if (input.allowInbound) {
       await applyInboundSubmissions({
@@ -1058,6 +1464,7 @@ export async function runGoogleSheetSyncForForm(input: SyncFormInput): Promise<S
         appOrigin: resolveAppOrigin(),
         form,
         integration,
+        structure,
         columns,
         submissions: data.submissions,
         entriesBySubmissionId: data.entriesBySubmissionId,
