@@ -38,8 +38,10 @@ export default async function ResetPage({
   const infoMessage = query.message ? infoMessageByCode[query.message] ?? query.message : null;
 
   return (
-    <AppPage className="py-8 md:py-10">
-      <PageStack>
+    <AppPage className="relative min-h-screen overflow-hidden px-0 pb-0 pt-0">
+      <div aria-hidden="true" className="auth-photo-bg" />
+
+      <PageStack className="relative z-10 px-4 py-8 md:px-6 md:py-10">
         <PageHeader description="Request a reset email or set a new password from a valid reset link." title="Reset Password" />
 
         {errorMessage ? <Alert variant="destructive">{errorMessage}</Alert> : null}
@@ -73,7 +75,7 @@ export default async function ResetPage({
             )}
             <p className="mt-4 text-center text-sm text-text-muted">
               Remembered your password?{" "}
-              <Link className="text-link underline-offset-2 hover:underline" href="/auth/login">
+              <Link className="text-link underline-offset-2 hover:underline" href="/auth">
                 Back to sign in
               </Link>
             </p>

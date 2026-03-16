@@ -19,7 +19,7 @@ export default function HomePage() {
           <div className="mt-10">
             <a
               className={`${buttonVariants({ size: "lg" })} h-12 px-8 text-base`}
-              href="/x/app/auth/login"
+              href="/x/app/auth"
             >
               Log In
             </a>

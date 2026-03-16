@@ -113,6 +113,8 @@ export type FormSubmission = {
   versionId: string;
   submittedByUserId: string | null;
   status: SubmissionStatus;
+  orderId: string | null;
+  sourcePaymentStatus: string | null;
   adminNotes: string | null;
   syncRev: number;
   answersJson: Record<string, unknown>;

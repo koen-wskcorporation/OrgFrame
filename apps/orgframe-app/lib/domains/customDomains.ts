@@ -37,6 +37,30 @@ export function getPlatformHosts() {
   return hosts;
 }
 
+const RESERVED_SUBDOMAINS = new Set(["www", "admin", "api", "docs", "status", "staging"]);
+
+export function isReservedSubdomain(value: string) {
+  return RESERVED_SUBDOMAINS.has(value.toLowerCase());
+}
+
+export function extractOrgSlugFromSubdomain(host: string, platformHost: string) {
+  if (!host || !platformHost || host === platformHost) {
+    return null;
+  }
+
+  const suffix = `.${platformHost}`;
+  if (!host.endsWith(suffix)) {
+    return null;
+  }
+
+  const candidate = host.slice(0, -suffix.length);
+  if (!candidate || candidate.includes(".") || isReservedSubdomain(candidate)) {
+    return null;
+  }
+
+  return candidate;
+}
+
 export function normalizeDomain(value: string) {
   let normalized = value.trim().toLowerCase();
 

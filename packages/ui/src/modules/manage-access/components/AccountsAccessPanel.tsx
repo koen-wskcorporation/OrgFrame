@@ -10,6 +10,7 @@ import { DataTable, type DataTableColumn } from "@orgframe/ui/ui/data-table";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
 import { Panel } from "@orgframe/ui/ui/panel";
+import { Popup } from "@orgframe/ui/ui/popup";
 import { Select, type SelectOption } from "@orgframe/ui/ui/select";
 import { useToast } from "@orgframe/ui/ui/toast";
 import { can } from "@/lib/permissions/can";
@@ -301,7 +302,7 @@ export function AccountsAccessPanel({
 
     setActiveResetMembershipId(member.membershipId);
 
-    const redirectTo = `${window.location.origin}/auth/login`;
+    const redirectTo = `${window.location.origin}/auth`;
 
     void (async () => {
       const result = await sendPasswordResetAction({
@@ -630,7 +631,7 @@ export function AccountsAccessPanel({
         ) : null}
       </Panel>
 
-      <Panel
+      <Popup
         footer={
           <>
             <Button disabled={isRemoving} onClick={() => setRemoveTarget(null)} variant="ghost">
@@ -647,11 +648,15 @@ export function AccountsAccessPanel({
           }
         }}
         open={Boolean(removeTarget)}
+        size="sm"
         subtitle={removeTarget ? `Remove ${displayUser(removeTarget)} from this organization?` : "Remove this membership?"}
         title="Remove access"
       >
-        <div />
-      </Panel>
+        <div className="space-y-2 text-sm text-text-muted">
+          <p>This action removes this account from the organization workspace immediately.</p>
+          <p>They can only regain access if invited again.</p>
+        </div>
+      </Popup>
     </div>
   );
 }

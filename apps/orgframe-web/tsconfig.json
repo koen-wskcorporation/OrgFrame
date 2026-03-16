@@ -21,7 +21,17 @@
       {
         "name": "next"
       }
-    ]
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@orgframe/ui/*": [
+        "../../packages/ui/src/*"
+      ],
+      "@/*": [
+        "./*",
+        "../../packages/ui/src/*"
+      ]
+    }
   },
   "include": [
     "next-env.d.ts",

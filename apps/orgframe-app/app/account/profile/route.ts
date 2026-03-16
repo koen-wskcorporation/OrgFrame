@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.redirect(new URL("/auth/login", request.url), { status: 303 });
+    return NextResponse.redirect(new URL("/auth", request.url), { status: 303 });
   }
 
   const formData = await request.formData();

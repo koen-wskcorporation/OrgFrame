@@ -6,7 +6,7 @@ Early-stage Next.js App Router project for multi-tenant sports organizations.
 
 1. Deploy.
 2. Visit `/api/auth/debug` before login. `hasSbCookies` should be `false`.
-3. Login via the `/auth/login` form (server action).
+3. Login via the `/auth` form (server action).
 4. Open `/api/auth/debug` after login and verify:
    - `hasSbCookies` is `true`
    - `sbCookieNames` contains `sb-*`
@@ -96,7 +96,7 @@ When shipping changes to `develop`, keep database changes isolated to staging:
 Global routes:
 
 - `/`
-- `/auth/login`
+- `/auth`
 - `/auth/logout`
 - `/auth/reset`
 - `/auth/callback`

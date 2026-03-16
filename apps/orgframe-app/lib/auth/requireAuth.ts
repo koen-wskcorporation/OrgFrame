@@ -6,7 +6,7 @@ export async function requireAuth(): Promise<SessionUser> {
   const user = await getSessionUser();
 
   if (!user) {
-    redirect("/auth/login");
+    redirect("/auth");
   }
 
   return user;

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { Alert } from "@orgframe/ui/ui/alert";
 import { CalendarPicker } from "@orgframe/ui/ui/calendar-picker";
 import { Checkbox } from "@orgframe/ui/ui/checkbox";
+import { useConfirmDialog } from "@orgframe/ui/ui/confirm-dialog";
 import { DataTable, type DataTableColumn, type DataTableViewConfig } from "@orgframe/ui/ui/data-table";
 import { SortableCanvas } from "@orgframe/ui/editor/SortableCanvas";
 import { FormField } from "@orgframe/ui/ui/form-field";
@@ -51,6 +52,7 @@ import type {
   OrgFormSubmissionView,
   SubmissionStatus
 } from "@/modules/forms/types";
+import { useOrderPanel } from "@/modules/orders";
 
 type FormSubmissionsPanelProps = {
   orgSlug: string;
@@ -710,6 +712,7 @@ export function FormSubmissionsPanel({
   canWrite = true
 }: FormSubmissionsPanelProps) {
   const showGoogleSheetsUi = true;
+  const { confirm } = useConfirmDialog();
   const router = useRouter();
   const searchParams = useSearchParams();
   const deepLinkedSubmissionId = useMemo(() => {
@@ -731,6 +734,7 @@ export function FormSubmissionsPanel({
     return trimmed.length > 0 ? trimmed : null;
   }, [searchParams]);
   const { toast } = useToast();
+  const { openOrderPanel } = useOrderPanel();
   const [isRefreshingSubmissions, startRefreshingSubmissions] = useTransition();
   const [isSaving, startSaving] = useTransition();
   const [isDeletingSubmissions, startDeletingSubmissions] = useTransition();
@@ -1075,15 +1079,19 @@ export function FormSubmissionsPanel({
     });
   }
 
-  function handleDeleteSelectedSubmissions() {
+  async function handleDeleteSelectedSubmissions() {
     if (!canWrite || !isEditableMode || selectedSubmissionIds.length === 0) {
       return;
     }
 
     const toDelete = [...selectedSubmissionIds];
-    const confirmed = window.confirm(
-      `Delete ${toDelete.length} selected submission${toDelete.length === 1 ? "" : "s"}? This cannot be undone.`
-    );
+    const confirmed = await confirm({
+      title: `Delete ${toDelete.length} submission${toDelete.length === 1 ? "" : "s"}?`,
+      description: "This cannot be undone.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      variant: "destructive"
+    });
     if (!confirmed) {
       return;
     }
@@ -1279,32 +1287,40 @@ export function FormSubmissionsPanel({
       return;
     }
 
-    const confirmed = window.confirm("Disconnect this Google Sheet from form submissions?");
-    if (!confirmed) {
-      return;
-    }
-
-    startSavingGoogleSheet(async () => {
-      const result = await disconnectFormGoogleSheetAction({
-        orgSlug,
-        formId
+    void (async () => {
+      const confirmed = await confirm({
+        title: "Disconnect Google Sheet?",
+        description: "This will stop syncing new form submissions.",
+        confirmLabel: "Disconnect",
+        cancelLabel: "Cancel",
+        variant: "destructive"
       });
-
-      if (!result.ok) {
-        toast({
-          title: "Unable to disconnect Google Sheets",
-          description: result.error,
-          variant: "destructive"
-        });
+      if (!confirmed) {
         return;
       }
 
-      await refreshGoogleSheetState(false);
-      toast({
-        title: "Google Sheets disconnected",
-        variant: "success"
+      startSavingGoogleSheet(async () => {
+        const result = await disconnectFormGoogleSheetAction({
+          orgSlug,
+          formId
+        });
+
+        if (!result.ok) {
+          toast({
+            title: "Unable to disconnect Google Sheets",
+            description: result.error,
+            variant: "destructive"
+          });
+          return;
+        }
+
+        await refreshGoogleSheetState(false);
+        toast({
+          title: "Google Sheets disconnected",
+          variant: "success"
+        });
       });
-    });
+    })();
   }
 
   function handleSyncGoogleSheetNow() {
@@ -1857,6 +1873,43 @@ export function FormSubmissionsPanel({
         renderSortValue: (submission) => toStatusLabel(statusById[submission.id] ?? submission.status)
       },
       {
+        key: "sourcePaymentStatus",
+        label: "Source payment",
+        group: "Submission",
+        sortable: true,
+        renderCell: (submission) => <span>{submission.sourcePaymentStatus ?? "-"}</span>,
+        renderCopyValue: (submission) => submission.sourcePaymentStatus ?? "",
+        renderSearchValue: (submission) => submission.sourcePaymentStatus ?? "",
+        renderSortValue: (submission) => submission.sourcePaymentStatus ?? ""
+      },
+      {
+        key: "order",
+        label: "Order",
+        group: "Submission",
+        sortable: true,
+        renderCell: (submission) =>
+          submission.orderId ? (
+            <Button
+              onClick={(event) => {
+                event.stopPropagation();
+                void openOrderPanel({
+                  orgSlug,
+                  orderId: submission.orderId ?? undefined
+                });
+              }}
+              size="sm"
+              variant="secondary"
+            >
+              View order
+            </Button>
+          ) : (
+            <span>-</span>
+          ),
+        renderCopyValue: (submission) => submission.orderId ?? "",
+        renderSearchValue: (submission) => submission.orderId ?? "",
+        renderSortValue: (submission) => submission.orderId ?? ""
+      },
+      {
         key: "adminNotes",
         label: "Admin notes",
         group: "Submission",
@@ -1947,7 +2000,9 @@ export function FormSubmissionsPanel({
       savedAdminNotesById,
       savingInlineNotesId,
       savingInlineStatusId,
-      statusById
+      statusById,
+      openOrderPanel,
+      orgSlug
     ]
   );
 
@@ -1999,6 +2054,11 @@ export function FormSubmissionsPanel({
       {
         key: "adminNotes",
         label: "Admin notes",
+        type: "text"
+      },
+      {
+        key: "sourcePaymentStatus",
+        label: "Source payment status",
         type: "text"
       },
       {
@@ -2684,6 +2744,8 @@ function addSummaryCard() {
           candidateValue = statusById[submission.id] ?? submission.status;
         } else if (rule.fieldKey === "adminNotes") {
           candidateValue = adminNotesById[submission.id] ?? submission.adminNotes ?? "";
+        } else if (rule.fieldKey === "sourcePaymentStatus") {
+          candidateValue = submission.sourcePaymentStatus ?? "";
         } else if (rule.fieldKey === "submittedAt") {
           candidateValue = submission.createdAt;
         } else if (rule.fieldKey === "players") {
@@ -3411,6 +3473,31 @@ function addSummaryCard() {
                 <div className="space-y-1">
                   <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Submitted</p>
                   <p className="text-sm text-text">{new Date(selectedSubmission.createdAt).toLocaleString()}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Source Payment Status</p>
+                  <p className="text-sm text-text">{selectedSubmission.sourcePaymentStatus ?? "-"}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Order</p>
+                  {selectedSubmission.orderId ? (
+                    <Button
+                      onClick={() =>
+                        openOrderPanel({
+                          orgSlug,
+                          orderId: selectedSubmission.orderId ?? undefined
+                        })
+                      }
+                      size="sm"
+                      variant="secondary"
+                    >
+                      Open order panel
+                    </Button>
+                  ) : (
+                    <p className="text-sm text-text">-</p>
+                  )}
                 </div>
 
                 <FormField label="Status">

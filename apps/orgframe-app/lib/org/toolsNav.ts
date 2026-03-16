@@ -78,6 +78,15 @@ export function getOrgAdminNavItems(orgSlug: string): OrgAdminNavItem[] {
       showInHome: false
     },
     {
+      key: "manage-sportsconnect",
+      label: "SportsConnect Transfer",
+      href: `/${orgSlug}/tools/manage/sportsconnect`,
+      description: "Import SportsConnect enrollments, players, and order history.",
+      icon: "file-text",
+      parentKey: "manage",
+      showInHome: false
+    },
+    {
       key: "programs",
       label: "Programs",
       href: `/${orgSlug}/tools/programs`,

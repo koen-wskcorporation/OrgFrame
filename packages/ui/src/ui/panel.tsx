@@ -35,6 +35,7 @@ export function Panel({
   panelStyle
 }: PanelProps) {
   const panelRef = React.useRef<HTMLDivElement | null>(null);
+  const footerRef = React.useRef<HTMLDivElement | null>(null);
   const onCloseRef = React.useRef(onClose);
   const [mounted, setMounted] = React.useState(false);
   const [portalTarget, setPortalTarget] = React.useState<HTMLElement | null>(null);
@@ -73,7 +74,45 @@ export function Panel({
       if (event.key === "Escape") {
         event.preventDefault();
         onCloseRef.current();
+        return;
       }
+
+      if (event.key !== "Enter" || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      const panelNode = panelRef.current;
+      if (!panelNode || !panelNode.contains(target)) {
+        return;
+      }
+
+      if (target.closest("textarea, [contenteditable='true']")) {
+        return;
+      }
+
+      if (target.closest("button, a")) {
+        return;
+      }
+
+      const footerNode = footerRef.current;
+      if (!footerNode) {
+        return;
+      }
+
+      const submitButton = footerNode.querySelector<HTMLButtonElement>("button[type='submit']:not([disabled])");
+      const fallbackButtons = Array.from(footerNode.querySelectorAll<HTMLButtonElement>("button:not([disabled])"));
+      const primaryButton = submitButton ?? fallbackButtons[fallbackButtons.length - 1];
+      if (!primaryButton) {
+        return;
+      }
+
+      event.preventDefault();
+      primaryButton.click();
     };
     document.addEventListener("keydown", onKeyDown);
 
@@ -194,7 +233,7 @@ export function Panel({
     <aside
       aria-label={typeof title === "string" ? title : undefined}
       className={cn(
-        `app-panel ${isPopupContext ? "absolute z-[1100]" : "fixed z-[100]"} pointer-events-auto flex min-w-0 shrink-0 flex-col overflow-hidden rounded-card border bg-surface shadow-floating`,
+        `app-panel ${isPopupContext ? "absolute z-[1100] rounded-none border-y-0 border-r-0 border-l" : "fixed z-[100] rounded-card border"} pointer-events-auto flex min-w-0 shrink-0 flex-col overflow-hidden bg-surface shadow-floating`,
         panelClassName
       )}
       ref={panelRef}
@@ -227,7 +266,11 @@ export function Panel({
 
       <div className={cn("min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 py-4 [overflow-wrap:anywhere] md:px-6", contentClassName)}>{children}</div>
 
-      {footer ? <div className="shrink-0 border-t bg-surface px-5 py-4 md:px-6 flex flex-wrap items-center justify-end gap-2">{footer}</div> : null}
+      {footer ? (
+        <div className="shrink-0 border-t bg-surface px-5 py-4 md:px-6 flex flex-wrap items-center justify-end gap-2" ref={footerRef}>
+          {footer}
+        </div>
+      ) : null}
     </aside>,
     portalTarget
   );

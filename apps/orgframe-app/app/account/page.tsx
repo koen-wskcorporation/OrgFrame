@@ -39,7 +39,7 @@ export default async function AccountPage({
   const query = await searchParams;
 
   if (!currentUser) {
-    redirect("/auth/login");
+    redirect("/auth");
   }
 
   const successMessage = query.saved ? successMessageByCode[query.saved] : null;

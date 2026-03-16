@@ -59,7 +59,7 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
   const user = await getSessionUser();
 
   if (!user) {
-    redirect("/auth/login");
+    redirect("/auth");
   }
 
   const supabase = await createSupabaseServer();

@@ -16,6 +16,7 @@ type SlugValidationConfig = {
 type SlugValidationStatus = "idle" | "checking" | "available" | "taken" | "invalid" | "error";
 
 type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+  variant?: "default" | "inline";
   slugValidation?: SlugValidationConfig;
   persistentPrefix?: string;
   slugAutoSource?: string;
@@ -37,6 +38,8 @@ const inputShellClass =
 const inputFocusClass =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas";
 const inputDisabledClass = "disabled:cursor-not-allowed disabled:opacity-55";
+const inlineInputClass =
+  "h-auto rounded-none border-0 border-b border-dotted border-border/80 bg-transparent px-0 py-0 text-inherit shadow-none focus-visible:border-accent focus-visible:ring-0 focus-visible:ring-offset-0";
 
 function normalizeSlug(value: string) {
   return value
@@ -101,7 +104,22 @@ function resolveSlugPathPrefix(slugValidation: SlugValidationConfig | undefined,
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, slugValidation, persistentPrefix, onChange, value, defaultValue, slugAutoSource, onSlugAutoChange, slugAutoEnabled = true, ...props }, forwardedRef) => {
+  (
+    {
+      className,
+      variant = "default",
+      slugValidation,
+      persistentPrefix,
+      onChange,
+      value,
+      defaultValue,
+      slugAutoSource,
+      onSlugAutoChange,
+      slugAutoEnabled = true,
+      ...props
+    },
+    forwardedRef
+  ) => {
     const inputRef = React.useRef<HTMLInputElement | null>(null);
     const latestRequestId = React.useRef(0);
     const hasCustomizedSlugRef = React.useRef(false);
@@ -306,10 +324,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <input
         aria-invalid={isSlugUnavailable ? true : props["aria-invalid"]}
         className={cn(
-          inputShellClass,
-          inputFocusClass,
+          variant === "inline" ? null : inputShellClass,
+          variant === "inline" ? inlineInputClass : null,
+          variant === "inline" ? null : inputFocusClass,
           inputDisabledClass,
-          "px-3 py-2 placeholder:text-text-muted",
+          variant === "inline" ? "placeholder:text-text-muted/70" : "px-3 py-2 placeholder:text-text-muted",
           isSlugUnavailable ? "border-destructive focus-visible:ring-destructive/40" : null,
           slugStatus === "available" ? "border-success/40" : null,
           className

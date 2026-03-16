@@ -51,7 +51,7 @@ body {
   background-image:
     linear-gradient(to right, hsl(var(--border) / 0.2) 1px, transparent 1px),
     linear-gradient(to bottom, hsl(var(--border) / 0.2) 1px, transparent 1px);
-  background-size: 52px 52px;
+  background-size: 1rem 1rem;
   mask-image: radial-gradient(circle at center, black 38%, transparent 92%);
   pointer-events: none;
 }

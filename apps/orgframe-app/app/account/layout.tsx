@@ -7,7 +7,7 @@ export default async function AccountLayout({ children }: { children: React.Reac
   const user = await requireAuth().catch(() => null);
 
   if (!user) {
-    redirect("/auth/login");
+    redirect("/auth");
   }
 
   return <UniversalAppShell mobileSidebar={<AccountSidebarMobile />} sidebar={<AccountSidebar />}>{children}</UniversalAppShell>;

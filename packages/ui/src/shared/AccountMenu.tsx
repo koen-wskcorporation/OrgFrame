@@ -1,10 +1,15 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Building2, ChevronDown, Home, LogOut, Monitor, Moon, Plus, Settings2, Sun } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { buttonVariants } from "@orgframe/ui/ui/button";
+import { CreateOrganizationDialog } from "@orgframe/ui/dashboard/CreateOrganizationDialog";
+import { AdaptiveLogo } from "@orgframe/ui/ui/adaptive-logo";
+import { IconButton } from "@orgframe/ui/ui/icon-button";
 import { NavItem } from "@orgframe/ui/ui/nav-item";
+import { Popover } from "@orgframe/ui/ui/popover";
+import { ThemeMode, useThemeMode } from "@orgframe/ui/ui/theme-mode";
 import { cn } from "@/lib/utils";
 
 type AccountMenuProps = {
@@ -35,33 +40,7 @@ function initialsFromName(firstName?: string | null, lastName?: string | null, e
 export function AccountMenu({ email, firstName, lastName, avatarUrl, organizations = [], signOutAction }: AccountMenuProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    function onPointerDown(event: MouseEvent) {
-      if (!wrapperRef.current) {
-        return;
-      }
-
-      if (!wrapperRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-
-    window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, []);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   const accountLabel = email ?? "Signed-in account";
   const fullName = useMemo(() => {
@@ -92,26 +71,35 @@ export function AccountMenu({ email, firstName, lastName, avatarUrl, organizatio
   const menuItems = useMemo(
     () => [
       {
-        href: "/account",
-        label: "Account settings",
-        active: pathname === "/account" || pathname.startsWith("/account/")
-      },
-      {
         href: "/",
         label: "Home",
+        icon: Home,
         active: pathname === "/"
+      },
+      {
+        href: "/account",
+        label: "Account settings",
+        icon: Settings2,
+        active: pathname === "/account" || pathname.startsWith("/account/")
       }
     ],
     [pathname]
   );
+  const { mode, resolvedMode, setMode } = useThemeMode();
+  const themeOptions: { mode: ThemeMode; icon: typeof Sun; label: string }[] = [
+    { mode: "light", icon: Sun, label: "Light mode" },
+    { mode: "dark", icon: Moon, label: "Dark mode" },
+    { mode: "auto", icon: Monitor, label: "Auto theme" }
+  ];
 
   return (
-    <div className="relative" ref={wrapperRef}>
+    <div className="relative">
       <button
         aria-expanded={open}
         aria-haspopup="menu"
-        className={cn(buttonVariants({ size: "md", variant: "ghost" }), "gap-2 px-2.5")}
+        className={cn(buttonVariants({ size: "md", variant: "ghost" }), "h-10 gap-2 rounded-full border border-border/70 bg-surface px-2 pr-3 shadow-sm")}
         onClick={() => setOpen((prev) => !prev)}
+        ref={buttonRef}
         type="button"
       >
         {avatarUrl ? (
@@ -123,72 +111,147 @@ export function AccountMenu({ email, firstName, lastName, avatarUrl, organizatio
           </span>
         )}
         <span className="max-w-32 truncate text-sm font-semibold text-text">{fullName}</span>
-        <ChevronDown className="h-4 w-4 text-text-muted" />
+        <ChevronDown className={cn("h-4 w-4 text-text-muted transition-transform duration-200", open ? "rotate-180" : "")} />
       </button>
 
-      {open ? (
-        <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[20rem] max-w-[calc(100vw-1rem)] rounded-card border bg-surface p-2 shadow-card" role="menu">
-          <div className="space-y-1">
-            {orderedOrganizations.length > 1 ? (
-              <>
-                <p className="px-3 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Switch Organization</p>
-                {orderedOrganizations.map((organization) => (
-                  <NavItem
-                    accentWhenActive
-                    active={organization.orgSlug === currentOrgSlug}
-                    href={`/${organization.orgSlug}`}
-                    key={organization.orgId}
-                    onClick={() => setOpen(false)}
-                    role="menuitem"
-                    size="md"
-                    variant="sidebar"
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      {organization.iconUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center">
-                          <img alt={`${organization.orgName} icon`} className="h-full w-full object-contain object-center" src={organization.iconUrl} />
-                        </span>
-                      ) : (
-                        <span className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border bg-surface-muted px-1.5 text-[10px] font-semibold text-text-muted">
-                          {initialsFromName(organization.orgName, null, null)}
-                        </span>
-                      )}
-                      <span className="truncate">{organization.orgName}</span>
-                    </span>
-                  </NavItem>
-                ))}
-                <div aria-hidden className="my-1 h-px bg-border" />
-              </>
-            ) : null}
-            {menuItems.map((item) => (
-              <NavItem
-                accentWhenActive
-                active={item.active}
-                href={item.href}
-                key={item.href}
-                onClick={() => setOpen(false)}
-                role="menuitem"
-                size="md"
-                variant="sidebar"
-              >
-                {item.label}
-              </NavItem>
-            ))}
+      <Popover anchorRef={buttonRef} className="w-[22rem] overflow-hidden rounded-[22px] border border-border/70 bg-surface/95 p-0 shadow-floating backdrop-blur-xl" onClose={() => setOpen(false)} open={open}>
+        <div className="border-b border-border/70 bg-gradient-to-br from-surface to-surface-muted/45 p-4">
+          <div className="flex items-center gap-3">
+            {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img alt={`${fullName} profile`} className="h-11 w-11 rounded-full border object-cover" src={avatarUrl} />
+            ) : (
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-full border bg-surface-muted text-sm font-semibold text-text">{initials}</span>
+            )}
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-text">{fullName}</p>
+              <p className="truncate text-xs text-text-muted">{accountLabel}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5 p-2.5">
+          <CreateOrganizationDialog
+            renderTrigger={({ openDialog }) => (
+              <div className="space-y-1">
+                {menuItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <NavItem
+                      accentWhenActive
+                      active={item.active}
+                      href={item.href}
+                      key={item.href}
+                      onClick={() => setOpen(false)}
+                      role="menuitem"
+                      size="md"
+                      variant="sidebar"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Icon className="h-4 w-4 text-text-muted" />
+                        {item.label}
+                      </span>
+                    </NavItem>
+                  );
+                })}
+                <NavItem
+                  onClick={() => {
+                    setOpen(false);
+                    openDialog();
+                  }}
+                  role="menuitem"
+                  size="md"
+                  variant="sidebar"
+                >
+                  <span className="flex items-center gap-2">
+                    <Plus className="h-4 w-4 text-text-muted" />
+                    Create organization
+                  </span>
+                </NavItem>
+              </div>
+            )}
+          />
+
+          {orderedOrganizations.length > 1 ? (
+            <>
+              <div aria-hidden className="my-1 h-px bg-border/70" />
+              <p className="flex items-center gap-1.5 px-3 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                <Building2 className="h-3.5 w-3.5" />
+                Switch Organization
+              </p>
+              {orderedOrganizations.map((organization) => (
+                <NavItem
+                  accentWhenActive
+                  active={organization.orgSlug === currentOrgSlug}
+                  href={`/${organization.orgSlug}`}
+                  key={organization.orgId}
+                  onClick={() => setOpen(false)}
+                  role="menuitem"
+                  size="md"
+                  variant="sidebar"
+                >
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    {organization.iconUrl ? (
+                      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center">
+                        <AdaptiveLogo
+                          alt={`${organization.orgName} icon`}
+                          className="h-full w-full object-contain object-center"
+                          src={organization.iconUrl}
+                          svgClassName="block h-full w-full object-contain object-center"
+                        />
+                      </span>
+                    ) : (
+                      <span className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border bg-surface-muted px-1.5 text-[10px] font-semibold text-text-muted">
+                        {initialsFromName(organization.orgName, null, null)}
+                      </span>
+                    )}
+                    <span className="truncate">{organization.orgName}</span>
+                  </span>
+                </NavItem>
+              ))}
+            </>
+          ) : null}
+
+          <div aria-hidden className="my-1 h-px bg-border/70" />
+          <div className="flex items-end justify-between gap-2 px-1">
             <form
               action={signOutAction}
               onSubmit={() => {
                 setOpen(false);
               }}
             >
-              <NavItem role="menuitem" size="md" type="submit" variant="sidebar">
-                Sign out
+              <NavItem className="text-destructive" role="menuitem" size="md" type="submit" variant="header">
+                <span className="flex items-center gap-2">
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </span>
               </NavItem>
             </form>
-            <p className="px-3 pt-1 text-xs leading-relaxed text-text-muted">{accountLabel}</p>
+
+            <div aria-label="Theme mode" className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-surface p-1" role="radiogroup">
+                {themeOptions.map((option) => {
+                  const Icon = option.icon;
+                  const isActive = mode === option.mode;
+                  return (
+                    <IconButton
+                      aria-checked={isActive}
+                      className={cn(
+                        "h-8 w-8 border",
+                        isActive ? "border-border/80 bg-surface-muted text-text shadow-sm" : "border-transparent text-text-muted hover:border-border/60"
+                      )}
+                      icon={<Icon />}
+                      key={option.mode}
+                      label={option.label}
+                      onClick={() => setMode(option.mode)}
+                      role="radio"
+                      title={option.label}
+                    />
+                  );
+                })}
+            </div>
           </div>
         </div>
-      ) : null}
+      </Popover>
     </div>
   );
 }

@@ -32,6 +32,7 @@ import { Input } from "@orgframe/ui/ui/input";
 import { NavItem } from "@orgframe/ui/ui/nav-item";
 import { PublishStatusIcon } from "@orgframe/ui/ui/publish-status-icon";
 import { useToast } from "@orgframe/ui/ui/toast";
+import { AdaptiveLogo } from "@orgframe/ui/ui/adaptive-logo";
 import { getOrgAdminNavItems, type OrgAdminNavIcon } from "@/lib/org/toolsNav";
 import { cn } from "@/lib/utils";
 import { AiAssistantLauncher } from "@orgframe/ui/modules/ai/components/AiAssistantLauncher";
@@ -503,24 +504,13 @@ export function OrgHeader({
         <div className="flex min-h-[64px] items-center gap-3 pb-2.5 pl-4 pr-2.5 pt-2.5 md:pb-4 md:pl-6 md:pr-4 md:pt-4">
           <div className="shrink-0 self-stretch">
             <Link className="flex h-full min-w-0 items-center gap-3 leading-none" href={orgBasePath} prefetch>
-              {governingBodyLogoUrl ? (
-                <>
-                  <span className="flex h-7 shrink-0 items-center leading-none md:h-8">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      alt={`${governingBodyName ?? "Governing body"} seal`}
-                      className="block h-full w-auto max-w-[44px] align-middle object-contain"
-                      src={governingBodyLogoUrl}
-                    />
-                  </span>
-                  <span aria-hidden className="h-6 w-px shrink-0 bg-border" />
-                </>
-              ) : null}
-
               <span className="flex h-7 max-w-[220px] shrink-0 items-center leading-none md:h-8">
                 {orgLogoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img alt={`${orgName} logo`} className="block h-full w-auto max-w-full align-middle object-contain object-left" src={orgLogoUrl} />
+                  <AdaptiveLogo
+                    alt={`${orgName} logo`}
+                    className="block h-full w-auto max-w-full align-middle object-contain object-left"
+                    src={orgLogoUrl}
+                  />
                 ) : (
                   <span className="inline-flex h-full items-center text-sm font-semibold text-text-muted">{getOrgInitial(orgName)}</span>
                 )}

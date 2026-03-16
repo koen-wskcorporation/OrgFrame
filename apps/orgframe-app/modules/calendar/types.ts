@@ -135,6 +135,22 @@ export type FacilityAllocation = {
   updatedAt: string;
 };
 
+export type CalendarRuleFacilityAllocation = {
+  id: string;
+  orgId: string;
+  ruleId: string;
+  spaceId: string;
+  configurationId: string;
+  lockMode: FacilityLockMode;
+  allowShared: boolean;
+  isActive: boolean;
+  metadataJson: Record<string, unknown>;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type OccurrenceTeamInvite = {
   id: string;
   orgId: string;
@@ -185,7 +201,7 @@ export type CalendarPublicCatalogItem = {
 export type CalendarOccurrenceReadModel = {
   occurrence: CalendarOccurrence;
   entry: CalendarEntry;
-  allocation: FacilityAllocation | null;
+  allocations: FacilityAllocation[];
   teams: OccurrenceTeamInvite[];
 };
 
@@ -196,5 +212,6 @@ export type CalendarReadModel = {
   exceptions: CalendarRuleException[];
   configurations: FacilitySpaceConfiguration[];
   allocations: FacilityAllocation[];
+  ruleAllocations: CalendarRuleFacilityAllocation[];
   invites: OccurrenceTeamInvite[];
 };

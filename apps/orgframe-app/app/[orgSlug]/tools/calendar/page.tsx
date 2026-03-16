@@ -36,10 +36,12 @@ export default async function OrgToolsCalendarPage({
   const [readModel, activeTeams] = await Promise.all([listCalendarReadModel(orgContext.orgId), listOrgActiveTeams(orgContext.orgId)]);
 
   return (
-    <PageStack>
+    <PageStack className="app-page-stack--fill">
       <PageHeader description="Unified organization calendar for events, practices, games, and shared facility scheduling." showBorder={false} title="Calendar" />
       {!canWrite ? <Alert variant="info">You have read-only access to calendar data.</Alert> : null}
-      <OrgCalendarWorkspace activeTeams={activeTeams} canWrite={canWrite} initialReadModel={readModel} orgSlug={orgContext.orgSlug} />
+      <div className="min-h-0 flex-1">
+        <OrgCalendarWorkspace activeTeams={activeTeams} canWrite={canWrite} initialReadModel={readModel} orgSlug={orgContext.orgSlug} />
+      </div>
     </PageStack>
   );
 }

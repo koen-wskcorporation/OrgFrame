@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { HeaderProgressBar } from "@orgframe/ui/shared/HeaderProgressBar";
 import { PrimaryAccountControls } from "@orgframe/ui/shared/PrimaryAccountControls";
+import { AdaptiveLogo } from "@orgframe/ui/ui/adaptive-logo";
 
 export function PrimaryHeader() {
   return (
@@ -11,12 +12,11 @@ export function PrimaryHeader() {
       </Suspense>
       <div className="app-container flex h-16 w-full items-center justify-between">
         <Link className="inline-flex min-w-0 items-center" href="/">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <AdaptiveLogo
             alt="Sports SaaS logo"
             className="block max-w-full object-contain"
             src="/brand/logo.svg"
-            style={{ height: "auto", maxHeight: "auto", maxWidth: "135px", width: "auto" }}
+            style={{ height: "auto", maxHeight: "auto", maxWidth: "150px", width: "auto" }}
           />
         </Link>
 

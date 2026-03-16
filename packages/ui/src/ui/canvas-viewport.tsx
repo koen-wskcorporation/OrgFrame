@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   type CSSProperties,
@@ -22,8 +23,14 @@ export type CanvasViewportHandle = {
   zoomIn: () => void;
   zoomOut: () => void;
   resetView: () => void;
-  fitToView: () => void;
+  fitToView: (options?: { padding?: number; viewportOffsetX?: number; viewportOffsetY?: number; animated?: boolean }) => void;
+  fitToBounds: (
+    bounds: { x: number; y: number; width: number; height: number },
+    options?: { padding?: number; viewportOffsetX?: number; viewportOffsetY?: number; animated?: boolean }
+  ) => void;
+  fitToElement: (element: HTMLElement, options?: { padding?: number; viewportOffsetX?: number; viewportOffsetY?: number; animated?: boolean }) => void;
   focusElement: (element: HTMLElement, options?: { targetScale?: number }) => void;
+  shiftBy: (deltaX: number, deltaY: number, options?: { animated?: boolean }) => void;
 };
 
 type CanvasViewportProps = PropsWithChildren<{
@@ -39,9 +46,13 @@ type CanvasViewportProps = PropsWithChildren<{
   dragInProgress?: boolean;
   interactive?: boolean;
   onViewChange?: (view: CanvasView) => void;
+  safeAreaInsets?: { left?: number; right?: number; top?: number; bottom?: number };
   gridSize?: number;
   gridColor?: string;
 }>;
+
+const GRID_WORLD_RADIUS = 100000;
+const GRID_LINE_WIDTH = 1;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -66,8 +77,9 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
     dragInProgress = false,
     interactive = true,
     onViewChange,
+    safeAreaInsets,
     gridSize,
-    gridColor = "#e5e7eb"
+    gridColor = "hsl(var(--border) / 0.55)"
   },
   ref
 ) {
@@ -75,11 +87,23 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const transformRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const viewportSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const viewportInsetsRef = useRef<{ left: number; right: number; top: number; bottom: number } | null>(null);
+  const safeAreaRef = useRef({ left: 0, right: 0, top: 0, bottom: 0 });
   const viewRef = useRef<CanvasView>({ x: 0, y: 0, scale: 1 });
   const panSessionRef = useRef<{ x: number; y: number } | null>(null);
   const rafRef = useRef<number | null>(null);
   const notifyRafRef = useRef<number | null>(null);
   const onViewChangeRef = useRef<CanvasViewportProps["onViewChange"]>(onViewChange);
+
+  const normalizeView = useCallback((view: CanvasView): CanvasView => {
+    // Keep viewport translation on whole CSS pixels so grid lines do not land on half-cells.
+    const x = Math.round(view.x);
+    const y = Math.round(view.y);
+    // Keep scale stable but precise enough for smooth zoom.
+    const scale = Math.round(view.scale * 1000) / 1000;
+    return { x, y, scale };
+  }, []);
 
   const scaleBounds = useMemo(
     () => ({
@@ -93,6 +117,30 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
     onViewChangeRef.current = onViewChange;
   }, [onViewChange]);
 
+  useEffect(() => {
+    safeAreaRef.current = {
+      left: Math.max(0, safeAreaInsets?.left ?? 0),
+      right: Math.max(0, safeAreaInsets?.right ?? 0),
+      top: Math.max(0, safeAreaInsets?.top ?? 0),
+      bottom: Math.max(0, safeAreaInsets?.bottom ?? 0)
+    };
+  }, [safeAreaInsets?.bottom, safeAreaInsets?.left, safeAreaInsets?.right, safeAreaInsets?.top]);
+
+  const getVisibleViewport = useCallback(
+    (viewportRect: DOMRect) => {
+      const insets = safeAreaRef.current;
+      const width = Math.max(1, viewportRect.width - insets.left - insets.right);
+      const height = Math.max(1, viewportRect.height - insets.top - insets.bottom);
+      return {
+        insetLeft: insets.left,
+        insetTop: insets.top,
+        width,
+        height
+      };
+    },
+    []
+  );
+
   const applyView = useCallback(
     (next: CanvasView, options?: { skipPersist?: boolean; skipNotify?: boolean }) => {
       const transformNode = transformRef.current;
@@ -100,22 +148,15 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
         return;
       }
 
-      viewRef.current = next;
+      const normalized = normalizeView(next);
+      viewRef.current = normalized;
       // Use 2D transforms to keep text/vector content sharp while zooming.
       // Persistent 3D compositing can rasterize the layer and introduce pixelation on zoom-in.
-      transformNode.style.transform = `translate(${next.x}px, ${next.y}px) scale(${next.scale})`;
-      const viewportNode = viewportRef.current;
-      if (viewportNode && gridSize && gridSize > 0) {
-        const scaledGridSize = gridSize * next.scale;
-        viewportNode.style.backgroundImage = `linear-gradient(to right, ${gridColor} 1px, transparent 1px), linear-gradient(to bottom, ${gridColor} 1px, transparent 1px)`;
-        viewportNode.style.backgroundSize = `${scaledGridSize}px ${scaledGridSize}px`;
-        viewportNode.style.backgroundPosition = `${next.x}px ${next.y}px`;
-        viewportNode.style.backgroundOrigin = "content-box";
-      }
+      transformNode.style.transform = `translate(${normalized.x}px, ${normalized.y}px) scale(${normalized.scale})`;
 
       if (storageKey && !options?.skipPersist) {
         try {
-          window.localStorage.setItem(storageKey, JSON.stringify(next));
+          window.localStorage.setItem(storageKey, JSON.stringify(normalized));
         } catch {
           // Ignore storage failures in private browsing or restricted environments.
         }
@@ -128,11 +169,11 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
       notifyRafRef.current = window.requestAnimationFrame(() => {
         notifyRafRef.current = null;
         if (!options?.skipNotify) {
-          onViewChangeRef.current?.(next);
+          onViewChangeRef.current?.(normalized);
         }
       });
     },
-    [gridColor, gridSize, storageKey]
+    [normalizeView, storageKey]
   );
 
   const animateTo = useCallback(
@@ -171,7 +212,19 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
     [applyView]
   );
 
-  const fitToView = useCallback(() => {
+  const moveToView = useCallback(
+    (target: CanvasView, options?: { animated?: boolean }) => {
+      if (options?.animated === false) {
+        applyView(target);
+        return;
+      }
+
+      animateTo(target);
+    },
+    [animateTo, applyView]
+  );
+
+  const fitToView = useCallback((options?: { padding?: number; viewportOffsetX?: number; viewportOffsetY?: number; animated?: boolean }) => {
     const viewportNode = viewportRef.current;
     const contentNode = contentRef.current;
     if (!viewportNode || !contentNode) {
@@ -187,13 +240,17 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
       return;
     }
 
-    const innerWidth = Math.max(32, viewportRect.width - fitPadding * 2);
-    const innerHeight = Math.max(32, viewportRect.height - fitPadding * 2);
+    const padding = options?.padding ?? fitPadding;
+    const viewportOffsetX = options?.viewportOffsetX ?? 0;
+    const viewportOffsetY = options?.viewportOffsetY ?? 0;
+    const visible = getVisibleViewport(viewportRect);
+    const innerWidth = Math.max(32, visible.width - padding * 2);
+    const innerHeight = Math.max(32, visible.height - padding * 2);
     const targetScale = clamp(Math.min(innerWidth / contentWidth, innerHeight / contentHeight), scaleBounds.min, scaleBounds.max);
-    const x = (viewportRect.width - contentWidth * targetScale) / 2;
-    const y = (viewportRect.height - contentHeight * targetScale) / 2;
-    animateTo({ x, y, scale: targetScale });
-  }, [animateTo, fitPadding, scaleBounds.max, scaleBounds.min]);
+    const x = visible.insetLeft + (visible.width - contentWidth * targetScale) / 2 + viewportOffsetX;
+    const y = visible.insetTop + (visible.height - contentHeight * targetScale) / 2 + viewportOffsetY;
+    moveToView({ x, y, scale: targetScale }, { animated: options?.animated });
+  }, [fitPadding, getVisibleViewport, moveToView, scaleBounds.max, scaleBounds.min]);
 
   const resetView = useCallback(() => {
     animateTo({ x: 0, y: 0, scale: 1 });
@@ -239,11 +296,75 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
       const elementHeight = elementRect.height / current.scale;
 
       const targetScale = clamp(options?.targetScale ?? Math.max(current.scale, 1), scaleBounds.min, scaleBounds.max);
-      const x = viewportRect.width / 2 - (elementX + elementWidth / 2) * targetScale;
-      const y = viewportRect.height / 2 - (elementY + elementHeight / 2) * targetScale;
+      const visible = getVisibleViewport(viewportRect);
+      const x = visible.insetLeft + visible.width / 2 - (elementX + elementWidth / 2) * targetScale;
+      const y = visible.insetTop + visible.height / 2 - (elementY + elementHeight / 2) * targetScale;
       animateTo({ x, y, scale: targetScale });
     },
-    [animateTo, scaleBounds.max, scaleBounds.min]
+    [animateTo, getVisibleViewport, scaleBounds.max, scaleBounds.min]
+  );
+
+  const fitToElement = useCallback(
+    (element: HTMLElement, options?: { padding?: number; viewportOffsetX?: number; viewportOffsetY?: number; animated?: boolean }) => {
+      const viewportNode = viewportRef.current;
+      const contentNode = contentRef.current;
+      if (!viewportNode || !contentNode) {
+        return;
+      }
+
+      const viewportRect = viewportNode.getBoundingClientRect();
+      const contentRect = contentNode.getBoundingClientRect();
+      const elementRect = element.getBoundingClientRect();
+      const current = viewRef.current;
+      const elementX = (elementRect.left - contentRect.left) / current.scale;
+      const elementY = (elementRect.top - contentRect.top) / current.scale;
+      const elementWidth = elementRect.width / current.scale;
+      const elementHeight = elementRect.height / current.scale;
+      if (elementWidth <= 0 || elementHeight <= 0) {
+        return;
+      }
+
+      const padding = options?.padding ?? fitPadding;
+      const viewportOffsetX = options?.viewportOffsetX ?? 0;
+      const viewportOffsetY = options?.viewportOffsetY ?? 0;
+      const visible = getVisibleViewport(viewportRect);
+      const innerWidth = Math.max(32, visible.width - padding * 2);
+      const innerHeight = Math.max(32, visible.height - padding * 2);
+      const targetScale = clamp(Math.min(innerWidth / elementWidth, innerHeight / elementHeight), scaleBounds.min, scaleBounds.max);
+      const x = visible.insetLeft + visible.width / 2 + viewportOffsetX - (elementX + elementWidth / 2) * targetScale;
+      const y = visible.insetTop + visible.height / 2 + viewportOffsetY - (elementY + elementHeight / 2) * targetScale;
+      moveToView({ x, y, scale: targetScale }, { animated: options?.animated });
+    },
+    [fitPadding, getVisibleViewport, moveToView, scaleBounds.max, scaleBounds.min]
+  );
+
+  const fitToBounds = useCallback(
+    (
+      bounds: { x: number; y: number; width: number; height: number },
+      options?: { padding?: number; viewportOffsetX?: number; viewportOffsetY?: number; animated?: boolean }
+    ) => {
+      const viewportNode = viewportRef.current;
+      if (!viewportNode) {
+        return;
+      }
+
+      const viewportRect = viewportNode.getBoundingClientRect();
+      if (viewportRect.width <= 0 || viewportRect.height <= 0 || bounds.width <= 0 || bounds.height <= 0) {
+        return;
+      }
+
+      const padding = options?.padding ?? fitPadding;
+      const viewportOffsetX = options?.viewportOffsetX ?? 0;
+      const viewportOffsetY = options?.viewportOffsetY ?? 0;
+      const visible = getVisibleViewport(viewportRect);
+      const innerWidth = Math.max(32, visible.width - padding * 2);
+      const innerHeight = Math.max(32, visible.height - padding * 2);
+      const targetScale = clamp(Math.min(innerWidth / bounds.width, innerHeight / bounds.height), scaleBounds.min, scaleBounds.max);
+      const x = visible.insetLeft + visible.width / 2 + viewportOffsetX - (bounds.x + bounds.width / 2) * targetScale;
+      const y = visible.insetTop + visible.height / 2 + viewportOffsetY - (bounds.y + bounds.height / 2) * targetScale;
+      moveToView({ x, y, scale: targetScale }, { animated: options?.animated });
+    },
+    [fitPadding, getVisibleViewport, moveToView, scaleBounds.max, scaleBounds.min]
   );
 
   useImperativeHandle(
@@ -271,12 +392,33 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
       },
       resetView,
       fitToView,
-      focusElement
+      fitToBounds,
+      fitToElement,
+      focusElement,
+      shiftBy: (deltaX: number, deltaY: number, options?: { animated?: boolean }) => {
+        if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY)) {
+          return;
+        }
+
+        const current = viewRef.current;
+        const target: CanvasView = {
+          x: current.x + deltaX,
+          y: current.y + deltaY,
+          scale: current.scale
+        };
+
+        if (options?.animated) {
+          animateTo(target);
+          return;
+        }
+
+        applyView(target);
+      }
     }),
-    [fitToView, focusElement, resetView, zoomAtPoint, zoomStep]
+    [animateTo, applyView, fitToBounds, fitToElement, fitToView, focusElement, resetView, zoomAtPoint, zoomStep]
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!storageKey) {
       return;
     }
@@ -302,7 +444,7 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
     }
   }, [scaleBounds.max, scaleBounds.min, storageKey, applyView]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     applyView(viewRef.current, { skipPersist: true });
 
     return () => {
@@ -315,6 +457,65 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
       }
     };
   }, [applyView]);
+
+  useEffect(() => {
+    const viewportNode = viewportRef.current;
+    if (!viewportNode) {
+      return;
+    }
+
+    const syncViewForViewportResize = () => {
+      const rect = viewportNode.getBoundingClientRect();
+      const nextSize = {
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      };
+      const nextInsets = safeAreaRef.current;
+
+      const previousSize = viewportSizeRef.current;
+      const previousInsets = viewportInsetsRef.current;
+      viewportSizeRef.current = nextSize;
+      viewportInsetsRef.current = nextInsets;
+      if (!previousSize || !previousInsets) {
+        return;
+      }
+
+      const previousVisibleWidth = Math.max(1, previousSize.width - previousInsets.left - previousInsets.right);
+      const previousVisibleHeight = Math.max(1, previousSize.height - previousInsets.top - previousInsets.bottom);
+      const previousCenterX = previousInsets.left + previousVisibleWidth / 2;
+      const previousCenterY = previousInsets.top + previousVisibleHeight / 2;
+      const current = viewRef.current;
+      const worldCenterX = (previousCenterX - current.x) / current.scale;
+      const worldCenterY = (previousCenterY - current.y) / current.scale;
+
+      const nextVisibleWidth = Math.max(1, nextSize.width - nextInsets.left - nextInsets.right);
+      const nextVisibleHeight = Math.max(1, nextSize.height - nextInsets.top - nextInsets.bottom);
+      const nextCenterX = nextInsets.left + nextVisibleWidth / 2;
+      const nextCenterY = nextInsets.top + nextVisibleHeight / 2;
+
+      const nextX = nextCenterX - worldCenterX * current.scale;
+      const nextY = nextCenterY - worldCenterY * current.scale;
+      if (Math.abs(nextX - current.x) < 0.5 && Math.abs(nextY - current.y) < 0.5) {
+        return;
+      }
+
+      applyView({
+        x: nextX,
+        y: nextY,
+        scale: current.scale
+      });
+    };
+
+    syncViewForViewportResize();
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => syncViewForViewportResize()) : null;
+    resizeObserver?.observe(viewportNode);
+    window.addEventListener("resize", syncViewForViewportResize);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", syncViewForViewportResize);
+    };
+  }, [applyView, safeAreaInsets?.bottom, safeAreaInsets?.left, safeAreaInsets?.right, safeAreaInsets?.top]);
 
   const canStartBackgroundPan = useCallback((target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) {
@@ -440,11 +641,36 @@ export const CanvasViewport = forwardRef<CanvasViewportHandle, CanvasViewportPro
           `h-full w-full overflow-hidden overscroll-contain rounded-control border bg-surface-muted/20 ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`,
           viewportClassName
         )}
+        data-canvas-viewport="true"
         ref={viewportRef}
         style={viewportStyle}
       >
-        <div ref={transformRef} style={{ transformOrigin: "0 0" }}>
-          <div className={cn("inline-block p-8", contentClassName)} ref={contentRef}>
+        <div className="relative" ref={transformRef} style={{ transformOrigin: "0 0" }}>
+          <div className={cn("relative p-8", contentClassName)} data-canvas-content="true" ref={contentRef}>
+            {gridSize && gridSize > 0 ? (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute"
+                style={{
+                  left: -GRID_WORLD_RADIUS,
+                  top: -GRID_WORLD_RADIUS,
+                  width: GRID_WORLD_RADIUS * 2,
+                  height: GRID_WORLD_RADIUS * 2,
+                  backgroundImage: `repeating-linear-gradient(
+                    to right,
+                    ${gridColor} 0 ${GRID_LINE_WIDTH}px,
+                    transparent ${GRID_LINE_WIDTH}px ${gridSize}px
+                  ),
+                  repeating-linear-gradient(
+                    to bottom,
+                    ${gridColor} 0 ${GRID_LINE_WIDTH}px,
+                    transparent ${GRID_LINE_WIDTH}px ${gridSize}px
+                  )`,
+                  backgroundSize: `${gridSize}px ${gridSize}px`,
+                  backgroundPosition: "0 0"
+                }}
+              />
+            ) : null}
             {children}
           </div>
         </div>

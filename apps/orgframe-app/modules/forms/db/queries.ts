@@ -19,7 +19,7 @@ const formSelect =
   "id, org_id, slug, name, description, form_kind, status, program_id, target_mode, locked_program_node_id, schema_json, ui_json, settings_json, created_by, created_at, updated_at";
 const versionSelect = "id, org_id, form_id, version_number, snapshot_json, published_at, created_by, created_at";
 const submissionSelect =
-  "id, org_id, form_id, version_id, submitted_by_user_id, status, admin_notes, sync_rev, answers_json, metadata_json, created_at, updated_at";
+  "id, org_id, form_id, version_id, submitted_by_user_id, status, order_id, source_payment_status, admin_notes, sync_rev, answers_json, metadata_json, created_at, updated_at";
 const submissionEntrySelect = "id, submission_id, player_id, program_node_id, answers_json, created_at";
 const submissionViewSelect =
   "id, org_id, form_id, name, sort_index, visibility_scope, target_user_id, config_json, created_by_user_id, created_at, updated_at";
@@ -65,6 +65,8 @@ type SubmissionRow = {
   version_id: string;
   submitted_by_user_id: string | null;
   status: SubmissionStatus;
+  order_id: string | null;
+  source_payment_status: string | null;
   admin_notes: string | null;
   sync_rev: number | string;
   answers_json: unknown;
@@ -178,6 +180,8 @@ function mapSubmission(row: SubmissionRow): FormSubmission {
     versionId: row.version_id,
     submittedByUserId: row.submitted_by_user_id,
     status: row.status,
+    orderId: row.order_id,
+    sourcePaymentStatus: row.source_payment_status,
     adminNotes: row.admin_notes,
     syncRev: Number(row.sync_rev ?? 0),
     answersJson: asObject(row.answers_json),

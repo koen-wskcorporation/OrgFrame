@@ -21,11 +21,16 @@ import {
   insertCalendarOccurrenceRecord,
   listCalendarEntries,
   listCalendarOccurrences,
+  listCalendarOccurrencesByRule,
   listCalendarReadModel,
+  listCalendarRuleFacilityAllocations,
   listCalendarRuleExceptions,
   listFacilitySpaceConfigurations,
   listOccurrenceTeamInvites,
+  listOccurrenceFacilityAllocations,
   listOrgActiveTeams,
+  replaceCalendarRuleFacilityAllocations,
+  replaceOccurrenceFacilityAllocations,
   setCalendarOccurrenceStatus,
   setCalendarOccurrenceStatusBySourceKey,
   updateCalendarEntryRecord,
@@ -36,6 +41,7 @@ import {
   upsertOccurrenceTeamInvite,
   upsertRuleGeneratedOccurrences
 } from "@/modules/calendar/db/queries";
+import { listFacilityReservationReadModel } from "@/modules/facilities/db/queries";
 import { notifyInviteResponded, notifyInviteSent, notifyOccurrenceCancelled } from "@/modules/calendar/notifications";
 import { generateOccurrencesForRule, zonedLocalToUtc } from "@/modules/calendar/rule-engine";
 import type {
@@ -53,7 +59,7 @@ import type {
 const textSchema = z.string().trim();
 const localDateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-type CalendarActionResult<TData = undefined> =
+type CalendarActionResult<TData = undefined, TErrorDetails = undefined> =
   | {
       ok: true;
       data: TData;
@@ -61,12 +67,14 @@ type CalendarActionResult<TData = undefined> =
   | {
       ok: false;
       error: string;
+      details?: TErrorDetails;
     };
 
-function asError(error: string): CalendarActionResult<never> {
+function asError<TErrorDetails = undefined>(error: string, details?: TErrorDetails): CalendarActionResult<never, TErrorDetails> {
   return {
     ok: false,
-    error
+    error,
+    details
   };
 }
 
@@ -124,6 +132,194 @@ function normalizeLocalWindow(input: {
 
 function buildRuleHash(payload: Record<string, unknown>) {
   return createHash("sha1").update(JSON.stringify(payload)).digest("hex");
+}
+
+function windowsOverlap(startsAtUtc: string, endsAtUtc: string, otherStartUtc: string, otherEndUtc: string) {
+  const start = new Date(startsAtUtc).getTime();
+  const end = new Date(endsAtUtc).getTime();
+  const otherStart = new Date(otherStartUtc).getTime();
+  const otherEnd = new Date(otherEndUtc).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(otherStart) || !Number.isFinite(otherEnd)) {
+    return false;
+  }
+  return start < otherEnd && end > otherStart;
+}
+
+async function resolveAllocationInputs(
+  orgId: string,
+  actorUserId: string,
+  allocations: z.infer<typeof allocationItemSchema>[]
+) {
+  const configurations = await listFacilitySpaceConfigurations(orgId, { includeInactive: true });
+  const configById = new Map(configurations.map((config) => [config.id, config]));
+
+  const resolved: Array<{
+    spaceId: string;
+    configurationId: string;
+    lockMode: FacilityLockMode;
+    allowShared: boolean;
+    metadataJson: Record<string, unknown>;
+  }> = [];
+
+  for (const allocation of allocations) {
+    const desiredConfig = allocation.configurationId ? configById.get(allocation.configurationId) ?? null : null;
+    const resolvedConfiguration =
+      desiredConfig && desiredConfig.spaceId === allocation.spaceId
+        ? desiredConfig
+        : await getOrCreateDefaultFacilitySpaceConfiguration({
+            orgId,
+            spaceId: allocation.spaceId,
+            actorUserId
+          });
+
+    resolved.push({
+      spaceId: allocation.spaceId,
+      configurationId: resolvedConfiguration.id,
+      lockMode: allocation.lockMode ?? "exclusive",
+      allowShared: allocation.allowShared ?? false,
+      metadataJson: allocation.notes ? { notes: allocation.notes } : {}
+    });
+  }
+
+  return resolved;
+}
+
+function buildAllocationConflictIndex(
+  allocations: Awaited<ReturnType<typeof listOccurrenceFacilityAllocations>>,
+  facilityReservations: Awaited<ReturnType<typeof listFacilityReservationReadModel>>["reservations"]
+) {
+  const allocationsBySpace = new Map<string, typeof allocations>();
+  for (const allocation of allocations) {
+    if (!allocation.isActive) {
+      continue;
+    }
+    const list = allocationsBySpace.get(allocation.spaceId) ?? [];
+    list.push(allocation);
+    allocationsBySpace.set(allocation.spaceId, list);
+  }
+
+  const reservationsBySpace = new Map<string, typeof facilityReservations>();
+  for (const reservation of facilityReservations) {
+    if (reservation.status !== "pending" && reservation.status !== "approved") {
+      continue;
+    }
+    const list = reservationsBySpace.get(reservation.spaceId) ?? [];
+    list.push(reservation);
+    reservationsBySpace.set(reservation.spaceId, list);
+  }
+
+  return { allocationsBySpace, reservationsBySpace };
+}
+
+function collectAllocationConflicts(input: {
+  occurrenceId: string;
+  startsAtUtc: string;
+  endsAtUtc: string;
+  spaceId: string;
+  allocationsBySpace: Map<string, Awaited<ReturnType<typeof listOccurrenceFacilityAllocations>>>;
+  reservationsBySpace: Map<string, Awaited<ReturnType<typeof listFacilityReservationReadModel>>["reservations"]>;
+}) {
+  const conflicts: FacilityAllocationConflict[] = [];
+  const { occurrenceId, startsAtUtc, endsAtUtc, spaceId, allocationsBySpace, reservationsBySpace } = input;
+
+  const allocations = allocationsBySpace.get(spaceId) ?? [];
+  for (const allocation of allocations) {
+    if (allocation.occurrenceId === occurrenceId) {
+      continue;
+    }
+    if (!windowsOverlap(startsAtUtc, endsAtUtc, allocation.startsAtUtc, allocation.endsAtUtc)) {
+      continue;
+    }
+    conflicts.push({
+      spaceId,
+      occurrenceId,
+      startsAtUtc,
+      endsAtUtc,
+      conflictType: "allocation",
+      conflictId: allocation.id,
+      conflictStartsAtUtc: allocation.startsAtUtc,
+      conflictEndsAtUtc: allocation.endsAtUtc
+    });
+  }
+
+  const reservations = reservationsBySpace.get(spaceId) ?? [];
+  for (const reservation of reservations) {
+    if (!windowsOverlap(startsAtUtc, endsAtUtc, reservation.startsAtUtc, reservation.endsAtUtc)) {
+      continue;
+    }
+    conflicts.push({
+      spaceId,
+      occurrenceId,
+      startsAtUtc,
+      endsAtUtc,
+      conflictType: "reservation",
+      conflictId: reservation.id,
+      conflictStartsAtUtc: reservation.startsAtUtc,
+      conflictEndsAtUtc: reservation.endsAtUtc,
+      conflictStatus: reservation.status
+    });
+  }
+
+  return conflicts;
+}
+
+async function applyRuleAllocationsToOccurrences(input: {
+  orgId: string;
+  actorUserId: string;
+  occurrences: Awaited<ReturnType<typeof listCalendarOccurrencesByRule>>;
+  allocations: Array<{
+    spaceId: string;
+    configurationId: string;
+    lockMode: FacilityLockMode;
+    allowShared: boolean;
+    metadataJson: Record<string, unknown>;
+  }>;
+}): Promise<RuleAllocationConflictSummary[]> {
+  if (input.occurrences.length === 0) {
+    return [];
+  }
+
+  const [existingAllocations, facilityReadModel] = await Promise.all([
+    listOccurrenceFacilityAllocations(input.orgId),
+    listFacilityReservationReadModel(input.orgId)
+  ]);
+  const { allocationsBySpace, reservationsBySpace } = buildAllocationConflictIndex(existingAllocations, facilityReadModel.reservations);
+  const conflicts: RuleAllocationConflictSummary[] = [];
+
+  for (const occurrence of input.occurrences) {
+    const allowedAllocations: typeof input.allocations = [];
+    for (const allocation of input.allocations) {
+      const overlapConflicts = collectAllocationConflicts({
+        occurrenceId: occurrence.id,
+        startsAtUtc: occurrence.startsAtUtc,
+        endsAtUtc: occurrence.endsAtUtc,
+        spaceId: allocation.spaceId,
+        allocationsBySpace,
+        reservationsBySpace
+      });
+
+      if (overlapConflicts.length > 0) {
+        for (const conflict of overlapConflicts) {
+          conflicts.push({
+            ...conflict,
+            sourceKey: occurrence.sourceKey
+          });
+        }
+        continue;
+      }
+
+      allowedAllocations.push(allocation);
+    }
+
+    await replaceOccurrenceFacilityAllocations({
+      orgId: input.orgId,
+      occurrenceId: occurrence.id,
+      allocations: allowedAllocations,
+      actorUserId: input.actorUserId
+    });
+  }
+
+  return conflicts;
 }
 
 async function isTeamStaffAdmin(orgId: string, userId: string, teamId: string): Promise<boolean> {
@@ -256,6 +452,42 @@ const allocationSchema = z.object({
   allowShared: z.boolean().optional()
 });
 
+const allocationItemSchema = z.object({
+  spaceId: z.string().uuid(),
+  configurationId: z.string().uuid().optional(),
+  lockMode: z.enum(["exclusive", "shared_invite_only"] satisfies FacilityLockMode[]).optional(),
+  allowShared: z.boolean().optional(),
+  notes: z.string().max(2400).optional()
+});
+
+const setAllocationsSchema = z.object({
+  orgSlug: textSchema.min(1),
+  occurrenceId: z.string().uuid(),
+  allocations: z.array(allocationItemSchema)
+});
+
+const setRuleAllocationsSchema = z.object({
+  orgSlug: textSchema.min(1),
+  ruleId: z.string().uuid(),
+  allocations: z.array(allocationItemSchema)
+});
+
+type FacilityAllocationConflict = {
+  spaceId: string;
+  occurrenceId: string;
+  startsAtUtc: string;
+  endsAtUtc: string;
+  conflictType: "allocation" | "reservation";
+  conflictId: string;
+  conflictStartsAtUtc: string;
+  conflictEndsAtUtc: string;
+  conflictStatus?: string | null;
+};
+
+type RuleAllocationConflictSummary = FacilityAllocationConflict & {
+  sourceKey: string;
+};
+
 const inviteSchema = z.object({
   orgSlug: textSchema.min(1),
   occurrenceId: z.string().uuid(),
@@ -277,7 +509,13 @@ const leaveSchema = z.object({
 
 export async function getCalendarWorkspaceDataAction(input: {
   orgSlug: string;
-}): Promise<CalendarActionResult<{ readModel: CalendarReadModel; activeTeams: Array<{ id: string; label: string }> }>> {
+}): Promise<
+  CalendarActionResult<{
+    readModel: CalendarReadModel;
+    activeTeams: Array<{ id: string; label: string }>;
+    facilityReadModel: Awaited<ReturnType<typeof listFacilityReservationReadModel>>;
+  }>
+> {
   try {
     const actor = await requireCalendarActor(input.orgSlug);
 
@@ -285,13 +523,18 @@ export async function getCalendarWorkspaceDataAction(input: {
       return asError("You do not have access to calendar data.");
     }
 
-    const [readModel, activeTeams] = await Promise.all([listCalendarReadModel(actor.orgId), listOrgActiveTeams(actor.orgId)]);
+    const [readModel, activeTeams, facilityReadModel] = await Promise.all([
+      listCalendarReadModel(actor.orgId),
+      listOrgActiveTeams(actor.orgId),
+      listFacilityReservationReadModel(actor.orgId)
+    ]);
 
     return {
       ok: true,
       data: {
         readModel,
-        activeTeams
+        activeTeams,
+        facilityReadModel
       }
     };
   } catch (error) {
@@ -834,6 +1077,136 @@ export async function assignFacilityAllocationAction(input: z.input<typeof alloc
     }
 
     return asError("Unable to assign this facility allocation.");
+  }
+}
+
+export async function setOccurrenceFacilityAllocationsAction(
+  input: z.input<typeof setAllocationsSchema>
+): Promise<CalendarActionResult<{ occurrenceId: string }, { conflicts: FacilityAllocationConflict[] }>> {
+  const parsed = setAllocationsSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return asError("Please review the facility allocation details.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const actor = await requireCalendarActor(payload.orgSlug);
+    const occurrence = await getCalendarOccurrenceById(actor.orgId, payload.occurrenceId);
+
+    if (!occurrence) {
+      return asError("Occurrence not found.");
+    }
+
+    const entry = await getCalendarEntryById(actor.orgId, occurrence.entryId);
+    if (!entry) {
+      return asError("Calendar entry not found.");
+    }
+
+    const allowed = await canManageEntry(actor.orgId, actor.userId, entry, actor.hasCalendarWrite);
+    if (!allowed) {
+      return asError("You do not have permission to assign facilities for this occurrence.");
+    }
+
+    const resolvedAllocations = await resolveAllocationInputs(actor.orgId, actor.userId, payload.allocations);
+    const [existingAllocations, facilityReadModel] = await Promise.all([
+      listOccurrenceFacilityAllocations(actor.orgId),
+      listFacilityReservationReadModel(actor.orgId)
+    ]);
+    const { allocationsBySpace, reservationsBySpace } = buildAllocationConflictIndex(existingAllocations, facilityReadModel.reservations);
+
+    const conflicts = resolvedAllocations.flatMap((allocation) =>
+      collectAllocationConflicts({
+        occurrenceId: occurrence.id,
+        startsAtUtc: occurrence.startsAtUtc,
+        endsAtUtc: occurrence.endsAtUtc,
+        spaceId: allocation.spaceId,
+        allocationsBySpace,
+        reservationsBySpace
+      })
+    );
+
+    if (conflicts.length > 0) {
+      return asError("Selected facility spaces are already booked in this time window.", { conflicts });
+    }
+
+    await replaceOccurrenceFacilityAllocations({
+      orgId: actor.orgId,
+      occurrenceId: occurrence.id,
+      allocations: resolvedAllocations,
+      actorUserId: actor.userId
+    });
+
+    revalidateCalendarRoutes(actor.orgSlug);
+
+    return {
+      ok: true,
+      data: {
+        occurrenceId: occurrence.id
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to update facility allocations right now.");
+  }
+}
+
+export async function setRuleFacilityAllocationsAction(
+  input: z.input<typeof setRuleAllocationsSchema>
+): Promise<CalendarActionResult<{ ruleId: string; conflicts: RuleAllocationConflictSummary[] }>> {
+  const parsed = setRuleAllocationsSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return asError("Please review the facility allocation details.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const actor = await requireCalendarActor(payload.orgSlug);
+    const rule = await getCalendarRuleById(actor.orgId, payload.ruleId);
+
+    if (!rule) {
+      return asError("Calendar rule not found.");
+    }
+
+    const entry = await getCalendarEntryById(actor.orgId, rule.entryId);
+    if (!entry) {
+      return asError("Calendar entry not found.");
+    }
+
+    const allowed = await canManageEntry(actor.orgId, actor.userId, entry, actor.hasCalendarWrite);
+    if (!allowed) {
+      return asError("You do not have permission to assign facilities for this schedule.");
+    }
+
+    const resolvedAllocations = await resolveAllocationInputs(actor.orgId, actor.userId, payload.allocations);
+    await replaceCalendarRuleFacilityAllocations({
+      orgId: actor.orgId,
+      ruleId: rule.id,
+      allocations: resolvedAllocations,
+      actorUserId: actor.userId
+    });
+
+    const occurrences = await listCalendarOccurrencesByRule(actor.orgId, rule.id);
+    const conflicts = await applyRuleAllocationsToOccurrences({
+      orgId: actor.orgId,
+      actorUserId: actor.userId,
+      occurrences,
+      allocations: resolvedAllocations
+    });
+
+    revalidateCalendarRoutes(actor.orgSlug);
+
+    return {
+      ok: true,
+      data: {
+        ruleId: rule.id,
+        conflicts
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to update facility allocations right now.");
   }
 }
 

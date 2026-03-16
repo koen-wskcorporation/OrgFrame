@@ -1,5 +1,5 @@
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { CreateOrganizationDialog } from "@orgframe/ui/dashboard/CreateOrganizationDialog";
 import { DashboardSection, DashboardShell } from "@orgframe/ui/dashboard/DashboardShell";
 import { EmptyState } from "@orgframe/ui/dashboard/EmptyState";
 import { OrgCard } from "@orgframe/ui/dashboard/OrgCard";
@@ -8,6 +8,7 @@ import { CardGrid } from "@orgframe/ui/ui/layout";
 import { SubmitButton } from "@orgframe/ui/ui/submit-button";
 import { signOutAction } from "@/app/auth/actions";
 import { getDashboardContext } from "@/lib/dashboard/getDashboardContext";
+import { getSessionUser } from "@/lib/auth/getSessionUser";
 import { AiAssistantLauncher } from "@orgframe/ui/modules/ai/components/AiAssistantLauncher";
 
 export const metadata: Metadata = {
@@ -15,6 +16,11 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
+  const user = await getSessionUser();
+  if (!user) {
+    redirect("/x/web");
+  }
+
   const { organizations } = await getDashboardContext();
 
   return (
@@ -34,11 +40,7 @@ export default async function HomePage() {
       subtitle="Your sports in one place."
       title="Dashboard"
     >
-      <DashboardSection
-        actions={<CreateOrganizationDialog />}
-        description="Open an organization to view its public site and manage core settings."
-        title="Organizations"
-      >
+      <DashboardSection description="Open an organization to view its public site and manage core settings." title="Organizations">
         {organizations.length === 0 ? (
           <EmptyState />
         ) : (
