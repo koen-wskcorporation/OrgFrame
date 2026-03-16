@@ -2,7 +2,7 @@ import Image from "next/image";
 import { buttonVariants } from "@orgframe/ui";
 
 function getAppAuthUrl() {
-  const configuredOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? process.env.ORGFRAME_APP_ORIGIN ?? "https://orgframe.app/auth";
+  const configuredOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? process.env.ORGFRAME_APP_ORIGIN ?? "https://orgframe.app";
   const normalizedOrigin = configuredOrigin.replace(/\/+$/, "");
   return `${normalizedOrigin}/auth`;
 }
