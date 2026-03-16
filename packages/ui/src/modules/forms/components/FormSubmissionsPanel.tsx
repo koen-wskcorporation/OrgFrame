@@ -1,11 +1,12 @@
 "use client";
 
-import { Filter, GripVertical, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Filter, GripVertical, Loader2, Plus, RefreshCw, Settings, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/ui/alert";
 import { CalendarPicker } from "@orgframe/ui/ui/calendar-picker";
 import { Checkbox } from "@orgframe/ui/ui/checkbox";
+import { useConfirmDialog } from "@orgframe/ui/ui/confirm-dialog";
 import { DataTable, type DataTableColumn, type DataTableViewConfig } from "@orgframe/ui/ui/data-table";
 import { SortableCanvas } from "@orgframe/ui/editor/SortableCanvas";
 import { FormField } from "@orgframe/ui/ui/form-field";
@@ -19,7 +20,6 @@ import { Chip } from "@orgframe/ui/ui/chip";
 import { Select } from "@orgframe/ui/ui/select";
 import { useToast } from "@orgframe/ui/ui/toast";
 import {
-  connectFormGoogleSheetAction,
   createFormSubmissionViewAction,
   deleteFormSubmissionAction,
   deleteFormSubmissionViewAction,
@@ -52,6 +52,7 @@ import type {
   OrgFormSubmissionView,
   SubmissionStatus
 } from "@/modules/forms/types";
+import { useOrderPanel } from "@/modules/orders";
 
 type FormSubmissionsPanelProps = {
   orgSlug: string;
@@ -120,6 +121,30 @@ function toChipColor(status: SubmissionStatus): "neutral" | "green" | "yellow" |
     default:
       return "neutral";
   }
+}
+
+function getGoogleSheetStatusMeta(status: OrgFormGoogleSheetIntegration["status"] | null) {
+  if (status === "active") {
+    return {
+      label: "Connected",
+      icon: CheckCircle2,
+      toneClassName: "text-success"
+    };
+  }
+
+  if (status === "error") {
+    return {
+      label: "Issue",
+      icon: AlertCircle,
+      toneClassName: "text-danger"
+    };
+  }
+
+  return {
+    label: "Not connected",
+    icon: AlertCircle,
+    toneClassName: "text-text-muted"
+  };
 }
 
 function toVisibilityLabel(scope: FormSubmissionViewVisibilityScope) {
@@ -212,6 +237,18 @@ type SubmissionSummaryMetricOption = {
   value: FormSubmissionViewSummaryMetricKey;
   label: string;
   description: string;
+};
+
+type GoogleSheetsConnectedMessage = {
+  type: "orgframe:google-sheets-connected";
+  orgSlug: string;
+  formId: string;
+  spreadsheetUrl?: string;
+};
+
+type GoogleSheetsOauthErrorMessage = {
+  type: "orgframe:google-sheets-oauth-error";
+  error: string;
 };
 
 const DEFAULT_VIEW_FILTERS: FormSubmissionViewFilters = {
@@ -675,6 +712,7 @@ export function FormSubmissionsPanel({
   canWrite = true
 }: FormSubmissionsPanelProps) {
   const showGoogleSheetsUi = true;
+  const { confirm } = useConfirmDialog();
   const router = useRouter();
   const searchParams = useSearchParams();
   const deepLinkedSubmissionId = useMemo(() => {
@@ -696,6 +734,7 @@ export function FormSubmissionsPanel({
     return trimmed.length > 0 ? trimmed : null;
   }, [searchParams]);
   const { toast } = useToast();
+  const { openOrderPanel } = useOrderPanel();
   const [isRefreshingSubmissions, startRefreshingSubmissions] = useTransition();
   const [isSaving, startSaving] = useTransition();
   const [isDeletingSubmissions, startDeletingSubmissions] = useTransition();
@@ -780,6 +819,8 @@ export function FormSubmissionsPanel({
   const [googleSheetState, setGoogleSheetState] = useState<OrgFormGoogleSheetIntegration | null>(googleSheetIntegration);
   const [googleSheetRunRows, setGoogleSheetRunRows] = useState<OrgFormGoogleSheetSyncRun[]>(googleSheetRecentRuns);
   const [isSavingGoogleSheet, startSavingGoogleSheet] = useTransition();
+  const [isGoogleSheetsOauthInFlight, setIsGoogleSheetsOauthInFlight] = useState(false);
+  const [isGoogleSheetsSettingsOpen, setIsGoogleSheetsSettingsOpen] = useState(false);
   const handleTableConfigChange = useCallback((nextConfig: DataTableViewConfig) => {
     tableConfigDraftRef.current = nextConfig;
     setTableConfigDraft(nextConfig);
@@ -788,6 +829,7 @@ export function FormSubmissionsPanel({
   const autoSaveRequestIdRef = useRef(0);
   const appliedFiltersSignatureRef = useRef<string | null>(null);
   const appliedSummaryCardsSignatureRef = useRef<string | null>(null);
+  const googleSheetsOauthWatchRef = useRef<number | null>(null);
 
   useEffect(() => {
     setSubmissionRows(submissions);
@@ -1037,15 +1079,19 @@ export function FormSubmissionsPanel({
     });
   }
 
-  function handleDeleteSelectedSubmissions() {
+  async function handleDeleteSelectedSubmissions() {
     if (!canWrite || !isEditableMode || selectedSubmissionIds.length === 0) {
       return;
     }
 
     const toDelete = [...selectedSubmissionIds];
-    const confirmed = window.confirm(
-      `Delete ${toDelete.length} selected submission${toDelete.length === 1 ? "" : "s"}? This cannot be undone.`
-    );
+    const confirmed = await confirm({
+      title: `Delete ${toDelete.length} submission${toDelete.length === 1 ? "" : "s"}?`,
+      description: "This cannot be undone.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      variant: "destructive"
+    });
     if (!confirmed) {
       return;
     }
@@ -1152,7 +1198,24 @@ export function FormSubmissionsPanel({
   }
 
   function handleRefreshSubmissions() {
-    startRefreshingSubmissions(() => {
+    startRefreshingSubmissions(async () => {
+      if (canWrite && googleSheetState && googleSheetConfigured) {
+        const syncResult = await syncFormGoogleSheetNowAction({
+          orgSlug,
+          formId
+        });
+
+        if (!syncResult.ok) {
+          toast({
+            title: "Google Sheets refresh sync failed",
+            description: syncResult.error,
+            variant: "warning"
+          });
+        }
+
+        await refreshGoogleSheetState(false);
+      }
+
       router.refresh();
     });
   }
@@ -1183,28 +1246,40 @@ export function FormSubmissionsPanel({
       return;
     }
 
-    startSavingGoogleSheet(async () => {
-      const result = await connectFormGoogleSheetAction({
-        orgSlug,
-        formId
-      });
+    const width = 620;
+    const height = 760;
+    const left = Math.max(0, Math.floor(window.screenX + (window.outerWidth - width) / 2));
+    const top = Math.max(0, Math.floor(window.screenY + (window.outerHeight - height) / 2));
 
-      if (!result.ok) {
-        toast({
-          title: "Unable to connect Google Sheets",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
+    const popup = window.open(
+      `/api/integrations/google-sheets/oauth/start?orgSlug=${encodeURIComponent(orgSlug)}&formId=${encodeURIComponent(formId)}`,
+      "orgframe-google-sheets-oauth",
+      `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
 
-      setGoogleSheetState(result.data.integration);
-      await refreshGoogleSheetState(false);
+    if (!popup) {
       toast({
-        title: "Google Sheets connected",
-        variant: "success"
+        title: "Popup blocked",
+        description: "Allow popups for this site to connect Google Sheets.",
+        variant: "destructive"
       });
-    });
+      return;
+    }
+
+    setIsGoogleSheetsOauthInFlight(true);
+    if (googleSheetsOauthWatchRef.current !== null) {
+      window.clearInterval(googleSheetsOauthWatchRef.current);
+    }
+    googleSheetsOauthWatchRef.current = window.setInterval(() => {
+      if (popup.closed) {
+        if (googleSheetsOauthWatchRef.current !== null) {
+          window.clearInterval(googleSheetsOauthWatchRef.current);
+          googleSheetsOauthWatchRef.current = null;
+        }
+        setIsGoogleSheetsOauthInFlight(false);
+      }
+    }, 500);
+    popup.focus();
   }
 
   function handleDisconnectGoogleSheet() {
@@ -1212,32 +1287,40 @@ export function FormSubmissionsPanel({
       return;
     }
 
-    const confirmed = window.confirm("Disconnect this Google Sheet from form submissions?");
-    if (!confirmed) {
-      return;
-    }
-
-    startSavingGoogleSheet(async () => {
-      const result = await disconnectFormGoogleSheetAction({
-        orgSlug,
-        formId
+    void (async () => {
+      const confirmed = await confirm({
+        title: "Disconnect Google Sheet?",
+        description: "This will stop syncing new form submissions.",
+        confirmLabel: "Disconnect",
+        cancelLabel: "Cancel",
+        variant: "destructive"
       });
-
-      if (!result.ok) {
-        toast({
-          title: "Unable to disconnect Google Sheets",
-          description: result.error,
-          variant: "destructive"
-        });
+      if (!confirmed) {
         return;
       }
 
-      await refreshGoogleSheetState(false);
-      toast({
-        title: "Google Sheets disconnected",
-        variant: "success"
+      startSavingGoogleSheet(async () => {
+        const result = await disconnectFormGoogleSheetAction({
+          orgSlug,
+          formId
+        });
+
+        if (!result.ok) {
+          toast({
+            title: "Unable to disconnect Google Sheets",
+            description: result.error,
+            variant: "destructive"
+          });
+          return;
+        }
+
+        await refreshGoogleSheetState(false);
+        toast({
+          title: "Google Sheets disconnected",
+          variant: "success"
+        });
       });
-    });
+    })();
   }
 
   function handleSyncGoogleSheetNow() {
@@ -1268,6 +1351,63 @@ export function FormSubmissionsPanel({
       });
     });
   }
+
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+
+      const payload = event.data as GoogleSheetsConnectedMessage | GoogleSheetsOauthErrorMessage | null;
+      if (!payload || typeof payload !== "object" || typeof payload.type !== "string") {
+        return;
+      }
+
+      if (payload.type === "orgframe:google-sheets-oauth-error") {
+        if (googleSheetsOauthWatchRef.current !== null) {
+          window.clearInterval(googleSheetsOauthWatchRef.current);
+          googleSheetsOauthWatchRef.current = null;
+        }
+        setIsGoogleSheetsOauthInFlight(false);
+        toast({
+          title: "Unable to connect Google Sheets",
+          description: payload.error,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (payload.type !== "orgframe:google-sheets-connected") {
+        return;
+      }
+
+      if (payload.orgSlug !== orgSlug || payload.formId !== formId) {
+        return;
+      }
+
+      if (googleSheetsOauthWatchRef.current !== null) {
+        window.clearInterval(googleSheetsOauthWatchRef.current);
+        googleSheetsOauthWatchRef.current = null;
+      }
+      setIsGoogleSheetsOauthInFlight(false);
+      startSavingGoogleSheet(async () => {
+        await refreshGoogleSheetState(false);
+        toast({
+          title: "Google Sheets connected",
+          variant: "success"
+        });
+      });
+    }
+
+    window.addEventListener("message", onMessage);
+    return () => {
+      if (googleSheetsOauthWatchRef.current !== null) {
+        window.clearInterval(googleSheetsOauthWatchRef.current);
+        googleSheetsOauthWatchRef.current = null;
+      }
+      window.removeEventListener("message", onMessage);
+    };
+  }, [formId, orgSlug, startSavingGoogleSheet, toast]);
 
   function toCellKey(submissionId: string, fieldName: string, submissionEntryId?: string) {
     return `${submissionId}:${submissionEntryId ?? "submission"}:${fieldName}`;
@@ -1733,6 +1873,43 @@ export function FormSubmissionsPanel({
         renderSortValue: (submission) => toStatusLabel(statusById[submission.id] ?? submission.status)
       },
       {
+        key: "sourcePaymentStatus",
+        label: "Source payment",
+        group: "Submission",
+        sortable: true,
+        renderCell: (submission) => <span>{submission.sourcePaymentStatus ?? "-"}</span>,
+        renderCopyValue: (submission) => submission.sourcePaymentStatus ?? "",
+        renderSearchValue: (submission) => submission.sourcePaymentStatus ?? "",
+        renderSortValue: (submission) => submission.sourcePaymentStatus ?? ""
+      },
+      {
+        key: "order",
+        label: "Order",
+        group: "Submission",
+        sortable: true,
+        renderCell: (submission) =>
+          submission.orderId ? (
+            <Button
+              onClick={(event) => {
+                event.stopPropagation();
+                void openOrderPanel({
+                  orgSlug,
+                  orderId: submission.orderId ?? undefined
+                });
+              }}
+              size="sm"
+              variant="secondary"
+            >
+              View order
+            </Button>
+          ) : (
+            <span>-</span>
+          ),
+        renderCopyValue: (submission) => submission.orderId ?? "",
+        renderSearchValue: (submission) => submission.orderId ?? "",
+        renderSortValue: (submission) => submission.orderId ?? ""
+      },
+      {
         key: "adminNotes",
         label: "Admin notes",
         group: "Submission",
@@ -1823,7 +2000,9 @@ export function FormSubmissionsPanel({
       savedAdminNotesById,
       savingInlineNotesId,
       savingInlineStatusId,
-      statusById
+      statusById,
+      openOrderPanel,
+      orgSlug
     ]
   );
 
@@ -1875,6 +2054,11 @@ export function FormSubmissionsPanel({
       {
         key: "adminNotes",
         label: "Admin notes",
+        type: "text"
+      },
+      {
+        key: "sourcePaymentStatus",
+        label: "Source payment status",
         type: "text"
       },
       {
@@ -2560,6 +2744,8 @@ function addSummaryCard() {
           candidateValue = statusById[submission.id] ?? submission.status;
         } else if (rule.fieldKey === "adminNotes") {
           candidateValue = adminNotesById[submission.id] ?? submission.adminNotes ?? "";
+        } else if (rule.fieldKey === "sourcePaymentStatus") {
+          candidateValue = submission.sourcePaymentStatus ?? "";
         } else if (rule.fieldKey === "submittedAt") {
           candidateValue = submission.createdAt;
         } else if (rule.fieldKey === "players") {
@@ -2617,6 +2803,8 @@ function addSummaryCard() {
     () => new Map(SUMMARY_METRIC_OPTIONS.map((option) => [option.value, option])),
     []
   );
+  const googleSheetStatusMeta = getGoogleSheetStatusMeta(googleSheetState?.status ?? null);
+  const GoogleSheetStatusIcon = googleSheetStatusMeta.icon;
 
   return (
     <Card>
@@ -2641,69 +2829,35 @@ function addSummaryCard() {
       <CardContent className="app-section-stack px-5 pb-5 pt-2 md:px-6 md:pb-6">
         {showGoogleSheetsUi && canWrite ? (
           <div className="ui-surface-block">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Google Sheets</p>
-              <p className="text-sm text-text-muted">
-                {googleSheetState
-                  ? "Bidirectional sync is active. App data is authoritative and destructive sheet edits are auto-repaired."
-                  : "Connect a managed sheet to review and update submissions from Google Sheets."}
-              </p>
-              {googleSheetState ? (
-                <div className="mt-2 space-y-1 text-xs text-text-muted">
-                  <p>
-                    Status:{" "}
-                    <Chip className="normal-case tracking-normal" color={googleSheetState.status === "active" ? "green" : "yellow"}>
-                      {googleSheetState.status}
-                    </Chip>
+            <div className="flex items-center justify-between gap-2 rounded-control border bg-surface px-2 py-1.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <GoogleSheetStatusIcon className={`h-4 w-4 shrink-0 ${googleSheetStatusMeta.toneClassName}`} />
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-text">Google Sheets</p>
+                  <p className="truncate text-[11px] text-text-muted">
+                    {googleSheetStatusMeta.label}
+                    {googleSheetState?.lastSyncedAt ? ` · Synced ${new Date(googleSheetState.lastSyncedAt).toLocaleString()}` : ""}
                   </p>
-                  <p>Last sync: {googleSheetState.lastSyncedAt ? new Date(googleSheetState.lastSyncedAt).toLocaleString() : "Never"}</p>
-                  {googleSheetState.lastError ? <p className="text-danger">Last error: {googleSheetState.lastError}</p> : null}
                 </div>
-              ) : null}
+              </div>
+              <div className="flex items-center gap-1">
+                <IconButton
+                  disabled={!googleSheetState || isSavingGoogleSheet || isGoogleSheetsOauthInFlight}
+                  icon={isSavingGoogleSheet || isRefreshingSubmissions ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                  label="Sync Google Sheets now"
+                  onClick={handleSyncGoogleSheetNow}
+                />
+                <IconButton
+                  icon={<Settings />}
+                  label="Google Sheets settings"
+                  onClick={() => setIsGoogleSheetsSettingsOpen(true)}
+                />
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {googleSheetState?.spreadsheetUrl ? (
-                <Button
-                  onClick={() => {
-                    window.open(googleSheetState.spreadsheetUrl, "_blank", "noopener,noreferrer");
-                  }}
-                  size="sm"
-                  variant="secondary"
-                >
-                  Open sheet
-                </Button>
-              ) : null}
-              {googleSheetState ? (
-                <>
-                  <Button disabled={!canWrite || isSavingGoogleSheet} loading={isSavingGoogleSheet} onClick={handleSyncGoogleSheetNow} size="sm" variant="secondary">
-                    Sync now
-                  </Button>
-                  <Button disabled={!canWrite || isSavingGoogleSheet} onClick={handleDisconnectGoogleSheet} size="sm" variant="ghost">
-                    Disconnect
-                  </Button>
-                </>
-              ) : (
-                <Button disabled={!canWrite || !googleSheetConfigured || isSavingGoogleSheet} loading={isSavingGoogleSheet} onClick={handleConnectGoogleSheet} size="sm" variant="secondary">
-                  Connect Google Sheets
-                </Button>
-              )}
-            </div>
-          </div>
           {!googleSheetConfigured ? (
             <Alert className="mt-3" variant="warning">
-              Google Sheets is not configured on the server. Missing service-account environment variables.
+              Google Sheets is not configured on the server. Missing auth and/or OAuth environment variables.
             </Alert>
-          ) : null}
-          {googleSheetRunRows.length > 0 ? (
-            <div className="mt-3 space-y-1 rounded-control border bg-surface-muted p-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Recent sync runs</p>
-              {googleSheetRunRows.slice(0, 3).map((run) => (
-                <p className="text-xs text-text-muted" key={run.id}>
-                  {new Date(run.startedAt).toLocaleString()} - {run.triggerSource} - {run.status} (updates {run.inboundUpdatesCount}, creates {run.inboundCreatesCount}, rows {run.outboundRowsCount}, conflicts {run.conflictsCount}, errors {run.errorCount})
-                </p>
-              ))}
-            </div>
           ) : null}
           </div>
         ) : null}
@@ -3146,6 +3300,98 @@ function addSummaryCard() {
       <Panel
         footer={
           <>
+            <Button onClick={() => setIsGoogleSheetsSettingsOpen(false)} variant="ghost">
+              Close
+            </Button>
+            {googleSheetState ? (
+              <Button disabled={!canWrite || isSavingGoogleSheet} loading={isSavingGoogleSheet} onClick={handleSyncGoogleSheetNow} variant="secondary">
+                Sync now
+              </Button>
+            ) : (
+              <Button
+                disabled={!canWrite || !googleSheetConfigured || isSavingGoogleSheet || isGoogleSheetsOauthInFlight}
+                loading={isSavingGoogleSheet || isGoogleSheetsOauthInFlight}
+                onClick={handleConnectGoogleSheet}
+                variant="secondary"
+              >
+                Connect Google Sheets
+              </Button>
+            )}
+          </>
+        }
+        onClose={() => setIsGoogleSheetsSettingsOpen(false)}
+        open={isGoogleSheetsSettingsOpen}
+        subtitle="Manage Google Sheets connection details and review recent sync activity."
+        title="Google Sheets integration"
+      >
+        <div className="space-y-4">
+          <div className="rounded-control border bg-surface-muted p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Connection</p>
+            <div className="mt-2 flex items-center gap-2 text-sm text-text">
+              <GoogleSheetStatusIcon className={`h-4 w-4 ${googleSheetStatusMeta.toneClassName}`} />
+              <span>{googleSheetStatusMeta.label}</span>
+              {googleSheetState ? (
+                <Chip className="normal-case tracking-normal" color={googleSheetState.status === "active" ? "green" : "yellow"}>
+                  {googleSheetState.status}
+                </Chip>
+              ) : null}
+            </div>
+            <p className="mt-2 text-xs text-text-muted">
+              Last sync: {googleSheetState?.lastSyncedAt ? new Date(googleSheetState.lastSyncedAt).toLocaleString() : "Never"}
+            </p>
+            {googleSheetState?.lastError ? <p className="mt-1 text-xs text-danger">Last error: {googleSheetState.lastError}</p> : null}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {googleSheetState?.spreadsheetUrl ? (
+                <Button
+                  onClick={() => {
+                    window.open(googleSheetState.spreadsheetUrl, "_blank", "noopener,noreferrer");
+                  }}
+                  size="sm"
+                  variant="secondary"
+                >
+                  Open sheet
+                </Button>
+              ) : null}
+              {googleSheetState ? (
+                <Button disabled={!canWrite || isSavingGoogleSheet} onClick={handleDisconnectGoogleSheet} size="sm" variant="ghost">
+                  Disconnect
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          {!googleSheetConfigured ? (
+            <Alert variant="warning">
+              Google Sheets is not configured on the server. Missing auth and/or OAuth environment variables.
+            </Alert>
+          ) : null}
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Sync log</p>
+            {googleSheetRunRows.length === 0 ? (
+              <Alert variant="info">No sync runs yet.</Alert>
+            ) : (
+              <div className="space-y-2">
+                {googleSheetRunRows.slice(0, 12).map((run) => (
+                  <div className="rounded-control border bg-surface-muted px-3 py-2" key={run.id}>
+                    <p className="text-xs font-semibold text-text">{new Date(run.startedAt).toLocaleString()}</p>
+                    <p className="text-xs text-text-muted">
+                      {run.triggerSource} - {run.status}
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      Updates {run.inboundUpdatesCount} · Creates {run.inboundCreatesCount} · Rows {run.outboundRowsCount} · Conflicts {run.conflictsCount} · Errors {run.errorCount}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </Panel>
+
+      <Panel
+        footer={
+          <>
             <Button onClick={() => setIsEditViewPanelOpen(false)} variant="ghost">
               Cancel
             </Button>
@@ -3227,6 +3473,31 @@ function addSummaryCard() {
                 <div className="space-y-1">
                   <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Submitted</p>
                   <p className="text-sm text-text">{new Date(selectedSubmission.createdAt).toLocaleString()}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Source Payment Status</p>
+                  <p className="text-sm text-text">{selectedSubmission.sourcePaymentStatus ?? "-"}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Order</p>
+                  {selectedSubmission.orderId ? (
+                    <Button
+                      onClick={() =>
+                        openOrderPanel({
+                          orgSlug,
+                          orderId: selectedSubmission.orderId ?? undefined
+                        })
+                      }
+                      size="sm"
+                      variant="secondary"
+                    >
+                      Open order panel
+                    </Button>
+                  ) : (
+                    <p className="text-sm text-text">-</p>
+                  )}
                 </div>
 
                 <FormField label="Status">

@@ -26,15 +26,81 @@ export function getPlatformHost() {
   return normalizeHost(parseHostFromUrl(siteUrl));
 }
 
-export function getPlatformHosts() {
-  const hosts = new Set<string>(["localhost", "127.0.0.1"]);
+function readOptionalHost(value: string | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  return normalizeHost(parseHostFromUrl(value));
+}
+
+export function getTenantBaseHosts() {
+  const hosts = new Set<string>();
   const primary = getPlatformHost();
 
   if (primary) {
     hosts.add(primary);
+
+    if (primary.startsWith("staging.")) {
+      hosts.add(primary.slice("staging.".length));
+    } else {
+      hosts.add(`staging.${primary}`);
+    }
+  }
+
+  const explicitStagingHost = readOptionalHost(process.env.NEXT_PUBLIC_STAGING_SITE_URL || process.env.STAGING_SITE_URL);
+  if (explicitStagingHost) {
+    hosts.add(explicitStagingHost);
   }
 
   return hosts;
+}
+
+export function getPlatformHosts() {
+  const hosts = new Set<string>(["localhost", "127.0.0.1"]);
+  for (const host of getTenantBaseHosts()) {
+    hosts.add(host);
+  }
+
+  return hosts;
+}
+
+const RESERVED_SUBDOMAINS = new Set(["www", "admin", "api", "docs", "status", "staging"]);
+
+export function isReservedSubdomain(value: string) {
+  return RESERVED_SUBDOMAINS.has(value.toLowerCase());
+}
+
+export function extractOrgSlugFromSubdomain(host: string, platformHost: string) {
+  if (!host || !platformHost || host === platformHost) {
+    return null;
+  }
+
+  const suffix = `.${platformHost}`;
+  if (!host.endsWith(suffix)) {
+    return null;
+  }
+
+  const candidate = host.slice(0, -suffix.length);
+  if (!candidate || candidate.includes(".") || isReservedSubdomain(candidate)) {
+    return null;
+  }
+
+  return candidate;
+}
+
+export function resolveOrgSubdomain(host: string, baseHosts: Iterable<string>) {
+  for (const baseHost of baseHosts) {
+    const orgSlug = extractOrgSlugFromSubdomain(host, baseHost);
+    if (orgSlug) {
+      return {
+        orgSlug,
+        baseHost
+      };
+    }
+  }
+
+  return null;
 }
 
 export function normalizeDomain(value: string) {

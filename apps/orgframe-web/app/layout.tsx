@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { ConfirmDialogProvider } from "@orgframe/ui/ui/confirm-dialog";
 
 export const metadata: Metadata = {
   title: 'OrgFrame | Sports Operations Platform',
@@ -13,17 +14,19 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/icon.svg", type: "image/svg+xml" }
+      { url: "/brand/favicon.svg", type: "image/svg+xml" }
     ],
-    shortcut: "/icon.svg",
-    apple: "/icon.svg"
+    shortcut: "/brand/favicon.svg",
+    apple: "/brand/favicon.svg"
   }
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
+      </body>
     </html>
   );
 }

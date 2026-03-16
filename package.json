@@ -6,8 +6,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:app": "npm run dev --workspace orgframe-app",
-    "dev:web": "npm run dev --workspace orgframe-web",
+    "dev": "node scripts/dev-launch.mjs",
+    "dev:app": "node scripts/dev-launch.mjs app",
+    "dev:web": "node scripts/dev-launch.mjs web",
     "build:app": "npm run build --workspace orgframe-app",
     "build:web": "npm run build --workspace orgframe-web",
     "lint:app": "npm run lint --workspace orgframe-app",

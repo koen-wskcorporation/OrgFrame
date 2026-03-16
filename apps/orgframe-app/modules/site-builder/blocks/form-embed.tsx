@@ -63,7 +63,7 @@ export function FormEmbedBlockRender({ block, context, runtimeData, isEditing }:
           ) : !formRuntime?.viewer && requireSignIn ? (
             <div className="space-y-3">
               <Alert variant="info">Sign in to complete this form.</Alert>
-              <Button href={`/auth/login?next=${encodeURIComponent(getPagePath(context))}`} variant="secondary">
+              <Button href={`/auth?next=${encodeURIComponent(getPagePath(context))}`} variant="secondary">
                 Sign in
               </Button>
             </div>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdaptiveLogo } from "@orgframe/ui/ui/adaptive-logo";
 import { buttonVariants } from "@orgframe/ui/ui/button";
 import { Card, CardTitle } from "@orgframe/ui/ui/card";
 import { cn } from "@/lib/utils";
@@ -7,14 +8,15 @@ type OrgCardProps = {
   orgName: string;
   orgSlug: string;
   iconUrl?: string | null;
+  href?: string;
 };
 
 function getOrgInitial(orgName: string) {
   return orgName.trim().charAt(0).toUpperCase() || "O";
 }
 
-export function OrgCard({ orgName, orgSlug, iconUrl }: OrgCardProps) {
-  const orgHref = `/${orgSlug}`;
+export function OrgCard({ orgName, orgSlug, iconUrl, href }: OrgCardProps) {
+  const orgHref = href ?? `/${orgSlug}`;
 
   return (
     <Card className="p-5 transition-colors hover:border-text-muted/35 hover:bg-surface-muted/20">
@@ -22,8 +24,12 @@ export function OrgCard({ orgName, orgSlug, iconUrl }: OrgCardProps) {
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-control border bg-surface-muted p-2">
             {iconUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img alt={`${orgName} logo`} className="h-full w-full object-contain" src={iconUrl} />
+              <AdaptiveLogo
+                alt={`${orgName} logo`}
+                className="h-full w-full object-contain"
+                src={iconUrl}
+                svgClassName="block h-full w-full object-contain"
+              />
             ) : (
               <span className="text-base font-semibold text-text">{getOrgInitial(orgName)}</span>
             )}

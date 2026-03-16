@@ -48,7 +48,7 @@ export default async function OrgFormRegistrationPage({
   const requireSignIn = form.formKind === "program_registration" || form.settingsJson.requireSignIn !== false;
 
   if (requireSignIn && !user) {
-    redirect(`/auth/login?next=${encodeURIComponent(`/${org.orgSlug}/register/${form.slug}`)}`);
+    redirect(`/auth?next=${encodeURIComponent(`/${org.orgSlug}/register/${form.slug}`)}`);
   }
 
   const [players, programNodes] = await Promise.all([

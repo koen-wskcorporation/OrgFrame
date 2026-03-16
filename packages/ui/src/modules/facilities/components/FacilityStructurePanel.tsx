@@ -1,31 +1,36 @@
 "use client";
 
-import { Copy, Plus, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Copy, Settings2, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Alert } from "@orgframe/ui/ui/alert";
 import { Button } from "@orgframe/ui/ui/button";
 import { type CanvasViewportHandle } from "@orgframe/ui/ui/canvas-viewport";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
 import { Checkbox } from "@orgframe/ui/ui/checkbox";
+import { useConfirmDialog } from "@orgframe/ui/ui/confirm-dialog";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
 import { Panel } from "@orgframe/ui/ui/panel";
+import { Popover } from "@orgframe/ui/ui/popover";
+import { Popup } from "@orgframe/ui/ui/popup";
 import { Select } from "@orgframe/ui/ui/select";
 import { StructureCanvasShell } from "@orgframe/ui/modules/core/components/StructureCanvasShell";
 import type { FacilitySpace } from "@/modules/facilities/types";
 
 type StructureElementType = "room" | "court" | "field" | "custom" | "structure";
 
-type SpaceDraft = {
-  spaceId?: string;
-  parentSpaceId: string;
+type InlineCreateDraft = {
   name: string;
-  slug: string;
+  elementType: StructureElementType;
+  isBookable: boolean;
+};
+
+type InlineEditDraft = {
+  spaceId: string;
+  name: string;
   elementType: StructureElementType;
   status: FacilitySpace["status"];
   isBookable: boolean;
-  timezone: string;
-  capacity: string;
 };
 
 type RoomLayout = {
@@ -37,11 +42,70 @@ type RoomLayout = {
 
 type ResizeEdge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
-const FLOOR_MIN_WIDTH = 900;
-const FLOOR_MIN_HEIGHT = 600;
-const FLOOR_GRID_SIZE = 25;
-const FLOOR_CONTENT_PADDING = FLOOR_GRID_SIZE;
-const FLOOR_EDGE_INSET = FLOOR_GRID_SIZE;
+const CANVAS_GRID_SIZE = 25;
+const CANVAS_GRID_PITCH = CANVAS_GRID_SIZE;
+const CANVAS_POSITION_STEP = CANVAS_GRID_PITCH;
+const CANVAS_SIZE_STEP = CANVAS_GRID_SIZE;
+const NODE_MIN_SIZE = 5;
+const RESIZE_HIT_RADIUS = 10;
+const GRID_NUMERIC_SCALE = 10;
+
+function edgeToCursor(edge: ResizeEdge) {
+  switch (edge) {
+    case "n":
+      return "n-resize";
+    case "s":
+      return "s-resize";
+    case "e":
+      return "e-resize";
+    case "w":
+      return "w-resize";
+    case "ne":
+      return "ne-resize";
+    case "nw":
+      return "nw-resize";
+    case "se":
+      return "se-resize";
+    case "sw":
+      return "sw-resize";
+    default:
+      return "default";
+  }
+}
+
+function getResizeEdgeFromPoint(localX: number, localY: number, width: number, height: number): ResizeEdge | null {
+  const nearLeft = localX <= RESIZE_HIT_RADIUS;
+  const nearRight = localX >= width - RESIZE_HIT_RADIUS;
+  const nearTop = localY <= RESIZE_HIT_RADIUS;
+  const nearBottom = localY >= height - RESIZE_HIT_RADIUS;
+
+  if (nearTop && nearLeft) {
+    return "nw";
+  }
+  if (nearTop && nearRight) {
+    return "ne";
+  }
+  if (nearBottom && nearLeft) {
+    return "sw";
+  }
+  if (nearBottom && nearRight) {
+    return "se";
+  }
+  if (nearTop) {
+    return "n";
+  }
+  if (nearBottom) {
+    return "s";
+  }
+  if (nearLeft) {
+    return "w";
+  }
+  if (nearRight) {
+    return "e";
+  }
+
+  return null;
+}
 
 function slugify(value: string) {
   return value
@@ -68,28 +132,35 @@ function asNumber(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function snapByStep(value: number, step: number) {
+  const scaledValue = Math.round(value * GRID_NUMERIC_SCALE);
+  const scaledStep = Math.max(1, Math.round(step * GRID_NUMERIC_SCALE));
+  const snappedScaled = Math.round(scaledValue / scaledStep) * scaledStep;
+  return snappedScaled / GRID_NUMERIC_SCALE;
+}
+
 function getRoomLayout(space: FacilitySpace, index: number): RoomLayout {
   const metadata = asObject(space.metadataJson);
   const floorPlan = asObject(metadata.floorPlan);
-  const fallbackX = FLOOR_GRID_SIZE + (index % 6) * 200;
-  const fallbackY = FLOOR_GRID_SIZE + Math.floor(index / 6) * 150;
-  const rawWidth = Math.max(FLOOR_GRID_SIZE * 3, asNumber(floorPlan.width, FLOOR_GRID_SIZE * 8));
-  const rawHeight = Math.max(FLOOR_GRID_SIZE * 2, asNumber(floorPlan.height, FLOOR_GRID_SIZE * 5));
+  const fallbackX = CANVAS_GRID_PITCH + (index % 6) * 200;
+  const fallbackY = CANVAS_GRID_PITCH + Math.floor(index / 6) * 150;
+  const rawWidth = Math.max(NODE_MIN_SIZE, asNumber(floorPlan.width, CANVAS_GRID_SIZE * 8));
+  const rawHeight = Math.max(NODE_MIN_SIZE, asNumber(floorPlan.height, CANVAS_GRID_SIZE * 5));
 
   return {
-    x: Math.max(FLOOR_EDGE_INSET, snapToGrid(asNumber(floorPlan.x, fallbackX))),
-    y: Math.max(FLOOR_EDGE_INSET, snapToGrid(asNumber(floorPlan.y, fallbackY))),
-    width: snapToGrid(rawWidth),
-    height: snapToGrid(rawHeight)
+    x: snapToGrid(asNumber(floorPlan.x, fallbackX)),
+    y: snapToGrid(asNumber(floorPlan.y, fallbackY)),
+    width: snapSizeToGrid(rawWidth),
+    height: snapSizeToGrid(rawHeight)
   };
 }
 
 function roundLayout(layout: RoomLayout): RoomLayout {
   return {
-    x: Math.round(layout.x),
-    y: Math.round(layout.y),
-    width: Math.round(layout.width),
-    height: Math.round(layout.height)
+    x: snapToGrid(layout.x),
+    y: snapToGrid(layout.y),
+    width: snapSizeToGrid(layout.width),
+    height: snapSizeToGrid(layout.height)
   };
 }
 
@@ -98,7 +169,17 @@ function areLayoutsEqual(a: RoomLayout, b: RoomLayout) {
 }
 
 function snapToGrid(value: number) {
-  return Math.round(value / FLOOR_GRID_SIZE) * FLOOR_GRID_SIZE;
+  return snapByStep(value, CANVAS_POSITION_STEP);
+}
+
+function snapSizeToGrid(value: number) {
+  const minSize = Math.max(NODE_MIN_SIZE, CANVAS_SIZE_STEP);
+  if (value <= CANVAS_GRID_SIZE) {
+    return minSize;
+  }
+
+  const snappedRemainder = snapByStep(value - CANVAS_GRID_SIZE, CANVAS_GRID_PITCH);
+  return Math.max(minSize, CANVAS_GRID_SIZE + Math.max(0, snappedRemainder));
 }
 
 function resolveElementType(space: FacilitySpace | null): StructureElementType {
@@ -132,20 +213,6 @@ function isNonBookableElementType(elementType: StructureElementType) {
   return elementType === "structure";
 }
 
-function toDraft(space: FacilitySpace | null, parentSpaceId: string): SpaceDraft {
-  return {
-    spaceId: space?.id,
-    parentSpaceId: space?.parentSpaceId ?? parentSpaceId,
-    name: space?.name ?? "",
-    slug: space?.slug ?? "",
-    elementType: resolveElementType(space),
-    status: space?.status ?? "open",
-    isBookable: space?.isBookable ?? true,
-    timezone: space?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-    capacity: space?.capacity?.toString() ?? ""
-  };
-}
-
 function resolveBuildingContext(selectedSpace: FacilitySpace, byId: Map<string, FacilitySpace>) {
   if (selectedSpace.spaceKind === "building") {
     return selectedSpace;
@@ -166,6 +233,23 @@ function resolveBuildingContext(selectedSpace: FacilitySpace, byId: Map<string, 
   }
 
   return null;
+}
+
+function isDescendantOf(space: FacilitySpace, ancestorId: string, byId: Map<string, FacilitySpace>) {
+  let cursor = space.parentSpaceId;
+  while (cursor) {
+    if (cursor === ancestorId) {
+      return true;
+    }
+
+    const parent = byId.get(cursor);
+    if (!parent) {
+      return false;
+    }
+    cursor = parent.parentSpaceId;
+  }
+
+  return false;
 }
 
 type FacilityStructurePanelProps = {
@@ -208,30 +292,40 @@ export function FacilityStructurePanel({
   selectedSpace,
   spaces,
   canWrite,
-  isMutating,
+  isMutating: _isMutating,
   onCreateSpace,
   onUpdateSpace,
   onArchiveSpace,
   onDeleteSpace
 }: FacilityStructurePanelProps) {
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
+  const { confirm } = useConfirmDialog();
   const [structureSearch, setStructureSearch] = useState("");
   const [structureScale, setStructureScale] = useState(1);
   const [structureZoomPercent, setStructureZoomPercent] = useState(100);
-  const [showFloorLayering, setShowFloorLayering] = useState(false);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
   const [hoveredRoomId, setHoveredRoomId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<SpaceDraft>(() => toDraft(null, selectedSpace.id));
-  const [selectedFloorId, setSelectedFloorId] = useState<string>("");
-  const [autoFloorSeededForBuildingId, setAutoFloorSeededForBuildingId] = useState<string | null>(null);
+  const [inlineCreateDraft, setInlineCreateDraft] = useState<InlineCreateDraft | null>(null);
+  const [inlineCreateLayout, setInlineCreateLayout] = useState<RoomLayout | null>(null);
+  const [nodeEditorDraft, setNodeEditorDraft] = useState<InlineEditDraft | null>(null);
+  const [actionMenuRoomId, setActionMenuRoomId] = useState<string | null>(null);
+  const [actionMenuPoint, setActionMenuPoint] = useState<{ x: number; y: number } | null>(null);
+  const [actionMenuStamp, setActionMenuStamp] = useState(0);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isStructureCanvasEditMode, setIsStructureCanvasEditMode] = useState(false);
+  const [hoverResizeEdgeByRoomId, setHoverResizeEdgeByRoomId] = useState<Record<string, ResizeEdge | null>>({});
+  const [copiedRoomId, setCopiedRoomId] = useState<string | null>(null);
+  const [pasteCount, setPasteCount] = useState(0);
   const [dragState, setDragState] = useState<
     | {
         mode: "move" | "resize";
         roomId: string;
+        roomIds: string[];
         startX: number;
         startY: number;
         origin: RoomLayout;
+        originsByRoomId?: Record<string, RoomLayout>;
         edge?: ResizeEdge;
         hasCrossedThreshold: boolean;
       }
@@ -241,143 +335,145 @@ export function FacilityStructurePanel({
   const layoutDraftByRoomIdRef = useRef<Record<string, RoomLayout>>({});
   const structureCanvasRef = useRef<CanvasViewportHandle | null>(null);
   const structureSearchInputRef = useRef<HTMLInputElement | null>(null);
-
-  const spaceById = useMemo(() => new Map(spaces.map((space) => [space.id, space])), [spaces]);
-  const building = useMemo(() => resolveBuildingContext(selectedSpace, spaceById), [selectedSpace, spaceById]);
-  const floors = useMemo(() => {
-    if (!building) {
-      return [];
-    }
-
-    return spaces
-      .filter((space) => space.parentSpaceId === building.id && space.spaceKind === "floor" && space.status !== "archived")
-      .sort((a, b) => a.sortIndex - b.sortIndex || a.name.localeCompare(b.name));
-  }, [building, spaces]);
-  const hasFloorLayers = Boolean(building && floors.length > 0);
-  const mappingRoot = building ?? selectedSpace;
+  const actionMenuAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const optimisticIdRef = useRef(0);
+  const [optimisticSpaces, setOptimisticSpaces] = useState<FacilitySpace[]>(spaces);
 
   useEffect(() => {
-    if (!hasFloorLayers) {
-      setSelectedFloorId(selectedSpace.id);
-      return;
-    }
+    setOptimisticSpaces(spaces);
+  }, [spaces]);
 
-    if (floors.length === 0) {
-      setSelectedFloorId("");
-      return;
-    }
+  const effectiveSpaces = optimisticSpaces;
+  const selectedRoomIdSet = useMemo(() => new Set(selectedRoomIds), [selectedRoomIds]);
 
-    if (!selectedFloorId || !floors.some((floor) => floor.id === selectedFloorId)) {
-      setSelectedFloorId(floors[0]?.id ?? "");
-    }
-  }, [floors, hasFloorLayers, selectedFloorId, selectedSpace.id]);
-
-  useEffect(() => {
-    if (!building || floors.length > 0 || !canWrite || isMutating || autoFloorSeededForBuildingId === building.id) {
-      return;
-    }
-
-    setAutoFloorSeededForBuildingId(building.id);
-    onCreateSpace({
-      parentSpaceId: building.id,
-      name: "Floor 1",
-      slug: slugify(`${building.slug}-floor-1`),
-      spaceKind: "floor",
-      status: "open",
-      isBookable: false,
-      timezone: building.timezone,
-      capacity: null,
-      sortIndex: 0,
-      metadataJson: {
-        floorPlan: {
-          canvas: {
-            width: 1400,
-            height: 900
-          }
-        }
-      }
-    });
-  }, [autoFloorSeededForBuildingId, building, canWrite, floors.length, isMutating, onCreateSpace]);
-
-  const selectedFloor = hasFloorLayers ? (selectedFloorId ? (spaceById.get(selectedFloorId) ?? null) : null) : selectedSpace;
-  const roomsByFloorId = useMemo(() => {
-    const grouped = new Map<string, FacilitySpace[]>();
-    if (!hasFloorLayers) {
-      grouped.set(selectedSpace.id, []);
-    }
-
-    for (const floor of floors) {
-      grouped.set(floor.id, []);
-    }
-
-    for (const space of spaces) {
-      if (!space.parentSpaceId || !isRoomKind(space.spaceKind) || space.status === "archived") {
-        continue;
-      }
-
-      const bucket = grouped.get(space.parentSpaceId);
-      if (!bucket) {
-        continue;
-      }
-
-      bucket.push(space);
-    }
-
-    for (const [floorId, floorRooms] of grouped.entries()) {
-      grouped.set(
-        floorId,
-        floorRooms.sort((a, b) => a.sortIndex - b.sortIndex || a.name.localeCompare(b.name))
-      );
-    }
-
-    return grouped;
-  }, [floors, hasFloorLayers, selectedSpace.id, spaces]);
-
-  const rooms = useMemo(() => {
-    if (!selectedFloor?.id) {
-      return [];
-    }
-    return roomsByFloorId.get(selectedFloor.id) ?? [];
-  }, [roomsByFloorId, selectedFloor]);
-
-  const largestFloorCanvasSize = useMemo(() => {
-    let width = FLOOR_MIN_WIDTH;
-    let height = FLOOR_MIN_HEIGHT;
-
-    for (const floor of floors) {
-      const floorRooms = roomsByFloorId.get(floor.id) ?? [];
-      let maxX = FLOOR_MIN_WIDTH;
-      let maxY = FLOOR_MIN_HEIGHT;
-
-      floorRooms.forEach((room, index) => {
-        const layout =
-          floor.id === selectedFloorId ? (layoutDraftByRoomId[room.id] ?? getRoomLayout(room, index)) : getRoomLayout(room, index);
-        maxX = Math.max(maxX, layout.x + layout.width + FLOOR_CONTENT_PADDING);
-        maxY = Math.max(maxY, layout.y + layout.height + FLOOR_CONTENT_PADDING);
-      });
-
-      width = Math.max(width, Math.ceil(maxX));
-      height = Math.max(height, Math.ceil(maxY));
-    }
-
-    return { width, height };
-  }, [floors, layoutDraftByRoomId, roomsByFloorId, selectedFloorId]);
-
-  const renderedCanvasSize = useMemo(() => {
-    let maxX = FLOOR_MIN_WIDTH;
-    let maxY = FLOOR_MIN_HEIGHT;
-
-    rooms.forEach((room, index) => {
-      const layout = layoutDraftByRoomId[room.id] ?? getRoomLayout(room, index);
-      maxX = Math.max(maxX, layout.x + layout.width + FLOOR_CONTENT_PADDING);
-      maxY = Math.max(maxY, layout.y + layout.height + FLOOR_CONTENT_PADDING);
-    });
-
-    return {
-      width: Math.max(largestFloorCanvasSize.width, Math.ceil(maxX)),
-      height: Math.max(largestFloorCanvasSize.height, Math.ceil(maxY))
+  function createSpaceOptimistically(input: Parameters<FacilityStructurePanelProps["onCreateSpace"]>[0]) {
+    const now = new Date().toISOString();
+    const optimisticId = `optimistic-space-${optimisticIdRef.current++}`;
+    const optimisticSpace: FacilitySpace = {
+      id: optimisticId,
+      orgId: selectedSpace.orgId,
+      parentSpaceId: input.parentSpaceId,
+      name: input.name,
+      slug: input.slug,
+      spaceKind: input.spaceKind,
+      status: input.status,
+      isBookable: input.isBookable,
+      timezone: input.timezone,
+      capacity: input.capacity,
+      metadataJson: input.metadataJson ?? {},
+      statusLabelsJson: {},
+      sortIndex: input.sortIndex,
+      createdAt: now,
+      updatedAt: now
     };
-  }, [largestFloorCanvasSize.height, largestFloorCanvasSize.width, layoutDraftByRoomId, rooms]);
+
+    setOptimisticSpaces((current) => [...current, optimisticSpace]);
+    onCreateSpace(input);
+  }
+
+  function updateSpaceOptimistically(input: Parameters<FacilityStructurePanelProps["onUpdateSpace"]>[0]) {
+    setOptimisticSpaces((current) =>
+      current.map((space) =>
+        space.id === input.spaceId
+          ? {
+              ...space,
+              parentSpaceId: input.parentSpaceId,
+              name: input.name,
+              slug: input.slug,
+              spaceKind: input.spaceKind,
+              status: input.status,
+              isBookable: input.isBookable,
+              timezone: input.timezone,
+              capacity: input.capacity,
+              sortIndex: input.sortIndex,
+              metadataJson: input.metadataJson ?? space.metadataJson,
+              updatedAt: new Date().toISOString()
+            }
+          : space
+      )
+    );
+    onUpdateSpace(input);
+  }
+
+  function deleteSpaceOptimistically(spaceId: string) {
+    setOptimisticSpaces((current) => current.filter((space) => space.id !== spaceId));
+    onDeleteSpace(spaceId);
+  }
+
+  function archiveSpaceOptimistically(spaceId: string) {
+    setOptimisticSpaces((current) =>
+      current.map((space) => (space.id === spaceId ? { ...space, status: "archived", updatedAt: new Date().toISOString() } : space))
+    );
+    onArchiveSpace(spaceId);
+  }
+
+  function clearNodeSelection() {
+    setActiveRoomId(null);
+    setSelectedRoomIds([]);
+    setHoveredRoomId(null);
+    setActionMenuRoomId(null);
+    setActionMenuPoint(null);
+  }
+
+  function handleCanvasPointerDownCapture(event: ReactPointerEvent<HTMLDivElement>) {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest("[data-structure-node-id]")) {
+      return;
+    }
+
+    clearNodeSelection();
+  }
+
+  const spaceById = useMemo(() => new Map(effectiveSpaces.map((space) => [space.id, space])), [effectiveSpaces]);
+  const building = useMemo(() => resolveBuildingContext(selectedSpace, spaceById), [selectedSpace, spaceById]);
+  const mappingRoot = building ?? selectedSpace;
+  const rooms = useMemo(
+    () =>
+      effectiveSpaces
+        .filter((space) => space.status !== "archived" && isRoomKind(space.spaceKind) && isDescendantOf(space, mappingRoot.id, spaceById))
+        .sort((a, b) => a.sortIndex - b.sortIndex || a.name.localeCompare(b.name)),
+    [effectiveSpaces, mappingRoot.id, spaceById]
+  );
+
+  const roomFitBounds = useMemo(() => {
+    const fitLayouts: RoomLayout[] = rooms.map((room, index) => layoutDraftByRoomId[room.id] ?? getRoomLayout(room, index));
+
+    if (fitLayouts.length === 0) {
+      return null;
+    }
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    fitLayouts.forEach((layout) => {
+      minX = Math.min(minX, layout.x);
+      minY = Math.min(minY, layout.y);
+      maxX = Math.max(maxX, layout.x + layout.width);
+      maxY = Math.max(maxY, layout.y + layout.height);
+    });
+
+    const padding = Math.max(16, CANVAS_GRID_SIZE);
+    const left = Math.floor(minX - padding);
+    const top = Math.floor(minY - padding);
+    const width = Math.max(1, Math.ceil(maxX - minX + padding * 2));
+    const height = Math.max(1, Math.ceil(maxY - minY + padding * 2));
+    return { left, top, width, height };
+  }, [layoutDraftByRoomId, rooms]);
+
+  function handleFitToRooms(options?: { viewportOffsetX?: number; viewportOffsetY?: number; animated?: boolean }) {
+    if (!roomFitBounds) {
+      structureCanvasRef.current?.fitToView(options);
+      return;
+    }
+
+    structureCanvasRef.current?.fitToBounds({
+      x: roomFitBounds.left,
+      y: roomFitBounds.top,
+      width: roomFitBounds.width,
+      height: roomFitBounds.height
+    }, options);
+  }
 
   useEffect(() => {
     const nextDraft: Record<string, RoomLayout> = {};
@@ -387,32 +483,46 @@ export function FacilityStructurePanel({
 
     layoutDraftByRoomIdRef.current = nextDraft;
     setLayoutDraftByRoomId(nextDraft);
-  }, [rooms, selectedFloor?.id]);
+  }, [rooms]);
+
+  useEffect(() => {
+    const roomIdSet = new Set(rooms.map((room) => room.id));
+    setSelectedRoomIds((current) => current.filter((roomId) => roomIdSet.has(roomId)));
+    setActiveRoomId((current) => (current && roomIdSet.has(current) ? current : null));
+  }, [rooms]);
 
   const normalizedSearch = structureSearch.trim().toLowerCase();
+  const normalizeSearchKey = useCallback((value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, ""), []);
   const matchingRooms = useMemo(() => {
     if (!normalizedSearch) {
       return [];
     }
 
-    return rooms.filter((room) => room.name.toLowerCase().includes(normalizedSearch));
-  }, [normalizedSearch, rooms]);
-
-  const layeredRooms = useMemo(() => {
-    if (!showFloorLayering) {
+    const queryKey = normalizeSearchKey(normalizedSearch);
+    if (!queryKey) {
       return [];
     }
 
-    return floors
-      .filter((floor) => floor.id !== selectedFloorId)
-      .flatMap((floor) =>
-        (roomsByFloorId.get(floor.id) ?? []).map((room, index) => ({
-          floorName: floor.name,
-          room,
-          layout: getRoomLayout(room, index)
-        }))
-      );
-  }, [floors, roomsByFloorId, selectedFloorId, showFloorLayering]);
+    return rooms.filter((room) => normalizeSearchKey(room.name).includes(queryKey));
+  }, [normalizeSearchKey, normalizedSearch, rooms]);
+
+  const actionMenuRoom = useMemo(
+    () => (actionMenuRoomId ? (spaceById.get(actionMenuRoomId) ?? null) : null),
+    [actionMenuRoomId, spaceById]
+  );
+  const canvasCenterTitle = mappingRoot.name;
+  const mapCanEdit = canWrite && isStructureCanvasEditMode;
+
+  useEffect(() => {
+    if (!actionMenuRoomId) {
+      return;
+    }
+
+    if (!spaceById.has(actionMenuRoomId)) {
+      setActionMenuRoomId(null);
+      setActionMenuPoint(null);
+    }
+  }, [actionMenuRoomId, spaceById]);
 
   function persistRoomLayout(roomId: string, layout: RoomLayout) {
     const room = spaceById.get(roomId);
@@ -424,16 +534,16 @@ export function FacilityStructurePanel({
     const metadata = asObject(room.metadataJson);
     const floorPlan = asObject(metadata.floorPlan);
     const existingLayout: RoomLayout = {
-      x: Math.round(asNumber(floorPlan.x, roundedLayout.x)),
-      y: Math.round(asNumber(floorPlan.y, roundedLayout.y)),
-      width: Math.round(asNumber(floorPlan.width, roundedLayout.width)),
-      height: Math.round(asNumber(floorPlan.height, roundedLayout.height))
+      x: snapToGrid(asNumber(floorPlan.x, roundedLayout.x)),
+      y: snapToGrid(asNumber(floorPlan.y, roundedLayout.y)),
+      width: snapSizeToGrid(asNumber(floorPlan.width, roundedLayout.width)),
+      height: snapSizeToGrid(asNumber(floorPlan.height, roundedLayout.height))
     };
     if (areLayoutsEqual(existingLayout, roundedLayout)) {
       return;
     }
 
-    onUpdateSpace({
+    updateSpaceOptimistically({
       spaceId: room.id,
       parentSpaceId: room.parentSpaceId,
       name: room.name,
@@ -482,78 +592,66 @@ export function FacilityStructurePanel({
       }
 
       setLayoutDraftByRoomId((current) => {
-        const previous = current[dragState.roomId] ?? dragState.origin;
-        const next =
-          dragState.mode === "move"
-            ? {
-                ...previous,
-                x: Math.max(
-                  FLOOR_EDGE_INSET,
-                  Math.min(renderedCanvasSize.width - previous.width - FLOOR_EDGE_INSET, snapToGrid(dragState.origin.x + dx))
-                ),
-                y: Math.max(
-                  FLOOR_EDGE_INSET,
-                  Math.min(renderedCanvasSize.height - previous.height - FLOOR_EDGE_INSET, snapToGrid(dragState.origin.y + dy))
-                )
-              }
-            : (() => {
-                const minWidth = FLOOR_GRID_SIZE * 3;
-                const minHeight = FLOOR_GRID_SIZE * 2;
-                let x = dragState.origin.x;
-                let y = dragState.origin.y;
-                let width = dragState.origin.width;
-                let height = dragState.origin.height;
-                const edge = dragState.edge ?? "se";
+        const nextState = { ...current };
+        if (dragState.mode === "move") {
+          const origins = dragState.originsByRoomId ?? { [dragState.roomId]: dragState.origin };
+          for (const moveRoomId of dragState.roomIds) {
+            const origin = origins[moveRoomId];
+            if (!origin) {
+              continue;
+            }
+            const previous = current[moveRoomId] ?? origin;
+            nextState[moveRoomId] = {
+              ...previous,
+              x: snapToGrid(origin.x + dx),
+              y: snapToGrid(origin.y + dy)
+            };
+          }
+        } else {
+          const previous = current[dragState.roomId] ?? dragState.origin;
+          const minWidth = NODE_MIN_SIZE;
+          const minHeight = NODE_MIN_SIZE;
+          let x = dragState.origin.x;
+          let y = dragState.origin.y;
+          let width = dragState.origin.width;
+          let height = dragState.origin.height;
+          const edge = dragState.edge ?? "se";
 
-                if (edge.includes("e")) {
-                  width = Math.max(
-                    minWidth,
-                    Math.min(renderedCanvasSize.width - dragState.origin.x - FLOOR_EDGE_INSET, dragState.origin.width + dx)
-                  );
-                  width = snapToGrid(width);
-                }
-                if (edge.includes("s")) {
-                  height = Math.max(
-                    minHeight,
-                    Math.min(renderedCanvasSize.height - dragState.origin.y - FLOOR_EDGE_INSET, dragState.origin.height + dy)
-                  );
-                  height = snapToGrid(height);
-                }
-                if (edge.includes("w")) {
-                  const right = dragState.origin.x + dragState.origin.width;
-                  const clampedDx = Math.min(Math.max(dx, FLOOR_EDGE_INSET - dragState.origin.x), dragState.origin.width - minWidth);
-                  x = snapToGrid(dragState.origin.x + clampedDx);
-                  x = Math.max(FLOOR_EDGE_INSET, Math.min(right - minWidth, x));
-                  width = right - x;
-                }
-                if (edge.includes("n")) {
-                  const bottom = dragState.origin.y + dragState.origin.height;
-                  const clampedDy = Math.min(Math.max(dy, FLOOR_EDGE_INSET - dragState.origin.y), dragState.origin.height - minHeight);
-                  y = snapToGrid(dragState.origin.y + clampedDy);
-                  y = Math.max(FLOOR_EDGE_INSET, Math.min(bottom - minHeight, y));
-                  height = bottom - y;
-                }
+          if (edge.includes("e")) {
+            width = Math.max(minWidth, snapSizeToGrid(dragState.origin.width + dx));
+          }
+          if (edge.includes("s")) {
+            height = Math.max(minHeight, snapSizeToGrid(dragState.origin.height + dy));
+          }
+          if (edge.includes("w")) {
+            const right = dragState.origin.x + dragState.origin.width;
+            x = snapToGrid(dragState.origin.x + dx);
+            width = right - x;
+            if (width < minWidth) {
+              width = minWidth;
+              x = right - minWidth;
+            }
+          }
+          if (edge.includes("n")) {
+            const bottom = dragState.origin.y + dragState.origin.height;
+            y = snapToGrid(dragState.origin.y + dy);
+            height = bottom - y;
+            if (height < minHeight) {
+              height = minHeight;
+              y = bottom - minHeight;
+            }
+          }
 
-                width = Math.min(width, renderedCanvasSize.width - x - FLOOR_EDGE_INSET);
-                height = Math.min(height, renderedCanvasSize.height - y - FLOOR_EDGE_INSET);
-                width = Math.max(minWidth, snapToGrid(width));
-                height = Math.max(minHeight, snapToGrid(height));
-                width = Math.min(width, renderedCanvasSize.width - x - FLOOR_EDGE_INSET);
-                height = Math.min(height, renderedCanvasSize.height - y - FLOOR_EDGE_INSET);
-
-                return {
-                  ...previous,
-                  x,
-                  y,
-                  width,
-                  height
-                };
-              })();
-
-        const nextState = {
-          ...current,
-          [dragState.roomId]: next
-        };
+          width = Math.max(minWidth, snapSizeToGrid(width));
+          height = Math.max(minHeight, snapSizeToGrid(height));
+          nextState[dragState.roomId] = {
+            ...previous,
+            x,
+            y,
+            width,
+            height
+          };
+        }
 
         layoutDraftByRoomIdRef.current = nextState;
         return nextState;
@@ -566,8 +664,20 @@ export function FacilityStructurePanel({
         return;
       }
 
-      const layout = layoutDraftByRoomIdRef.current[dragState.roomId] ?? dragState.origin;
-      persistRoomLayout(dragState.roomId, layout);
+      if (dragState.mode === "move") {
+        const origins = dragState.originsByRoomId ?? { [dragState.roomId]: dragState.origin };
+        for (const moveRoomId of dragState.roomIds) {
+          const fallbackLayout = origins[moveRoomId];
+          if (!fallbackLayout) {
+            continue;
+          }
+          const layout = layoutDraftByRoomIdRef.current[moveRoomId] ?? fallbackLayout;
+          persistRoomLayout(moveRoomId, layout);
+        }
+      } else {
+        const layout = layoutDraftByRoomIdRef.current[dragState.roomId] ?? dragState.origin;
+        persistRoomLayout(dragState.roomId, layout);
+      }
       setDragState(null);
     };
 
@@ -578,105 +688,148 @@ export function FacilityStructurePanel({
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [dragState, renderedCanvasSize.height, renderedCanvasSize.width, structureScale]);
+  }, [dragState, structureScale]);
 
-  function openCreateRoomPanel(elementType: StructureElementType = "room") {
-    if (!selectedFloor) {
-      return;
-    }
-
+  function startInlineCreate(elementType: StructureElementType = "room") {
     const defaultName = elementType === "structure" ? "Structure" : "";
-    setDraft({
-      ...toDraft(null, selectedFloor.id),
+    setInlineCreateDraft({
       name: defaultName,
-      slug: defaultName ? slugify(defaultName) : "",
       elementType,
       isBookable: isNonBookableElementType(elementType) ? false : true,
-      timezone: selectedFloor.timezone
+    });
+    setInlineCreateLayout({
+      x: CANVAS_GRID_PITCH + (rooms.length % 5) * 200,
+      y: CANVAS_GRID_PITCH + Math.floor(rooms.length / 5) * 150,
+      width: CANVAS_GRID_SIZE * 8,
+      height: CANVAS_GRID_SIZE * 5
     });
     setIsCreateOpen(true);
-  }
-
-  function openEditRoomPanel(room: FacilitySpace) {
-    setActiveRoomId(room.id);
-    setDraft(toDraft(room, room.parentSpaceId ?? selectedFloorId));
-    setIsEditOpen(true);
-  }
-
-  function submitDraft() {
-    if (!canWrite || isMutating || !selectedFloor) {
-      return;
-    }
-
-    const payload = {
-      parentSpaceId: draft.parentSpaceId || selectedFloor.id,
-      name: draft.name.trim(),
-      slug: draft.slug.trim() || slugify(draft.name),
-      spaceKind: toSpaceKind(draft.elementType),
-      status: draft.status,
-      isBookable: isNonBookableElementType(draft.elementType) ? false : draft.isBookable,
-      timezone: draft.timezone.trim() || selectedFloor.timezone,
-      capacity: draft.capacity.trim().length > 0 ? Number.parseInt(draft.capacity, 10) : null,
-      sortIndex: rooms.length
-    };
-
-    if (draft.spaceId) {
-      const room = spaceById.get(draft.spaceId);
-      const existingMetadata = room ? asObject(room.metadataJson) : {};
-      onUpdateSpace({
-        spaceId: draft.spaceId,
-        ...payload,
-        sortIndex: room?.sortIndex ?? 0,
-        metadataJson: {
-          ...existingMetadata,
-          floorPlan: {
-            ...asObject(existingMetadata.floorPlan),
-            elementType: draft.elementType
-          }
-        }
-      });
-      setIsEditOpen(false);
-      return;
-    }
-
-    onCreateSpace({
-      ...payload,
-      metadataJson: {
-        floorPlan: {
-          x: FLOOR_GRID_SIZE + (rooms.length % 5) * 200,
-          y: FLOOR_GRID_SIZE + Math.floor(rooms.length / 5) * 150,
-          width: FLOOR_GRID_SIZE * 8,
-          height: FLOOR_GRID_SIZE * 5,
-          elementType: draft.elementType
-        }
-      }
-    });
-    setIsCreateOpen(false);
-  }
-
-  function handleFloorChange(nextFloorId: string) {
-    setSelectedFloorId(nextFloorId);
     setActiveRoomId(null);
+    setSelectedRoomIds([]);
     setHoveredRoomId(null);
   }
 
+  function openEditRoomPanel(room: FacilitySpace) {
+    setActionMenuRoomId(null);
+    setActionMenuPoint(null);
+    setActiveRoomId(room.id);
+    setSelectedRoomIds([room.id]);
+    setNodeEditorDraft({
+      spaceId: room.id,
+      name: room.name,
+      elementType: resolveElementType(room),
+      status: room.status,
+      isBookable: room.isBookable
+    });
+    setIsEditOpen(true);
+  }
+
+  function submitNodeEditor() {
+    if (!canWrite || !nodeEditorDraft) {
+      return;
+    }
+
+    const room = spaceById.get(nodeEditorDraft.spaceId);
+    if (!room) {
+      return;
+    }
+
+    const name = nodeEditorDraft.name.trim();
+    if (name.length < 2) {
+      return;
+    }
+
+    const existingMetadata = room ? asObject(room.metadataJson) : {};
+    updateSpaceOptimistically({
+      spaceId: nodeEditorDraft.spaceId,
+      parentSpaceId: room.parentSpaceId,
+      name,
+      slug: room.slug || slugify(name),
+      spaceKind: toSpaceKind(nodeEditorDraft.elementType),
+      status: nodeEditorDraft.status,
+      isBookable: isNonBookableElementType(nodeEditorDraft.elementType) ? false : nodeEditorDraft.isBookable,
+      timezone: room.timezone,
+      capacity: room.capacity,
+      sortIndex: room.sortIndex,
+      metadataJson: {
+        ...existingMetadata,
+        floorPlan: {
+          ...asObject(existingMetadata.floorPlan),
+          elementType: nodeEditorDraft.elementType
+        }
+      }
+    });
+    setIsEditOpen(false);
+  }
+
+  function submitInlineCreate() {
+    if (!canWrite || !inlineCreateDraft || !inlineCreateLayout) {
+      return;
+    }
+
+    const name = inlineCreateDraft.name.trim();
+    if (name.length < 2) {
+      return;
+    }
+
+    const usedSlugs = new Set(effectiveSpaces.map((candidate) => candidate.slug));
+    const baseSlug = slugify(name);
+    let slug = baseSlug;
+    let index = 2;
+    while (usedSlugs.has(slug)) {
+      slug = `${baseSlug}-${index}`;
+      index += 1;
+    }
+
+    createSpaceOptimistically({
+      parentSpaceId: mappingRoot.id,
+      name,
+      slug,
+      spaceKind: toSpaceKind(inlineCreateDraft.elementType),
+      status: "open",
+      isBookable: isNonBookableElementType(inlineCreateDraft.elementType) ? false : inlineCreateDraft.isBookable,
+      timezone: mappingRoot.timezone,
+      capacity: null,
+      sortIndex: rooms.length,
+      metadataJson: {
+        floorPlan: {
+          x: inlineCreateLayout.x,
+          y: inlineCreateLayout.y,
+          width: inlineCreateLayout.width,
+          height: inlineCreateLayout.height,
+          elementType: inlineCreateDraft.elementType
+        }
+      }
+    });
+
+    setInlineCreateDraft(null);
+    setInlineCreateLayout(null);
+    setIsCreateOpen(false);
+  }
+
   function focusRoomFromSearch(query: string) {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = normalizeSearchKey(query.trim());
     if (!normalizedQuery) {
       return;
     }
 
-    const exact = matchingRooms.find((room) => room.name.toLowerCase() === normalizedQuery);
+    const exact = matchingRooms.find((room) => normalizeSearchKey(room.name) === normalizedQuery);
     const target = exact ?? matchingRooms[0];
     if (!target) {
       return;
     }
 
     setActiveRoomId(target.id);
+    setSelectedRoomIds([target.id]);
+    const node = document.querySelector(`[data-structure-node-id="${target.id}"]`);
+    if (node instanceof HTMLElement) {
+      structureCanvasRef.current?.focusElement(node, { targetScale: 1.3 });
+    }
+    openEditRoomPanel(target);
   }
 
-  function duplicateRoom(room: FacilitySpace) {
-    if (!canWrite || isMutating || !selectedFloor) {
+  function duplicateRoomWithOffset(room: FacilitySpace, offsetMultiplier = 1) {
+    if (!canWrite) {
       return;
     }
 
@@ -684,7 +837,7 @@ export function FacilityStructurePanel({
     const metadata = asObject(room.metadataJson);
     const floorPlan = asObject(metadata.floorPlan);
     const usedNames = new Set(rooms.map((candidate) => candidate.name.toLowerCase()));
-    const usedSlugs = new Set(spaces.map((candidate) => candidate.slug));
+    const usedSlugs = new Set(effectiveSpaces.map((candidate) => candidate.slug));
     const baseName = `${room.name} Copy`;
     const baseSlug = `${room.slug || slugify(room.name)}-copy`;
     let nextName = baseName;
@@ -701,8 +854,15 @@ export function FacilityStructurePanel({
       slugCounter += 1;
     }
 
-    onCreateSpace({
-      parentSpaceId: room.parentSpaceId ?? selectedFloor.id,
+    const offset = CANVAS_GRID_PITCH * Math.max(1, offsetMultiplier);
+    const baseLayout: RoomLayout = {
+      x: snapToGrid(roomLayout.x + offset),
+      y: snapToGrid(roomLayout.y + offset),
+      width: roomLayout.width,
+      height: roomLayout.height
+    };
+    createSpaceOptimistically({
+      parentSpaceId: mappingRoot.id,
       name: nextName,
       slug: nextSlug,
       spaceKind: room.spaceKind,
@@ -715,42 +875,136 @@ export function FacilityStructurePanel({
         ...metadata,
         floorPlan: {
           ...floorPlan,
-          x: Math.max(
-            FLOOR_EDGE_INSET,
-            Math.min(renderedCanvasSize.width - roomLayout.width - FLOOR_EDGE_INSET, snapToGrid(roomLayout.x + FLOOR_GRID_SIZE))
-          ),
-          y: Math.max(
-            FLOOR_EDGE_INSET,
-            Math.min(renderedCanvasSize.height - roomLayout.height - FLOOR_EDGE_INSET, snapToGrid(roomLayout.y + FLOOR_GRID_SIZE))
-          ),
-          width: roomLayout.width,
-          height: roomLayout.height
+          x: baseLayout.x,
+          y: baseLayout.y,
+          width: baseLayout.width,
+          height: baseLayout.height
         }
       }
     });
   }
 
-  function deleteRoom(spaceId: string) {
-    if (!canWrite || isMutating) {
+  function duplicateRoom(room: FacilitySpace) {
+    duplicateRoomWithOffset(room, 1);
+  }
+
+  async function deleteRoom(spaceId: string) {
+    if (!canWrite) {
       return;
     }
 
     const target = spaceById.get(spaceId);
     const targetName = target?.name ?? "this space";
-    if (!window.confirm(`Delete ${targetName}? This cannot be undone.`)) {
+    const shouldDelete = await confirm({
+      title: "Delete space?",
+      description: `Delete ${targetName}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      variant: "destructive"
+    });
+    if (!shouldDelete) {
       return;
     }
 
-    onDeleteSpace(spaceId);
+    deleteSpaceOptimistically(spaceId);
     if (activeRoomId === spaceId) {
       setActiveRoomId(null);
     }
-    if (draft.spaceId === spaceId) {
+    setSelectedRoomIds((current) => current.filter((roomId) => roomId !== spaceId));
+    if (actionMenuRoomId === spaceId) {
+      setActionMenuRoomId(null);
+      setActionMenuPoint(null);
+    }
+    if (nodeEditorDraft?.spaceId === spaceId) {
+      setNodeEditorDraft(null);
       setIsEditOpen(false);
     }
   }
 
-  const rootLabel = mappingRoot.name;
+  useEffect(() => {
+    const shouldIgnoreTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+
+      if (target.isContentEditable) {
+        return true;
+      }
+
+      return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!mapCanEdit || shouldIgnoreTarget(event.target)) {
+        return;
+      }
+
+      const activeRoom = activeRoomId ? (spaceById.get(activeRoomId) ?? null) : null;
+      const isCopy = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c";
+      const isPaste = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v";
+      const isDelete = event.key === "Delete" || event.key === "Backspace";
+
+      if (isCopy) {
+        if (!activeRoom) {
+          return;
+        }
+        event.preventDefault();
+        setCopiedRoomId(activeRoom.id);
+        setPasteCount(0);
+        return;
+      }
+
+      if (isPaste) {
+        const sourceId = copiedRoomId ?? activeRoomId;
+        if (!sourceId) {
+          return;
+        }
+
+        const sourceRoom = spaceById.get(sourceId);
+        if (!sourceRoom) {
+          return;
+        }
+
+        event.preventDefault();
+        const nextPasteCount = pasteCount + 1;
+        duplicateRoomWithOffset(sourceRoom, nextPasteCount);
+        setCopiedRoomId(sourceRoom.id);
+        setPasteCount(nextPasteCount);
+        return;
+      }
+
+      if (isDelete && activeRoom) {
+        event.preventDefault();
+        void deleteRoom(activeRoom.id);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeRoomId, copiedRoomId, mapCanEdit, pasteCount, spaceById]);
+
+  useEffect(() => {
+    if (!dragState) {
+      document.body.style.removeProperty("cursor");
+      return;
+    }
+
+    if (dragState.mode === "move") {
+      document.body.style.cursor = "grabbing";
+      return () => {
+        document.body.style.removeProperty("cursor");
+      };
+    }
+
+    if (dragState.mode === "resize") {
+      document.body.style.cursor = edgeToCursor(dragState.edge ?? "se");
+      return () => {
+        document.body.style.removeProperty("cursor");
+      };
+    }
+  }, [dragState]);
 
   return (
     <>
@@ -760,107 +1014,30 @@ export function FacilityStructurePanel({
           <CardDescription>Top-down space planning for rooms, zones, and bookable layout mapping.</CardDescription>
         </CardHeader>
         <CardContent>
-          <StructureCanvasShell
-              addButtonAriaLabel="Add space"
-              addButtonDisabled={!canWrite || isMutating || !selectedFloor}
-              bottomRightContent={
-                <div className="flex min-w-[220px] items-center gap-2">
-                  {hasFloorLayers ? (
-                    <>
-                      <span className="text-xs text-text-muted">Floor</span>
-                      <select
-                        className="h-9 min-w-[120px] rounded-control border border-border bg-surface px-2 text-sm text-text"
-                        onChange={(event) => handleFloorChange(event.target.value)}
-                        value={selectedFloorId}
-                      >
-                        {floors.map((floor) => (
-                          <option key={floor.id} value={floor.id}>
-                            {floor.name}
-                          </option>
-                        ))}
-                      </select>
-                      <Button
-                        disabled={!canWrite || isMutating || !building}
-                        onClick={() => {
-                          if (!building) {
-                            return;
-                          }
-
-                          onCreateSpace({
-                            parentSpaceId: building.id,
-                            name: `Floor ${floors.length + 1}`,
-                            slug: slugify(`${building.slug}-floor-${floors.length + 1}`),
-                            spaceKind: "floor",
-                            status: "open",
-                            isBookable: false,
-                            timezone: building.timezone,
-                            capacity: null,
-                            sortIndex: floors.length,
-                            metadataJson: {
-                              floorPlan: {
-                                canvas: {
-                                  width: 1400,
-                                  height: 900
-                                }
-                              }
-                            }
-                          });
-                        }}
-                        size="sm"
-                        type="button"
-                        variant="secondary"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-xs text-text-muted">Canvas root</span>
-                      <p className="max-w-[200px] truncate text-sm font-medium text-text" title={selectedSpace.name}>
-                        {selectedSpace.name}
-                      </p>
-                    </>
-                  )}
-                  <Button
-                    disabled={!canWrite || isMutating || !selectedFloor}
-                    onClick={() => openCreateRoomPanel("structure")}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    + Structure
-                  </Button>
-                  {hasFloorLayers ? (
-                    <label className="flex items-center gap-2 text-xs text-text-muted">
-                      <Checkbox checked={showFloorLayering} onChange={(event) => setShowFloorLayering(event.target.checked)} />
-                      Layer floors
-                    </label>
-                  ) : null}
-                </div>
-              }
-              canvasRef={structureCanvasRef}
+            <div onPointerDownCapture={handleCanvasPointerDownCapture}>
+              <StructureCanvasShell
+                addButtonAriaLabel="Add space"
+                addButtonDisabled={!canWrite}
+                autoFitKey={
+                  roomFitBounds
+                    ? `${roomFitBounds.left},${roomFitBounds.top},${roomFitBounds.width},${roomFitBounds.height}`
+                    : `rooms:${rooms.length}`
+                }
+                canvasRef={structureCanvasRef}
               dragInProgress={Boolean(dragState)}
               emptyState={
-                selectedFloor && rooms.length === 0 ? (
+                rooms.length === 0 ? (
                   <Alert variant="info">No mapped spaces yet. Add one to start building this layout.</Alert>
                 ) : null
               }
-              onAdd={openCreateRoomPanel}
+              onAdd={() => startInlineCreate("room")}
               onSearchQueryChange={setStructureSearch}
               onSearchSubmit={focusRoomFromSearch}
               onViewScaleChange={(scale) => {
                 setStructureScale(scale);
                 setStructureZoomPercent(Math.round(scale * 100));
               }}
-              rootHeader={
-                <div className="w-[320px] max-w-[min(84vw,320px)] rounded-control border bg-surface px-4 py-3 text-center shadow-sm">
-                  <p className="text-xs uppercase tracking-wide text-text-muted">Facility</p>
-                  <p className="font-semibold text-text">{rootLabel}</p>
-                  <p className="text-xs text-text-muted">
-                    {hasFloorLayers ? (selectedFloor ? selectedFloor.name : "No floor selected") : selectedSpace.spaceKind}
-                  </p>
-                </div>
-              }
+              rootHeader={null}
               searchInputRef={structureSearchInputRef}
               searchPlaceholder="Search spaces"
               searchQuery={structureSearch}
@@ -870,68 +1047,105 @@ export function FacilityStructurePanel({
                 kindLabel: resolveElementType(room)
               }))}
               storageKey={`facility-floorplan-canvas:${orgSlug}:${mappingRoot.id}`}
+              autoFitOnOpen
               canvasLayoutMode="free"
-              canvasContentClassName="min-w-max p-0"
-              canvasGridSize={FLOOR_GRID_SIZE}
-              canvasGridColor="#e5e7eb"
+              canvasContentClassName="p-0"
+              canvasGridSize={CANVAS_GRID_SIZE}
+              canvasGridColor="hsl(var(--border) / 0.55)"
+              onFit={handleFitToRooms}
+              onEditOpenChange={setIsStructureCanvasEditMode}
+              persistViewState={false}
+              popupSubtitle="Edit structure map, rooms, and layout."
+              popupTitle={`Editing map: ${canvasCenterTitle}`}
+              onViewNodeSelect={(nodeId) => {
+                setActiveRoomId(nodeId);
+                setSelectedRoomIds([nodeId]);
+                setActionMenuRoomId(null);
+                setActionMenuPoint(null);
+              }}
+              viewContentInteractive
+              viewEditButtonPlacement="top-right"
+              viewViewportInteractive
               zoomPercent={structureZoomPercent}
             >
-              {selectedFloor ? (
-                <div
-                  className="relative"
-                  onPointerDown={(event) => {
-                    if (event.target !== event.currentTarget) {
-                      return;
-                    }
-
-                    setActiveRoomId(null);
-                    setHoveredRoomId(null);
-                  }}
-                  style={{
-                    width: `${renderedCanvasSize.width}px`,
-                    height: `${renderedCanvasSize.height}px`
-                  }}
-                >
-                    {layeredRooms.map(({ floorName, room, layout }) => (
-                      <div
-                        className="pointer-events-none absolute rounded-control border border-dashed border-border/40 bg-surface/35"
-                        key={`layer:${room.id}`}
-                        style={{
-                          left: `${layout.x}px`,
-                          top: `${layout.y}px`,
-                          width: `${layout.width}px`,
-                          height: `${layout.height}px`,
-                          zIndex: 0
-                        }}
-                      >
-                        <p className="truncate px-2 pt-1 text-[10px] font-medium text-text-muted" title={`${floorName} · ${room.name}`}>
-                          {floorName} - {room.name}
-                        </p>
-                      </div>
-                    ))}
                     {rooms.map((room) => {
-                      const layout = layoutDraftByRoomId[room.id] ?? getRoomLayout(room, 0);
+                      const layout = roundLayout(layoutDraftByRoomId[room.id] ?? getRoomLayout(room, 0));
                       const isActive = activeRoomId === room.id;
-                      const showControls = isActive || hoveredRoomId === room.id;
+                      const isSelected = selectedRoomIdSet.has(room.id);
+                      const dragMode = dragState?.mode;
+                      const dragEdge = dragState?.edge;
+                      const isDraggingThisRoom = Boolean(
+                        dragState &&
+                          (dragState.mode === "move" ? dragState.roomIds.includes(room.id) : dragState.roomId === room.id)
+                      );
+                      const showControls = mapCanEdit && (isActive || hoveredRoomId === room.id);
                       const elementType = resolveElementType(room);
                       const isStructuralElement = elementType === "structure";
+                      const statusLabel = isStructuralElement ? elementType : room.isBookable ? "bookable" : "not bookable";
 
                       return (
                         <div
-                          className={`absolute rounded-control border px-2 py-1 shadow-sm ${
+                          data-structure-node-id={room.id}
+                          className={`absolute rounded-control border px-2 py-1 shadow-sm transition-[left,top,width,height,transform,box-shadow,border-color,background-color] duration-100 ease-out ${
+                            isDraggingThisRoom ? "transition-none shadow-lg" : ""
+                          } ${
                             isActive
                               ? "border-accent bg-accent/10"
+                              : isSelected
+                                ? "border-accent/60 bg-accent/5"
                               : isStructuralElement
                                 ? "border-dashed border-border/80 bg-surface/70"
                                 : "border-border bg-surface"
                           }`}
                           key={room.id}
-                          onClick={() => setActiveRoomId(room.id)}
-                          onDoubleClick={() => openEditRoomPanel(room)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (event.shiftKey) {
+                              return;
+                            }
+
+                            setActiveRoomId(room.id);
+                            setSelectedRoomIds([room.id]);
+                            if (mapCanEdit) {
+                              setActionMenuRoomId(room.id);
+                              setActionMenuPoint({ x: event.clientX, y: event.clientY });
+                              setActionMenuStamp((current) => current + 1);
+                            } else {
+                              setActionMenuRoomId(null);
+                              setActionMenuPoint(null);
+                            }
+                          }}
+                          onDoubleClick={(event) => {
+                            if (!mapCanEdit) {
+                              return;
+                            }
+                            event.preventDefault();
+                            event.stopPropagation();
+                            openEditRoomPanel(room);
+                          }}
                           onPointerEnter={() => setHoveredRoomId(room.id)}
-                          onPointerLeave={() => setHoveredRoomId((current) => (current === room.id ? null : current))}
+                          onPointerLeave={() => {
+                            setHoveredRoomId((current) => (current === room.id ? null : current));
+                            setHoverResizeEdgeByRoomId((current) => ({ ...current, [room.id]: null }));
+                          }}
+                          onPointerMove={(event) => {
+                            if (!mapCanEdit) {
+                              return;
+                            }
+
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            const localX = event.clientX - rect.left;
+                            const localY = event.clientY - rect.top;
+                            const edge = getResizeEdgeFromPoint(localX, localY, rect.width, rect.height);
+                            setHoverResizeEdgeByRoomId((current) => {
+                              if (current[room.id] === edge) {
+                                return current;
+                              }
+                              return { ...current, [room.id]: edge };
+                            });
+                          }}
                           onPointerDown={(event) => {
-                            if (!canWrite || isMutating) {
+                            if (!mapCanEdit) {
                               return;
                             }
 
@@ -940,13 +1154,55 @@ export function FacilityStructurePanel({
                             if (event.button !== 0) {
                               return;
                             }
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            const localX = event.clientX - rect.left;
+                            const localY = event.clientY - rect.top;
+                            const edge = getResizeEdgeFromPoint(localX, localY, rect.width, rect.height);
                             setActiveRoomId(room.id);
+                            const shiftSelection = event.shiftKey
+                              ? selectedRoomIdSet.has(room.id)
+                                ? selectedRoomIds
+                                : [...selectedRoomIds, room.id]
+                              : null;
+                            const moveRoomIds =
+                              shiftSelection && shiftSelection.length > 1
+                                ? shiftSelection
+                                : selectedRoomIdSet.has(room.id) && selectedRoomIds.length > 0
+                                  ? selectedRoomIds
+                                  : [room.id];
+                            const originsByRoomId: Record<string, RoomLayout> = {};
+                            for (const moveRoomId of moveRoomIds) {
+                              const originLayout = layoutDraftByRoomIdRef.current[moveRoomId];
+                              if (originLayout) {
+                                originsByRoomId[moveRoomId] = originLayout;
+                              }
+                            }
+                            if (shiftSelection) {
+                              setSelectedRoomIds(shiftSelection);
+                            } else if (!selectedRoomIdSet.has(room.id)) {
+                              setSelectedRoomIds([room.id]);
+                            }
+                            if (edge) {
+                              setDragState({
+                                mode: "resize",
+                                roomId: room.id,
+                                roomIds: [room.id],
+                                startX: event.clientX,
+                                startY: event.clientY,
+                                origin: layout,
+                                edge,
+                                hasCrossedThreshold: true
+                              });
+                              return;
+                            }
                             setDragState({
                               mode: "move",
                               roomId: room.id,
+                              roomIds: moveRoomIds,
                               startX: event.clientX,
                               startY: event.clientY,
                               origin: layout,
+                              originsByRoomId,
                               hasCrossedThreshold: false
                             });
                           }}
@@ -955,53 +1211,35 @@ export function FacilityStructurePanel({
                             top: `${layout.y}px`,
                             width: `${layout.width}px`,
                             height: `${layout.height}px`,
-                            zIndex: isActive ? 20 : 1
+                            zIndex: isActive ? 20 : 1,
+                            transform: isDraggingThisRoom ? "scale(1.006)" : "scale(1)",
+                            cursor: isDraggingThisRoom
+                              ? dragMode === "resize"
+                                ? edgeToCursor(dragEdge ?? "se")
+                                : "grabbing"
+                              : hoverResizeEdgeByRoomId[room.id]
+                                ? edgeToCursor(hoverResizeEdgeByRoomId[room.id] as ResizeEdge)
+                                : mapCanEdit
+                                  ? "grab"
+                                  : "default"
                           }}
                         >
-                          <p className="truncate text-xs font-semibold text-text" title={room.name}>
-                            {room.name}
-                          </p>
-                          <p className="text-[11px] text-text-muted">
-                            {isStructuralElement ? elementType : room.isBookable ? "bookable" : "not bookable"}
-                          </p>
+                          <div className="pointer-events-none absolute inset-0">
+                            <div className="pointer-events-none flex h-full w-full items-center justify-center" data-canvas-pan-ignore="true">
+                              <div className="group relative inline-flex max-w-[86%] items-center rounded-full border border-border/70 bg-surface/95 px-4 py-1.5 text-center shadow-sm">
+                                <div className="min-w-0 px-1.5 text-center">
+                                  <span className="flex min-w-0 w-full max-w-[16rem] flex-col items-center leading-tight">
+                                    <span className="block w-full truncate text-center text-xs font-semibold text-text" title={room.name}>
+                                      {room.name}
+                                    </span>
+                                    <span className="block w-full truncate text-center text-[11px] text-text-muted">{statusLabel}</span>
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                           {showControls ? (
                             <>
-                              <Button
-                                className="absolute right-1 top-1 h-6 px-2"
-                                disabled={!canWrite || isMutating}
-                                onPointerDown={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                }}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  duplicateRoom(room);
-                                }}
-                                size="sm"
-                                type="button"
-                                variant="ghost"
-                              >
-                                <Copy className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                className="absolute right-9 top-1 h-6 px-2 text-danger"
-                                disabled={!canWrite || isMutating}
-                                onPointerDown={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                }}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  deleteRoom(room.id);
-                                }}
-                                size="sm"
-                                type="button"
-                                variant="ghost"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
                               {(
                                 [
                                   ["n", "absolute -top-1 left-1/2 h-2 w-10 -translate-x-1/2 cursor-n-resize"],
@@ -1019,7 +1257,7 @@ export function FacilityStructurePanel({
                                   className={`${className} rounded-sm border border-border bg-surface/95`}
                                   key={edge}
                                   onPointerDown={(event) => {
-                                    if (!canWrite || isMutating) {
+                                    if (!mapCanEdit) {
                                       return;
                                     }
 
@@ -1029,6 +1267,7 @@ export function FacilityStructurePanel({
                                     setDragState({
                                       mode: "resize",
                                       roomId: room.id,
+                                      roomIds: [room.id],
                                       startX: event.clientX,
                                       startY: event.clientY,
                                       origin: layout,
@@ -1044,161 +1283,269 @@ export function FacilityStructurePanel({
                         </div>
                       );
                     })}
+              </StructureCanvasShell>
+            </div>
+          <Panel
+            footer={
+              <>
+                <Button onClick={() => setIsEditOpen(false)} size="sm" type="button" variant="ghost">
+                  Cancel
+                </Button>
+                <Button disabled={!canWrite || !nodeEditorDraft || nodeEditorDraft.name.trim().length < 2} onClick={submitNodeEditor} size="sm" type="button" variant="secondary">
+                  Save
+                </Button>
+              </>
+            }
+            onClose={() => setIsEditOpen(false)}
+            open={isEditOpen}
+            panelClassName="ml-auto max-w-[340px]"
+            subtitle="Modify this space and apply updates."
+            title="Edit space"
+          >
+            {nodeEditorDraft ? (
+              <div className="w-full space-y-3">
+                <FormField label="Name">
+                <Input
+                  onChange={(event) => setNodeEditorDraft((current) => (current ? { ...current, name: event.target.value } : current))}
+                  value={nodeEditorDraft.name}
+                />
+                </FormField>
+                <FormField label="Type">
+                <Select
+                  onChange={(event) =>
+                    setNodeEditorDraft((current) => {
+                      if (!current) {
+                        return current;
+                      }
+                      const elementType = event.target.value as StructureElementType;
+                      return {
+                        ...current,
+                        elementType,
+                        isBookable: isNonBookableElementType(elementType) ? false : current.isBookable
+                      };
+                    })
+                  }
+                  options={[
+                    { value: "room", label: "Room" },
+                    { value: "court", label: "Court" },
+                    { value: "field", label: "Field" },
+                    { value: "custom", label: "Custom" },
+                    { value: "structure", label: "Structure (non-bookable)" }
+                  ]}
+                  value={nodeEditorDraft.elementType}
+                />
+                </FormField>
+                <FormField label="Status">
+                <Select
+                  onChange={(event) =>
+                    setNodeEditorDraft((current) => (current ? { ...current, status: event.target.value as FacilitySpace["status"] } : current))
+                  }
+                  options={[
+                    { value: "open", label: "Open" },
+                    { value: "closed", label: "Closed" },
+                    { value: "archived", label: "Archived" }
+                  ]}
+                  value={nodeEditorDraft.status}
+                />
+                </FormField>
+                <label className="ui-inline-toggle">
+                  <Checkbox
+                    checked={isNonBookableElementType(nodeEditorDraft.elementType) ? false : nodeEditorDraft.isBookable}
+                    disabled={isNonBookableElementType(nodeEditorDraft.elementType)}
+                    onChange={(event) =>
+                      setNodeEditorDraft((current) => (current ? { ...current, isBookable: event.target.checked } : current))
+                    }
+                  />
+                  Bookable
+                </label>
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    disabled={!canWrite}
+                    onClick={() => {
+                      archiveSpaceOptimistically(nodeEditorDraft.spaceId);
+                      setIsEditOpen(false);
+                    }}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    Archive
+                  </Button>
                 </div>
-              ) : (
-                <Alert variant="info">Select a space to start mapping.</Alert>
-              )}
-            </StructureCanvasShell>
+              </div>
+            ) : null}
+          </Panel>
+          <Popup
+            onClose={() => {
+              setIsCreateOpen(false);
+              setInlineCreateDraft(null);
+              setInlineCreateLayout(null);
+            }}
+            open={isCreateOpen && Boolean(inlineCreateDraft)}
+            size="sm"
+            subtitle="Create a new space and place it on the map instantly."
+            title="Create space"
+          >
+            {inlineCreateDraft ? (
+              <div className="space-y-3">
+                <FormField label="Name">
+                  <Input
+                    autoFocus
+                    onChange={(event) => setInlineCreateDraft((current) => (current ? { ...current, name: event.target.value } : current))}
+                    onFocus={(event) => event.currentTarget.select()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        submitInlineCreate();
+                      }
+                    }}
+                    placeholder="Space name"
+                    value={inlineCreateDraft.name}
+                  />
+                </FormField>
+                <FormField label="Type">
+                  <Select
+                    onChange={(event) =>
+                      setInlineCreateDraft((current) => {
+                        if (!current) {
+                          return current;
+                        }
+                        const elementType = event.target.value as StructureElementType;
+                        return {
+                          ...current,
+                          elementType,
+                          isBookable: isNonBookableElementType(elementType) ? false : current.isBookable
+                        };
+                      })
+                    }
+                    options={[
+                      { value: "room", label: "Room" },
+                      { value: "court", label: "Court" },
+                      { value: "field", label: "Field" },
+                      { value: "custom", label: "Custom" },
+                      { value: "structure", label: "Structure" }
+                    ]}
+                    value={inlineCreateDraft.elementType}
+                  />
+                </FormField>
+                <label className="ui-inline-toggle">
+                  <Checkbox
+                    checked={isNonBookableElementType(inlineCreateDraft.elementType) ? false : inlineCreateDraft.isBookable}
+                    disabled={isNonBookableElementType(inlineCreateDraft.elementType)}
+                    onChange={(event) =>
+                      setInlineCreateDraft((current) => (current ? { ...current, isBookable: event.target.checked } : current))
+                    }
+                  />
+                  Bookable
+                </label>
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    onClick={() => {
+                      setIsCreateOpen(false);
+                      setInlineCreateDraft(null);
+                      setInlineCreateLayout(null);
+                    }}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={inlineCreateDraft.name.trim().length < 2}
+                    onClick={submitInlineCreate}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    Save
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </Popup>
         </CardContent>
       </Card>
-
-      <Panel
-        footer={
-          <>
-            <Button onClick={() => setIsCreateOpen(false)} type="button" variant="ghost">
-              Cancel
-            </Button>
-            <Button disabled={!canWrite || isMutating || draft.name.trim().length < 2} onClick={submitDraft} type="button" variant="secondary">
-              Add space
-            </Button>
-          </>
+      <span
+        aria-hidden
+        className="pointer-events-none fixed h-px w-px"
+        ref={actionMenuAnchorRef}
+        style={
+          actionMenuPoint
+            ? {
+                left: `${actionMenuPoint.x}px`,
+                top: `${actionMenuPoint.y}px`
+              }
+            : {
+                left: "-9999px",
+                top: "-9999px"
+              }
         }
-        onClose={() => setIsCreateOpen(false)}
-        open={isCreateOpen}
-        panelClassName="ml-auto max-w-[320px]"
-        subtitle="Add a room, zone, or structural element to this layout."
-        title="Add space"
+      />
+      <Popover
+        anchorRef={actionMenuAnchorRef}
+        className="w-auto rounded-[999px] border border-border/70 bg-surface/95 p-1 shadow-floating backdrop-blur"
+        key={`node-actions:${actionMenuRoomId ?? "none"}:${actionMenuStamp}`}
+        offset={10}
+        onClose={() => {
+          setActionMenuRoomId(null);
+          setActionMenuPoint(null);
+        }}
+        open={Boolean(actionMenuRoom && mapCanEdit && actionMenuPoint)}
+        placement="bottom-start"
       >
-        <div className="grid gap-3">
-          <FormField label="Name">
-            <Input onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} value={draft.name} />
-          </FormField>
-          <FormField hint="Optional, auto-generated if blank." label="Slug">
-            <Input onChange={(event) => setDraft((current) => ({ ...current, slug: slugify(event.target.value) }))} value={draft.slug} />
-          </FormField>
-          <FormField label="Space type">
-            <Select
-              onChange={(event) => setDraft((current) => ({ ...current, elementType: event.target.value as StructureElementType }))}
-              options={[
-                { value: "room", label: "Room" },
-                { value: "court", label: "Court" },
-                { value: "field", label: "Field" },
-                { value: "custom", label: "Custom" },
-                { value: "structure", label: "Structure (non-bookable)" }
-              ]}
-              value={draft.elementType}
-            />
-          </FormField>
-          <label className="ui-inline-toggle">
-            <Checkbox
-              checked={isNonBookableElementType(draft.elementType) ? false : draft.isBookable}
-              disabled={isNonBookableElementType(draft.elementType)}
-              onChange={(event) => setDraft((current) => ({ ...current, isBookable: event.target.checked }))}
-            />
-            Bookable
-          </label>
+        <div className="flex items-center gap-1">
+          <Button
+            aria-label="Node settings"
+            className="h-8 w-8 rounded-full p-0"
+            onClick={() => {
+              if (!actionMenuRoom) {
+                return;
+              }
+              openEditRoomPanel(actionMenuRoom);
+            }}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <Settings2 className="h-4 w-4" />
+          </Button>
+          <Button
+            aria-label="Duplicate node"
+            className="h-8 w-8 rounded-full p-0"
+            disabled={!mapCanEdit}
+            onClick={() => {
+              if (!actionMenuRoom) {
+                return;
+              }
+              duplicateRoom(actionMenuRoom);
+              setActionMenuRoomId(null);
+              setActionMenuPoint(null);
+            }}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+          <Button
+            aria-label="Delete node"
+            className="h-8 w-8 rounded-full p-0 text-danger"
+            onClick={() => {
+              if (!actionMenuRoom) {
+                return;
+              }
+              void deleteRoom(actionMenuRoom.id);
+            }}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
-      </Panel>
+      </Popover>
 
-      <Panel
-        footer={
-          <>
-            <Button onClick={() => setIsEditOpen(false)} type="button" variant="ghost">
-              Cancel
-            </Button>
-            <Button disabled={!canWrite || isMutating || draft.name.trim().length < 2} onClick={submitDraft} type="button" variant="secondary">
-              Save space
-            </Button>
-          </>
-        }
-        onClose={() => setIsEditOpen(false)}
-        open={isEditOpen}
-        panelClassName="ml-auto max-w-[320px]"
-        subtitle="Update space details, booking, or archive this element."
-        title="Edit space"
-      >
-        <div className="grid gap-3">
-          <FormField label="Name">
-            <Input onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} value={draft.name} />
-          </FormField>
-          <FormField hint="Optional, auto-generated if blank." label="Slug">
-            <Input onChange={(event) => setDraft((current) => ({ ...current, slug: slugify(event.target.value) }))} value={draft.slug} />
-          </FormField>
-          <FormField label="Type">
-            <Select
-              onChange={(event) => setDraft((current) => ({ ...current, elementType: event.target.value as StructureElementType }))}
-              options={[
-                { value: "room", label: "Room" },
-                { value: "court", label: "Court" },
-                { value: "field", label: "Field" },
-                { value: "custom", label: "Custom" },
-                { value: "structure", label: "Structure (non-bookable)" }
-              ]}
-              value={draft.elementType}
-            />
-          </FormField>
-          <FormField label="Status">
-            <Select
-              onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as FacilitySpace["status"] }))}
-              options={[
-                { value: "open", label: "Open" },
-                { value: "closed", label: "Closed" },
-                { value: "archived", label: "Archived" }
-              ]}
-              value={draft.status}
-            />
-          </FormField>
-          <label className="ui-inline-toggle">
-            <Checkbox
-              checked={isNonBookableElementType(draft.elementType) ? false : draft.isBookable}
-              disabled={isNonBookableElementType(draft.elementType)}
-              onChange={(event) => setDraft((current) => ({ ...current, isBookable: event.target.checked }))}
-            />
-            Bookable
-          </label>
-          {draft.spaceId ? (
-            <div className="flex items-center gap-2">
-              <Button
-                disabled={!canWrite || isMutating}
-                onClick={() => {
-                  const room = spaceById.get(draft.spaceId as string);
-                  if (room) {
-                    duplicateRoom(room);
-                  }
-                }}
-                type="button"
-                variant="ghost"
-              >
-                Duplicate space
-              </Button>
-              <Button
-                className="text-danger"
-                disabled={!canWrite || isMutating}
-                onClick={() => {
-                  if (draft.spaceId) {
-                    deleteRoom(draft.spaceId);
-                  }
-                }}
-                type="button"
-                variant="ghost"
-              >
-                Delete space
-              </Button>
-              <Button
-                disabled={!canWrite || isMutating}
-                onClick={() => {
-                  onArchiveSpace(draft.spaceId as string);
-                  setIsEditOpen(false);
-                }}
-                type="button"
-                variant="ghost"
-              >
-                Archive space
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      </Panel>
     </>
   );
 }

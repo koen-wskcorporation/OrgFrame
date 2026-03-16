@@ -4,10 +4,12 @@ import {
   batchUpdateSpreadsheet,
   clearSheetRange,
   createSpreadsheet,
+  createSpreadsheetWithAccessToken,
   getSpreadsheetMetadata,
   getSheetValues,
   isGoogleSheetsConfigured,
   shareSpreadsheetWithUser,
+  shareSpreadsheetWithUserAccessToken,
   updateSheetValues
 } from "@/lib/integrations/google-sheets/client";
 import { parseFormSchema } from "@/modules/forms/schema";
@@ -100,6 +102,7 @@ type SheetColumnSet = {
   submissionAnswerFields: string[];
   entryHeaders: string[];
   entryAnswerFields: string[];
+  selectOptionsByFieldName: Record<string, string[]>;
 };
 
 type EnsureResult = {
@@ -107,6 +110,13 @@ type EnsureResult = {
   spreadsheetUrl: string;
   submissionsSheetId: number;
   entriesSheetId: number;
+};
+
+const GOOGLE_SHEETS_PUBLIC_ORIGIN = "https://web.wskcorporation.com";
+
+type OrgSheetBranding = {
+  slug: string;
+  accentHex: string | null;
 };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -136,8 +146,64 @@ function parseFieldNames(schemaJson: unknown, formKind: FormRow["form_kind"]): s
   return fieldNames;
 }
 
+function parseSelectOptionsByFieldName(schemaJson: unknown, formKind: FormRow["form_kind"]): Record<string, string[]> {
+  const schema = parseFormSchema(schemaJson, "Form", formKind);
+  const seen = new Set<string>();
+  const selectOptionsByFieldName: Record<string, string[]> = {};
+
+  schema.pages.forEach((page) => {
+    page.fields.forEach((field) => {
+      if (!field.name || seen.has(field.name)) {
+        return;
+      }
+
+      seen.add(field.name);
+      if (field.type !== "select") {
+        return;
+      }
+
+      const options = Array.from(
+        new Set(
+          (field.options ?? [])
+            .map((option) => option.value.trim())
+            .filter((value) => value.length > 0)
+        )
+      );
+      if (options.length > 0) {
+        selectOptionsByFieldName[field.name] = options;
+      }
+    });
+  });
+
+  return selectOptionsByFieldName;
+}
+
 function toIsoNow() {
   return new Date().toISOString();
+}
+
+function toA1ColumnLabel(index: number): string {
+  let value = index + 1;
+  let label = "";
+
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    label = String.fromCharCode(65 + remainder) + label;
+    value = Math.floor((value - 1) / 26);
+  }
+
+  return label;
+}
+
+function buildHyperlinkFormula(url: string, label: string): string {
+  const safeUrl = url.replace(/"/g, "\"\"");
+  const safeLabel = label.replace(/"/g, "\"\"");
+  return `=HYPERLINK("${safeUrl}","${safeLabel}")`;
+}
+
+function buildImageFormula(url: string): string {
+  const safeUrl = url.replace(/"/g, "\"\"");
+  return `=IFERROR(IMAGE("${safeUrl}",1),"")`;
 }
 
 function normalizeOrigin(value: string | null | undefined): string {
@@ -150,11 +216,45 @@ function normalizeOrigin(value: string | null | undefined): string {
 
 function resolveAppOrigin(): string {
   const configured = normalizeOrigin(process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL);
-  if (configured) {
+  if (configured && !configured.includes("localhost") && !configured.includes("127.0.0.1")) {
     return configured;
   }
 
-  return "http://localhost:3000";
+  return GOOGLE_SHEETS_PUBLIC_ORIGIN;
+}
+
+function resolveGoogleSheetsServiceAccountEmail(): string | null {
+  const candidates = [
+    process.env.GCP_SERVICE_ACCOUNT_EMAIL,
+    process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL,
+    process.env.GOOGLE_SHEETS_RUNTIME_SERVICE_ACCOUNT_EMAIL
+  ];
+
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+
+  return null;
+}
+
+function parseHexColorToRgb(hex: string): { red: number; green: number; blue: number } | null {
+  const normalized = hex.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return null;
+  }
+
+  const red = Number.parseInt(normalized.slice(0, 2), 16) / 255;
+  const green = Number.parseInt(normalized.slice(2, 4), 16) / 255;
+  const blue = Number.parseInt(normalized.slice(4, 6), 16) / 255;
+  return { red, green, blue };
+}
+
+function deriveHeaderTextColor(accent: { red: number; green: number; blue: number }): { red: number; green: number; blue: number } {
+  const luminance = (0.2126 * accent.red) + (0.7152 * accent.green) + (0.0722 * accent.blue);
+  return luminance > 0.6 ? { red: 0.08, green: 0.12, blue: 0.18 } : { red: 1, green: 1, blue: 1 };
 }
 
 function buildSubmissionManageUrl(input: {
@@ -246,16 +346,24 @@ async function loadForm(orgId: string, formId: string): Promise<FormRow | null> 
   return (data as FormRow | null) ?? null;
 }
 
-async function loadOrgSlug(orgId: string): Promise<string | null> {
+async function loadOrgSheetBranding(orgId: string): Promise<OrgSheetBranding | null> {
   const supabase = createSupabaseServiceRoleClient();
-  const { data, error } = await supabase.from("orgs").select("slug").eq("id", orgId).maybeSingle();
+  const { data, error } = await supabase.from("orgs").select("slug, brand_primary").eq("id", orgId).maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to load org slug for Sheets sync: ${error.message}`);
+    throw new Error(`Failed to load org branding for Sheets sync: ${error.message}`);
   }
 
   const slug = typeof data?.slug === "string" ? data.slug.trim() : "";
-  return slug || null;
+  if (!slug) {
+    return null;
+  }
+
+  const accentHex = typeof data?.brand_primary === "string" ? data.brand_primary.trim() : "";
+  return {
+    slug,
+    accentHex: accentHex.length > 0 ? accentHex : null
+  };
 }
 
 async function loadIntegration(orgId: string, formId: string): Promise<IntegrationRow | null> {
@@ -366,6 +474,18 @@ async function ensureSpreadsheetStructure(
     });
   });
 
+  const submissionsColumnCount = columns.submissionHeaders.length;
+  const entriesColumnCount = columns.entryHeaders.length;
+  const submissionHeaderIndex = new Map(columns.submissionHeaders.map((header, index) => [header, index]));
+  const entryHeaderIndex = new Map(columns.entryHeaders.map((header, index) => [header, index]));
+  const statusColumnIndex = submissionHeaderIndex.get("status") ?? -1;
+  const adminNotesColumnIndex = submissionHeaderIndex.get("admin_notes") ?? -1;
+  const submissionsAnswerStartIndex =
+    columns.submissionAnswerFields.length > 0 ? (submissionHeaderIndex.get(columns.submissionAnswerFields[0]) ?? -1) : -1;
+  const entriesAnswerStartIndex = columns.entryAnswerFields.length > 0 ? (entryHeaderIndex.get(columns.entryAnswerFields[0]) ?? -1) : -1;
+  const submissionsSystemStartIndex = submissionsColumnCount - GOOGLE_SHEET_SYSTEM_COLUMNS.length;
+  const entriesSystemStartIndex = entriesColumnCount - GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS.length;
+
   requests.push(
     {
       updateSheetProperties: {
@@ -395,8 +515,8 @@ async function ensureSpreadsheetStructure(
         range: {
           sheetId: submissionsSheetId,
           dimension: "COLUMNS",
-          startIndex: 0,
-          endIndex: GOOGLE_SHEET_SYSTEM_COLUMNS.length
+          startIndex: submissionsSystemStartIndex,
+          endIndex: submissionsColumnCount
         },
         properties: {
           hiddenByUser: true
@@ -409,8 +529,8 @@ async function ensureSpreadsheetStructure(
         range: {
           sheetId: entriesSheetId,
           dimension: "COLUMNS",
-          startIndex: 0,
-          endIndex: GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS.length
+          startIndex: entriesSystemStartIndex,
+          endIndex: entriesColumnCount
         },
         properties: {
           hiddenByUser: true
@@ -420,31 +540,153 @@ async function ensureSpreadsheetStructure(
     }
   );
 
-  const statusColumnIndex = GOOGLE_SHEET_SYSTEM_COLUMNS.length;
-  const adminNotesColumnIndex = statusColumnIndex + 1;
-  const submissionsColumnCount = columns.submissionHeaders.length;
-  const entriesColumnCount = columns.entryHeaders.length;
-
-  requests.push({
-    setDataValidation: {
-      range: {
-        sheetId: submissionsSheetId,
-        startRowIndex: 2,
-        startColumnIndex: statusColumnIndex,
-        endColumnIndex: statusColumnIndex + 1
-      },
-      rule: {
-        condition: {
-          type: "ONE_OF_LIST",
-          values: GOOGLE_SHEET_SUBMISSION_STATUS_VALUES.map((value) => ({ userEnteredValue: value }))
+  if (statusColumnIndex >= 0) {
+    requests.push({
+      setDataValidation: {
+        range: {
+          sheetId: submissionsSheetId,
+          startRowIndex: 2,
+          startColumnIndex: statusColumnIndex,
+          endColumnIndex: statusColumnIndex + 1
         },
-        strict: true,
-        showCustomUi: true
+        rule: {
+          condition: {
+            type: "ONE_OF_LIST",
+            values: GOOGLE_SHEET_SUBMISSION_STATUS_VALUES.map((value) => ({ userEnteredValue: value }))
+          },
+          strict: true,
+          showCustomUi: true
+        }
+      }
+    });
+  }
+
+  requests.push(
+    {
+      repeatCell: {
+        range: {
+          sheetId: submissionsSheetId,
+          startRowIndex: 2,
+          startColumnIndex: submissionsAnswerStartIndex >= 0 ? submissionsAnswerStartIndex : submissionsColumnCount,
+          endColumnIndex:
+            submissionsAnswerStartIndex >= 0
+              ? submissionsAnswerStartIndex + columns.submissionAnswerFields.length
+              : submissionsColumnCount
+        },
+        cell: {
+          dataValidation: null
+        },
+        fields: "dataValidation"
+      }
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId: entriesSheetId,
+          startRowIndex: 2,
+          startColumnIndex: entriesAnswerStartIndex >= 0 ? entriesAnswerStartIndex : entriesColumnCount,
+          endColumnIndex: entriesAnswerStartIndex >= 0 ? entriesAnswerStartIndex + columns.entryAnswerFields.length : entriesColumnCount
+        },
+        cell: {
+          dataValidation: null
+        },
+        fields: "dataValidation"
       }
     }
+  );
+
+  columns.submissionAnswerFields.forEach((fieldName) => {
+    const options = columns.selectOptionsByFieldName[fieldName] ?? [];
+    const submissionColumnIndex = submissionHeaderIndex.get(fieldName);
+    const entryColumnIndex = entryHeaderIndex.get(fieldName);
+    if (options.length === 0) {
+      return;
+    }
+    if (typeof submissionColumnIndex !== "number" || typeof entryColumnIndex !== "number") {
+      return;
+    }
+
+    requests.push(
+      {
+        setDataValidation: {
+          range: {
+            sheetId: submissionsSheetId,
+            startRowIndex: 2,
+            startColumnIndex: submissionColumnIndex,
+            endColumnIndex: submissionColumnIndex + 1
+          },
+          rule: {
+            condition: {
+              type: "ONE_OF_LIST",
+              values: options.map((value) => ({ userEnteredValue: value }))
+            },
+            strict: true,
+            showCustomUi: true
+          }
+        }
+      },
+      {
+        setDataValidation: {
+          range: {
+            sheetId: entriesSheetId,
+            startRowIndex: 2,
+            startColumnIndex: entryColumnIndex,
+            endColumnIndex: entryColumnIndex + 1
+          },
+          rule: {
+            condition: {
+              type: "ONE_OF_LIST",
+              values: options.map((value) => ({ userEnteredValue: value }))
+            },
+            strict: true,
+            showCustomUi: true
+          }
+        }
+      }
+    );
   });
 
   requests.push(
+    {
+      repeatCell: {
+        range: {
+          sheetId: submissionsSheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: submissionsColumnCount
+        },
+        cell: {
+          userEnteredFormat: {
+            wrapStrategy: "WRAP",
+            verticalAlignment: "MIDDLE",
+            backgroundColor: {
+              red: 0.94,
+              green: 0.97,
+              blue: 1
+            },
+            textFormat: {
+              bold: true
+            }
+          }
+        },
+        fields: "userEnteredFormat(wrapStrategy,verticalAlignment,backgroundColor,textFormat)"
+      }
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: submissionsSheetId,
+          dimension: "ROWS",
+          startIndex: 0,
+          endIndex: 1
+        },
+        properties: {
+          pixelSize: 78
+        },
+        fields: "pixelSize"
+      }
+    },
     {
       repeatCell: {
         range: {
@@ -524,6 +766,46 @@ async function ensureSpreadsheetStructure(
       repeatCell: {
         range: {
           sheetId: entriesSheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: entriesColumnCount
+        },
+        cell: {
+          userEnteredFormat: {
+            wrapStrategy: "WRAP",
+            verticalAlignment: "MIDDLE",
+            backgroundColor: {
+              red: 0.94,
+              green: 0.97,
+              blue: 1
+            },
+            textFormat: {
+              bold: true
+            }
+          }
+        },
+        fields: "userEnteredFormat(wrapStrategy,verticalAlignment,backgroundColor,textFormat)"
+      }
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: entriesSheetId,
+          dimension: "ROWS",
+          startIndex: 0,
+          endIndex: 1
+        },
+        properties: {
+          pixelSize: 78
+        },
+        fields: "pixelSize"
+      }
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId: entriesSheetId,
           startRowIndex: 1,
           endRowIndex: 2,
           startColumnIndex: 0,
@@ -582,6 +864,7 @@ async function ensureSpreadsheetStructure(
 async function loadSubmissionsWithEntries(orgId: string, formId: string): Promise<{
   submissions: SubmissionRow[];
   entriesBySubmissionId: Map<string, SubmissionEntryRow[]>;
+  playerLabelById: Map<string, string>;
 }> {
   const supabase = createSupabaseServiceRoleClient();
 
@@ -599,6 +882,7 @@ async function loadSubmissionsWithEntries(orgId: string, formId: string): Promis
   const submissions = (submissionRows ?? []) as SubmissionRow[];
   const submissionIds = submissions.map((row) => row.id);
   const entriesBySubmissionId = new Map<string, SubmissionEntryRow[]>();
+  const playerLabelById = new Map<string, string>();
 
   if (submissionIds.length > 0) {
     const { data: entryRows, error: entryError } = await supabase
@@ -620,33 +904,57 @@ async function loadSubmissionsWithEntries(orgId: string, formId: string): Promis
         entriesBySubmissionId.set(entry.submission_id, [entry]);
       }
     });
+
+    const playerIds = Array.from(
+      new Set((entryRows ?? []).map((entry) => String(entry.player_id ?? "").trim()).filter((value) => value.length > 0))
+    );
+    if (playerIds.length > 0) {
+      const { data: playerRows, error: playerError } = await supabase
+        .from("players")
+        .select("id, first_name, last_name")
+        .in("id", playerIds);
+
+      if (playerError) {
+        throw new Error(`Failed to load player names for Sheets sync: ${playerError.message}`);
+      }
+
+      (playerRows ?? []).forEach((row) => {
+        const firstName = typeof row.first_name === "string" ? row.first_name.trim() : "";
+        const lastName = typeof row.last_name === "string" ? row.last_name.trim() : "";
+        const label = `${firstName} ${lastName}`.trim();
+        playerLabelById.set(String(row.id), label.length > 0 ? label : `Player ${String(row.id).slice(0, 8)}`);
+      });
+    }
   }
 
   return {
     submissions,
-    entriesBySubmissionId
+    entriesBySubmissionId,
+    playerLabelById
   };
 }
 
 function buildColumnSet(form: FormRow): SheetColumnSet {
   const answerFields = parseFieldNames(form.schema_json, form.form_kind);
+  const selectOptionsByFieldName = parseSelectOptionsByFieldName(form.schema_json, form.form_kind);
 
   return {
     submissionHeaders: [
-      ...GOOGLE_SHEET_SYSTEM_COLUMNS,
       ...GOOGLE_SHEET_MUTABLE_COLUMNS,
       ...GOOGLE_SHEET_LINK_COLUMNS,
       ...GOOGLE_SHEET_BASE_READ_COLUMNS,
-      ...answerFields
+      ...answerFields,
+      ...GOOGLE_SHEET_SYSTEM_COLUMNS
     ],
     submissionAnswerFields: answerFields,
     entryHeaders: [
-      ...GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS,
       ...GOOGLE_SHEET_ENTRY_BASE_COLUMNS,
       ...GOOGLE_SHEET_ENTRY_LINK_COLUMNS,
-      ...answerFields
+      ...answerFields,
+      ...GOOGLE_SHEET_ENTRY_SYSTEM_COLUMNS
     ],
-    entryAnswerFields: answerFields
+    entryAnswerFields: answerFields,
+    selectOptionsByFieldName
   };
 }
 
@@ -659,19 +967,6 @@ function buildSubmissionRow(input: {
   syncedAt: string;
 }): Array<string | number> {
   const answers = asObject(input.submission.answers_json);
-  const submissionUrl = buildSubmissionManageUrl({
-    appOrigin: input.appOrigin,
-    orgSlug: input.orgSlug,
-    formId: input.formId,
-    submissionId: input.submission.id
-  });
-  const playersLinkedUrl = buildSubmissionManageUrl({
-    appOrigin: input.appOrigin,
-    orgSlug: input.orgSlug,
-    formId: input.formId,
-    submissionId: input.submission.id,
-    section: "players"
-  });
 
   const rowHash = buildRowHash([
     input.submission.id,
@@ -684,18 +979,18 @@ function buildSubmissionRow(input: {
   ]);
 
   return [
+    input.submission.status,
+    input.submission.admin_notes ?? "",
+    "View players",
+    "Open submission",
+    input.submission.created_at,
+    input.submission.updated_at,
+    ...input.answerFields.map((field) => normalizeSheetCell(answers[field])),
     input.submission.id,
     input.submission.sync_rev,
     rowHash,
     input.syncedAt,
-    input.formId,
-    input.submission.status,
-    input.submission.admin_notes ?? "",
-    playersLinkedUrl,
-    submissionUrl,
-    input.submission.created_at,
-    input.submission.updated_at,
-    ...input.answerFields.map((field) => normalizeSheetCell(answers[field]))
+    input.formId
   ];
 }
 
@@ -709,21 +1004,6 @@ function buildEntryRow(input: {
   syncedAt: string;
 }): Array<string | number> {
   const answers = asObject(input.entry.answers_json);
-  const entryManageUrl = buildSubmissionManageUrl({
-    appOrigin: input.appOrigin,
-    orgSlug: input.orgSlug,
-    formId: input.formId,
-    submissionId: input.submission.id,
-    entryId: input.entry.id,
-    section: "players"
-  });
-  const entryActionsUrl = buildSubmissionManageUrl({
-    appOrigin: input.appOrigin,
-    orgSlug: input.orgSlug,
-    formId: input.formId,
-    submissionId: input.submission.id,
-    entryId: input.entry.id
-  });
 
   const rowHash = buildRowHash([
     input.entry.id,
@@ -736,19 +1016,424 @@ function buildEntryRow(input: {
   ]);
 
   return [
+    input.entry.player_id,
+    input.entry.program_node_id ?? "",
+    input.entry.created_at,
+    "View player",
+    "Open entry",
+    ...input.answerFields.map((field) => normalizeSheetCell(answers[field])),
     input.entry.id,
     input.submission.id,
     input.submission.sync_rev,
     rowHash,
     input.syncedAt,
-    input.formId,
-    input.entry.player_id,
-    input.entry.program_node_id ?? "",
-    input.entry.created_at,
-    entryManageUrl,
-    entryActionsUrl,
-    ...input.answerFields.map((field) => normalizeSheetCell(answers[field]))
+    input.formId
   ];
+}
+
+async function applyDefaultSheetSizing(input: {
+  spreadsheetId: string;
+  submissionsSheetId: number;
+  entriesSheetId: number;
+  submissionsColumnCount: number;
+  entriesColumnCount: number;
+  submissionsRowCount: number;
+  entriesRowCount: number;
+}): Promise<void> {
+  const minimumSizedRows = 50;
+  const defaultRowHeightPx = 32;
+
+  const requests: Array<Record<string, unknown>> = [
+    {
+      autoResizeDimensions: {
+        dimensions: {
+          sheetId: input.submissionsSheetId,
+          dimension: "COLUMNS",
+          startIndex: 0,
+          endIndex: input.submissionsColumnCount
+        }
+      }
+    },
+    {
+      autoResizeDimensions: {
+        dimensions: {
+          sheetId: input.entriesSheetId,
+          dimension: "COLUMNS",
+          startIndex: 0,
+          endIndex: input.entriesColumnCount
+        }
+      }
+    }
+  ];
+
+  const submissionRowsToSize = Math.max(input.submissionsRowCount + 2, minimumSizedRows);
+  const entryRowsToSize = Math.max(input.entriesRowCount + 2, minimumSizedRows);
+
+  requests.push(
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: input.submissionsSheetId,
+          dimension: "ROWS",
+          startIndex: 1,
+          endIndex: submissionRowsToSize
+        },
+        properties: {
+          pixelSize: defaultRowHeightPx
+        },
+        fields: "pixelSize"
+      }
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: input.entriesSheetId,
+          dimension: "ROWS",
+          startIndex: 1,
+          endIndex: entryRowsToSize
+        },
+        properties: {
+          pixelSize: defaultRowHeightPx
+        },
+        fields: "pixelSize"
+      }
+    }
+  );
+
+  await batchUpdateSpreadsheet(input.spreadsheetId, requests);
+}
+
+async function applyManagedLinkFormulas(input: {
+  spreadsheetId: string;
+  orgSlug: string;
+  appOrigin: string;
+  formId: string;
+  columns: SheetColumnSet;
+  submissions: SubmissionRow[];
+  entriesBySubmissionId: Map<string, SubmissionEntryRow[]>;
+  playerLabelById: Map<string, string>;
+}): Promise<void> {
+  const submissionsLinkStartIndex = input.columns.submissionHeaders.indexOf("players_linked");
+  const entriesLinkStartIndex = input.columns.entryHeaders.indexOf("players_linked");
+  if (submissionsLinkStartIndex < 0 || entriesLinkStartIndex < 0) {
+    return;
+  }
+  const submissionsLinkStartColumn = toA1ColumnLabel(submissionsLinkStartIndex);
+  const submissionsLinkEndColumn = toA1ColumnLabel(submissionsLinkStartIndex + GOOGLE_SHEET_LINK_COLUMNS.length - 1);
+  const entriesLinkStartColumn = toA1ColumnLabel(entriesLinkStartIndex);
+  const entriesLinkEndColumn = toA1ColumnLabel(entriesLinkStartIndex + GOOGLE_SHEET_ENTRY_LINK_COLUMNS.length - 1);
+
+  const submissionLinkValues = input.submissions.map((submission) => {
+    const submissionEntries = input.entriesBySubmissionId.get(submission.id) ?? [];
+    const playerNames = Array.from(
+      new Set(
+        submissionEntries.map((entry) => input.playerLabelById.get(entry.player_id) ?? `Player ${entry.player_id.slice(0, 8)}`)
+      )
+    );
+    const playersLabel = playerNames.length > 0 ? playerNames.join(", ") : "";
+
+    const playersLinkedUrl = buildSubmissionManageUrl({
+      appOrigin: input.appOrigin,
+      orgSlug: input.orgSlug,
+      formId: input.formId,
+      submissionId: submission.id,
+      section: "players"
+    });
+    const submissionUrl = buildSubmissionManageUrl({
+      appOrigin: input.appOrigin,
+      orgSlug: input.orgSlug,
+      formId: input.formId,
+      submissionId: submission.id
+    });
+
+    return [
+      playersLabel.length > 0 ? buildHyperlinkFormula(playersLinkedUrl, playersLabel) : "",
+      buildHyperlinkFormula(submissionUrl, "Open submission")
+    ];
+  });
+
+  const entryLinkValues = input.submissions.flatMap((submission) => {
+    const entries = input.entriesBySubmissionId.get(submission.id) ?? [];
+    return entries.map((entry) => {
+      const entryManageUrl = buildSubmissionManageUrl({
+        appOrigin: input.appOrigin,
+        orgSlug: input.orgSlug,
+        formId: input.formId,
+        submissionId: submission.id,
+        entryId: entry.id,
+        section: "players"
+      });
+      const entryActionsUrl = buildSubmissionManageUrl({
+        appOrigin: input.appOrigin,
+        orgSlug: input.orgSlug,
+        formId: input.formId,
+        submissionId: submission.id,
+        entryId: entry.id
+      });
+      const playerLabel = input.playerLabelById.get(entry.player_id) ?? `Player ${entry.player_id.slice(0, 8)}`;
+
+      return [buildHyperlinkFormula(entryManageUrl, playerLabel), buildHyperlinkFormula(entryActionsUrl, "Open entry")];
+    });
+  });
+
+  if (submissionLinkValues.length > 0) {
+    const submissionRowStart = 3;
+    const submissionRowEnd = submissionRowStart + submissionLinkValues.length - 1;
+    await updateSheetValues({
+      spreadsheetId: input.spreadsheetId,
+      range: `${GOOGLE_SHEETS_TAB_SUBMISSIONS}!${submissionsLinkStartColumn}${submissionRowStart}:${submissionsLinkEndColumn}${submissionRowEnd}`,
+      valueInputOption: "USER_ENTERED",
+      values: submissionLinkValues
+    });
+  }
+
+  if (entryLinkValues.length > 0) {
+    const entryRowStart = 3;
+    const entryRowEnd = entryRowStart + entryLinkValues.length - 1;
+    await updateSheetValues({
+      spreadsheetId: input.spreadsheetId,
+      range: `${GOOGLE_SHEETS_TAB_ENTRIES}!${entriesLinkStartColumn}${entryRowStart}:${entriesLinkEndColumn}${entryRowEnd}`,
+      valueInputOption: "USER_ENTERED",
+      values: entryLinkValues
+    });
+  }
+}
+
+async function applyBrandingHeaderFormulas(input: {
+  spreadsheetId: string;
+  appOrigin: string;
+  orgSlug: string;
+}): Promise<void> {
+  const orgFrameLogoUrl = `${input.appOrigin}/brand/logo.svg`;
+  const orgLogoUrl = `${input.appOrigin}/${input.orgSlug}/logo`;
+
+  const submissionsLogoValues = [[buildImageFormula(orgFrameLogoUrl), buildImageFormula(orgLogoUrl)]];
+  const entriesLogoValues = [[buildImageFormula(orgFrameLogoUrl), buildImageFormula(orgLogoUrl)]];
+
+  await updateSheetValues({
+    spreadsheetId: input.spreadsheetId,
+    range: `${GOOGLE_SHEETS_TAB_SUBMISSIONS}!A1:B1`,
+    valueInputOption: "USER_ENTERED",
+    values: submissionsLogoValues
+  });
+
+  await updateSheetValues({
+    spreadsheetId: input.spreadsheetId,
+    range: `${GOOGLE_SHEETS_TAB_ENTRIES}!A1:B1`,
+    valueInputOption: "USER_ENTERED",
+    values: entriesLogoValues
+  });
+}
+
+async function applyBrandingHeaderLayout(input: {
+  spreadsheetId: string;
+  submissionsSheetId: number;
+  entriesSheetId: number;
+  submissionsColumnCount: number;
+  entriesColumnCount: number;
+  accentHex: string | null;
+}): Promise<void> {
+  const accentRgb = input.accentHex ? parseHexColorToRgb(input.accentHex) : null;
+  const headerTextRgb = accentRgb ? deriveHeaderTextColor(accentRgb) : { red: 0.08, green: 0.12, blue: 0.18 };
+
+  const buildRequestsForSheet = (sheetId: number, columnCount: number): Array<Record<string, unknown>> => {
+    const titleEnd = Math.min(6, columnCount);
+    const instructionsStart = Math.min(6, columnCount - 1);
+    const instructionsEnd = columnCount;
+    const requests: Array<Record<string, unknown>> = [];
+
+    requests.push({
+      unmergeCells: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: columnCount
+        }
+      }
+    });
+
+    if (titleEnd > 2) {
+      requests.push({
+        mergeCells: {
+          range: {
+            sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: 2,
+            endColumnIndex: titleEnd
+          },
+          mergeType: "MERGE_ALL"
+        }
+      });
+    }
+
+    if (instructionsEnd > instructionsStart) {
+      requests.push({
+        mergeCells: {
+          range: {
+            sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: instructionsStart,
+            endColumnIndex: instructionsEnd
+          },
+          mergeType: "MERGE_ALL"
+        }
+      });
+    }
+
+    requests.push({
+      mergeCells: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: 2
+        },
+        mergeType: "MERGE_ALL"
+      }
+    });
+
+    requests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: columnCount
+        },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: accentRgb ?? { red: 0.94, green: 0.97, blue: 1 },
+            textFormat: {
+              bold: true,
+              foregroundColor: headerTextRgb
+            },
+            horizontalAlignment: "LEFT",
+            wrapStrategy: "WRAP",
+            verticalAlignment: "MIDDLE"
+          }
+        },
+        fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,wrapStrategy,verticalAlignment)"
+      }
+    });
+
+    requests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: 2
+        },
+        cell: {
+          userEnteredFormat: {
+            horizontalAlignment: "CENTER"
+          }
+        },
+        fields: "userEnteredFormat(horizontalAlignment)"
+      }
+    });
+
+    if (titleEnd > 2) {
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: 2,
+            endColumnIndex: titleEnd
+          },
+          cell: {
+            userEnteredFormat: {
+              textFormat: {
+                bold: true,
+                fontSize: 16,
+                foregroundColor: headerTextRgb
+              }
+            }
+          },
+          fields: "userEnteredFormat(textFormat)"
+        }
+      });
+    }
+
+    if (instructionsEnd > instructionsStart) {
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: instructionsStart,
+            endColumnIndex: instructionsEnd
+          },
+          cell: {
+            userEnteredFormat: {
+              textFormat: {
+                bold: false,
+                fontSize: 10,
+                foregroundColor: headerTextRgb
+              }
+            }
+          },
+          fields: "userEnteredFormat(textFormat)"
+        }
+      });
+    }
+
+    requests.push({
+      updateDimensionProperties: {
+        range: {
+          sheetId,
+          dimension: "ROWS",
+          startIndex: 0,
+          endIndex: 1
+        },
+        properties: {
+          pixelSize: 96
+        },
+        fields: "pixelSize"
+      }
+    });
+
+    return requests;
+  };
+
+  const requests: Array<Record<string, unknown>> = [
+    ...buildRequestsForSheet(input.submissionsSheetId, input.submissionsColumnCount),
+    ...buildRequestsForSheet(input.entriesSheetId, input.entriesColumnCount),
+    {
+      updateSheetProperties: {
+        properties: {
+          sheetId: input.submissionsSheetId,
+          tabColorStyle: {
+            rgbColor: accentRgb ?? { red: 0.25, green: 0.47, blue: 0.92 }
+          }
+        },
+        fields: "tabColorStyle"
+      }
+    },
+    {
+      updateSheetProperties: {
+        properties: {
+          sheetId: input.entriesSheetId,
+          tabColorStyle: {
+            rgbColor: accentRgb ?? { red: 0.25, green: 0.47, blue: 0.92 }
+          }
+        },
+        fields: "tabColorStyle"
+      }
+    }
+  ];
+
+  await batchUpdateSpreadsheet(input.spreadsheetId, requests);
 }
 
 async function writeCanonicalSheets(input: {
@@ -756,14 +1441,27 @@ async function writeCanonicalSheets(input: {
   appOrigin: string;
   form: FormRow;
   integration: IntegrationRow;
+  structure: EnsureResult;
   columns: SheetColumnSet;
   submissions: SubmissionRow[];
   entriesBySubmissionId: Map<string, SubmissionEntryRow[]>;
+  playerLabelById: Map<string, string>;
+  orgAccentHex: string | null;
   stats: SyncStats;
 }): Promise<void> {
   const syncedAt = toIsoNow();
-  const warning =
-    "Managed by Sports SaaS. Edit only 'status' and 'admin_notes' on existing rows. Do not add/delete columns. Link columns open managed views in the app.";
+  const instructions =
+    "OrgFrame managed sync sheet.\nDo: use dropdowns, update status/admin notes, and use link columns for actions.\nDo NOT: delete columns/tabs, edit hidden app_* columns, or overwrite header rows.";
+  const submissionsTitle = `${input.form.name} - Submissions`;
+  const entriesTitle = `${input.form.name} - Player Entries`;
+
+  const submissionsBrandRow = Array<string>(input.columns.submissionHeaders.length).fill("");
+  submissionsBrandRow[2] = submissionsTitle;
+  submissionsBrandRow[6] = instructions;
+
+  const entriesBrandRow = Array<string>(input.columns.entryHeaders.length).fill("");
+  entriesBrandRow[2] = entriesTitle;
+  entriesBrandRow[6] = instructions;
 
   const submissionRows = input.submissions.map((submission) => {
     return buildSubmissionRow({
@@ -796,7 +1494,7 @@ async function writeCanonicalSheets(input: {
     spreadsheetId: input.integration.spreadsheet_id,
     range: `${GOOGLE_SHEETS_TAB_SUBMISSIONS}!A1`,
     valueInputOption: "RAW",
-    values: [[warning], input.columns.submissionHeaders, ...submissionRows]
+    values: [submissionsBrandRow, input.columns.submissionHeaders, ...submissionRows]
   });
 
   await clearSheetRange(input.integration.spreadsheet_id, `${GOOGLE_SHEETS_TAB_ENTRIES}!A1:ZZ`);
@@ -804,8 +1502,46 @@ async function writeCanonicalSheets(input: {
     spreadsheetId: input.integration.spreadsheet_id,
     range: `${GOOGLE_SHEETS_TAB_ENTRIES}!A1`,
     valueInputOption: "RAW",
-    values: [[warning], input.columns.entryHeaders, ...entryRows]
+    values: [entriesBrandRow, input.columns.entryHeaders, ...entryRows]
   });
+
+  await applyBrandingHeaderFormulas({
+    spreadsheetId: input.integration.spreadsheet_id,
+    appOrigin: input.appOrigin,
+    orgSlug: input.orgSlug
+  });
+
+  await applyBrandingHeaderLayout({
+    spreadsheetId: input.integration.spreadsheet_id,
+    submissionsSheetId: input.structure.submissionsSheetId,
+    entriesSheetId: input.structure.entriesSheetId,
+    submissionsColumnCount: input.columns.submissionHeaders.length,
+    entriesColumnCount: input.columns.entryHeaders.length,
+    accentHex: input.orgAccentHex
+  });
+
+  await applyManagedLinkFormulas({
+    spreadsheetId: input.integration.spreadsheet_id,
+    orgSlug: input.orgSlug,
+    appOrigin: input.appOrigin,
+    formId: input.form.id,
+    columns: input.columns,
+    submissions: input.submissions,
+    entriesBySubmissionId: input.entriesBySubmissionId,
+    playerLabelById: input.playerLabelById
+  });
+
+  if (!input.integration.last_synced_at) {
+    await applyDefaultSheetSizing({
+      spreadsheetId: input.integration.spreadsheet_id,
+      submissionsSheetId: input.structure.submissionsSheetId,
+      entriesSheetId: input.structure.entriesSheetId,
+      submissionsColumnCount: input.columns.submissionHeaders.length,
+      entriesColumnCount: input.columns.entryHeaders.length,
+      submissionsRowCount: submissionRows.length,
+      entriesRowCount: entryRows.length
+    });
+  }
 
   input.stats.outboundRowsCount = submissionRows.length + entryRows.length;
 }
@@ -1002,8 +1738,8 @@ export async function runGoogleSheetSyncForForm(input: SyncFormInput): Promise<S
   if (!form) {
     throw new Error("Form not found.");
   }
-  const orgSlug = await loadOrgSlug(form.org_id);
-  if (!orgSlug) {
+  const orgBranding = await loadOrgSheetBranding(form.org_id);
+  if (!orgBranding) {
     throw new Error("Organization slug not found for Google Sheets sync.");
   }
 
@@ -1021,7 +1757,7 @@ export async function runGoogleSheetSyncForForm(input: SyncFormInput): Promise<S
 
   try {
     const columns = buildColumnSet(form);
-    await ensureSpreadsheetStructure(integration, columns, form.form_kind);
+    const structure = await ensureSpreadsheetStructure(integration, columns, form.form_kind);
 
     if (input.allowInbound) {
       await applyInboundSubmissions({
@@ -1035,13 +1771,16 @@ export async function runGoogleSheetSyncForForm(input: SyncFormInput): Promise<S
     if (input.allowOutbound) {
       const data = await loadSubmissionsWithEntries(input.orgId, input.formId);
       await writeCanonicalSheets({
-        orgSlug,
+        orgSlug: orgBranding.slug,
         appOrigin: resolveAppOrigin(),
         form,
         integration,
+        structure,
         columns,
         submissions: data.submissions,
         entriesBySubmissionId: data.entriesBySubmissionId,
+        playerLabelById: data.playerLabelById,
+        orgAccentHex: orgBranding.accentHex,
         stats
       });
     }
@@ -1184,6 +1923,7 @@ export async function connectFormToGoogleSheet(input: {
   formKind: FormRow["form_kind"];
   createdByUserId: string;
   shareWithEmail?: string | null;
+  ownerAccessToken?: string | null;
 }): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
   if (!isGoogleSheetsConfigured()) {
     throw new Error("Google Sheets integration is not configured on the server.");
@@ -1208,18 +1948,47 @@ export async function connectFormToGoogleSheet(input: {
   }
 
   const title = `${input.formName} - Submissions`;
-  const created = await createSpreadsheet({
-    title,
-    sheets: [
-      {
-        title: GOOGLE_SHEETS_TAB_SUBMISSIONS
-      },
-      {
-        title: GOOGLE_SHEETS_TAB_ENTRIES,
-        hidden: input.formKind === "generic"
+  const created = input.ownerAccessToken
+    ? await createSpreadsheetWithAccessToken(input.ownerAccessToken, {
+        title,
+        sheets: [
+          {
+            title: GOOGLE_SHEETS_TAB_SUBMISSIONS
+          },
+          {
+            title: GOOGLE_SHEETS_TAB_ENTRIES,
+            hidden: input.formKind === "generic"
+          }
+        ]
+      })
+    : await createSpreadsheet({
+        title,
+        sheets: [
+          {
+            title: GOOGLE_SHEETS_TAB_SUBMISSIONS
+          },
+          {
+            title: GOOGLE_SHEETS_TAB_ENTRIES,
+            hidden: input.formKind === "generic"
+          }
+        ]
+      });
+
+  if (input.ownerAccessToken) {
+    const appServiceAccountEmail = resolveGoogleSheetsServiceAccountEmail();
+    if (!appServiceAccountEmail) {
+      throw new Error(
+        "Google Sheets service account email is not configured. Set GCP_SERVICE_ACCOUNT_EMAIL or GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL."
+      );
+    }
+
+    await shareSpreadsheetWithUserAccessToken(input.ownerAccessToken, created.spreadsheetId, appServiceAccountEmail).catch(
+      (error) => {
+        const message = error instanceof Error ? error.message : "unknown_share_error";
+        throw new Error(`Google Sheets created as user, but failed to grant app sync access: ${message}`);
       }
-    ]
-  });
+    );
+  }
 
   if (input.shareWithEmail && input.shareWithEmail.trim()) {
     await shareSpreadsheetWithUser(created.spreadsheetId, input.shareWithEmail.trim().toLowerCase()).catch(() => {

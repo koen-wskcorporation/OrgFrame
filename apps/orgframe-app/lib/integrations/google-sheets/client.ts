@@ -389,12 +389,24 @@ async function getAccessToken(scopes = DEFAULT_SCOPES): Promise<string> {
 
 async function googleFetch<TResponse>(url: string, init?: RequestInit, scopes?: string[]): Promise<TResponse> {
   const accessToken = await getAccessToken(scopes);
+  return googleFetchWithAccessToken(accessToken, url, init);
+}
+
+async function googleFetchWithAccessToken<TResponse>(
+  accessToken: string,
+  url: string,
+  init?: RequestInit
+): Promise<TResponse> {
+  const trimmedAccessToken = accessToken.trim();
+  if (!trimmedAccessToken) {
+    throw new Error("Google access token was missing.");
+  }
 
   const response = await fetch(url, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${trimmedAccessToken}`,
       ...(init?.headers ?? {})
     }
   });
@@ -433,6 +445,16 @@ export async function createSpreadsheet(input: {
   title: string;
   sheets: Array<{ title: string; hidden?: boolean }>;
 }): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
+  return createSpreadsheetWithAccessToken(await getAccessToken(DEFAULT_SCOPES), input);
+}
+
+export async function createSpreadsheetWithAccessToken(
+  accessToken: string,
+  input: {
+    title: string;
+    sheets: Array<{ title: string; hidden?: boolean }>;
+  }
+): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
   const payload = {
     properties: {
       title: input.title
@@ -445,7 +467,8 @@ export async function createSpreadsheet(input: {
     }))
   };
 
-  const response = await googleFetch<{ spreadsheetId: string; spreadsheetUrl?: string }>(
+  const response = await googleFetchWithAccessToken<{ spreadsheetId: string; spreadsheetUrl?: string }>(
+    accessToken,
     "https://sheets.googleapis.com/v4/spreadsheets",
     {
       method: "POST",
@@ -464,8 +487,17 @@ export async function createSpreadsheet(input: {
 }
 
 export async function shareSpreadsheetWithUser(spreadsheetId: string, email: string): Promise<void> {
-  await googleFetch(
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(spreadsheetId)}/permissions?sendNotificationEmail=true`,
+  await shareSpreadsheetWithUserAccessToken(await getAccessToken([GOOGLE_DRIVE_SCOPE]), spreadsheetId, email);
+}
+
+export async function shareSpreadsheetWithUserAccessToken(
+  accessToken: string,
+  spreadsheetId: string,
+  email: string
+): Promise<void> {
+  await googleFetchWithAccessToken(
+    accessToken,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(spreadsheetId)}/permissions?sendNotificationEmail=false`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -473,8 +505,7 @@ export async function shareSpreadsheetWithUser(spreadsheetId: string, email: str
         role: "writer",
         emailAddress: email
       })
-    },
-    [GOOGLE_DRIVE_SCOPE]
+    }
   );
 }
 

@@ -85,6 +85,14 @@ export default async function OrgManageOverviewPage({
       href: `/${orgSlug}/tools/facilities`,
       cta: "Open Facilities",
       enabled: canReadFacilities
+    },
+    {
+      section: "operations" as const,
+      title: "SportsConnect Transfer",
+      description: "Import SportsConnect enrollments, guardian accounts, players, and order history.",
+      href: `/${orgSlug}/tools/manage/sportsconnect`,
+      cta: "Open Transfer Tool",
+      enabled: canManageOrg
     }
   ].filter((card) => card.enabled);
 

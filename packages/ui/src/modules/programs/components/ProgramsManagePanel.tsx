@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgf
 import { CalendarPicker } from "@orgframe/ui/ui/calendar-picker";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
-import { Panel } from "@orgframe/ui/ui/panel";
+import { Popup } from "@orgframe/ui/ui/popup";
 import { PublishStatusIcon } from "@orgframe/ui/ui/publish-status-icon";
 import { Select } from "@orgframe/ui/ui/select";
 import { Textarea } from "@orgframe/ui/ui/textarea";
@@ -263,7 +263,7 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
         </CardContent>
       </Card>
 
-      <Panel
+      <Popup
         footer={
           <>
             <Button onClick={() => setIsCreateOpen(false)} type="button" variant="ghost">
@@ -276,6 +276,7 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
         }
         onClose={() => setIsCreateOpen(false)}
         open={isCreateOpen}
+        size="lg"
         subtitle="Set up leagues, seasons, clinics, and custom programs."
         title="Create program"
       >
@@ -360,7 +361,7 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
             <CalendarPicker disabled={!canWrite} onChange={setEndDate} value={endDate} />
           </FormField>
         </form>
-      </Panel>
+      </Popup>
     </div>
   );
 }

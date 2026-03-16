@@ -86,10 +86,17 @@ body {
 
 .org-layout-root {
   margin-right: 0;
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
 }
 
 .org-layout-content {
   margin-right: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
   transition: margin-right 220ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: margin-right;
 }
@@ -200,6 +207,10 @@ a {
     min-width: 0;
     padding-inline: var(--layout-gap);
     padding-bottom: 2rem;
+    min-height: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
   }
 
   .app-page-stack {
@@ -207,6 +218,11 @@ a {
     min-width: 0;
     flex-direction: column;
     gap: var(--layout-gap);
+  }
+
+  .app-page-stack--fill {
+    min-height: 0;
+    flex: 1 1 auto;
   }
 
   .app-workspace-content {
@@ -254,6 +270,19 @@ a {
 
   .ui-surface-block {
     @apply rounded-control border bg-surface p-3;
+  }
+
+  .auth-photo-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(180deg, hsl(220 40% 8% / 0.52), hsl(220 30% 6% / 0.38)),
+      radial-gradient(circle at 20% 20%, hsl(var(--accent) / 0.18), transparent 42%),
+      url("/auth-softball-bg.jpg");
+    background-size: cover, cover, cover;
+    background-position: center, center, center;
+    background-repeat: no-repeat;
   }
 
   .ui-inline-toggle {

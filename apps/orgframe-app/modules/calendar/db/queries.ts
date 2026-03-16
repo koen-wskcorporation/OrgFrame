@@ -9,6 +9,7 @@ import type {
   CalendarReadModel,
   CalendarRule,
   CalendarRuleException,
+  CalendarRuleFacilityAllocation,
   FacilityAllocation,
   FacilitySpaceConfiguration,
   InboxItem,
@@ -30,6 +31,8 @@ const configurationSelect =
   "id, org_id, space_id, name, slug, capacity_teams, is_active, sort_index, metadata_json, created_by, updated_by, created_at, updated_at";
 const allocationSelect =
   "id, org_id, occurrence_id, space_id, configuration_id, lock_mode, allow_shared, starts_at_utc, ends_at_utc, is_active, metadata_json, created_by, updated_by, created_at, updated_at";
+const ruleAllocationSelect =
+  "id, org_id, rule_id, space_id, configuration_id, lock_mode, allow_shared, is_active, metadata_json, created_by, updated_by, created_at, updated_at";
 const inviteSelect =
   "id, org_id, occurrence_id, team_id, role, invite_status, invited_by_user_id, invited_at, responded_by_user_id, responded_at, created_at, updated_at";
 const inboxSelect =
@@ -140,6 +143,22 @@ type AllocationRow = {
   allow_shared: boolean;
   starts_at_utc: string;
   ends_at_utc: string;
+  is_active: boolean;
+  metadata_json: unknown;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type RuleAllocationRow = {
+  id: string;
+  org_id: string;
+  rule_id: string;
+  space_id: string;
+  configuration_id: string;
+  lock_mode: FacilityAllocation["lockMode"];
+  allow_shared: boolean;
   is_active: boolean;
   metadata_json: unknown;
   created_by: string | null;
@@ -303,6 +322,24 @@ function mapAllocation(row: AllocationRow): FacilityAllocation {
     allowShared: row.allow_shared,
     startsAtUtc: row.starts_at_utc,
     endsAtUtc: row.ends_at_utc,
+    isActive: row.is_active,
+    metadataJson: asObject(row.metadata_json),
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapRuleAllocation(row: RuleAllocationRow): CalendarRuleFacilityAllocation {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    ruleId: row.rule_id,
+    spaceId: row.space_id,
+    configurationId: row.configuration_id,
+    lockMode: row.lock_mode,
+    allowShared: row.allow_shared,
     isActive: row.is_active,
     metadataJson: asObject(row.metadata_json),
     createdBy: row.created_by,
@@ -609,6 +646,35 @@ export async function listCalendarOccurrences(
 
   if (error) {
     throw new Error(`Failed to list calendar occurrences: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => mapOccurrence(row as OccurrenceRow));
+}
+
+export async function listCalendarOccurrencesByRule(
+  orgId: string,
+  ruleId: string,
+  options?: {
+    includeCancelled?: boolean;
+  }
+): Promise<CalendarOccurrence[]> {
+  const supabase = await createSupabaseServer();
+  let query = supabase
+    .from("calendar_occurrences")
+    .select(occurrenceSelect)
+    .eq("org_id", orgId)
+    .eq("source_rule_id", ruleId)
+    .order("starts_at_utc", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (!options?.includeCancelled) {
+    query = query.eq("status", "scheduled");
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to list calendar occurrences by rule: ${error.message}`);
   }
 
   return (data ?? []).map((row) => mapOccurrence(row as OccurrenceRow));
@@ -1066,7 +1132,7 @@ export async function upsertOccurrenceFacilityAllocation(input: {
         updated_by: input.actorUserId
       },
       {
-        onConflict: "occurrence_id"
+        onConflict: "occurrence_id,space_id"
       }
     )
     .select(allocationSelect)
@@ -1077,6 +1143,138 @@ export async function upsertOccurrenceFacilityAllocation(input: {
   }
 
   return mapAllocation(data as AllocationRow);
+}
+
+export async function replaceOccurrenceFacilityAllocations(input: {
+  orgId: string;
+  occurrenceId: string;
+  allocations: Array<{
+    spaceId: string;
+    configurationId: string;
+    lockMode: FacilityAllocation["lockMode"];
+    allowShared: boolean;
+    metadataJson?: Record<string, unknown>;
+  }>;
+  actorUserId: string;
+}): Promise<FacilityAllocation[]> {
+  const supabase = await createSupabaseServer();
+  const payload = input.allocations.map((allocation) => ({
+    org_id: input.orgId,
+    occurrence_id: input.occurrenceId,
+    space_id: allocation.spaceId,
+    configuration_id: allocation.configurationId,
+    lock_mode: allocation.lockMode,
+    allow_shared: allocation.allowShared,
+    metadata_json: allocation.metadataJson ?? {},
+    created_by: input.actorUserId,
+    updated_by: input.actorUserId
+  }));
+
+  const { data, error } = await supabase
+    .from("calendar_occurrence_facility_allocations")
+    .upsert(payload, { onConflict: "occurrence_id,space_id" })
+    .select(allocationSelect);
+
+  if (error) {
+    throw new Error(`Failed to save facility allocations: ${error.message}`);
+  }
+
+  const keepSpaceIds = input.allocations.map((allocation) => allocation.spaceId);
+  const deleteQuery = supabase
+    .from("calendar_occurrence_facility_allocations")
+    .delete()
+    .eq("org_id", input.orgId)
+    .eq("occurrence_id", input.occurrenceId);
+
+  if (keepSpaceIds.length > 0) {
+    deleteQuery.not("space_id", "in", `(${keepSpaceIds.join(",")})`);
+  }
+
+  const { error: deleteError } = await deleteQuery;
+  if (deleteError) {
+    throw new Error(`Failed to prune facility allocations: ${deleteError.message}`);
+  }
+
+  return (data ?? []).map((row) => mapAllocation(row as AllocationRow));
+}
+
+export async function listCalendarRuleFacilityAllocations(
+  orgId: string,
+  options?: {
+    ruleId?: string;
+  }
+): Promise<CalendarRuleFacilityAllocation[]> {
+  const supabase = await createSupabaseServer();
+  let query = supabase
+    .from("calendar_rule_facility_allocations")
+    .select(ruleAllocationSelect)
+    .eq("org_id", orgId)
+    .order("created_at", { ascending: true });
+
+  if (options?.ruleId) {
+    query = query.eq("rule_id", options.ruleId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to list rule facility allocations: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => mapRuleAllocation(row as RuleAllocationRow));
+}
+
+export async function replaceCalendarRuleFacilityAllocations(input: {
+  orgId: string;
+  ruleId: string;
+  allocations: Array<{
+    spaceId: string;
+    configurationId: string;
+    lockMode: FacilityAllocation["lockMode"];
+    allowShared: boolean;
+    metadataJson?: Record<string, unknown>;
+  }>;
+  actorUserId: string;
+}): Promise<CalendarRuleFacilityAllocation[]> {
+  const supabase = await createSupabaseServer();
+  const payload = input.allocations.map((allocation) => ({
+    org_id: input.orgId,
+    rule_id: input.ruleId,
+    space_id: allocation.spaceId,
+    configuration_id: allocation.configurationId,
+    lock_mode: allocation.lockMode,
+    allow_shared: allocation.allowShared,
+    metadata_json: allocation.metadataJson ?? {},
+    created_by: input.actorUserId,
+    updated_by: input.actorUserId
+  }));
+
+  const { data, error } = await supabase
+    .from("calendar_rule_facility_allocations")
+    .upsert(payload, { onConflict: "rule_id,space_id" })
+    .select(ruleAllocationSelect);
+
+  if (error) {
+    throw new Error(`Failed to save rule facility allocations: ${error.message}`);
+  }
+
+  const keepSpaceIds = input.allocations.map((allocation) => allocation.spaceId);
+  const deleteQuery = supabase
+    .from("calendar_rule_facility_allocations")
+    .delete()
+    .eq("org_id", input.orgId)
+    .eq("rule_id", input.ruleId);
+
+  if (keepSpaceIds.length > 0) {
+    deleteQuery.not("space_id", "in", `(${keepSpaceIds.join(",")})`);
+  }
+
+  const { error: deleteError } = await deleteQuery;
+  if (deleteError) {
+    throw new Error(`Failed to prune rule facility allocations: ${deleteError.message}`);
+  }
+
+  return (data ?? []).map((row) => mapRuleAllocation(row as RuleAllocationRow));
 }
 
 export async function listOccurrenceTeamInvites(
@@ -1224,13 +1422,14 @@ export async function createInboxItems(
 }
 
 export async function listCalendarReadModel(orgId: string): Promise<CalendarReadModel> {
-  const [entries, rules, occurrences, exceptions, configurations, allocations, invites] = await Promise.all([
+  const [entries, rules, occurrences, exceptions, configurations, allocations, ruleAllocations, invites] = await Promise.all([
     listCalendarEntries(orgId),
     listCalendarRules(orgId),
     listCalendarOccurrences(orgId, { includeCancelled: true }),
     listCalendarRuleExceptions(orgId),
     listFacilitySpaceConfigurations(orgId, { includeInactive: true }),
     listOccurrenceFacilityAllocations(orgId),
+    listCalendarRuleFacilityAllocations(orgId),
     listOccurrenceTeamInvites(orgId, { includeInactive: true })
   ]);
 
@@ -1241,6 +1440,7 @@ export async function listCalendarReadModel(orgId: string): Promise<CalendarRead
     exceptions,
     configurations,
     allocations,
+    ruleAllocations,
     invites
   };
 }
@@ -1251,9 +1451,9 @@ export async function getCalendarOccurrenceReadModel(orgId: string, occurrenceId
     return null;
   }
 
-  const [entry, allocation, teams] = await Promise.all([
+  const [entry, allocations, teams] = await Promise.all([
     getCalendarEntryById(orgId, occurrence.entryId),
-    listOccurrenceFacilityAllocations(orgId, { occurrenceId }).then((items) => items[0] ?? null),
+    listOccurrenceFacilityAllocations(orgId, { occurrenceId }),
     listOccurrenceTeamInvites(orgId, { occurrenceId, includeInactive: true })
   ]);
 
@@ -1264,7 +1464,7 @@ export async function getCalendarOccurrenceReadModel(orgId: string, occurrenceId
   return {
     occurrence,
     entry,
-    allocation,
+    allocations,
     teams
   };
 }

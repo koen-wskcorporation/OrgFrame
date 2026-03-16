@@ -3,7 +3,7 @@
 import { Button } from "@orgframe/ui/ui/button";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
-import { Panel } from "@orgframe/ui/ui/panel";
+import { Popup } from "@orgframe/ui/ui/popup";
 import type { ProgramNode } from "@/modules/programs/types";
 import type { OccurrenceEditDraft } from "@orgframe/ui/modules/programs/schedule/components/types";
 
@@ -29,7 +29,7 @@ export function OccurrenceEditDialog({
   onSave
 }: OccurrenceEditDialogProps) {
   return (
-    <Panel
+    <Popup
       footer={
         <>
           <Button onClick={onClose} type="button" variant="ghost">
@@ -48,7 +48,7 @@ export function OccurrenceEditDialog({
       }
       onClose={onClose}
       open={open}
-      panelClassName="ml-auto max-w-[300px]"
+      size="sm"
       subtitle="Change this one session without rebuilding the entire schedule."
       title={draft?.occurrenceId ? "Edit occurrence" : "Add occurrence"}
     >
@@ -68,6 +68,6 @@ export function OccurrenceEditDialog({
           </FormField>
         </form>
       ) : null}
-    </Panel>
+    </Popup>
   );
 }

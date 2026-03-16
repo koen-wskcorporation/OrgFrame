@@ -8,7 +8,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Eye, EyeOff, GripVertical, Pencil, Pin
 import { Button } from "@orgframe/ui/ui/button";
 import { Checkbox } from "@orgframe/ui/ui/checkbox";
 import { Input } from "@orgframe/ui/ui/input";
-import { Panel } from "@orgframe/ui/ui/panel";
+import { Popup } from "@orgframe/ui/ui/popup";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@orgframe/ui/ui/table";
 import { cn } from "@/lib/utils";
 
@@ -1645,7 +1645,7 @@ export function DataTable<TItem>({
         )}
       </div>
 
-      <Panel
+      <Popup
         footer={
           <>
             <Button
@@ -1667,6 +1667,7 @@ export function DataTable<TItem>({
         }
         onClose={() => setIsColumnsDialogOpen(false)}
         open={isColumnsDialogOpen}
+        size="lg"
         subtitle="Show or hide columns. Drag headers inline to reorder."
         title="Table columns"
       >
@@ -1720,7 +1721,7 @@ export function DataTable<TItem>({
             </section>
           ))}
         </div>
-      </Panel>
+      </Popup>
     </>
   );
 }

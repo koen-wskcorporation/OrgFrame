@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgf
 import { PageHeader } from "@orgframe/ui/ui/page-header";
 import { TeamCalendarWorkspace } from "@orgframe/ui/modules/calendar/components/TeamCalendarWorkspace";
 import { listCalendarReadModel } from "@/modules/calendar/db/queries";
+import { listFacilityReservationReadModel } from "@/modules/facilities/db/queries";
 import { getOrgRequestContext } from "@/lib/org/getOrgRequestContext";
 import { can } from "@/lib/permissions/can";
 import { getProgramDetailsBySlug } from "@/modules/programs/db/queries";
@@ -78,6 +79,8 @@ export default async function ProgramTeamPage({ params, searchParams }: TeamPage
   }
 
   const calendarReadModel = (tab === "home" || tab === "calendar") && canReadPrograms ? await listCalendarReadModel(orgRequest.org.orgId).catch(() => null) : null;
+  const facilityReadModel =
+    (tab === "home" || tab === "calendar") && canReadPrograms ? await listFacilityReservationReadModel(orgRequest.org.orgId).catch(() => null) : null;
 
   const teamInvites = calendarReadModel
     ? calendarReadModel.invites.filter((invite) => invite.teamId === team.id && (invite.inviteStatus === "accepted" || invite.inviteStatus === "pending"))
@@ -170,7 +173,13 @@ export default async function ProgramTeamPage({ params, searchParams }: TeamPage
             <CardContent className="space-y-2">
               {!canReadPrograms ? <Alert variant="info">Team calendar visibility is limited to team staff.</Alert> : null}
               {canReadPrograms && calendarReadModel ? (
-                <TeamCalendarWorkspace canWrite={canWritePrograms} initialReadModel={calendarReadModel} orgSlug={orgSlug} teamId={team.id} />
+                <TeamCalendarWorkspace
+                  canWrite={canWritePrograms}
+                  initialFacilityReadModel={facilityReadModel ?? undefined}
+                  initialReadModel={calendarReadModel}
+                  orgSlug={orgSlug}
+                  teamId={team.id}
+                />
               ) : null}
             </CardContent>
           </Card>

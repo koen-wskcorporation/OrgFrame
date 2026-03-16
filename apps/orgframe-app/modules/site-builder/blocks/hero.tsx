@@ -92,7 +92,7 @@ export function HeroBlockRender({ block, context }: BlockRenderProps<"hero">) {
           <div className="absolute inset-0 bg-surface-muted" />
         )}
 
-        {hasImage ? <div className="absolute inset-0 bg-text/45" /> : null}
+        {hasImage ? <div className="absolute inset-0 bg-black/45" /> : null}
 
         <div className="relative z-10 flex min-h-[300px] items-center p-6 md:min-h-[360px] md:p-10">
           <div className="w-full space-y-4">

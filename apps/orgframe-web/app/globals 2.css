@@ -1,0 +1,126 @@
+@import '@orgframe/theme/styles.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-header-height: 65px;
+  --content-max-width: 1400px;
+  --content-readable-width: 960px;
+  --app-accent: 185 100% 50%;
+  --app-accent-foreground: 220 35% 10%;
+  --app-ring: 185 100% 50%;
+  --canvas: 200 33% 98%;
+  --surface: 0 0% 100%;
+  --surface-muted: 200 26% 95%;
+  --border: 202 18% 84%;
+  --text: 220 24% 16%;
+  --text-muted: 220 11% 43%;
+  --accent: var(--app-accent);
+  --accent-foreground: var(--app-accent-foreground);
+  --ring: var(--app-ring);
+  --destructive: 0 72% 50%;
+  --success: 145 58% 36%;
+  --radius-xs: 14px;
+  --radius-sm: 18px;
+  --radius: 24px;
+  --radius-lg: 30px;
+  --layout-gap: 1rem;
+  --shadow: 0 10px 28px hsl(220 28% 18% / 0.08);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Avenir Next', 'Segoe UI', sans-serif;
+}
+
+.landing-dramatic {
+  background:
+    radial-gradient(68rem 36rem at -10% 18%, hsl(var(--accent) / 0.26), transparent 64%),
+    radial-gradient(56rem 34rem at 116% 82%, hsl(var(--accent) / 0.18), transparent 66%),
+    linear-gradient(160deg, hsl(var(--canvas)) 0%, hsl(0 0% 100%) 48%, hsl(var(--surface-muted)) 100%);
+}
+
+.landing-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, hsl(var(--border) / 0.2) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(var(--border) / 0.2) 1px, transparent 1px);
+  background-size: 52px 52px;
+  mask-image: radial-gradient(circle at center, black 38%, transparent 92%);
+  pointer-events: none;
+}
+
+.landing-orb {
+  position: absolute;
+  width: 34rem;
+  height: 34rem;
+  border-radius: 9999px;
+  filter: blur(48px);
+  opacity: 0.42;
+  pointer-events: none;
+  animation: drift 12s ease-in-out infinite alternate;
+}
+
+.landing-orb-left {
+  left: -10rem;
+  top: -6rem;
+  background: hsl(var(--accent) / 0.42);
+}
+
+.landing-orb-right {
+  right: -12rem;
+  bottom: -10rem;
+  background: hsl(var(--accent) / 0.3);
+  animation-delay: 1.8s;
+}
+
+@keyframes drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(0, 20px, 0) scale(1.08);
+  }
+}
+
+@layer components {
+  .app-page-shell {
+    width: 100%;
+    min-width: 0;
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    padding-inline: var(--layout-gap);
+    padding-bottom: 2rem;
+  }
+
+  .app-page-stack {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--layout-gap);
+  }
+
+  .app-section-stack {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--layout-gap);
+  }
+
+  .ui-card-grid {
+    display: grid;
+    gap: 1rem;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --layout-gap: 1.167rem;
+  }
+}

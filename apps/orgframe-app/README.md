@@ -6,7 +6,7 @@ Early-stage Next.js App Router project for multi-tenant sports organizations.
 
 1. Deploy.
 2. Visit `/api/auth/debug` before login. `hasSbCookies` should be `false`.
-3. Login via the `/auth/login` form (server action).
+3. Login via the `/auth` form (server action).
 4. Open `/api/auth/debug` after login and verify:
    - `hasSbCookies` is `true`
    - `sbCookieNames` contains `sb-*`
@@ -96,7 +96,7 @@ When shipping changes to `develop`, keep database changes isolated to staging:
 Global routes:
 
 - `/`
-- `/auth/login`
+- `/auth`
 - `/auth/logout`
 - `/auth/reset`
 - `/auth/callback`
@@ -188,6 +188,20 @@ Execution model:
 4. Register in [`modules/ai/tools/registry.ts`](/Users/koenstewart/Documents/Sports SaaS/modules/ai/tools/registry.ts) and expose JSON schema for OpenAI tool calling.
 5. For executable actions, emit a versioned `AiChangesetV1` and wire confirm-time execution through `execute_changes`.
 6. Add/extend migrations or RPCs as needed for transactional writes and stale-precondition checks.
+
+## Google Sheets (User-Owned)
+
+Forms -> Submissions -> Connect Google Sheets now uses a Google OAuth popup and creates the spreadsheet as the signed-in user.
+To enable this flow, set:
+
+- `GOOGLE_SHEETS_OAUTH_CLIENT_ID`
+- `GOOGLE_SHEETS_OAUTH_CLIENT_SECRET`
+- `GOOGLE_SHEETS_OAUTH_STATE_SECRET` (recommended; defaults to client secret if omitted)
+- `GOOGLE_SHEETS_OAUTH_REDIRECT_URI` (optional; defaults to `/api/integrations/google-sheets/oauth/callback` on current origin)
+
+The app still needs its runtime Sheets identity for ongoing sync/reconcile after the user-owned sheet is created:
+
+- `GCP_SERVICE_ACCOUNT_EMAIL` or `GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL`
 
 ## Site Management
 

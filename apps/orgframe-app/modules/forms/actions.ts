@@ -293,6 +293,37 @@ function asError(error: string): FormsActionResult<never> {
   };
 }
 
+function formatGoogleSheetsConnectError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "Unknown error";
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("unable to resolve vercel oidc subject token")) {
+    return "Google Sheets keyless auth is set to Vercel OIDC, but no OIDC token was available in this runtime. Test from your deployed Vercel app with OIDC enabled, or use a different auth mode for local development.";
+  }
+
+  if (normalized.includes("google sts token exchange failed")) {
+    return "Google Sheets keyless auth failed at Google STS token exchange. Verify GCP_PROJECT_NUMBER, GCP_WORKLOAD_IDENTITY_POOL_ID, GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID, and your provider audience/attribute mapping.";
+  }
+
+  if (normalized.includes("service account impersonation failed")) {
+    return "Google Sheets keyless auth failed during service account impersonation. Verify roles/iam.workloadIdentityUser binding and that GCP_SERVICE_ACCOUNT_EMAIL is correct.";
+  }
+
+  if (normalized.includes("google sheets auth is not configured")) {
+    return "Google Sheets auth is not configured on the server. Set GOOGLE_SHEETS_AUTH_MODE and required auth env vars in Vercel.";
+  }
+
+  if (normalized.includes("missing required env var")) {
+    return `Google Sheets configuration is incomplete: ${message}`;
+  }
+
+  if (normalized.includes("google api request failed")) {
+    return `Google API request failed while connecting Sheets: ${message}`;
+  }
+
+  return `Unable to connect Google Sheets: ${message}`;
+}
+
 function normalizeOptional(value: string | null | undefined) {
   const trimmed = value?.trim() ?? "";
   return trimmed.length > 0 ? trimmed : null;
@@ -1512,7 +1543,8 @@ export async function connectFormGoogleSheetAction(
     };
   } catch (error) {
     rethrowIfNavigationError(error);
-    return asError("Unable to connect Google Sheets right now.");
+    console.error("connectFormGoogleSheetAction failed", error);
+    return asError(formatGoogleSheetsConnectError(error));
   }
 }
 

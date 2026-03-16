@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@orgframe/ui/ui/button";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
-import { Panel } from "@orgframe/ui/ui/panel";
+import { Popup } from "@orgframe/ui/ui/popup";
 import { useToast } from "@orgframe/ui/ui/toast";
 import { useSiteOrigin } from "@/lib/hooks/useSiteOrigin";
 import { createOrganizationAction } from "@/app/account/organizations/actions";
@@ -19,7 +19,11 @@ function slugify(value: string) {
     .replace(/^-|-$/g, "");
 }
 
-export function CreateOrganizationDialog() {
+type CreateOrganizationDialogProps = {
+  renderTrigger?: (props: { openDialog: () => void; isPending: boolean }) => React.ReactNode;
+};
+
+export function CreateOrganizationDialog({ renderTrigger }: CreateOrganizationDialogProps = {}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [orgName, setOrgName] = useState("");
@@ -60,13 +64,21 @@ export function CreateOrganizationDialog() {
     });
   }
 
+  function openDialog() {
+    setOpen(true);
+  }
+
   return (
     <>
-      <Button onClick={() => setOpen(true)} size="sm" variant="secondary">
-        Create organization
-      </Button>
+      {renderTrigger ? (
+        renderTrigger({ openDialog, isPending })
+      ) : (
+        <Button onClick={openDialog} size="sm" variant="secondary">
+          Create organization
+        </Button>
+      )}
 
-      <Panel
+      <Popup
         footer={
           <>
             <Button disabled={isPending} onClick={() => setOpen(false)} type="button" variant="ghost">
@@ -79,6 +91,7 @@ export function CreateOrganizationDialog() {
         }
         onClose={() => setOpen(false)}
         open={open}
+        size="md"
         subtitle="Set up a new organization workspace and become its first admin."
         title="Create organization"
       >
@@ -107,7 +120,7 @@ export function CreateOrganizationDialog() {
             />
           </FormField>
         </form>
-      </Panel>
+      </Popup>
     </>
   );
 }

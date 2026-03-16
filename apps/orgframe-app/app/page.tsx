@@ -1,5 +1,6 @@
+import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import type { Metadata } from "next";
-import { CreateOrganizationDialog } from "@orgframe/ui/dashboard/CreateOrganizationDialog";
 import { DashboardSection, DashboardShell } from "@orgframe/ui/dashboard/DashboardShell";
 import { EmptyState } from "@orgframe/ui/dashboard/EmptyState";
 import { OrgCard } from "@orgframe/ui/dashboard/OrgCard";
@@ -8,6 +9,8 @@ import { CardGrid } from "@orgframe/ui/ui/layout";
 import { SubmitButton } from "@orgframe/ui/ui/submit-button";
 import { signOutAction } from "@/app/auth/actions";
 import { getDashboardContext } from "@/lib/dashboard/getDashboardContext";
+import { getSessionUser } from "@/lib/auth/getSessionUser";
+import { getTenantBaseHosts, normalizeHost, resolveOrgSubdomain } from "@/lib/domains/customDomains";
 import { AiAssistantLauncher } from "@orgframe/ui/modules/ai/components/AiAssistantLauncher";
 
 export const metadata: Metadata = {
@@ -15,7 +18,21 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
+  const user = await getSessionUser();
+  if (!user) {
+    redirect("/x/web");
+  }
+
   const { organizations } = await getDashboardContext();
+  const headerStore = await headers();
+  const forwardedHost = headerStore.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = normalizeHost(forwardedHost || headerStore.get("host"));
+  const tenantBaseHosts = getTenantBaseHosts();
+  const orgSubdomain = resolveOrgSubdomain(host, tenantBaseHosts);
+  const tenantBaseHost = orgSubdomain?.baseHost ?? (tenantBaseHosts.has(host) ? host : null);
+  const forwardedProto = headerStore.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  const protocol =
+    forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : process.env.NODE_ENV === "production" ? "https" : "http";
 
   return (
     <DashboardShell
@@ -34,17 +51,14 @@ export default async function HomePage() {
       subtitle="Your sports in one place."
       title="Dashboard"
     >
-      <DashboardSection
-        actions={<CreateOrganizationDialog />}
-        description="Open an organization to view its public site and manage core settings."
-        title="Organizations"
-      >
+      <DashboardSection description="Open an organization to view its public site and manage core settings." title="Organizations">
         {organizations.length === 0 ? (
           <EmptyState />
         ) : (
           <CardGrid className="sm:grid-cols-2 xl:grid-cols-3">
             {organizations.map((organization) => (
               <OrgCard
+                href={tenantBaseHost ? `${protocol}://${organization.orgSlug}.${tenantBaseHost}/` : `/${organization.orgSlug}`}
                 iconUrl={organization.iconUrl}
                 key={organization.orgId}
                 orgName={organization.orgName}

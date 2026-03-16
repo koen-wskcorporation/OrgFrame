@@ -71,3 +71,60 @@ export function toLocalParts(isoUtc: string, timezone: string) {
     localTime: `${byType.get("hour")}:${byType.get("minute")}`
   };
 }
+
+type IdReplacement = {
+  from: string;
+  to: string;
+};
+
+export function replaceOptimisticIds(
+  readModel: CalendarReadModel,
+  replacements: {
+    entryId?: IdReplacement;
+    occurrenceId?: IdReplacement;
+  }
+) {
+  const { entryId, occurrenceId } = replacements;
+
+  const nextEntries = entryId
+    ? readModel.entries.map((entry) => (entry.id === entryId.from ? { ...entry, id: entryId.to } : entry))
+    : readModel.entries;
+
+  const nextOccurrences = readModel.occurrences.map((occurrence) => {
+    if (occurrenceId && occurrence.id === occurrenceId.from) {
+      const updatedEntryId = entryId && occurrence.entryId === entryId.from ? entryId.to : occurrence.entryId;
+      return {
+        ...occurrence,
+        id: occurrenceId.to,
+        entryId: updatedEntryId
+      };
+    }
+
+    if (entryId && occurrence.entryId === entryId.from) {
+      return {
+        ...occurrence,
+        entryId: entryId.to
+      };
+    }
+
+    return occurrence;
+  });
+
+  const nextAllocations = occurrenceId
+    ? readModel.allocations.map((allocation) =>
+        allocation.occurrenceId === occurrenceId.from ? { ...allocation, occurrenceId: occurrenceId.to } : allocation
+      )
+    : readModel.allocations;
+
+  const nextInvites = occurrenceId
+    ? readModel.invites.map((invite) => (invite.occurrenceId === occurrenceId.from ? { ...invite, occurrenceId: occurrenceId.to } : invite))
+    : readModel.invites;
+
+  return {
+    ...readModel,
+    entries: nextEntries,
+    occurrences: nextOccurrences,
+    allocations: nextAllocations,
+    invites: nextInvites
+  };
+}

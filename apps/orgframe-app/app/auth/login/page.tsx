@@ -1,55 +1,18 @@
 import { redirect } from "next/navigation";
-import type { Metadata } from "next";
-import { AuthLoginPagePopup } from "@orgframe/ui/auth/AuthLoginPagePopup";
-import { getSessionUser } from "@/lib/auth/getSessionUser";
-import type { AuthMode } from "@orgframe/ui/auth/AuthDialog";
-import { AppPage } from "@orgframe/ui/ui/layout";
 
-export const metadata: Metadata = {
-  title: "Sign In"
-};
-
-const errorMessageByCode: Record<string, string> = {
-  "1": "Unable to continue. Check your details and try again."
-};
-
-const infoMessageByCode: Record<string, string> = {
-  signup_check_email: "Account created. Verify your email, then sign in.",
-  password_updated: "Password updated. Sign in with your new password."
-};
-
-function normalizeNextPath(value: string | undefined, fallbackPath = "/") {
-  if (!value) {
-    return fallbackPath;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("/auth/login")) {
-    return fallbackPath;
-  }
-
-  return trimmed;
-}
-
-export default async function LoginPage({
+export default async function LegacyLoginPage({
   searchParams
 }: {
   searchParams: Promise<{ mode?: string; error?: string; message?: string; next?: string }>;
 }) {
-  const [user, query] = await Promise.all([getSessionUser(), searchParams]);
-  const nextPath = normalizeNextPath(query.next);
+  const query = await searchParams;
+  const params = new URLSearchParams();
 
-  if (user) {
-    redirect(nextPath);
-  }
+  if (query.mode) params.set("mode", query.mode);
+  if (query.error) params.set("error", query.error);
+  if (query.message) params.set("message", query.message);
+  if (query.next) params.set("next", query.next);
 
-  const errorMessage = query.error ? errorMessageByCode[query.error] ?? "Authentication failed." : null;
-  const infoMessage = query.message ? infoMessageByCode[query.message] ?? query.message : null;
-  const initialMode: AuthMode = query.mode === "signup" ? "signup" : "signin";
-
-  return (
-    <AppPage className="flex min-h-[60vh] items-center justify-center py-8 md:py-10">
-      <AuthLoginPagePopup errorMessage={errorMessage} infoMessage={infoMessage} initialMode={initialMode} nextPath={nextPath} />
-    </AppPage>
-  );
+  const suffix = params.toString();
+  redirect(suffix ? `/auth?${suffix}` : "/auth");
 }

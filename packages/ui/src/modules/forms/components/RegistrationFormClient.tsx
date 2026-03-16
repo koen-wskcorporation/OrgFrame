@@ -8,7 +8,7 @@ import { CalendarPicker } from "@orgframe/ui/ui/calendar-picker";
 import { Checkbox } from "@orgframe/ui/ui/checkbox";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
-import { Panel } from "@orgframe/ui/ui/panel";
+import { Popup } from "@orgframe/ui/ui/popup";
 import { Select } from "@orgframe/ui/ui/select";
 import { Textarea } from "@orgframe/ui/ui/textarea";
 import { useToast } from "@orgframe/ui/ui/toast";
@@ -1074,7 +1074,8 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
         </div>
       </form>
 
-      <Panel
+      <Popup
+        closeOnBackdrop={false}
         footer={
           <>
             <Button onClick={() => setPlayerModalOpen(false)} type="button" variant="ghost">
@@ -1087,6 +1088,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
         }
         onClose={() => setPlayerModalOpen(false)}
         open={playerModalOpen}
+        size="full"
         subtitle="Create a player profile and continue registration."
         title="Add player"
       >
@@ -1129,7 +1131,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
             </FormField>
           ) : null}
         </form>
-      </Panel>
+      </Popup>
     </div>
   );
 }

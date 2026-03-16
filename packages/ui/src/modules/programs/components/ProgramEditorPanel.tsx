@@ -598,7 +598,7 @@ export function ProgramEditorPanel({
   const [structureSearch, setStructureSearch] = useState("");
   const [structureScale, setStructureScale] = useState(1);
   const [structureZoomPercent, setStructureZoomPercent] = useState(100);
-  const [isCanvasActive, setIsCanvasActive] = useState(false);
+  const [isStructureCanvasEditMode, setIsStructureCanvasEditMode] = useState(false);
   const [nodes, setNodes] = useState(data.nodes);
   const [scheduleBlocks, setScheduleBlocks] = useState(data.scheduleBlocks);
   const [savedSlug, setSavedSlug] = useState(data.program.slug);
@@ -695,13 +695,19 @@ export function ProgramEditorPanel({
   const nodeGroups = useMemo(() => buildNodeGroups(nodes), [nodes]);
   const linkedForms = useMemo(() => initialForms.filter((form) => form.programId === data.program.id), [initialForms, data.program.id]);
   const normalizedStructureSearch = structureSearch.trim().toLowerCase();
+  const normalizeSearchKey = useCallback((value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, ""), []);
   const matchingNodes = useMemo(() => {
     if (!normalizedStructureSearch) {
       return [];
     }
 
-    return nodes.filter((node) => node.name.toLowerCase().includes(normalizedStructureSearch));
-  }, [nodes, normalizedStructureSearch]);
+    const queryKey = normalizeSearchKey(normalizedStructureSearch);
+    if (!queryKey) {
+      return [];
+    }
+
+    return nodes.filter((node) => normalizeSearchKey(node.name).includes(queryKey));
+  }, [nodes, normalizeSearchKey, normalizedStructureSearch]);
   const highlightedNodeIds = useMemo(() => new Set(matchingNodes.map((node) => node.id)), [matchingNodes]);
   const editingNode = editingNodeId ? nodeById.get(editingNodeId) : null;
   const editingParentNode = editingNode?.parentId ? nodeById.get(editingNode.parentId) : null;
@@ -736,56 +742,6 @@ export function ProgramEditorPanel({
     setActiveTeamId(teamId);
   }, [activeSection, searchParams]);
 
-  useEffect(() => {
-    if (activeSection !== "structure" || !isCanvasActive) {
-      return;
-    }
-
-    const isEditableTarget = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) {
-        return false;
-      }
-
-      if (target.isContentEditable) {
-        return true;
-      }
-
-      return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (isEditableTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
-
-      if (event.key === "Backspace") {
-        event.preventDefault();
-        setStructureSearch((current) => current.slice(0, -1));
-        structureSearchInputRef.current?.focus();
-        return;
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setStructureSearch("");
-        structureSearchInputRef.current?.focus();
-        return;
-      }
-
-      if (event.key.length !== 1) {
-        return;
-      }
-
-      event.preventDefault();
-      setStructureSearch((current) => `${current}${event.key}`);
-      structureSearchInputRef.current?.focus();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [activeSection, isCanvasActive]);
 
   const parentOptions = useMemo(
     () => [
@@ -1190,12 +1146,12 @@ export function ProgramEditorPanel({
   }
 
   function focusNodeFromSearch(query: string) {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = normalizeSearchKey(query.trim());
     if (!normalizedQuery) {
       return;
     }
 
-    const exact = matchingNodes.find((node) => node.name.toLowerCase() === normalizedQuery);
+    const exact = matchingNodes.find((node) => normalizeSearchKey(node.name) === normalizedQuery);
     const target = exact ?? matchingNodes[0];
     if (!target) {
       return;
@@ -1207,6 +1163,7 @@ export function ProgramEditorPanel({
       setActiveDivisionId(target.id);
     }
     focusNodeInCanvas(target.id);
+    openNodeEditPanel(target);
   }
 
   function updateTeamQuery(nextTeamId: string | null) {
@@ -1274,7 +1231,7 @@ export function ProgramEditorPanel({
                         activeDragNodeKind={activeKind}
                         canvasScale={structureScale}
                         divisionBreadcrumb={node.nodeKind === "division" ? (divisionBreadcrumbsById.get(node.id) ?? [node.name]) : null}
-                        disabled={isMutatingNodes}
+                        disabled={isMutatingNodes || !isStructureCanvasEditMode}
                         isFocused={focusedNodeId === node.id}
                         isPublished={isProgramNodePublished(node)}
                         isPublishToggling={publishToggleNodeId === node.id}
@@ -1327,7 +1284,7 @@ export function ProgramEditorPanel({
                       activeDragNodeKind={activeKind}
                       canvasScale={structureScale}
                       divisionBreadcrumb={node.nodeKind === "division" ? (divisionBreadcrumbsById.get(node.id) ?? [node.name]) : null}
-                      disabled={isMutatingNodes}
+                      disabled={isMutatingNodes || !isStructureCanvasEditMode}
                       isFocused={focusedNodeId === node.id}
                       isPublished={isProgramNodePublished(node)}
                       isPublishToggling={publishToggleNodeId === node.id}
@@ -1607,19 +1564,36 @@ export function ProgramEditorPanel({
             <CardContent>
               <StructureCanvasShell
                 addButtonAriaLabel="Add division"
-                addButtonDisabled={isMutatingNodes}
+                addButtonDisabled={isMutatingNodes || !isStructureCanvasEditMode}
+                autoFitKey={nodes.length}
+                autoFitOnOpen
                 canvasRef={structureCanvasRef}
                 dragInProgress={Boolean(activeDragNodeId)}
                 emptyState={nodes.length === 0 ? <Alert variant="info">No structure nodes yet. Add a division to start the map.</Alert> : null}
                 onAdd={() => openNodeCreatePanel(null, "division")}
-                onCanvasEnter={() => setIsCanvasActive(true)}
-                onCanvasLeave={() => setIsCanvasActive(false)}
+                onEditOpenChange={setIsStructureCanvasEditMode}
                 onSearchQueryChange={setStructureSearch}
                 onSearchSubmit={focusNodeFromSearch}
+                onViewNodeSelect={(nodeId) => {
+                  setFocusedNodeId(nodeId);
+                  const node = nodeById.get(nodeId);
+                  if (!node) {
+                    return;
+                  }
+
+                  if (node.nodeKind === "division") {
+                    setActiveDivisionId(node.id);
+                    return;
+                  }
+
+                  openTeamPanel(node.id);
+                }}
                 onViewScaleChange={(scale) => {
                   setStructureScale(scale);
                   setStructureZoomPercent(Math.round(scale * 100));
                 }}
+                viewContentInteractive
+                viewViewportInteractive
                 rootHeader={
                   <div className="w-[280px] max-w-[min(82vw,280px)] rounded-control border bg-surface px-4 py-3 text-center shadow-sm">
                     <p className="text-xs uppercase tracking-wide text-text-muted">Program</p>
