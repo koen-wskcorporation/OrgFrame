@@ -28,9 +28,18 @@ type RuleBuilderPanelProps = {
   isSaving: boolean;
   onChange: (next: ScheduleRuleDraft) => void;
   onSave: () => void;
+  showSaveButton?: boolean;
 };
 
-export function RuleBuilderPanel({ draft, nodes: _nodes, canWrite, isSaving, onChange, onSave }: RuleBuilderPanelProps) {
+export function RuleBuilderPanel({
+  draft,
+  nodes: _nodes,
+  canWrite,
+  isSaving,
+  onChange,
+  onSave,
+  showSaveButton = true
+}: RuleBuilderPanelProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [specificDateInput, setSpecificDateInput] = useState("");
 
@@ -345,11 +354,13 @@ export function RuleBuilderPanel({ draft, nodes: _nodes, canWrite, isSaving, onC
           </div>
         ) : null}
 
-        <div className="flex justify-end">
-          <Button disabled={!canWrite || isSaving} loading={isSaving} onClick={onSave} type="button">
-            {draft.ruleId ? "Update rule" : "Save rule"}
-          </Button>
-        </div>
+        {showSaveButton ? (
+          <div className="flex justify-end">
+            <Button disabled={!canWrite || isSaving} loading={isSaving} onClick={onSave} type="button">
+              {draft.ruleId ? "Update rule" : "Save rule"}
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

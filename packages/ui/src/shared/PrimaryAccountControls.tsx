@@ -26,7 +26,13 @@ type HeaderAccountState =
       }[];
     };
 
-export function PrimaryAccountControls() {
+type PrimaryAccountControlsProps = {
+  currentOrgSlug?: string | null;
+  homeHref?: string;
+  tenantBaseOrigin?: string | null;
+};
+
+export function PrimaryAccountControls({ currentOrgSlug = null, homeHref = "/", tenantBaseOrigin = null }: PrimaryAccountControlsProps) {
   const [state, setState] = useState<HeaderAccountState | null>(null);
 
   useEffect(() => {
@@ -69,11 +75,14 @@ export function PrimaryAccountControls() {
     return (
       <AccountMenu
         avatarUrl={state.user.avatarUrl}
+        currentOrgSlug={currentOrgSlug}
         email={state.user.email}
         firstName={state.user.firstName}
+        homeHref={homeHref}
         lastName={state.user.lastName}
         organizations={state.organizations}
         signOutAction={signOutAction}
+        tenantBaseOrigin={tenantBaseOrigin}
       />
     );
   }

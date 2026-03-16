@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@orgframe/ui/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
+import { Input } from "@orgframe/ui/ui/input";
 import { Panel } from "@orgframe/ui/ui/panel";
 import { Select } from "@orgframe/ui/ui/select";
 import { useToast } from "@orgframe/ui/ui/toast";
@@ -12,7 +13,11 @@ import {
   createManualOccurrenceAction,
   getCalendarWorkspaceDataAction,
   inviteTeamToOccurrenceAction,
+  setOccurrenceFacilityAllocationsAction,
+  setRuleFacilityAllocationsAction,
   setOccurrenceStatusAction,
+  updateCalendarEntryAction,
+  upsertCalendarRuleAction,
   updateOccurrenceAction
 } from "@/modules/calendar/actions";
 import type {
@@ -21,8 +26,13 @@ import type {
   CalendarOccurrence,
   CalendarReadModel,
   CalendarVisibility,
+  FacilityAllocation,
   OccurrenceTeamInvite
 } from "@/modules/calendar/types";
+import type { FacilityReservationReadModel, FacilitySpace } from "@/modules/facilities/types";
+import { RuleBuilderPanel } from "@orgframe/ui/modules/programs/schedule/components/RuleBuilderPanel";
+import type { ScheduleRuleDraft } from "@orgframe/ui/modules/programs/schedule/components/types";
+import { generateOccurrencesForRule } from "@/modules/calendar/rule-engine";
 import {
   findEntryForOccurrence,
   findOccurrence,
@@ -30,23 +40,146 @@ import {
   toCalendarItems,
   toLocalParts
 } from "@orgframe/ui/modules/calendar/components/workspace-utils";
+import { FacilityBookingDialog } from "@orgframe/ui/modules/calendar/components/FacilityBookingDialog";
+import {
+  buildSpaceById,
+  computeFacilityConflicts,
+  formatFacilityLocation,
+  resolveRootSpaceId,
+  type FacilityBookingSelection,
+  type FacilityBookingWindow
+} from "@orgframe/ui/modules/calendar/components/facility-booking-utils";
+
+function buildRuleDraftFromWindow(startsAtUtc: string, endsAtUtc: string, timezone: string): ScheduleRuleDraft {
+  const startParts = toLocalParts(startsAtUtc, timezone);
+  const endParts = toLocalParts(endsAtUtc, timezone);
+  const startDate = startParts.localDate;
+
+  return {
+    mode: "single_date",
+    repeatEnabled: false,
+    title: "",
+    timezone,
+    startDate,
+    endDate: startDate,
+    startTime: startParts.localTime,
+    endTime: endParts.localTime,
+    intervalCount: 1,
+    intervalUnit: "week",
+    byWeekday: [new Date(startsAtUtc).getDay()],
+    byMonthday: [],
+    endMode: "until_date",
+    untilDate: "",
+    maxOccurrences: "",
+    programNodeId: "",
+    specificDates: [startDate]
+  };
+}
+
+function buildCalendarRuleInputFromDraft(input: { draft: ScheduleRuleDraft; entryId: string }) {
+  const mode = input.draft.repeatEnabled ? "repeating_pattern" : input.draft.mode;
+  return {
+    entryId: input.entryId,
+    mode,
+    timezone: input.draft.timezone,
+    startDate: input.draft.startDate,
+    endDate: input.draft.endDate,
+    startTime: input.draft.startTime,
+    endTime: input.draft.endTime,
+    intervalCount: input.draft.intervalCount,
+    intervalUnit: input.draft.intervalUnit,
+    byWeekday: input.draft.byWeekday,
+    byMonthday: input.draft.byMonthday,
+    endMode: input.draft.endMode,
+    untilDate: input.draft.untilDate,
+    maxOccurrences: input.draft.maxOccurrences ? Number.parseInt(input.draft.maxOccurrences, 10) : null,
+    configJson: {
+      specificDates: input.draft.specificDates
+    }
+  };
+}
+
+function buildOccurrenceWindowsFromRuleDraft(input: { draft: ScheduleRuleDraft; entryId: string }): FacilityBookingWindow[] {
+  const rule = {
+    id: "draft",
+    orgId: "draft",
+    entryId: input.entryId,
+    mode: input.draft.repeatEnabled ? "repeating_pattern" : input.draft.mode,
+    timezone: input.draft.timezone,
+    startDate: input.draft.startDate || null,
+    endDate: input.draft.endDate || null,
+    startTime: input.draft.startTime || null,
+    endTime: input.draft.endTime || null,
+    intervalCount: input.draft.intervalCount,
+    intervalUnit: input.draft.intervalUnit,
+    byWeekday: input.draft.byWeekday,
+    byMonthday: input.draft.byMonthday,
+    endMode: input.draft.endMode,
+    untilDate: input.draft.untilDate || null,
+    maxOccurrences: input.draft.maxOccurrences ? Number.parseInt(input.draft.maxOccurrences, 10) : null,
+    sortIndex: 0,
+    isActive: true,
+    configJson: {
+      specificDates: input.draft.specificDates
+    },
+    ruleHash: "",
+    createdBy: null,
+    updatedBy: null,
+    createdAt: "",
+    updatedAt: ""
+  } as const;
+
+  return generateOccurrencesForRule(rule, { horizonMonths: 3 }).map((occurrence) => ({
+    occurrenceId: occurrence.sourceKey,
+    startsAtUtc: occurrence.startsAtUtc,
+    endsAtUtc: occurrence.endsAtUtc,
+    label: occurrence.localDate
+  }));
+}
+
+function resolveEntryLocation(entry: CalendarEntry | null) {
+  if (!entry) {
+    return "";
+  }
+  const location = entry.settingsJson?.location;
+  return typeof location === "string" ? location : "";
+}
 
 type OrgCalendarWorkspaceProps = {
   orgSlug: string;
   canWrite: boolean;
   initialReadModel: CalendarReadModel;
+  initialFacilityReadModel?: FacilityReservationReadModel;
   activeTeams: Array<{ id: string; label: string }>;
 };
 
-export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, activeTeams }: OrgCalendarWorkspaceProps) {
+export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, initialFacilityReadModel, activeTeams }: OrgCalendarWorkspaceProps) {
   const { toast } = useToast();
   const [readModel, setReadModel] = useState(initialReadModel);
+  const [facilityReadModel, setFacilityReadModel] = useState<FacilityReservationReadModel>(
+    initialFacilityReadModel ?? {
+      spaces: [],
+      rules: [],
+      reservations: [],
+      exceptions: []
+    }
+  );
   const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string | null>(null);
   const [entryTypeFilter, setEntryTypeFilter] = useState<"all" | CalendarEntryType>("all");
   const [visibilityFilter, setVisibilityFilter] = useState<"all" | CalendarVisibility>("all");
   const [quickEntryType, setQuickEntryType] = useState<CalendarEntryType>("event");
   const [quickHostTeamId, setQuickHostTeamId] = useState<string>(activeTeams[0]?.id ?? "");
   const [inviteTeamId, setInviteTeamId] = useState<string>(activeTeams[0]?.id ?? "");
+  const [quickAddDraft, setQuickAddDraft] = useState<(UnifiedCalendarQuickAddDraft & { open: boolean }) | null>(null);
+  const [locationDraft, setLocationDraft] = useState("");
+  const [locationTouched, setLocationTouched] = useState(false);
+  const [selectedFacilityId, setSelectedFacilityId] = useState<string>("");
+  const [facilitySelections, setFacilitySelections] = useState<FacilityBookingSelection[]>([]);
+  const [facilityDialogOpen, setFacilityDialogOpen] = useState(false);
+  const [bookingMode, setBookingMode] = useState<"quick-add" | "edit-occurrence" | null>(null);
+  const [ruleDraft, setRuleDraft] = useState<ScheduleRuleDraft>(() =>
+    buildRuleDraftFromWindow(new Date().toISOString(), new Date(Date.now() + 60 * 60 * 1000).toISOString(), Intl.DateTimeFormat().resolvedOptions().timeZone)
+  );
   const optimisticIdRef = useRef(0);
   const pendingOccurrenceUpdatesRef = useRef(new Map<string, { startsAtUtc: string; endsAtUtc: string; timezone: string }>());
   const [, startSaving] = useTransition();
@@ -60,6 +193,11 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
     () => (selectedOccurrence ? readModel.invites.filter((item) => item.occurrenceId === selectedOccurrence.id) : []),
     [readModel.invites, selectedOccurrence]
   );
+  const selectedAllocations = useMemo(
+    () => (selectedOccurrence ? readModel.allocations.filter((allocation) => allocation.occurrenceId === selectedOccurrence.id) : []),
+    [readModel.allocations, selectedOccurrence]
+  );
+  const selectedLocation = useMemo(() => resolveEntryLocation(selectedEntry), [selectedEntry]);
 
   const calendarItems = useMemo(
     () =>
@@ -69,6 +207,60 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
       }),
     [entryTypeFilter, readModel, visibilityFilter]
   );
+
+  const spaceById = useMemo(() => buildSpaceById(facilityReadModel.spaces), [facilityReadModel.spaces]);
+  const facilityOptions = useMemo(
+    () => facilityReadModel.spaces.filter((space) => space.parentSpaceId === null && space.status !== "archived"),
+    [facilityReadModel.spaces]
+  );
+  const selectedFacility = selectedFacilityId ? spaceById.get(selectedFacilityId) ?? null : null;
+  const selectedFacilitySpaces = useMemo(
+    () => facilitySelections.map((selection) => spaceById.get(selection.spaceId)).filter((space): space is FacilitySpace => Boolean(space)),
+    [facilitySelections, spaceById]
+  );
+
+  useEffect(() => {
+    if (!quickAddDraft?.open) {
+      setLocationDraft("");
+      setLocationTouched(false);
+      setSelectedFacilityId("");
+      setFacilitySelections([]);
+      setBookingMode(null);
+      return;
+    }
+
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const startValue = quickAddDraft.startsAtUtc;
+    const endValue = quickAddDraft.endsAtUtc;
+
+    setRuleDraft((current) => {
+      if (!current.repeatEnabled) {
+        return buildRuleDraftFromWindow(startValue, endValue, timezone);
+      }
+
+      const startParts = toLocalParts(startValue, timezone);
+      const endParts = toLocalParts(endValue, timezone);
+      return {
+        ...current,
+        timezone,
+        startDate: startParts.localDate,
+        startTime: startParts.localTime,
+        endTime: endParts.localTime
+      };
+    });
+  }, [quickAddDraft?.endsAtUtc, quickAddDraft?.open, quickAddDraft?.startsAtUtc]);
+
+  useEffect(() => {
+    if (locationTouched) {
+      return;
+    }
+    if (selectedFacility) {
+      const label = formatFacilityLocation(selectedFacility, selectedFacilitySpaces);
+      setLocationDraft(label || selectedFacility.name);
+      return;
+    }
+    setLocationDraft("");
+  }, [locationTouched, selectedFacility, selectedFacilitySpaces]);
 
   function resolveOrgId(model: CalendarReadModel) {
     return model.entries[0]?.orgId ?? model.occurrences[0]?.orgId ?? model.invites[0]?.orgId ?? "";
@@ -159,6 +351,7 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
       }
 
       setReadModel(result.data.readModel);
+      setFacilityReadModel(result.data.facilityReadModel);
       if (successTitle) {
         toast({
           title: successTitle,
@@ -175,6 +368,8 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
     const optimisticOccurrenceId = buildOptimisticId("optimistic-occurrence");
     const startParts = toLocalParts(draft.startsAtUtc, timezone);
     const endParts = toLocalParts(draft.endsAtUtc, timezone);
+    const isRecurring = ruleDraft.repeatEnabled;
+    const locationValue = locationDraft.trim();
     const optimisticEntry: CalendarEntry = {
       id: optimisticEntryId,
       orgId: resolveOrgId(readModel),
@@ -185,7 +380,9 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
       status: "scheduled",
       hostTeamId: quickEntryType === "practice" ? quickHostTeamId || null : null,
       defaultTimezone: timezone,
-      settingsJson: {},
+      settingsJson: {
+        location: locationValue || null
+      },
       createdBy: null,
       updatedBy: null,
       createdAt: now,
@@ -197,7 +394,7 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
       orgId: resolveOrgId(readModel),
       entryId: optimisticEntryId,
       sourceRuleId: null,
-      sourceType: "single",
+      sourceType: isRecurring ? "rule" : "single",
       sourceKey: `optimistic:${optimisticOccurrenceId}`,
       timezone,
       localDate: startParts.localDate,
@@ -216,6 +413,24 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
       updatedAt: now
     };
 
+    const optimisticAllocations: FacilityAllocation[] = facilitySelections.map((selection) => ({
+      id: buildOptimisticId("optimistic-allocation"),
+      orgId: resolveOrgId(readModel),
+      occurrenceId: optimisticOccurrenceId,
+      spaceId: selection.spaceId,
+      configurationId: selection.configurationId ?? "optimistic-config",
+      lockMode: selection.lockMode ?? "exclusive",
+      allowShared: selection.allowShared ?? false,
+      startsAtUtc: draft.startsAtUtc,
+      endsAtUtc: draft.endsAtUtc,
+      isActive: true,
+      metadataJson: selection.notes ? { notes: selection.notes } : {},
+      createdBy: null,
+      updatedBy: null,
+      createdAt: now,
+      updatedAt: now
+    }));
+
     pendingOccurrenceUpdatesRef.current.set(optimisticOccurrenceId, {
       startsAtUtc: draft.startsAtUtc,
       endsAtUtc: draft.endsAtUtc,
@@ -225,7 +440,8 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
     setReadModel((current) => ({
       ...current,
       entries: [...current.entries, optimisticEntry],
-      occurrences: [...current.occurrences, optimisticOccurrence]
+      occurrences: [...current.occurrences, optimisticOccurrence],
+      allocations: optimisticAllocations.length > 0 ? [...current.allocations, ...optimisticAllocations] : current.allocations
     }));
     setSelectedOccurrenceId(optimisticOccurrenceId);
 
@@ -239,7 +455,7 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
         status: "scheduled",
         hostTeamId: quickEntryType === "practice" ? quickHostTeamId || null : null,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        location: ""
+        location: locationValue
       });
 
       if (!entryResult.ok) {
@@ -249,6 +465,65 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
           description: entryResult.error,
           variant: "destructive"
         });
+        return;
+      }
+
+      if (isRecurring) {
+        pendingOccurrenceUpdatesRef.current.delete(optimisticOccurrenceId);
+        const ruleInput = buildCalendarRuleInputFromDraft({ draft: ruleDraft, entryId: entryResult.data.entryId });
+        const ruleResult = await upsertCalendarRuleAction({
+          orgSlug,
+          entryId: entryResult.data.entryId,
+          mode: ruleInput.mode,
+          timezone: ruleInput.timezone,
+          startDate: ruleInput.startDate,
+          endDate: ruleInput.endDate,
+          startTime: ruleInput.startTime,
+          endTime: ruleInput.endTime,
+          intervalCount: ruleInput.intervalCount,
+          intervalUnit: ruleInput.intervalUnit,
+          byWeekday: ruleInput.byWeekday,
+          byMonthday: ruleInput.byMonthday,
+          endMode: ruleInput.endMode,
+          untilDate: ruleInput.untilDate,
+          maxOccurrences: ruleInput.maxOccurrences,
+          configJson: ruleInput.configJson
+        });
+
+        if (!ruleResult.ok) {
+          removeOptimistic(optimisticEntryId, optimisticOccurrenceId);
+          toast({
+            title: "Unable to create schedule rule",
+            description: ruleResult.error,
+            variant: "destructive"
+          });
+          refreshWorkspace();
+          return;
+        }
+
+        if (facilitySelections.length > 0) {
+          const allocationResult = await setRuleFacilityAllocationsAction({
+            orgSlug,
+            ruleId: ruleResult.data.ruleId,
+            allocations: facilitySelections
+          });
+
+          if (!allocationResult.ok) {
+            toast({
+              title: "Unable to reserve facility spaces",
+              description: allocationResult.error,
+              variant: "destructive"
+            });
+          } else if (allocationResult.data.conflicts.length > 0) {
+            toast({
+              title: "Some occurrences have facility conflicts",
+              description: "Conflicting spaces were skipped for those occurrences.",
+              variant: "info"
+            });
+          }
+        }
+
+        refreshWorkspace("Calendar rule created");
         return;
       }
 
@@ -313,6 +588,22 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
         }
       }
 
+      if (facilitySelections.length > 0) {
+        const allocationResult = await setOccurrenceFacilityAllocationsAction({
+          orgSlug,
+          occurrenceId: occurrenceResult.data.occurrenceId,
+          allocations: facilitySelections
+        });
+
+        if (!allocationResult.ok) {
+          toast({
+            title: "Unable to reserve facility spaces",
+            description: allocationResult.error,
+            variant: "destructive"
+          });
+        }
+      }
+
       refreshWorkspace("Calendar item created");
     });
   }
@@ -341,6 +632,16 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
               updatedAt: now
             }
           : item
+      ),
+      allocations: current.allocations.map((allocation) =>
+        allocation.occurrenceId === occurrence.id
+          ? {
+              ...allocation,
+              startsAtUtc,
+              endsAtUtc,
+              updatedAt: now
+            }
+          : allocation
       )
     }));
 
@@ -401,6 +702,15 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
               updatedAt: now
             }
           : item
+      ),
+      allocations: current.allocations.map((allocation) =>
+        allocation.occurrenceId === occurrence.id
+          ? {
+              ...allocation,
+              endsAtUtc,
+              updatedAt: now
+            }
+          : allocation
       )
     }));
 
@@ -438,6 +748,246 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
     });
   }
 
+  function openQuickAddFacilityDialog(nextFacilityId: string) {
+    if (!nextFacilityId) {
+      setSelectedFacilityId("");
+      setFacilitySelections([]);
+      return;
+    }
+    setSelectedFacilityId(nextFacilityId);
+    setLocationTouched(false);
+    setBookingMode("quick-add");
+    setFacilityDialogOpen(true);
+  }
+
+  function openEditFacilityDialog() {
+    if (!selectedOccurrence) {
+      return;
+    }
+
+    const selections: FacilityBookingSelection[] = selectedAllocations.map((allocation) => ({
+      spaceId: allocation.spaceId,
+      configurationId: allocation.configurationId,
+      lockMode: allocation.lockMode,
+      allowShared: allocation.allowShared,
+      notes: typeof allocation.metadataJson?.notes === "string" ? (allocation.metadataJson.notes as string) : ""
+    }));
+
+    const firstSpaceId = selections[0]?.spaceId;
+    const rootId = firstSpaceId ? resolveRootSpaceId(firstSpaceId, spaceById) ?? "" : "";
+    setSelectedFacilityId(rootId);
+    setFacilitySelections(selections);
+    setBookingMode("edit-occurrence");
+    setFacilityDialogOpen(true);
+  }
+
+  const activeRule = useMemo(
+    () => (selectedOccurrence?.sourceRuleId ? readModel.rules.find((rule) => rule.id === selectedOccurrence.sourceRuleId) ?? null : null),
+    [readModel.rules, selectedOccurrence?.sourceRuleId]
+  );
+
+  const bookingWindows = useMemo<FacilityBookingWindow[]>(() => {
+    if (bookingMode === "quick-add") {
+      if (!quickAddDraft) {
+        return [];
+      }
+      if (ruleDraft.repeatEnabled) {
+        return buildOccurrenceWindowsFromRuleDraft({ draft: ruleDraft, entryId: "draft" });
+      }
+      return [
+        {
+          occurrenceId: "draft",
+          startsAtUtc: quickAddDraft.startsAtUtc,
+          endsAtUtc: quickAddDraft.endsAtUtc,
+          label: "Draft"
+        }
+      ];
+    }
+
+    if (bookingMode === "edit-occurrence" && selectedOccurrence) {
+      if (activeRule) {
+        return generateOccurrencesForRule(activeRule, { horizonMonths: 3 }).map((occurrence) => ({
+          occurrenceId: occurrence.sourceKey,
+          startsAtUtc: occurrence.startsAtUtc,
+          endsAtUtc: occurrence.endsAtUtc,
+          label: occurrence.localDate
+        }));
+      }
+
+      return [
+        {
+          occurrenceId: selectedOccurrence.id,
+          startsAtUtc: selectedOccurrence.startsAtUtc,
+          endsAtUtc: selectedOccurrence.endsAtUtc,
+          label: selectedOccurrence.localDate
+        }
+      ];
+    }
+
+    return [];
+  }, [activeRule, bookingMode, quickAddDraft, ruleDraft, selectedOccurrence]);
+
+  const quickAddFacilityConflicts = useMemo(() => {
+    if (!quickAddDraft?.open || facilitySelections.length === 0) {
+      return null;
+    }
+    return computeFacilityConflicts({
+      readModel,
+      facilityReadModel,
+      selections: facilitySelections,
+      windows: [
+        {
+          occurrenceId: "draft",
+          startsAtUtc: quickAddDraft.startsAtUtc,
+          endsAtUtc: quickAddDraft.endsAtUtc,
+          label: "Draft"
+        }
+      ],
+      spaceById
+    });
+  }, [facilityReadModel, facilitySelections, quickAddDraft, readModel, spaceById]);
+
+  async function handleBookingSave() {
+    if (bookingMode === "quick-add") {
+      setFacilityDialogOpen(false);
+      return;
+    }
+
+    if (!selectedOccurrence || !selectedEntry) {
+      setFacilityDialogOpen(false);
+      return;
+    }
+
+    const facility = selectedFacilityId ? spaceById.get(selectedFacilityId) ?? null : null;
+    const locationValue = facility ? formatFacilityLocation(facility, selectedFacilitySpaces) || facility.name : "";
+
+    setReadModel((current) => ({
+      ...current,
+      entries: current.entries.map((entry) =>
+        entry.id === selectedEntry.id ? { ...entry, settingsJson: { ...entry.settingsJson, location: locationValue } } : entry
+      )
+    }));
+
+    if (activeRule) {
+      startSaving(async () => {
+        const allocationResult = await setRuleFacilityAllocationsAction({
+          orgSlug,
+          ruleId: activeRule.id,
+          allocations: facilitySelections
+        });
+
+        if (!allocationResult.ok) {
+          toast({
+            title: "Unable to update facility booking",
+            description: allocationResult.error,
+            variant: "destructive"
+          });
+          refreshWorkspace();
+          return;
+        }
+
+        if (allocationResult.data.conflicts.length > 0) {
+          toast({
+            title: "Some occurrences have facility conflicts",
+            description: "Conflicting spaces were skipped for those occurrences.",
+            variant: "info"
+          });
+        }
+
+        const entryUpdate = await updateCalendarEntryAction({
+          orgSlug,
+          entryId: selectedEntry.id,
+          entryType: selectedEntry.entryType,
+          title: selectedEntry.title,
+          summary: selectedEntry.summary ?? "",
+          visibility: selectedEntry.visibility,
+          status: selectedEntry.status,
+          hostTeamId: selectedEntry.hostTeamId,
+          timezone: selectedEntry.defaultTimezone,
+          location: locationValue
+        });
+
+        if (!entryUpdate.ok) {
+          toast({
+            title: "Unable to update location",
+            description: entryUpdate.error,
+            variant: "destructive"
+          });
+        }
+
+        refreshWorkspace("Facility booking updated");
+      });
+    } else {
+      setReadModel((current) => {
+        const nextAllocations = facilitySelections.map((selection) => ({
+          id: buildOptimisticId("optimistic-allocation"),
+          orgId: resolveOrgId(current),
+          occurrenceId: selectedOccurrence.id,
+          spaceId: selection.spaceId,
+          configurationId: selection.configurationId ?? "optimistic-config",
+          lockMode: selection.lockMode ?? "exclusive",
+          allowShared: selection.allowShared ?? false,
+          startsAtUtc: selectedOccurrence.startsAtUtc,
+          endsAtUtc: selectedOccurrence.endsAtUtc,
+          isActive: true,
+          metadataJson: selection.notes ? { notes: selection.notes } : {},
+          createdBy: null,
+          updatedBy: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }));
+
+        return {
+          ...current,
+          allocations: [...current.allocations.filter((allocation) => allocation.occurrenceId !== selectedOccurrence.id), ...nextAllocations]
+        };
+      });
+
+      startSaving(async () => {
+        const allocationResult = await setOccurrenceFacilityAllocationsAction({
+          orgSlug,
+          occurrenceId: selectedOccurrence.id,
+          allocations: facilitySelections
+        });
+
+        if (!allocationResult.ok) {
+          toast({
+            title: "Unable to update facility booking",
+            description: allocationResult.error,
+            variant: "destructive"
+          });
+          refreshWorkspace();
+          return;
+        }
+
+        const entryUpdate = await updateCalendarEntryAction({
+          orgSlug,
+          entryId: selectedEntry.id,
+          entryType: selectedEntry.entryType,
+          title: selectedEntry.title,
+          summary: selectedEntry.summary ?? "",
+          visibility: selectedEntry.visibility,
+          status: selectedEntry.status,
+          hostTeamId: selectedEntry.hostTeamId,
+          timezone: selectedEntry.defaultTimezone,
+          location: locationValue
+        });
+
+        if (!entryUpdate.ok) {
+          toast({
+            title: "Unable to update location",
+            description: entryUpdate.error,
+            variant: "destructive"
+          });
+        }
+
+        refreshWorkspace("Facility booking updated");
+      });
+    }
+
+    setFacilityDialogOpen(false);
+  }
+
   const eventPanelOpen = Boolean(selectedOccurrence && selectedEntry);
   const eventPanelSubtitle =
     selectedOccurrence && selectedEntry ? `${selectedEntry.entryType} · ${selectedOccurrence.status}` : "Select a calendar item to manage invites and status.";
@@ -450,7 +1000,7 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
       </CardHeader>
       <UnifiedCalendar
         canEdit={canWrite}
-        disableHoverGhost={Boolean(selectedOccurrenceId)}
+        disableHoverGhost={Boolean(selectedOccurrenceId) || facilityDialogOpen}
         framed={false}
         className="min-h-0 flex-1 px-5 pb-5 md:px-6 md:pb-6"
         filterSlot={
@@ -504,9 +1054,16 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
             const newEnd = new Date(draft.endsAtUtc).getTime();
             return newStart < end && newEnd > start;
           });
-          return hasOverlap ? "This time overlaps an existing item." : null;
+          if (hasOverlap) {
+            return "This time overlaps an existing item.";
+          }
+          if (!ruleDraft.repeatEnabled && quickAddFacilityConflicts?.hasBlockingConflicts) {
+            return "Selected facility spaces are already booked.";
+          }
+          return null;
         }}
         items={calendarItems}
+        onQuickAddDraftChange={setQuickAddDraft}
         onCreateRange={(range) =>
           createFromDraft({
             title: `New ${quickEntryType}`,
@@ -518,6 +1075,82 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
         onQuickAdd={createFromDraft}
         onResizeItem={(input) => resizeOccurrence(input.itemId, input.endsAtUtc)}
         onSelectItem={setSelectedOccurrenceId}
+        renderQuickAddFields={() => (
+          <div className="space-y-3">
+            <label className="space-y-1 text-xs text-text-muted">
+              <span>Location</span>
+              <Input
+                onChange={(event) => {
+                  setLocationTouched(true);
+                  setLocationDraft(event.target.value);
+                }}
+                placeholder="Optional location"
+                value={locationDraft}
+              />
+            </label>
+            <div className="grid gap-2">
+              <label className="space-y-1 text-xs text-text-muted">
+                <span>Facility</span>
+                <Select
+                  disabled={!canWrite || facilityOptions.length === 0}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    if (!next) {
+                      setSelectedFacilityId("");
+                      setFacilitySelections([]);
+                      setLocationTouched(false);
+                      return;
+                    }
+                    openQuickAddFacilityDialog(next);
+                  }}
+                  options={[
+                    { label: "No facility (free-text location)", value: "" },
+                    ...facilityOptions.map((space) => ({ label: space.name, value: space.id }))
+                  ]}
+                  value={selectedFacilityId}
+                />
+              </label>
+              {selectedFacilityId ? (
+                <Button
+                  onClick={() => {
+                    setBookingMode("quick-add");
+                    setFacilityDialogOpen(true);
+                  }}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  {facilitySelections.length > 0 ? "Edit facility booking" : "Select facility spaces"}
+                </Button>
+              ) : null}
+            </div>
+            <RuleBuilderPanel
+              canWrite={canWrite}
+              draft={ruleDraft}
+              isSaving={false}
+              nodes={[]}
+              onChange={setRuleDraft}
+              onSave={() => {}}
+              showSaveButton={false}
+            />
+          </div>
+        )}
+      />
+      <FacilityBookingDialog
+        allowPartialConflicts={bookingMode === "quick-add" ? ruleDraft.repeatEnabled : Boolean(activeRule)}
+        calendarReadModel={readModel}
+        configurations={readModel.configurations}
+        facilityId={selectedFacilityId || null}
+        facilityReadModel={facilityReadModel}
+        onClose={() => setFacilityDialogOpen(false)}
+        onSave={handleBookingSave}
+        onSelectionsChange={setFacilitySelections}
+        occurrenceWindows={bookingWindows}
+        open={facilityDialogOpen}
+        saveLabel={bookingMode === "edit-occurrence" ? "Update booking" : "Apply booking"}
+        selections={facilitySelections}
+        spaces={facilityReadModel.spaces}
+        ignoreOccurrenceId={bookingMode === "edit-occurrence" ? selectedOccurrence?.id ?? null : null}
       />
       <Panel
         onClose={() => setSelectedOccurrenceId(null)}
@@ -530,6 +1163,29 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, acti
             <p className="text-sm text-text-muted">
               {new Date(selectedOccurrence.startsAtUtc).toLocaleString()} - {new Date(selectedOccurrence.endsAtUtc).toLocaleString()}
             </p>
+
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Location</p>
+              <p className="text-sm text-text">{selectedLocation || "No location set."}</p>
+            </div>
+
+            <div className="space-y-2 rounded-control border p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Facility booking</p>
+              {selectedAllocations.length === 0 ? <p className="text-sm text-text-muted">No facility spaces assigned.</p> : null}
+              <div className="flex flex-wrap gap-2">
+                {selectedAllocations.map((allocation) => (
+                  <span className="rounded-full border bg-surface px-2 py-1 text-xs" key={allocation.id}>
+                    {spaceById.get(allocation.spaceId)?.name ?? allocation.spaceId}
+                  </span>
+                ))}
+              </div>
+              <Button disabled={!canWrite} onClick={openEditFacilityDialog} size="sm" type="button" variant="secondary">
+                {selectedAllocations.length > 0 ? "Edit facility booking" : "Add facility booking"}
+              </Button>
+              {selectedOccurrence.sourceRuleId ? (
+                <p className="text-xs text-text-muted">Changes will apply to all occurrences in this series.</p>
+              ) : null}
+            </div>
 
             {selectedEntry.entryType === "practice" ? (
               <div className="space-y-2 rounded-control border p-3">

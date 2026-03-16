@@ -4,9 +4,9 @@ import { createClient } from "@supabase/supabase-js";
 import {
   normalizeHost,
   getPlatformHosts,
-  getPlatformHost,
+  getTenantBaseHosts,
   shouldSkipCustomDomainRoutingPath,
-  extractOrgSlugFromSubdomain,
+  resolveOrgSubdomain,
   isReservedSubdomain
 } from "@/lib/domains/customDomains";
 import { updateSupabaseSessionFromProxy } from "@/lib/supabase/proxy";
@@ -51,29 +51,34 @@ async function resolveOrgSlugForDomain(host: string) {
 export async function proxy(request: NextRequest) {
   const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
   const host = normalizeHost(forwardedHost || request.headers.get("host"));
-  const platformHost = getPlatformHost();
+  const tenantBaseHosts = getTenantBaseHosts();
   const platformHosts = getPlatformHosts();
-  const orgSlugFromSubdomain = extractOrgSlugFromSubdomain(host, platformHost);
+  const orgSubdomain = resolveOrgSubdomain(host, tenantBaseHosts);
 
-  const legacyOrgPathRedirect = getLegacyOrgPathRedirect(request.nextUrl.pathname);
-  if (host === platformHost && legacyOrgPathRedirect) {
+  const legacyOrgPathRedirect = getLegacyOrgPathRedirect(host, request.nextUrl.pathname, tenantBaseHosts);
+  if (legacyOrgPathRedirect) {
     const redirectUrl = request.nextUrl.clone();
-    redirectUrl.hostname = `${legacyOrgPathRedirect.orgSlug}.${platformHost}`;
+    redirectUrl.hostname = `${legacyOrgPathRedirect.orgSlug}.${legacyOrgPathRedirect.baseHost}`;
     redirectUrl.pathname = legacyOrgPathRedirect.pathname;
     return NextResponse.redirect(redirectUrl, { status: 301 });
   }
 
   let rewriteUrl: URL | null = null;
 
-  if (orgSlugFromSubdomain && !shouldSkipCustomDomainRoutingPath(request.nextUrl.pathname)) {
-    const prefix = `/${orgSlugFromSubdomain}`;
+  if (orgSubdomain && !shouldSkipCustomDomainRoutingPath(request.nextUrl.pathname)) {
+    const prefix = `/${orgSubdomain.orgSlug}`;
     const currentPathname = request.nextUrl.pathname;
     const alreadyOrgPrefixed = currentPathname === prefix || currentPathname.startsWith(`${prefix}/`);
 
-    if (!alreadyOrgPrefixed) {
-      rewriteUrl = request.nextUrl.clone();
-      rewriteUrl.pathname = currentPathname === "/" ? prefix : `${prefix}${currentPathname}`;
+    if (alreadyOrgPrefixed) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.hostname = host;
+      redirectUrl.pathname = stripOrgPrefixPath(currentPathname, prefix);
+      return NextResponse.redirect(redirectUrl, { status: 308 });
     }
+
+    rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = currentPathname === "/" ? prefix : `${prefix}${currentPathname}`;
   } else if (host && !platformHosts.has(host) && !shouldSkipCustomDomainRoutingPath(request.nextUrl.pathname)) {
     const orgSlug = await resolveOrgSlugForDomain(host);
 
@@ -82,10 +87,15 @@ export async function proxy(request: NextRequest) {
       const currentPathname = request.nextUrl.pathname;
       const alreadyOrgPrefixed = currentPathname === prefix || currentPathname.startsWith(`${prefix}/`);
 
-      if (!alreadyOrgPrefixed) {
-        rewriteUrl = request.nextUrl.clone();
-        rewriteUrl.pathname = currentPathname === "/" ? prefix : `${prefix}${currentPathname}`;
+      if (alreadyOrgPrefixed) {
+        const redirectUrl = request.nextUrl.clone();
+        redirectUrl.hostname = host;
+        redirectUrl.pathname = stripOrgPrefixPath(currentPathname, prefix);
+        return NextResponse.redirect(redirectUrl, { status: 308 });
       }
+
+      rewriteUrl = request.nextUrl.clone();
+      rewriteUrl.pathname = currentPathname === "/" ? prefix : `${prefix}${currentPathname}`;
     }
   }
 
@@ -101,7 +111,11 @@ export const config = {
 const NON_ORG_PATH_SEGMENTS = new Set(["account", "api", "auth", "brand", "forbidden", "x"]);
 const ORG_SEGMENT_PATTERN = /^[a-z0-9-]+$/;
 
-function getLegacyOrgPathRedirect(pathname: string) {
+export function getLegacyOrgPathRedirect(host: string, pathname: string, tenantBaseHosts: Set<string>) {
+  if (!tenantBaseHosts.has(host)) {
+    return null;
+  }
+
   const trimmed = pathname.replace(/^\/+|\/+$/g, "");
   if (!trimmed) {
     return null;
@@ -118,7 +132,17 @@ function getLegacyOrgPathRedirect(pathname: string) {
   }
 
   return {
+    baseHost: host,
     orgSlug: firstSegment,
     pathname: restSegments.length > 0 ? `/${restSegments.join("/")}` : "/"
   };
+}
+
+function stripOrgPrefixPath(pathname: string, prefix: string) {
+  if (pathname === prefix) {
+    return "/";
+  }
+
+  const stripped = pathname.slice(prefix.length);
+  return stripped.startsWith("/") ? stripped : `/${stripped}`;
 }

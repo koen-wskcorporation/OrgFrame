@@ -8,14 +8,15 @@ type OrgCardProps = {
   orgName: string;
   orgSlug: string;
   iconUrl?: string | null;
+  href?: string;
 };
 
 function getOrgInitial(orgName: string) {
   return orgName.trim().charAt(0).toUpperCase() || "O";
 }
 
-export function OrgCard({ orgName, orgSlug, iconUrl }: OrgCardProps) {
-  const orgHref = `/${orgSlug}`;
+export function OrgCard({ orgName, orgSlug, iconUrl, href }: OrgCardProps) {
+  const orgHref = href ?? `/${orgSlug}`;
 
   return (
     <Card className="p-5 transition-colors hover:border-text-muted/35 hover:bg-surface-muted/20">

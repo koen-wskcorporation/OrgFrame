@@ -23,7 +23,10 @@ type AccountMenuProps = {
     orgSlug: string;
     iconUrl: string | null;
   }[];
+  currentOrgSlug?: string | null;
+  homeHref?: string;
   signOutAction: (formData: FormData) => Promise<void>;
+  tenantBaseOrigin?: string | null;
 };
 
 function initialsFromName(firstName?: string | null, lastName?: string | null, email?: string | null) {
@@ -37,7 +40,57 @@ function initialsFromName(firstName?: string | null, lastName?: string | null, e
   return (email?.trim().charAt(0) ?? "A").toUpperCase();
 }
 
-export function AccountMenu({ email, firstName, lastName, avatarUrl, organizations = [], signOutAction }: AccountMenuProps) {
+function getTenantBaseHost(tenantBaseOrigin?: string | null) {
+  if (!tenantBaseOrigin) {
+    return "";
+  }
+
+  try {
+    return new URL(tenantBaseOrigin).hostname;
+  } catch {
+    return "";
+  }
+}
+
+function getTenantBaseProtocol(tenantBaseOrigin?: string | null) {
+  if (!tenantBaseOrigin) {
+    return "";
+  }
+
+  try {
+    return new URL(tenantBaseOrigin).protocol;
+  } catch {
+    return "";
+  }
+}
+
+function getCurrentHost() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.location.hostname.toLowerCase();
+}
+
+function getCurrentProtocol() {
+  if (typeof window === "undefined") {
+    return "https:";
+  }
+
+  return window.location.protocol;
+}
+
+export function AccountMenu({
+  email,
+  firstName,
+  lastName,
+  avatarUrl,
+  organizations = [],
+  currentOrgSlug: currentOrgSlugProp = null,
+  homeHref = "/",
+  signOutAction,
+  tenantBaseOrigin = null
+}: AccountMenuProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -53,10 +106,29 @@ export function AccountMenu({ email, firstName, lastName, avatarUrl, organizatio
     return "Account";
   }, [firstName, lastName]);
   const initials = initialsFromName(firstName, lastName, email);
+  const tenantBaseHost = useMemo(() => getTenantBaseHost(tenantBaseOrigin), [tenantBaseOrigin]);
+  const tenantBaseProtocol = useMemo(() => getTenantBaseProtocol(tenantBaseOrigin), [tenantBaseOrigin]);
+  const orgLinks = useMemo(() => {
+    if (!tenantBaseHost) {
+      return new Map(organizations.map((organization) => [organization.orgSlug, `/${organization.orgSlug}`]));
+    }
+
+    const protocol = tenantBaseProtocol || getCurrentProtocol();
+    return new Map(organizations.map((organization) => [organization.orgSlug, `${protocol}//${organization.orgSlug}.${tenantBaseHost}/`]));
+  }, [organizations, tenantBaseHost, tenantBaseProtocol]);
   const currentOrgSlug = useMemo(() => {
+    if (currentOrgSlugProp) {
+      return currentOrgSlugProp;
+    }
+
+    const currentHost = getCurrentHost();
+    if (tenantBaseHost && currentHost.endsWith(`.${tenantBaseHost}`)) {
+      return currentHost.slice(0, -(tenantBaseHost.length + 1));
+    }
+
     const [_, slug] = pathname.split("/");
     return slug ?? "";
-  }, [pathname]);
+  }, [currentOrgSlugProp, pathname, tenantBaseHost]);
   const orderedOrganizations = useMemo(() => {
     return [...organizations].sort((a, b) => {
       if (a.orgSlug === currentOrgSlug) {
@@ -71,10 +143,10 @@ export function AccountMenu({ email, firstName, lastName, avatarUrl, organizatio
   const menuItems = useMemo(
     () => [
       {
-        href: "/",
+        href: homeHref,
         label: "Home",
         icon: Home,
-        active: pathname === "/"
+        active: pathname === "/" && homeHref === "/"
       },
       {
         href: "/account",
@@ -83,7 +155,7 @@ export function AccountMenu({ email, firstName, lastName, avatarUrl, organizatio
         active: pathname === "/account" || pathname.startsWith("/account/")
       }
     ],
-    [pathname]
+    [homeHref, pathname]
   );
   const { mode, resolvedMode, setMode } = useThemeMode();
   const themeOptions: { mode: ThemeMode; icon: typeof Sun; label: string }[] = [
@@ -183,7 +255,7 @@ export function AccountMenu({ email, firstName, lastName, avatarUrl, organizatio
                 <NavItem
                   accentWhenActive
                   active={organization.orgSlug === currentOrgSlug}
-                  href={`/${organization.orgSlug}`}
+                  href={orgLinks.get(organization.orgSlug) ?? `/${organization.orgSlug}`}
                   key={organization.orgId}
                   onClick={() => setOpen(false)}
                   role="menuitem"

@@ -55,13 +55,12 @@ function mapVercelHost(hostname: string, target: CrossAppTarget): string | null 
 
 function mapSubdomainHost(hostname: string, target: CrossAppTarget): string | null {
   const labels = hostname.split(".");
-  if (labels.length < 2) return null;
+  if (labels.length < 3) return null;
 
   const desired = target;
   const source = target === "app" ? "web" : "app";
-  const index = labels.findIndex((label) => label === source);
-  if (index >= 0) {
-    labels[index] = desired;
+  if (labels[0] === source) {
+    labels[0] = desired;
     return labels.join(".");
   }
 

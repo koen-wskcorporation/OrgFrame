@@ -38,7 +38,18 @@ type UnifiedCalendarProps = {
   onMoveItem?: (input: { itemId: string; startsAtUtc: string; endsAtUtc: string }) => void;
   onResizeItem?: (input: { itemId: string; endsAtUtc: string }) => void;
   onQuickAdd?: (draft: UnifiedCalendarQuickAddDraft) => void;
+  onQuickAddDraftChange?: (draft: UnifiedCalendarQuickAddDraft & { open: boolean }) => void;
   getConflictMessage?: (draft: UnifiedCalendarQuickAddDraft) => string | null;
+  renderQuickAddFields?: (context: {
+    title: string;
+    startsAtUtc: string;
+    endsAtUtc: string;
+    setTitle: (value: string) => void;
+    setStartsAtUtc: (value: string) => void;
+    setEndsAtUtc: (value: string) => void;
+    conflictMessage: string | null;
+    open: boolean;
+  }) => React.ReactNode;
   headerSlot?: React.ReactNode;
   filterSlot?: React.ReactNode;
 };
@@ -155,7 +166,9 @@ export function UnifiedCalendar({
   onMoveItem,
   onResizeItem,
   onQuickAdd,
+  onQuickAddDraftChange,
   getConflictMessage,
+  renderQuickAddFields,
   headerSlot,
   filterSlot
 }: UnifiedCalendarProps) {
@@ -240,6 +253,18 @@ export function UnifiedCalendar({
           endsAtUtc: quickAddEndsAtUtc
         })
       : null;
+
+  useEffect(() => {
+    if (!onQuickAddDraftChange) {
+      return;
+    }
+    onQuickAddDraftChange({
+      title: quickAddTitle,
+      startsAtUtc: quickAddStartsAtUtc,
+      endsAtUtc: quickAddEndsAtUtc,
+      open: quickAddOpen
+    });
+  }, [onQuickAddDraftChange, quickAddEndsAtUtc, quickAddOpen, quickAddStartsAtUtc, quickAddTitle]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -1031,6 +1056,18 @@ export function UnifiedCalendar({
             </label>
           </div>
           {quickAddConflict ? <p className="text-xs text-destructive">{quickAddConflict}</p> : null}
+          {renderQuickAddFields
+            ? renderQuickAddFields({
+                title: quickAddTitle,
+                startsAtUtc: quickAddStartsAtUtc,
+                endsAtUtc: quickAddEndsAtUtc,
+                setTitle: setQuickAddTitle,
+                setStartsAtUtc: setQuickAddStartsAtUtc,
+                setEndsAtUtc: setQuickAddEndsAtUtc,
+                conflictMessage: quickAddConflict,
+                open: quickAddOpen
+              })
+            : null}
         </div>
       </Panel>
     </div>

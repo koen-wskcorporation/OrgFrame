@@ -763,6 +763,23 @@ export async function upsertCalendarRuleAction(input: z.input<typeof upsertRuleS
       });
     }
 
+    const ruleAllocations = await listCalendarRuleFacilityAllocations(actor.orgId, savedRule.id);
+    if (ruleAllocations.length > 0) {
+      const occurrences = await listCalendarOccurrencesByRule(actor.orgId, savedRule.id);
+      await applyRuleAllocationsToOccurrences({
+        orgId: actor.orgId,
+        actorUserId: actor.userId,
+        occurrences,
+        allocations: ruleAllocations.map((allocation) => ({
+          spaceId: allocation.spaceId,
+          configurationId: allocation.configurationId,
+          lockMode: allocation.lockMode,
+          allowShared: allocation.allowShared,
+          metadataJson: allocation.metadataJson ?? {}
+        }))
+      });
+    }
+
     revalidateCalendarRoutes(actor.orgSlug);
 
     return {
