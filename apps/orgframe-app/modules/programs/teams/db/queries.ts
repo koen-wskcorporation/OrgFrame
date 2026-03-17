@@ -3,6 +3,7 @@ import { createOptionalSupabaseServiceRoleClient } from "@/lib/supabase/service-
 import type { PlayerPickerItem } from "@/modules/players/types";
 import type {
   ProgramTeam,
+  ProgramTeamDirectoryItem,
   ProgramTeamMember,
   ProgramTeamStaff,
   ProgramTeamSummary
@@ -219,6 +220,199 @@ export async function listProgramTeamsSummary(programId: string): Promise<Progra
       staffCount: staffCounts.get(team.id) ?? 0
     } satisfies ProgramTeamSummary;
   });
+}
+
+export async function listPublishedProgramTeamsForDirectory(
+  orgId: string,
+  options?: {
+    limit?: number;
+  }
+): Promise<ProgramTeamDirectoryItem[]> {
+  const supabase = await createSupabaseServer();
+  const service = createOptionalSupabaseServiceRoleClient();
+  const limit = typeof options?.limit === "number" && options.limit > 0 ? Math.min(options.limit, 200) : 200;
+  const { data: rows, error } = await supabase
+    .from("program_nodes")
+    .select("id, program_id, parent_id, name, slug, node_kind, settings_json, programs!inner(id, org_id, slug, name, status)")
+    .eq("programs.org_id", orgId)
+    .eq("programs.status", "published")
+    .eq("node_kind", "team")
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`Failed to list published teams: ${error.message}`);
+  }
+
+  const sourceNodes = (rows ?? []).map((row: any) => {
+    const program = asRelationObject(row.programs);
+    const teamSettings = asObject(row.settings_json);
+
+    return {
+      nodeId: String(row.id),
+      programId: getRequiredString(program, "id"),
+      programName: getRequiredString(program, "name"),
+      programSlug: getRequiredString(program, "slug"),
+      divisionId: typeof row.parent_id === "string" ? row.parent_id : null,
+      teamName: typeof row.name === "string" ? row.name : "Team",
+      teamSlug: typeof row.slug === "string" ? row.slug : "",
+      teamPublished: teamSettings.published !== false
+    };
+  });
+
+  const publishedNodes = sourceNodes.filter((entry) => entry.teamPublished);
+
+  const divisionIds = publishedNodes.map((entry) => entry.divisionId).filter((value): value is string => Boolean(value));
+  const divisionById = new Map<string, { name: string; slug: string; isPublished: boolean }>();
+
+  if (divisionIds.length > 0) {
+    const { data: divisionRows, error: divisionError } = await supabase
+      .from("program_nodes")
+      .select("id, name, slug, settings_json")
+      .in("id", divisionIds);
+
+    if (divisionError) {
+      throw new Error(`Failed to list divisions: ${divisionError.message}`);
+    }
+
+    for (const row of divisionRows ?? []) {
+      const settings = asObject(row.settings_json);
+      divisionById.set(String(row.id), {
+        name: typeof row.name === "string" ? row.name : "",
+        slug: typeof row.slug === "string" ? row.slug : "",
+        isPublished: settings.published !== false
+      });
+    }
+  }
+
+  const visibleNodes = publishedNodes.filter((entry) => {
+    if (!entry.divisionId) {
+      return true;
+    }
+
+    const division = divisionById.get(entry.divisionId);
+    return division ? division.isPublished : false;
+  });
+
+  const teamByNodeId = new Map<
+    string,
+    {
+      id: string;
+      teamCode: string | null;
+      levelLabel: string | null;
+      ageGroup: string | null;
+      gender: string | null;
+    }
+  >();
+
+  if (service && visibleNodes.length > 0) {
+    const programNodeIds = visibleNodes.map((entry) => entry.nodeId);
+    const { data: teamRows, error: teamError } = await service
+      .from("program_teams")
+      .select("id, program_node_id, team_code, level_label, age_group, gender, status")
+      .eq("org_id", orgId)
+      .eq("status", "active")
+      .in("program_node_id", programNodeIds);
+
+    if (teamError) {
+      throw new Error(`Failed to list active teams: ${teamError.message}`);
+    }
+
+    for (const row of teamRows ?? []) {
+      if (!row.program_node_id || !row.id) {
+        continue;
+      }
+      teamByNodeId.set(String(row.program_node_id), {
+        id: String(row.id),
+        teamCode: typeof row.team_code === "string" ? row.team_code : null,
+        levelLabel: typeof row.level_label === "string" ? row.level_label : null,
+        ageGroup: typeof row.age_group === "string" ? row.age_group : null,
+        gender: typeof row.gender === "string" ? row.gender : null
+      });
+    }
+  }
+
+  const syntheticTeamIdByNodeId = new Map<string, string>();
+  for (const node of visibleNodes) {
+    if (!teamByNodeId.has(node.nodeId)) {
+      syntheticTeamIdByNodeId.set(node.nodeId, `node:${node.nodeId}`);
+    }
+  }
+
+  const resolvedTeamIds = visibleNodes.map((entry) => teamByNodeId.get(entry.nodeId)?.id ?? syntheticTeamIdByNodeId.get(entry.nodeId) ?? `node:${entry.nodeId}`);
+  const memberCounts = new Map<string, number>();
+  const staffCounts = new Map<string, number>();
+
+  if (service && resolvedTeamIds.length > 0) {
+    const realTeamIds = resolvedTeamIds.filter((id) => !id.startsWith("node:"));
+    const { data: memberRows, error: memberError } = await service
+      .from("program_team_members")
+      .select("team_id, status")
+      .in("team_id", realTeamIds);
+
+    if (memberError) {
+      throw new Error(`Failed to load team member counts: ${memberError.message}`);
+    }
+
+    for (const row of memberRows ?? []) {
+      if (!row.team_id || row.status === "removed") {
+        continue;
+      }
+      memberCounts.set(row.team_id, (memberCounts.get(row.team_id) ?? 0) + 1);
+    }
+
+    const { data: staffRows, error: staffError } = await service.from("program_team_staff").select("team_id").in("team_id", realTeamIds);
+
+    if (staffError) {
+      throw new Error(`Failed to load team staff counts: ${staffError.message}`);
+    }
+
+    for (const row of staffRows ?? []) {
+      if (!row.team_id) {
+        continue;
+      }
+      staffCounts.set(row.team_id, (staffCounts.get(row.team_id) ?? 0) + 1);
+    }
+  }
+
+  return visibleNodes
+    .map((entry) => {
+      const team = teamByNodeId.get(entry.nodeId) ?? null;
+      const fallbackId = syntheticTeamIdByNodeId.get(entry.nodeId) ?? `node:${entry.nodeId}`;
+      const teamId = team?.id ?? fallbackId;
+      const division = entry.divisionId ? divisionById.get(entry.divisionId) ?? null : null;
+
+      return {
+        teamId,
+        teamName: entry.teamName,
+        teamSlug: entry.teamSlug,
+        programId: entry.programId,
+        programName: entry.programName,
+        programSlug: entry.programSlug,
+        divisionId: entry.divisionId,
+        divisionName: division?.name ?? null,
+        divisionSlug: division?.slug ?? null,
+        memberCount: memberCounts.get(teamId) ?? 0,
+        staffCount: staffCounts.get(teamId) ?? 0,
+        teamCode: team?.teamCode ?? null,
+        levelLabel: team?.levelLabel ?? null,
+        ageGroup: team?.ageGroup ?? null,
+        gender: team?.gender ?? null
+      } satisfies ProgramTeamDirectoryItem;
+    })
+    .sort((a, b) => {
+      const programSort = a.programName.localeCompare(b.programName);
+      if (programSort !== 0) {
+        return programSort;
+      }
+
+      const divisionSort = (a.divisionName ?? "").localeCompare(b.divisionName ?? "");
+      if (divisionSort !== 0) {
+        return divisionSort;
+      }
+
+      return a.teamName.localeCompare(b.teamName);
+    });
 }
 
 export async function getProgramTeamDetail(teamId: string): Promise<ProgramTeamDetail | null> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Eye, EyeOff, X } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@orgframe/ui/ui/button";
@@ -12,6 +12,8 @@ type PublishStatusIconProps = {
   isLoading?: boolean;
   disabled?: boolean;
   statusLabel?: string;
+  publishedStatusText?: string;
+  unpublishedStatusText?: string;
   publishLabel?: string;
   unpublishLabel?: string;
   className?: string;
@@ -26,6 +28,8 @@ export function PublishStatusIcon({
   isLoading = false,
   disabled = false,
   statusLabel,
+  publishedStatusText = "Published",
+  unpublishedStatusText = "Draft",
   publishLabel = "Publish",
   unpublishLabel = "Unpublish",
   className,
@@ -66,7 +70,6 @@ export function PublishStatusIcon({
         aria-label={statusLabel ?? (isPublished ? "Published status" : "Unpublished status")}
         color={isPublished ? "green" : "red"}
         disabled={disabled || isLoading}
-        iconOnly
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -75,12 +78,12 @@ export function PublishStatusIcon({
         size={size}
         type="button"
       >
-        {isPublished ? <Check className="h-2.5 w-2.5 shrink-0" /> : <X className="h-2.5 w-2.5 shrink-0" />}
+        {isPublished ? publishedStatusText : unpublishedStatusText}
       </ChipButton>
       {open ? (
         <div
           className={cn(
-            "absolute top-6 z-20 w-36 rounded-control border bg-surface p-2 shadow-floating",
+            "absolute top-full z-20 mt-1 w-36 rounded-control border bg-surface p-2 shadow-floating",
             align === "right" ? "right-0" : "left-0",
             menuClassName
           )}

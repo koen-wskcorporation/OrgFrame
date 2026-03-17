@@ -2,8 +2,8 @@ import { notFound } from "next/navigation";
 import { Alert } from "@orgframe/ui/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
 import { PageHeader } from "@orgframe/ui/ui/page-header";
-import { TeamCalendarWorkspace } from "@orgframe/ui/modules/calendar/components/TeamCalendarWorkspace";
-import { listCalendarReadModel } from "@/modules/calendar/db/queries";
+import { CalendarWorkspace } from "@orgframe/ui/modules/calendar/components/CalendarWorkspace";
+import { listCalendarReadModel, listOrgActiveTeams } from "@/modules/calendar/db/queries";
 import { listFacilityReservationReadModel } from "@/modules/facilities/db/queries";
 import { getOrgRequestContext } from "@/lib/org/getOrgRequestContext";
 import { can } from "@/lib/permissions/can";
@@ -78,9 +78,14 @@ export default async function ProgramTeamPage({ params, searchParams }: TeamPage
     notFound();
   }
 
-  const calendarReadModel = (tab === "home" || tab === "calendar") && canReadPrograms ? await listCalendarReadModel(orgRequest.org.orgId).catch(() => null) : null;
-  const facilityReadModel =
-    (tab === "home" || tab === "calendar") && canReadPrograms ? await listFacilityReservationReadModel(orgRequest.org.orgId).catch(() => null) : null;
+  const [calendarReadModel, facilityReadModel, activeTeams] =
+    (tab === "home" || tab === "calendar") && canReadPrograms
+      ? await Promise.all([
+          listCalendarReadModel(orgRequest.org.orgId).catch(() => null),
+          listFacilityReservationReadModel(orgRequest.org.orgId).catch(() => null),
+          listOrgActiveTeams(orgRequest.org.orgId).catch(() => [])
+        ])
+      : [null, null, []];
 
   const teamInvites = calendarReadModel
     ? calendarReadModel.invites.filter((invite) => invite.teamId === team.id && (invite.inviteStatus === "accepted" || invite.inviteStatus === "pending"))
@@ -97,7 +102,7 @@ export default async function ProgramTeamPage({ params, searchParams }: TeamPage
   const staff = teamDetail?.staff ?? [];
 
   return (
-    <main className="app-page-shell w-full py-8 md:py-10">
+    <main className="app-page-shell w-full pb-8 pt-0 md:pb-10 md:pt-0">
       <div className="ui-stack-page">
         <PageHeader description={`Team in ${division.name}.`} title={team.name} />
 
@@ -165,24 +170,21 @@ export default async function ProgramTeamPage({ params, searchParams }: TeamPage
         ) : null}
 
         {tab === "calendar" ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Calendar</CardTitle>
-              <CardDescription>Upcoming sessions for this team.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {!canReadPrograms ? <Alert variant="info">Team calendar visibility is limited to team staff.</Alert> : null}
-              {canReadPrograms && calendarReadModel ? (
-                <TeamCalendarWorkspace
-                  canWrite={canWritePrograms}
-                  initialFacilityReadModel={facilityReadModel ?? undefined}
-                  initialReadModel={calendarReadModel}
-                  orgSlug={orgSlug}
-                  teamId={team.id}
-                />
-              ) : null}
-            </CardContent>
-          </Card>
+          <div className="space-y-2">
+            {!canReadPrograms ? <Alert variant="info">Team calendar visibility is limited to team staff.</Alert> : null}
+            {canReadPrograms && calendarReadModel ? (
+              <CalendarWorkspace
+                activeTeams={activeTeams}
+                canWrite={canWritePrograms}
+                initialFacilityReadModel={facilityReadModel ?? undefined}
+                initialReadModel={calendarReadModel}
+                mode="team"
+                orgSlug={orgSlug}
+                teamId={team.id}
+                teamLabel={`${division.name}/${team.name}`}
+              />
+            ) : null}
+          </div>
         ) : null}
 
         {tab === "staff" ? (

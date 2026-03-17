@@ -116,7 +116,12 @@ export function ProgramHeaderBar({ orgSlug }: ProgramHeaderBarProps) {
   const isTeam = Boolean(routeContext.teamSlug);
   const tabs = isTeam ? teamTabs : divisionTabs;
   const defaultTab = isTeam ? DEFAULT_TEAM_TAB : DEFAULT_DIVISION_TAB;
+  const pathnameSegments = pathname.split("/").filter(Boolean);
+  const teamSubroute = isTeam ? (pathnameSegments[5] ?? "").toLowerCase() : "";
   const activeTab = (() => {
+    if (isTeam && teamSubroute === "calendar") {
+      return "calendar";
+    }
     const tab = searchParams.get("tab")?.toLowerCase() ?? "";
     return tabs.some((item) => item.key === tab) ? tab : defaultTab;
   })();
@@ -140,7 +145,12 @@ export function ProgramHeaderBar({ orgSlug }: ProgramHeaderBarProps) {
 
         <div className="flex flex-wrap items-center gap-2">
           {tabs.map((tab) => {
-            const href = tab.key === defaultTab ? basePath : `${basePath}?tab=${tab.key}`;
+            const href =
+              isTeam && tab.key === "calendar"
+                ? `${basePath}/calendar`
+                : tab.key === defaultTab
+                  ? basePath
+                  : `${basePath}?tab=${tab.key}`;
             return (
               <NavItem
                 active={activeTab === tab.key}

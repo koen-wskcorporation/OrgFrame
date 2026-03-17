@@ -211,3 +211,21 @@ export type ProgramTeamSummary = {
   memberCount: number;
   staffCount: number;
 };
+
+export type ProgramTeamDirectoryItem = {
+  teamId: string;
+  teamName: string;
+  teamSlug: string;
+  programId: string;
+  programName: string;
+  programSlug: string;
+  divisionId: string | null;
+  divisionName: string | null;
+  divisionSlug: string | null;
+  memberCount: number;
+  staffCount: number;
+  teamCode: string | null;
+  levelLabel: string | null;
+  ageGroup: string | null;
+  gender: string | null;
+};

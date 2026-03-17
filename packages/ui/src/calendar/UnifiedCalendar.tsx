@@ -18,6 +18,7 @@ export type UnifiedCalendarItem = {
   endsAtUtc: string;
   timezone: string;
   summary?: string | null;
+  teamChips?: string[];
 };
 
 export type UnifiedCalendarQuickAddDraft = {
@@ -30,6 +31,7 @@ type UnifiedCalendarProps = {
   items: UnifiedCalendarItem[];
   initialView?: UnifiedCalendarView;
   canEdit?: boolean;
+  quickAddUx?: "internal" | "external";
   disableHoverGhost?: boolean;
   className?: string;
   framed?: boolean;
@@ -38,6 +40,7 @@ type UnifiedCalendarProps = {
   onMoveItem?: (input: { itemId: string; startsAtUtc: string; endsAtUtc: string }) => void;
   onResizeItem?: (input: { itemId: string; endsAtUtc: string }) => void;
   onQuickAdd?: (draft: UnifiedCalendarQuickAddDraft) => void;
+  onQuickAddIntent?: (draft: UnifiedCalendarQuickAddDraft) => void;
   onQuickAddDraftChange?: (draft: UnifiedCalendarQuickAddDraft & { open: boolean }) => void;
   getConflictMessage?: (draft: UnifiedCalendarQuickAddDraft) => string | null;
   renderQuickAddFields?: (context: {
@@ -154,10 +157,19 @@ function localInputToUtcIso(value: string) {
   return date.toISOString();
 }
 
+function formatResizeBoundaryLabel(timestampMs: number) {
+  return new Date(timestampMs).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+}
+
 export function UnifiedCalendar({
   items,
   initialView = "week",
   canEdit = true,
+  quickAddUx = "internal",
   disableHoverGhost = false,
   className,
   framed = true,
@@ -166,6 +178,7 @@ export function UnifiedCalendar({
   onMoveItem,
   onResizeItem,
   onQuickAdd,
+  onQuickAddIntent,
   onQuickAddDraftChange,
   getConflictMessage,
   renderQuickAddFields,
@@ -202,11 +215,21 @@ export function UnifiedCalendar({
   const weekScrollResetRef = useRef(false);
   const suppressHoverSlot = quickAddOpen || Boolean(resizeDrag) || Boolean(dragMoveItemId) || disableHoverGhost;
 
+  function buildDefaultQuickAddDraft(anchor: Date) {
+    const start = startOfDay(anchor);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    return {
+      title: "New event",
+      startsAtUtc: start.toISOString(),
+      endsAtUtc: end.toISOString()
+    };
+  }
+
   const monthAnchor = startOfMonth(anchorDate);
   const monthGridStart = startOfWeek(monthAnchor);
   const monthDays = useMemo(() => Array.from({ length: 42 }, (_, index) => addDays(monthGridStart, index)), [monthGridStart]);
   const draftItem = useMemo<UnifiedCalendarItem | null>(() => {
-    if (!quickAddOpen) {
+    if (quickAddUx !== "internal" || !quickAddOpen) {
       return null;
     }
 
@@ -221,6 +244,24 @@ export function UnifiedCalendar({
     };
   }, [quickAddEndsAtUtc, quickAddOpen, quickAddStartsAtUtc, quickAddTitle]);
   const displayItems = useMemo(() => (draftItem ? [...items, draftItem] : items), [draftItem, items]);
+  const hasInteractiveDraft = quickAddUx === "internal" && quickAddOpen && Boolean(draftItem);
+
+  function moveCalendarItem(input: { itemId: string; startsAtUtc: string; endsAtUtc: string }) {
+    if (input.itemId === DRAFT_ITEM_ID && hasInteractiveDraft) {
+      setQuickAddStartsAtUtc(input.startsAtUtc);
+      setQuickAddEndsAtUtc(input.endsAtUtc);
+      return;
+    }
+    onMoveItem?.(input);
+  }
+
+  function resizeCalendarItem(input: { itemId: string; endsAtUtc: string }) {
+    if (input.itemId === DRAFT_ITEM_ID && hasInteractiveDraft) {
+      setQuickAddEndsAtUtc(input.endsAtUtc);
+      return;
+    }
+    onResizeItem?.(input);
+  }
 
   const itemsByDay = useMemo(() => {
     const map = new Map<string, UnifiedCalendarItem[]>();
@@ -255,7 +296,7 @@ export function UnifiedCalendar({
       : null;
 
   useEffect(() => {
-    if (!onQuickAddDraftChange) {
+    if (quickAddUx !== "internal" || !onQuickAddDraftChange) {
       return;
     }
     onQuickAddDraftChange({
@@ -264,18 +305,22 @@ export function UnifiedCalendar({
       endsAtUtc: quickAddEndsAtUtc,
       open: quickAddOpen
     });
-  }, [onQuickAddDraftChange, quickAddEndsAtUtc, quickAddOpen, quickAddStartsAtUtc, quickAddTitle]);
+  }, [onQuickAddDraftChange, quickAddEndsAtUtc, quickAddOpen, quickAddStartsAtUtc, quickAddTitle, quickAddUx]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "n" || event.key === "N") {
         event.preventDefault();
-        const start = startOfDay(anchorDate);
-        const end = new Date(start.getTime() + 60 * 60 * 1000);
-        setQuickAddStartsAtUtc(start.toISOString());
-        setQuickAddEndsAtUtc(end.toISOString());
-        setQuickAddTitle("New event");
-        setQuickAddOpen(true);
+        if (quickAddUx === "external") {
+          onQuickAddIntent?.(buildDefaultQuickAddDraft(anchorDate));
+        } else {
+          const start = startOfDay(anchorDate);
+          const end = new Date(start.getTime() + 60 * 60 * 1000);
+          setQuickAddStartsAtUtc(start.toISOString());
+          setQuickAddEndsAtUtc(end.toISOString());
+          setQuickAddTitle("New event");
+          setQuickAddOpen(true);
+        }
         return;
       }
 
@@ -299,7 +344,7 @@ export function UnifiedCalendar({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [anchorDate, view]);
+  }, [anchorDate, onQuickAddIntent, quickAddUx, view]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -374,16 +419,12 @@ export function UnifiedCalendar({
       const deltaY = event.clientY - drag.originY;
       const rawMinutes = (deltaY / WEEK_HOUR_HEIGHT_PX) * 60;
       const snappedMinutes = Math.round(rawMinutes / 15) * 15;
-      const snappedLabel = Math.abs(snappedMinutes) % 60;
-      setResizeSnap({
-        label: `${snappedLabel}`,
-        x: event.clientX + 12,
-        y: event.clientY - 12
-      });
+      let nextBoundaryMs: number | null = null;
       if (drag.edge === "top") {
         const currentEnd = new Date(drag.endsAtUtc).getTime();
         const nextStart = new Date(new Date(drag.startsAtUtc).getTime() + snappedMinutes * 60 * 1000).getTime();
         if (nextStart < currentEnd - 15 * 60 * 1000) {
+          nextBoundaryMs = nextStart;
           setResizePreview({
             itemId: drag.itemId,
             startsAtUtc: new Date(nextStart).toISOString(),
@@ -396,12 +437,23 @@ export function UnifiedCalendar({
         const currentStart = new Date(drag.startsAtUtc).getTime();
         const nextEnd = new Date(new Date(drag.endsAtUtc).getTime() + snappedMinutes * 60 * 1000).getTime();
         if (nextEnd > currentStart + 15 * 60 * 1000) {
+          nextBoundaryMs = nextEnd;
           setResizePreview({
             itemId: drag.itemId,
             startsAtUtc: drag.startsAtUtc,
             endsAtUtc: new Date(nextEnd).toISOString()
           });
         }
+      }
+
+      if (nextBoundaryMs !== null) {
+        setResizeSnap({
+          label: formatResizeBoundaryLabel(nextBoundaryMs),
+          x: event.clientX + 12,
+          y: event.clientY - 12
+        });
+      } else {
+        setResizeSnap(null);
       }
     }
 
@@ -410,11 +462,11 @@ export function UnifiedCalendar({
       const rawMinutes = (deltaY / WEEK_HOUR_HEIGHT_PX) * 60;
       const snappedMinutes = Math.round(rawMinutes / 15) * 15;
 
-      if (drag.edge === "top" && onMoveItem) {
+      if (drag.edge === "top") {
         const currentEnd = new Date(drag.endsAtUtc).getTime();
         const nextStart = new Date(new Date(drag.startsAtUtc).getTime() + snappedMinutes * 60 * 1000).getTime();
         if (nextStart < currentEnd - 30 * 60 * 1000) {
-          onMoveItem({
+          moveCalendarItem({
             itemId: drag.itemId,
             startsAtUtc: new Date(nextStart).toISOString(),
             endsAtUtc: drag.endsAtUtc
@@ -422,11 +474,11 @@ export function UnifiedCalendar({
         }
       }
 
-      if (drag.edge === "bottom" && onResizeItem) {
+      if (drag.edge === "bottom") {
         const currentStart = new Date(drag.startsAtUtc).getTime();
         const nextEnd = new Date(new Date(drag.endsAtUtc).getTime() + snappedMinutes * 60 * 1000).getTime();
         if (nextEnd > currentStart + 30 * 60 * 1000) {
-          onResizeItem({
+          resizeCalendarItem({
             itemId: drag.itemId,
             endsAtUtc: new Date(nextEnd).toISOString()
           });
@@ -444,7 +496,7 @@ export function UnifiedCalendar({
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [onMoveItem, onResizeItem, resizeDrag]);
+  }, [moveCalendarItem, resizeCalendarItem, resizeDrag]);
 
   function createFromDrag() {
     if (!dragCreateStart || !dragCreateHover || !onCreateRange) {
@@ -533,6 +585,10 @@ export function UnifiedCalendar({
           {canEdit ? (
             <Button
               onClick={() => {
+                if (quickAddUx === "external") {
+                  onQuickAddIntent?.(buildDefaultQuickAddDraft(anchorDate));
+                  return;
+                }
                 if (!quickAddOpen) {
                   const start = startOfDay(anchorDate);
                   const end = new Date(start.getTime() + 60 * 60 * 1000);
@@ -596,10 +652,10 @@ export function UnifiedCalendar({
                   }}
                   onDrop={(event) => {
                     event.preventDefault();
-                    if (!dragMoveItemId || !onMoveItem) {
+                    if (!dragMoveItemId || !canEdit) {
                       return;
                     }
-                    const item = items.find((candidate) => candidate.id === dragMoveItemId);
+                    const item = displayItems.find((candidate) => candidate.id === dragMoveItemId);
                     if (!item) {
                       return;
                     }
@@ -609,7 +665,7 @@ export function UnifiedCalendar({
                     const nextStart = targetStart.toISOString();
                     const nextEnd = new Date(targetStart.getTime() + duration).toISOString();
 
-                    onMoveItem({
+                    moveCalendarItem({
                       itemId: item.id,
                       startsAtUtc: nextStart,
                       endsAtUtc: nextEnd
@@ -635,10 +691,10 @@ export function UnifiedCalendar({
                     {dayItemList.slice(0, 2).map((item) => (
                       <div
                         className={cn(
-                          "truncate rounded-full border border-border/80 bg-surface/95 px-2 py-0.5 text-[10px] font-medium text-text shadow-sm transition-[box-shadow,transform] duration-150 ease-out hover:shadow-card hover:-translate-y-0.5",
+                          "rounded-control border border-border/80 bg-surface/95 px-2 py-1 text-[10px] font-medium text-text shadow-sm transition-[box-shadow,transform] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-card",
                           item.status === "cancelled" && "line-through opacity-60"
                         )}
-                        draggable={Boolean(canEdit && onMoveItem)}
+                        draggable={Boolean(canEdit && (onMoveItem || (hasInteractiveDraft && item.id === DRAFT_ITEM_ID)))}
                         key={item.id}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -646,15 +702,27 @@ export function UnifiedCalendar({
                         }}
                         onDragStart={() => setDragMoveItemId(item.id)}
                       >
-                        <span className="inline-flex items-center gap-1.5">
+                        <span className="inline-flex max-w-full items-center gap-1.5">
                           <span
                             className={cn(
                               "h-1.5 w-1.5 rounded-full",
                               item.entryType === "practice" ? "bg-emerald-400" : item.entryType === "game" ? "bg-sky-400" : "bg-amber-400"
                             )}
                           />
-                          {item.title}
+                          <span className="truncate">{item.title}</span>
                         </span>
+                        {item.teamChips && item.teamChips.length > 0 ? (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {item.teamChips.map((teamChip, index) => (
+                              <span
+                                className="inline-flex max-w-full items-center rounded-full border border-border/70 bg-surface-muted/70 px-1 py-0.5 text-[9px] font-semibold text-text"
+                                key={`${item.id}-team-chip-month-${index}-${teamChip}`}
+                              >
+                                <span className="truncate">{teamChip}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                     {dayItemList.length > 2 ? <p className="text-[10px] text-text-muted">+{dayItemList.length - 2} more</p> : null}
@@ -752,7 +820,7 @@ export function UnifiedCalendar({
                   <div
                     className="relative"
                     onDoubleClick={(event) => {
-                      if (!canEdit || !onQuickAdd) {
+                      if (!canEdit || (quickAddUx === "internal" ? !onQuickAdd : !onQuickAddIntent)) {
                         return;
                       }
                       const rect = event.currentTarget.getBoundingClientRect();
@@ -770,7 +838,15 @@ export function UnifiedCalendar({
                       setQuickAddStartsAtUtc(start.toISOString());
                       setQuickAddEndsAtUtc(end.toISOString());
                       setQuickAddTitle("New event");
-                      setQuickAddOpen(true);
+                      if (quickAddUx === "external") {
+                        onQuickAddIntent?.({
+                          title: "New event",
+                          startsAtUtc: start.toISOString(),
+                          endsAtUtc: end.toISOString()
+                        });
+                      } else {
+                        setQuickAddOpen(true);
+                      }
                       setAnchorDate(day);
                     }}
                     onMouseLeave={() => setHoverSlot(null)}
@@ -845,6 +921,8 @@ export function UnifiedCalendar({
                         const left = dayIndex * WEEK_DAY_WIDTH_PX + 2;
                         const width = WEEK_DAY_WIDTH_PX - 4;
 
+                        const showDraftHandles = hasInteractiveDraft && item.id === DRAFT_ITEM_ID;
+
                         return (
                           <button
                             className={cn(
@@ -857,9 +935,12 @@ export function UnifiedCalendar({
                             style={{ top: `${top}px`, left: `${left}px`, width: `${width}px`, height: `${height}px` }}
                             type="button"
                           >
-                            {canEdit && onMoveItem ? (
+                            {canEdit && (onMoveItem || showDraftHandles) ? (
                               <span
-                                className="absolute left-1/2 top-0 h-2 w-10 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize rounded-full border border-border/60 bg-surface/95 opacity-0 shadow-sm transition-opacity duration-150 ease-out group-hover:opacity-100"
+                                className={cn(
+                                  "absolute left-1/2 top-0 h-2 w-10 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize rounded-full border border-border/60 bg-surface/95 shadow-sm transition-opacity duration-150 ease-out",
+                                  showDraftHandles ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                                )}
                                 onMouseDown={(event) => {
                                   event.stopPropagation();
                                   setHoverSlot(null);
@@ -888,12 +969,27 @@ export function UnifiedCalendar({
                                 {item.entryType}
                               </span>
                             </div>
+                            {item.teamChips && item.teamChips.length > 0 ? (
+                              <div className="mt-1 flex flex-wrap items-center gap-1">
+                                {item.teamChips.map((teamChip, index) => (
+                                  <span
+                                    className="inline-flex max-w-full items-center rounded-full border border-border/70 bg-surface-muted/70 px-1.5 py-0.5 text-[9px] font-semibold text-text"
+                                    key={`${item.id}-team-chip-${index}-${teamChip}`}
+                                  >
+                                    <span className="truncate">{teamChip}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
                             <p className="truncate text-[10px] text-text-muted">
                               {new Date(renderedItem.startsAtUtc).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                             </p>
-                            {canEdit && onResizeItem ? (
+                            {canEdit && (onResizeItem || showDraftHandles) ? (
                               <span
-                                className="absolute left-1/2 bottom-0 h-2 w-10 -translate-x-1/2 translate-y-1/2 cursor-ns-resize rounded-full border border-border/60 bg-surface/95 opacity-0 shadow-sm transition-opacity duration-150 ease-out group-hover:opacity-100"
+                                className={cn(
+                                  "absolute left-1/2 bottom-0 h-2 w-10 -translate-x-1/2 translate-y-1/2 cursor-ns-resize rounded-full border border-border/60 bg-surface/95 shadow-sm transition-opacity duration-150 ease-out",
+                                  showDraftHandles ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                                )}
                                 onMouseDown={(event) => {
                                   event.stopPropagation();
                                   setHoverSlot(null);
@@ -954,6 +1050,16 @@ export function UnifiedCalendar({
                     >
                       {item.entryType}
                     </span>
+                    {item.teamChips && item.teamChips.length > 0
+                      ? item.teamChips.map((teamChip, index) => (
+                          <span
+                            className="inline-flex max-w-full items-center rounded-full border border-border/70 bg-surface-muted/70 px-1.5 py-0.5 text-[10px] font-semibold text-text"
+                            key={`${item.id}-team-chip-day-${index}-${teamChip}`}
+                          >
+                            <span className="truncate">{teamChip}</span>
+                          </span>
+                        ))
+                      : null}
                   </div>
                 </button>
 
@@ -989,7 +1095,7 @@ export function UnifiedCalendar({
 
       {resizeSnap ? (
         <div
-          className="pointer-events-none fixed z-50 flex h-7 w-7 items-center justify-center rounded-full border border-border/70 bg-surface/95 text-[11px] font-semibold text-text shadow-sm"
+          className="pointer-events-none fixed z-50 inline-flex items-center justify-center rounded-full border border-border/70 bg-surface/95 px-2.5 py-1 text-[11px] font-semibold text-text shadow-sm"
           style={{ left: `${resizeSnap.x}px`, top: `${resizeSnap.y}px` }}
         >
           {resizeSnap.label}
@@ -1021,7 +1127,7 @@ export function UnifiedCalendar({
           </>
         }
         onClose={() => setQuickAddOpen(false)}
-        open={quickAddOpen && canEdit}
+        open={quickAddUx === "internal" && quickAddOpen && canEdit}
         subtitle="Double-click a week cell to prefill details. Draft appears on the calendar immediately."
         title="Create event"
       >

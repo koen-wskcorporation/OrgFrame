@@ -26,7 +26,8 @@ type StructureCanvasShellProps = {
   rootHeader: ReactNode;
   centerOverlay?: ReactNode;
   emptyState?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
+  renderContent?: (editable: boolean) => ReactNode;
   searchPlaceholder: string;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
@@ -55,6 +56,8 @@ type StructureCanvasShellProps = {
   viewViewportInteractive?: boolean;
   onViewNodeSelect?: (nodeId: string) => void;
   onEditOpenChange?: (isEditOpen: boolean) => void;
+  viewHeightMode?: "default" | "fill";
+  respectGlobalPanels?: boolean;
 };
 
 export function StructureCanvasShell({
@@ -70,6 +73,7 @@ export function StructureCanvasShell({
   centerOverlay,
   emptyState,
   children,
+  renderContent,
   searchPlaceholder,
   searchQuery,
   onSearchQueryChange,
@@ -97,7 +101,9 @@ export function StructureCanvasShell({
   viewContentInteractive = false,
   viewViewportInteractive = false,
   onViewNodeSelect,
-  onEditOpenChange
+  onEditOpenChange,
+  viewHeightMode = "default",
+  respectGlobalPanels = true
 }: StructureCanvasShellProps) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isAutoFitPending, setIsAutoFitPending] = useState(false);
@@ -249,6 +255,11 @@ export function StructureCanvasShell({
       return;
     }
 
+    if (!respectGlobalPanels) {
+      setSafeAreaInsets({ left: 0, right: 0, top: 0, bottom: 0 });
+      return;
+    }
+
     if (isEditOpen) {
       const updateInsets = () => {
         const actionBarHeight = actionBarRef.current?.getBoundingClientRect().height ?? 0;
@@ -323,7 +334,7 @@ export function StructureCanvasShell({
       panelResizeObserver?.disconnect();
       window.removeEventListener("resize", updateInsets);
     };
-  }, [isEditOpen]);
+  }, [isEditOpen, respectGlobalPanels]);
 
   useLayoutEffect(() => {
     if (!autoFitOnOpen) {
@@ -490,9 +501,12 @@ export function StructureCanvasShell({
   function renderShell({ editable, fullscreen }: { editable: boolean; fullscreen: boolean }) {
     const hideUntilAutoFit = autoFitOnOpen && isAutoFitPending && editable === isEditOpen;
     const allowContentInteraction = editable || viewContentInteractive;
+    const allowViewportInteraction = editable || viewViewportInteractive;
     return (
       <div
-        className={`relative ${hideUntilAutoFit ? "opacity-0" : "opacity-100"} ${fullscreen ? "h-full min-h-0" : "h-[68vh] min-h-[460px]"}`}
+        className={`relative ${hideUntilAutoFit ? "opacity-0" : "opacity-100"} ${
+          fullscreen ? "h-full min-h-0" : viewHeightMode === "fill" ? "h-full min-h-0" : "h-[68vh] min-h-[460px]"
+        }`}
         onClickCapture={(event) => {
           if (editable || !onViewNodeSelect) {
             return;
@@ -523,7 +537,7 @@ export function StructureCanvasShell({
         <CanvasViewport
           contentClassName={canvasContentClassName ?? "min-w-max"}
           dragInProgress={editable ? Boolean(dragInProgress) : false}
-          interactive={editable}
+          interactive={allowViewportInteraction}
           onViewChange={(view) => {
             onViewScaleChange(view.scale);
             onViewChange?.(view);
@@ -536,15 +550,19 @@ export function StructureCanvasShell({
           gridSize={canvasGridSize}
           gridColor={canvasGridColor}
         >
-          {canvasLayoutMode === "free" ? (
-            <div className={allowContentInteraction ? undefined : "pointer-events-none select-none"}>{children}</div>
-          ) : (
-            <div className="flex w-full min-w-[840px] flex-col items-center gap-3">
-              {rootHeader}
-              {emptyState}
-              <div className={allowContentInteraction ? undefined : "pointer-events-none select-none"}>{children}</div>
-            </div>
-          )}
+          {(() => {
+            const content = renderContent ? renderContent(editable) : children;
+            if (canvasLayoutMode === "free") {
+              return <div className={allowContentInteraction ? undefined : "pointer-events-none select-none"}>{content}</div>;
+            }
+            return (
+              <div className="flex w-full min-w-[840px] flex-col items-center gap-3">
+                {rootHeader}
+                {emptyState}
+                <div className={allowContentInteraction ? undefined : "pointer-events-none select-none"}>{content}</div>
+              </div>
+            );
+          })()}
         </CanvasViewport>
         {canvasLayoutMode === "free" ? (
           <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2">

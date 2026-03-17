@@ -26,7 +26,7 @@ export default async function OrgCalendarOccurrenceDetailPage({
   const location = typeof readModel.entry.settingsJson.location === "string" ? readModel.entry.settingsJson.location : null;
 
   return (
-    <main className="app-page-shell w-full py-8 md:py-10">
+    <main className="app-page-shell w-full pb-8 pt-0 md:pb-10 md:pt-0">
       <div className="ui-stack-page">
         <BackButton fallbackHref={`/${org.orgSlug}`} label="Back" size="sm" variant="ghost" />
         <PageHeader description={`${readModel.entry.entryType} · ${new Date(readModel.occurrence.startsAtUtc).toLocaleString()}`} title={readModel.entry.title} />

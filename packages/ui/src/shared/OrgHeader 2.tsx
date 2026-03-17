@@ -174,8 +174,10 @@ function EditableMenuItem({
             isPublished={page.isPublished}
             onToggle={() => onToggleVisibility(page)}
             publishLabel="Show in menu"
+            publishedStatusText="Published"
             size="compact"
             statusLabel={page.isPublished ? `Published status for ${page.title}` : `Hidden status for ${page.title}`}
+            unpublishedStatusText="Hidden"
             unpublishLabel="Hide from menu"
           />
           <span className="max-w-[20ch] truncate">{page.title}</span>

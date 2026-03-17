@@ -110,7 +110,7 @@ export function FacilitiesManagePanel({ orgSlug, canWrite, initialReadModel }: F
             "Space updated"
           )
         }
-        spaces={readModel.spaces}
+        spaces={readModel.spaces.filter((space) => space.parentSpaceId === null)}
       />
     </div>
   );

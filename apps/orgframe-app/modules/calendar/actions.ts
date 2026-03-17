@@ -9,8 +9,10 @@ import { can } from "@/lib/permissions/can";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import {
   createCalendarEntryRecord,
+  deleteCalendarLensView,
   createFacilitySpaceConfiguration,
   deleteCalendarEntryRecord,
+  deleteCalendarOccurrenceRecord,
   deleteCalendarRuleRecord,
   deleteCalendarRuleException,
   getCalendarEntryById,
@@ -23,6 +25,7 @@ import {
   listCalendarOccurrences,
   listCalendarOccurrencesByRule,
   listCalendarReadModel,
+  listCalendarLensSavedViews,
   listCalendarRuleFacilityAllocations,
   listCalendarRuleExceptions,
   listFacilitySpaceConfigurations,
@@ -35,8 +38,10 @@ import {
   setCalendarOccurrenceStatusBySourceKey,
   updateCalendarEntryRecord,
   updateCalendarOccurrenceRecord,
+  saveCalendarLensView,
   upsertCalendarRuleException,
   upsertCalendarRuleRecord,
+  upsertCalendarSource,
   upsertOccurrenceFacilityAllocation,
   upsertOccurrenceTeamInvite,
   upsertRuleGeneratedOccurrences
@@ -44,12 +49,18 @@ import {
 import { listFacilityReservationReadModel } from "@/modules/facilities/db/queries";
 import { notifyInviteResponded, notifyInviteSent, notifyOccurrenceCancelled } from "@/modules/calendar/notifications";
 import { generateOccurrencesForRule, zonedLocalToUtc } from "@/modules/calendar/rule-engine";
+import { defaultLensState, explainOccurrenceVisibility, filterCalendarReadModelByLens } from "@/modules/calendar/lens";
 import type {
+  CalendarAudience,
   CalendarEntry,
   CalendarEntryStatus,
   CalendarEntryType,
   CalendarIntervalUnit,
   CalendarOccurrenceStatus,
+  CalendarLensState,
+  CalendarPageContext,
+  CalendarPageContextType,
+  CalendarPurpose,
   CalendarReadModel,
   CalendarRuleEndMode,
   CalendarRuleMode,
@@ -89,6 +100,19 @@ function normalizeDate(value: string | null | undefined) {
     return null;
   }
   return trimmed.slice(0, 10);
+}
+
+function shiftLocalDate(input: string, days: number) {
+  const [yearRaw, monthRaw, dayRaw] = input.split("-");
+  const year = Number.parseInt(yearRaw ?? "", 10);
+  const month = Number.parseInt(monthRaw ?? "", 10);
+  const day = Number.parseInt(dayRaw ?? "", 10);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return input;
+  }
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return `${date.getUTCFullYear()}-${`${date.getUTCMonth() + 1}`.padStart(2, "0")}-${`${date.getUTCDate()}`.padStart(2, "0")}`;
 }
 
 function resolveTimezone(value: string | null | undefined) {
@@ -375,8 +399,100 @@ function revalidateCalendarRoutes(orgSlug: string) {
   revalidatePath(`/${orgSlug}`, "layout");
 }
 
+const calendarPurposeValues = [
+  "games",
+  "practices",
+  "tryouts",
+  "season_dates",
+  "meetings",
+  "fundraisers",
+  "facilities",
+  "deadlines",
+  "custom_other"
+] as const satisfies CalendarPurpose[];
+
+const calendarAudienceValues = [
+  "me",
+  "public",
+  "staff",
+  "coaches",
+  "board",
+  "parents",
+  "players",
+  "team_members_only",
+  "private_internal"
+] as const satisfies CalendarAudience[];
+
+const calendarPageContextTypeValues = ["org", "program", "division", "team", "facility", "public", "embedded"] as const satisfies CalendarPageContextType[];
+
+const calendarLensKindValues = ["mine", "this_page", "public", "operations", "custom"] as const;
+const calendarScopeTypeValues = ["organization", "program", "division", "team", "custom"] as const;
+
+const lensStateSchema = z.object({
+  lens: z.enum(calendarLensKindValues),
+  includeScopeTypes: z.array(z.enum(calendarScopeTypeValues)).optional(),
+  excludeSourceIds: z.array(z.string().uuid()).optional(),
+  includePurpose: z.array(z.enum(calendarPurposeValues)).optional(),
+  audiencePerspective: z.union([z.enum(calendarAudienceValues), z.literal("what_i_can_access")]).optional(),
+  selectedLayerIds: z.array(z.string().uuid()).optional(),
+  pinnedLayerIds: z.array(z.string().uuid()).optional(),
+  isolatedLayerId: z.string().uuid().nullable().optional(),
+  includeParentScopes: z.boolean().optional(),
+  includeChildScopes: z.boolean().optional(),
+  searchTerm: z.string().optional(),
+  dateMode: z.enum(["all", "range"]).optional(),
+  dateRange: z
+    .object({
+      fromUtc: z.string().nullable().optional(),
+      toUtc: z.string().nullable().optional()
+    })
+    .optional(),
+  savedViewId: z.string().uuid().nullable().optional(),
+  savedViewName: z.string().nullable().optional()
+});
+
+const pageContextSchema = z.object({
+  contextType: z.enum(calendarPageContextTypeValues),
+  orgSlug: textSchema.min(1),
+  orgId: z.string().uuid().optional(),
+  programId: z.string().uuid().optional(),
+  divisionId: z.string().uuid().optional(),
+  teamId: z.string().uuid().optional(),
+  facilityId: z.string().uuid().optional()
+});
+
+function normalizeLensState(input: z.input<typeof lensStateSchema> | undefined, fallbackLens: CalendarLensState["lens"]): CalendarLensState {
+  const baseline = defaultLensState(fallbackLens);
+  if (!input) {
+    return baseline;
+  }
+
+  const parsed = lensStateSchema.safeParse(input);
+  if (!parsed.success) {
+    return baseline;
+  }
+
+  const state = parsed.data;
+  return {
+    ...baseline,
+    ...state,
+    includeScopeTypes: state.includeScopeTypes ?? baseline.includeScopeTypes,
+    excludeSourceIds: state.excludeSourceIds ?? baseline.excludeSourceIds,
+    includePurpose: state.includePurpose ?? baseline.includePurpose,
+    selectedLayerIds: state.selectedLayerIds ?? baseline.selectedLayerIds,
+    pinnedLayerIds: state.pinnedLayerIds ?? baseline.pinnedLayerIds,
+    dateRange: {
+      fromUtc: state.dateRange?.fromUtc ?? baseline.dateRange.fromUtc,
+      toUtc: state.dateRange?.toUtc ?? baseline.dateRange.toUtc
+    }
+  };
+}
+
 const createEntrySchema = z.object({
   orgSlug: textSchema.min(1),
+  sourceId: z.string().uuid().nullable().optional(),
+  purpose: z.enum(calendarPurposeValues).optional(),
+  audience: z.enum(calendarAudienceValues).optional(),
   entryType: z.enum(["event", "practice", "game"] satisfies CalendarEntryType[]),
   title: textSchema.min(2).max(160),
   summary: textSchema.max(2400).optional(),
@@ -437,10 +553,53 @@ const updateOccurrenceSchema = createManualOccurrenceSchema.extend({
   occurrenceId: z.string().uuid()
 });
 
+const recurringMutationRuleSchema = z.object({
+  mode: z.enum(["single_date", "multiple_specific_dates", "repeating_pattern", "continuous_date_range", "custom_advanced"] satisfies CalendarRuleMode[]),
+  timezone: textSchema.max(120).optional(),
+  startDate: z.string().trim().optional(),
+  endDate: z.string().trim().optional(),
+  startTime: z.string().trim().optional(),
+  endTime: z.string().trim().optional(),
+  intervalCount: z.number().int().min(1).optional(),
+  intervalUnit: z.enum(["day", "week", "month"] satisfies CalendarIntervalUnit[]).optional(),
+  byWeekday: z.array(z.number().int().min(0).max(6)).optional(),
+  byMonthday: z.array(z.number().int().min(1).max(31)).optional(),
+  endMode: z.enum(["never", "until_date", "after_occurrences"] satisfies CalendarRuleEndMode[]).optional(),
+  untilDate: z.string().trim().optional(),
+  maxOccurrences: z.number().int().min(1).nullable().optional(),
+  configJson: z.record(z.string(), z.unknown()).optional()
+});
+
+const updateRecurringOccurrenceSchema = z.object({
+  orgSlug: textSchema.min(1),
+  occurrenceId: z.string().uuid(),
+  editScope: z.enum(["occurrence", "following", "series"]),
+  entryType: z.enum(["event", "practice", "game"] satisfies CalendarEntryType[]),
+  title: textSchema.min(2).max(160),
+  summary: textSchema.max(2400).optional(),
+  visibility: z.enum(["internal", "published"]),
+  status: z.enum(["scheduled", "cancelled", "archived"] satisfies CalendarEntryStatus[]).optional(),
+  hostTeamId: z.string().uuid().nullable().optional(),
+  timezone: textSchema.max(120).optional(),
+  location: textSchema.max(240).optional(),
+  localDate: localDateSchema,
+  localStartTime: z.string().trim().optional(),
+  localEndTime: z.string().trim().optional(),
+  metadataJson: z.record(z.string(), z.unknown()).optional(),
+  recurrence: recurringMutationRuleSchema,
+  copyForwardInvites: z.boolean().optional(),
+  copyForwardFacilities: z.boolean().optional()
+});
+
 const occurrenceStatusSchema = z.object({
   orgSlug: textSchema.min(1),
   occurrenceId: z.string().uuid(),
   status: z.enum(["scheduled", "cancelled"] satisfies CalendarOccurrenceStatus[])
+});
+
+const deleteOccurrenceSchema = z.object({
+  orgSlug: textSchema.min(1),
+  occurrenceId: z.string().uuid()
 });
 
 const allocationSchema = z.object({
@@ -543,6 +702,371 @@ export async function getCalendarWorkspaceDataAction(input: {
   }
 }
 
+const getCalendarExplorerDataSchema = z.object({
+  context: pageContextSchema,
+  lensState: lensStateSchema.optional(),
+  dateRange: z
+    .object({
+      fromUtc: z.string().optional(),
+      toUtc: z.string().optional()
+    })
+    .optional()
+});
+
+export async function getCalendarExplorerDataAction(
+  input: z.input<typeof getCalendarExplorerDataSchema>
+): Promise<
+  CalendarActionResult<{
+    context: CalendarPageContext;
+    lensState: CalendarLensState;
+    readModel: CalendarReadModel;
+    savedViews: Awaited<ReturnType<typeof listCalendarLensSavedViews>>;
+  }>
+> {
+  const parsed = getCalendarExplorerDataSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid calendar explorer request.");
+  }
+
+  try {
+    const actor = await requireCalendarActor(parsed.data.context.orgSlug);
+    if (!actor.hasCalendarRead && !actor.hasCalendarWrite && !can(actor.membershipPermissions, "programs.read")) {
+      return asError("You do not have access to calendar data.");
+    }
+
+    const context: CalendarPageContext = {
+      ...parsed.data.context,
+      orgId: actor.orgId,
+      orgSlug: actor.orgSlug
+    };
+    const lensState = normalizeLensState(parsed.data.lensState, context.contextType === "org" ? "mine" : "this_page");
+    const rangeLensState: CalendarLensState =
+      parsed.data.dateRange && (parsed.data.dateRange.fromUtc || parsed.data.dateRange.toUtc)
+        ? {
+            ...lensState,
+            dateMode: "range",
+            dateRange: {
+              fromUtc: parsed.data.dateRange.fromUtc ?? null,
+              toUtc: parsed.data.dateRange.toUtc ?? null
+            }
+          }
+        : lensState;
+
+    const [readModel, savedViews] = await Promise.all([
+      listCalendarReadModel(actor.orgId),
+      listCalendarLensSavedViews({
+        orgId: actor.orgId,
+        userId: actor.userId,
+        contextType: context.contextType
+      })
+    ]);
+
+    const filtered = filterCalendarReadModelByLens({
+      readModel,
+      sources: readModel.sources,
+      context,
+      lensState: rangeLensState
+    });
+
+    return {
+      ok: true,
+      data: {
+        context,
+        lensState: rangeLensState,
+        readModel: filtered,
+        savedViews
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to load calendar explorer.");
+  }
+}
+
+const whyShownSchema = z.object({
+  context: pageContextSchema,
+  occurrenceId: z.string().uuid(),
+  lensState: lensStateSchema.optional()
+});
+
+export async function getCalendarOccurrenceWhyShownAction(
+  input: z.input<typeof whyShownSchema>
+): Promise<CalendarActionResult<{ whyShown: ReturnType<typeof explainOccurrenceVisibility> }>> {
+  const parsed = whyShownSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid explainability request.");
+  }
+
+  try {
+    const actor = await requireCalendarActor(parsed.data.context.orgSlug);
+    const context: CalendarPageContext = {
+      ...parsed.data.context,
+      orgId: actor.orgId,
+      orgSlug: actor.orgSlug
+    };
+    const lensState = normalizeLensState(parsed.data.lensState, context.contextType === "org" ? "mine" : "this_page");
+    const readModel = await listCalendarReadModel(actor.orgId);
+    const filtered = filterCalendarReadModelByLens({
+      readModel,
+      sources: readModel.sources,
+      context,
+      lensState
+    });
+
+    const whyShown = explainOccurrenceVisibility({
+      occurrenceId: parsed.data.occurrenceId,
+      readModel: filtered,
+      sources: readModel.sources,
+      lensState
+    });
+
+    return {
+      ok: true,
+      data: {
+        whyShown
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to explain visibility for this event.");
+  }
+}
+
+const listSavedLensViewsSchema = z.object({
+  orgSlug: textSchema.min(1),
+  contextType: z.enum(calendarPageContextTypeValues).nullable().optional()
+});
+
+export async function listCalendarLensViewsAction(
+  input: z.input<typeof listSavedLensViewsSchema>
+): Promise<CalendarActionResult<{ views: Awaited<ReturnType<typeof listCalendarLensSavedViews>> }>> {
+  const parsed = listSavedLensViewsSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid calendar saved views request.");
+  }
+
+  try {
+    const actor = await requireCalendarActor(parsed.data.orgSlug);
+    const views = await listCalendarLensSavedViews({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      contextType: parsed.data.contextType ?? null
+    });
+    return { ok: true, data: { views } };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to load saved calendar views.");
+  }
+}
+
+const saveCalendarLensViewSchema = z.object({
+  orgSlug: textSchema.min(1),
+  viewId: z.string().uuid().optional(),
+  name: textSchema.min(1).max(100),
+  contextType: z.enum(calendarPageContextTypeValues).nullable().optional(),
+  isDefault: z.boolean().optional(),
+  lensState: lensStateSchema
+});
+
+export async function saveCalendarLensViewAction(
+  input: z.input<typeof saveCalendarLensViewSchema>
+): Promise<CalendarActionResult<{ view: Awaited<ReturnType<typeof saveCalendarLensView>> }>> {
+  const parsed = saveCalendarLensViewSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Please review your saved-view details.");
+  }
+
+  try {
+    const actor = await requireCalendarActor(parsed.data.orgSlug);
+    const lensState = normalizeLensState(parsed.data.lensState, parsed.data.contextType === "org" ? "mine" : "this_page");
+
+    if (parsed.data.isDefault) {
+      const existing = await listCalendarLensSavedViews({
+        orgId: actor.orgId,
+        userId: actor.userId,
+        contextType: parsed.data.contextType ?? null
+      });
+      for (const view of existing) {
+        if (!view.isDefault || (parsed.data.viewId && view.id === parsed.data.viewId)) {
+          continue;
+        }
+        await saveCalendarLensView({
+          orgId: actor.orgId,
+          userId: actor.userId,
+          viewId: view.id,
+          name: view.name,
+          contextType: view.contextType ?? null,
+          isDefault: false,
+          configJson: view.configJson
+        });
+      }
+    }
+
+    const view = await saveCalendarLensView({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      viewId: parsed.data.viewId,
+      name: parsed.data.name,
+      contextType: parsed.data.contextType ?? null,
+      isDefault: parsed.data.isDefault ?? false,
+      configJson: lensState
+    });
+
+    revalidateCalendarRoutes(actor.orgSlug);
+    return {
+      ok: true,
+      data: {
+        view
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to save this calendar view.");
+  }
+}
+
+const deleteCalendarLensViewSchema = z.object({
+  orgSlug: textSchema.min(1),
+  viewId: z.string().uuid()
+});
+
+export async function deleteCalendarLensViewAction(
+  input: z.input<typeof deleteCalendarLensViewSchema>
+): Promise<CalendarActionResult<{ viewId: string }>> {
+  const parsed = deleteCalendarLensViewSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid delete request.");
+  }
+
+  try {
+    const actor = await requireCalendarActor(parsed.data.orgSlug);
+    await deleteCalendarLensView({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      viewId: parsed.data.viewId
+    });
+    revalidateCalendarRoutes(actor.orgSlug);
+    return {
+      ok: true,
+      data: {
+        viewId: parsed.data.viewId
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to delete saved view.");
+  }
+}
+
+const setDefaultCalendarLensViewSchema = z.object({
+  orgSlug: textSchema.min(1),
+  viewId: z.string().uuid(),
+  contextType: z.enum(calendarPageContextTypeValues).nullable().optional()
+});
+
+export async function setDefaultCalendarLensViewAction(
+  input: z.input<typeof setDefaultCalendarLensViewSchema>
+): Promise<CalendarActionResult<{ viewId: string }>> {
+  const parsed = setDefaultCalendarLensViewSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid default-view update.");
+  }
+
+  try {
+    const actor = await requireCalendarActor(parsed.data.orgSlug);
+    const views = await listCalendarLensSavedViews({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      contextType: parsed.data.contextType ?? null
+    });
+
+    for (const view of views) {
+      const shouldBeDefault = view.id === parsed.data.viewId;
+      if (view.isDefault === shouldBeDefault) {
+        continue;
+      }
+      await saveCalendarLensView({
+        orgId: actor.orgId,
+        userId: actor.userId,
+        viewId: view.id,
+        name: view.name,
+        contextType: view.contextType ?? null,
+        isDefault: shouldBeDefault,
+        configJson: view.configJson
+      });
+    }
+
+    revalidateCalendarRoutes(actor.orgSlug);
+    return {
+      ok: true,
+      data: {
+        viewId: parsed.data.viewId
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to set default view.");
+  }
+}
+
+const upsertCalendarSourceSchema = z.object({
+  orgSlug: textSchema.min(1),
+  sourceId: z.string().uuid().optional(),
+  name: textSchema.min(1).max(120),
+  scopeType: z.enum(calendarScopeTypeValues),
+  scopeId: z.string().uuid().nullable().optional(),
+  scopeLabel: z.string().max(120).nullable().optional(),
+  parentSourceId: z.string().uuid().nullable().optional(),
+  purposeDefaults: z.array(z.enum(calendarPurposeValues)).optional(),
+  audienceDefaults: z.array(z.enum(calendarAudienceValues)).optional(),
+  isCustomCalendar: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  displayJson: z.record(z.string(), z.unknown()).optional()
+});
+
+export async function upsertCalendarSourceAction(
+  input: z.input<typeof upsertCalendarSourceSchema>
+): Promise<CalendarActionResult<{ source: Awaited<ReturnType<typeof upsertCalendarSource>> }>> {
+  const parsed = upsertCalendarSourceSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Please review source details.");
+  }
+
+  try {
+    const actor = await requireCalendarActor(parsed.data.orgSlug);
+    if (!actor.hasCalendarWrite) {
+      return asError("You do not have permission to manage calendar sources.");
+    }
+
+    const source = await upsertCalendarSource({
+      orgId: actor.orgId,
+      sourceId: parsed.data.sourceId,
+      name: parsed.data.name,
+      scopeType: parsed.data.scopeType,
+      scopeId: parsed.data.scopeId ?? null,
+      scopeLabel: parsed.data.scopeLabel ?? null,
+      parentSourceId: parsed.data.parentSourceId ?? null,
+      purposeDefaults: parsed.data.purposeDefaults ?? [],
+      audienceDefaults: parsed.data.audienceDefaults ?? [],
+      isCustomCalendar: parsed.data.isCustomCalendar ?? parsed.data.scopeType === "custom",
+      isActive: parsed.data.isActive ?? true,
+      displayJson: parsed.data.displayJson ?? {},
+      actorUserId: actor.userId
+    });
+
+    revalidateCalendarRoutes(actor.orgSlug);
+    return {
+      ok: true,
+      data: {
+        source
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to save calendar source.");
+  }
+}
+
 export async function createCalendarEntryAction(input: z.input<typeof createEntrySchema>): Promise<CalendarActionResult<{ entryId: string }>> {
   const parsed = createEntrySchema.safeParse(input);
 
@@ -566,6 +1090,9 @@ export async function createCalendarEntryAction(input: z.input<typeof createEntr
 
     const created = await createCalendarEntryRecord({
       orgId: actor.orgId,
+      sourceId: payload.sourceId ?? null,
+      purpose: payload.purpose,
+      audience: payload.audience,
       entryType: payload.entryType,
       title: payload.title,
       summary: normalizeOptional(payload.summary),
@@ -617,6 +1144,9 @@ export async function updateCalendarEntryAction(input: z.input<typeof updateEntr
     const updated = await updateCalendarEntryRecord({
       orgId: actor.orgId,
       entryId: payload.entryId,
+      sourceId: payload.sourceId ?? existing.sourceId,
+      purpose: payload.purpose ?? existing.purpose,
+      audience: payload.audience ?? existing.audience,
       entryType: payload.entryType,
       title: payload.title,
       summary: normalizeOptional(payload.summary),
@@ -973,6 +1503,441 @@ export async function updateOccurrenceAction(input: z.input<typeof updateOccurre
   }
 }
 
+export async function updateRecurringOccurrenceAction(
+  input: z.input<typeof updateRecurringOccurrenceSchema>
+): Promise<CalendarActionResult<{ occurrenceId: string; entryId: string; ruleId: string }>> {
+  const parsed = updateRecurringOccurrenceSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return asError("Please review the recurring update details.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const actor = await requireCalendarActor(payload.orgSlug);
+    const occurrence = await getCalendarOccurrenceById(actor.orgId, payload.occurrenceId);
+    if (!occurrence) {
+      return asError("Occurrence not found.");
+    }
+    if (!occurrence.sourceRuleId) {
+      return asError("This occurrence is not part of a recurring series.");
+    }
+
+    const rule = await getCalendarRuleById(actor.orgId, occurrence.sourceRuleId);
+    if (!rule) {
+      return asError("Recurring rule not found.");
+    }
+
+    const entry = await getCalendarEntryById(actor.orgId, occurrence.entryId);
+    if (!entry) {
+      return asError("Calendar entry not found.");
+    }
+
+    const allowed = await canManageEntry(actor.orgId, actor.userId, entry, actor.hasCalendarWrite);
+    if (!allowed) {
+      return asError("You do not have permission to update this recurring event.");
+    }
+
+    const timezone = resolveTimezone(payload.timezone ?? occurrence.timezone);
+    const normalizedWindow = normalizeLocalWindow({
+      localDate: payload.localDate,
+      localStartTime: payload.localStartTime,
+      localEndTime: payload.localEndTime,
+      timezone
+    });
+
+    const recurrenceInput = {
+      mode: payload.recurrence.mode,
+      timezone: resolveTimezone(payload.recurrence.timezone ?? timezone),
+      startDate: normalizeDate(payload.recurrence.startDate) ?? payload.localDate,
+      endDate: normalizeDate(payload.recurrence.endDate),
+      startTime: normalizeOptional(payload.recurrence.startTime) ?? normalizedWindow.localStartTime,
+      endTime: normalizeOptional(payload.recurrence.endTime) ?? normalizedWindow.localEndTime,
+      intervalCount: payload.recurrence.intervalCount ?? 1,
+      intervalUnit: payload.recurrence.intervalUnit ?? "week",
+      byWeekday: payload.recurrence.byWeekday ?? [],
+      byMonthday: payload.recurrence.byMonthday ?? [],
+      endMode: payload.recurrence.endMode ?? "until_date",
+      untilDate: normalizeDate(payload.recurrence.untilDate),
+      maxOccurrences: payload.recurrence.maxOccurrences ?? null,
+      configJson: payload.recurrence.configJson ?? {}
+    };
+
+    const nextEntryInput = {
+      entryType: payload.entryType,
+      title: payload.title,
+      summary: normalizeOptional(payload.summary) ?? "",
+      visibility: payload.visibility,
+      status: payload.status ?? entry.status,
+      hostTeamId: payload.hostTeamId ?? null,
+      timezone: resolveTimezone(payload.timezone ?? entry.defaultTimezone),
+      location: normalizeOptional(payload.location) ?? ""
+    };
+
+    const shouldCopyForwardInvites = payload.copyForwardInvites ?? true;
+    const shouldCopyForwardFacilities = payload.copyForwardFacilities ?? true;
+
+    if (payload.editScope === "series") {
+      await updateCalendarEntryRecord({
+        orgId: actor.orgId,
+        entryId: entry.id,
+        sourceId: entry.sourceId,
+        purpose: payload.entryType === entry.entryType ? entry.purpose : undefined,
+        audience: entry.audience,
+        entryType: nextEntryInput.entryType,
+        title: nextEntryInput.title,
+        summary: normalizeOptional(nextEntryInput.summary),
+        visibility: nextEntryInput.visibility,
+        status: nextEntryInput.status,
+        hostTeamId: nextEntryInput.hostTeamId,
+        defaultTimezone: nextEntryInput.timezone,
+        settingsJson: {
+          ...entry.settingsJson,
+          location: normalizeOptional(nextEntryInput.location)
+        },
+        updatedBy: actor.userId
+      });
+
+      const ruleResult = await upsertCalendarRuleAction({
+        orgSlug: payload.orgSlug,
+        entryId: entry.id,
+        ruleId: rule.id,
+        mode: recurrenceInput.mode,
+        timezone: recurrenceInput.timezone,
+        startDate: recurrenceInput.startDate ?? payload.localDate,
+        endDate: recurrenceInput.endDate ?? undefined,
+        startTime: recurrenceInput.startTime ?? undefined,
+        endTime: recurrenceInput.endTime ?? undefined,
+        intervalCount: recurrenceInput.intervalCount,
+        intervalUnit: recurrenceInput.intervalUnit,
+        byWeekday: recurrenceInput.byWeekday,
+        byMonthday: recurrenceInput.byMonthday,
+        endMode: recurrenceInput.endMode,
+        untilDate: recurrenceInput.untilDate ?? undefined,
+        maxOccurrences: recurrenceInput.maxOccurrences,
+        configJson: recurrenceInput.configJson
+      });
+
+      if (!ruleResult.ok) {
+        return asError(ruleResult.error);
+      }
+
+      revalidateCalendarRoutes(actor.orgSlug);
+      return {
+        ok: true,
+        data: {
+          occurrenceId: occurrence.id,
+          entryId: entry.id,
+          ruleId: rule.id
+        }
+      };
+    }
+
+    if (payload.editScope === "following") {
+      const splitUntilDate = shiftLocalDate(payload.localDate, -1);
+      const oldRuleResult = await upsertCalendarRuleAction({
+        orgSlug: payload.orgSlug,
+        entryId: entry.id,
+        ruleId: rule.id,
+        mode: rule.mode,
+        timezone: rule.timezone,
+        startDate: rule.startDate ?? payload.localDate,
+        endDate: rule.endDate ?? undefined,
+        startTime: rule.startTime ?? undefined,
+        endTime: rule.endTime ?? undefined,
+        intervalCount: rule.intervalCount ?? 1,
+        intervalUnit: rule.intervalUnit ?? "week",
+        byWeekday: rule.byWeekday ?? [],
+        byMonthday: rule.byMonthday ?? [],
+        endMode: "until_date",
+        untilDate: splitUntilDate,
+        maxOccurrences: null,
+        configJson: rule.configJson
+      });
+
+      if (!oldRuleResult.ok) {
+        return asError(oldRuleResult.error);
+      }
+
+      const nextEntry = await createCalendarEntryRecord({
+        orgId: actor.orgId,
+        sourceId: entry.sourceId,
+        purpose: payload.entryType === entry.entryType ? entry.purpose : undefined,
+        audience: entry.audience,
+        entryType: nextEntryInput.entryType,
+        title: nextEntryInput.title,
+        summary: normalizeOptional(nextEntryInput.summary),
+        visibility: nextEntryInput.visibility,
+        status: nextEntryInput.status,
+        hostTeamId: nextEntryInput.hostTeamId,
+        defaultTimezone: nextEntryInput.timezone,
+        settingsJson: {
+          ...entry.settingsJson,
+          location: normalizeOptional(nextEntryInput.location)
+        },
+        createdBy: actor.userId
+      });
+
+      const newRuleResult = await upsertCalendarRuleAction({
+        orgSlug: payload.orgSlug,
+        entryId: nextEntry.id,
+        mode: recurrenceInput.mode,
+        timezone: recurrenceInput.timezone,
+        startDate: payload.localDate,
+        endDate: recurrenceInput.endDate ?? undefined,
+        startTime: normalizedWindow.localStartTime,
+        endTime: normalizedWindow.localEndTime,
+        intervalCount: recurrenceInput.intervalCount,
+        intervalUnit: recurrenceInput.intervalUnit,
+        byWeekday: recurrenceInput.byWeekday,
+        byMonthday: recurrenceInput.byMonthday,
+        endMode: recurrenceInput.endMode,
+        untilDate: recurrenceInput.untilDate ?? undefined,
+        maxOccurrences: recurrenceInput.maxOccurrences,
+        configJson: recurrenceInput.configJson
+      });
+
+      if (!newRuleResult.ok) {
+        return asError(newRuleResult.error);
+      }
+
+      if (shouldCopyForwardFacilities) {
+        const sourceRuleAllocations = await listCalendarRuleFacilityAllocations(actor.orgId, { ruleId: rule.id });
+        if (sourceRuleAllocations.length > 0) {
+          await replaceCalendarRuleFacilityAllocations({
+            orgId: actor.orgId,
+            ruleId: newRuleResult.data.ruleId,
+            allocations: sourceRuleAllocations.map((allocation) => ({
+              spaceId: allocation.spaceId,
+              configurationId: allocation.configurationId,
+              lockMode: allocation.lockMode,
+              allowShared: allocation.allowShared,
+              metadataJson: allocation.metadataJson
+            })),
+            actorUserId: actor.userId
+          });
+        }
+      }
+
+      const newSeriesOccurrences = await listCalendarOccurrencesByRule(actor.orgId, newRuleResult.data.ruleId);
+      if (nextEntry.hostTeamId) {
+        for (const nextOccurrence of newSeriesOccurrences) {
+          await upsertOccurrenceTeamInvite({
+            orgId: actor.orgId,
+            occurrenceId: nextOccurrence.id,
+            teamId: nextEntry.hostTeamId,
+            role: "host",
+            inviteStatus: "accepted",
+            invitedByUserId: actor.userId,
+            invitedAt: new Date().toISOString(),
+            respondedByUserId: actor.userId,
+            respondedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      if (shouldCopyForwardInvites) {
+        const selectedInvites = await listOccurrenceTeamInvites(actor.orgId, { occurrenceId: occurrence.id, includeInactive: true });
+        const participantInvites = selectedInvites.filter((invite) => invite.role === "participant" && ["accepted", "pending"].includes(invite.inviteStatus));
+        for (const nextOccurrence of newSeriesOccurrences) {
+          for (const invite of participantInvites) {
+            await upsertOccurrenceTeamInvite({
+              orgId: actor.orgId,
+              occurrenceId: nextOccurrence.id,
+              teamId: invite.teamId,
+              role: invite.role,
+              inviteStatus: invite.inviteStatus,
+              invitedByUserId: invite.invitedByUserId,
+              invitedAt: invite.invitedAt,
+              respondedByUserId: invite.respondedByUserId,
+              respondedAt: invite.respondedAt
+            });
+          }
+        }
+      }
+
+      const selectedInNewSeries =
+        newSeriesOccurrences.find((item) => item.localDate === payload.localDate && item.localStartTime === normalizedWindow.localStartTime) ??
+        newSeriesOccurrences[0] ??
+        null;
+
+      revalidateCalendarRoutes(actor.orgSlug);
+      return {
+        ok: true,
+        data: {
+          occurrenceId: selectedInNewSeries?.id ?? occurrence.id,
+          entryId: nextEntry.id,
+          ruleId: newRuleResult.data.ruleId
+        }
+      };
+    }
+
+    if (occurrence.sourceType === "override") {
+      await updateCalendarEntryRecord({
+        orgId: actor.orgId,
+        entryId: entry.id,
+        sourceId: entry.sourceId,
+        purpose: payload.entryType === entry.entryType ? entry.purpose : undefined,
+        audience: entry.audience,
+        entryType: nextEntryInput.entryType,
+        title: nextEntryInput.title,
+        summary: normalizeOptional(nextEntryInput.summary),
+        visibility: nextEntryInput.visibility,
+        status: nextEntryInput.status,
+        hostTeamId: nextEntryInput.hostTeamId,
+        defaultTimezone: nextEntryInput.timezone,
+        settingsJson: {
+          ...entry.settingsJson,
+          location: normalizeOptional(nextEntryInput.location)
+        },
+        updatedBy: actor.userId
+      });
+
+      await updateCalendarOccurrenceRecord({
+        orgId: actor.orgId,
+        occurrenceId: occurrence.id,
+        timezone,
+        localDate: payload.localDate,
+        localStartTime: normalizedWindow.localStartTime,
+        localEndTime: normalizedWindow.localEndTime,
+        startsAtUtc: normalizedWindow.startsAtUtc,
+        endsAtUtc: normalizedWindow.endsAtUtc,
+        status: occurrence.status,
+        metadataJson: payload.metadataJson ?? occurrence.metadataJson,
+        actorUserId: actor.userId
+      });
+
+      revalidateCalendarRoutes(actor.orgSlug);
+      return {
+        ok: true,
+        data: {
+          occurrenceId: occurrence.id,
+          entryId: entry.id,
+          ruleId: rule.id
+        }
+      };
+    }
+
+    const overrideEntry = await createCalendarEntryRecord({
+      orgId: actor.orgId,
+      sourceId: entry.sourceId,
+      purpose: payload.entryType === entry.entryType ? entry.purpose : undefined,
+      audience: entry.audience,
+      entryType: nextEntryInput.entryType,
+      title: nextEntryInput.title,
+      summary: normalizeOptional(nextEntryInput.summary),
+      visibility: nextEntryInput.visibility,
+      status: nextEntryInput.status,
+      hostTeamId: nextEntryInput.hostTeamId,
+      defaultTimezone: nextEntryInput.timezone,
+      settingsJson: {
+        ...entry.settingsJson,
+        location: normalizeOptional(nextEntryInput.location)
+      },
+      createdBy: actor.userId
+    });
+
+    const overrideOccurrence = await insertCalendarOccurrenceRecord({
+      orgId: actor.orgId,
+      entryId: overrideEntry.id,
+      sourceRuleId: rule.id,
+      sourceType: "override",
+      sourceKey: `override:${occurrence.sourceKey}:${randomUUID()}`,
+      timezone,
+      localDate: payload.localDate,
+      localStartTime: normalizedWindow.localStartTime,
+      localEndTime: normalizedWindow.localEndTime,
+      startsAtUtc: normalizedWindow.startsAtUtc,
+      endsAtUtc: normalizedWindow.endsAtUtc,
+      status: "scheduled",
+      metadataJson: payload.metadataJson ?? occurrence.metadataJson,
+      actorUserId: actor.userId
+    });
+
+    if (shouldCopyForwardFacilities) {
+      const sourceAllocations = await listOccurrenceFacilityAllocations(actor.orgId, { occurrenceId: occurrence.id });
+      if (sourceAllocations.length > 0) {
+        await replaceOccurrenceFacilityAllocations({
+          orgId: actor.orgId,
+          occurrenceId: overrideOccurrence.id,
+          allocations: sourceAllocations.map((allocation) => ({
+            spaceId: allocation.spaceId,
+            configurationId: allocation.configurationId,
+            lockMode: allocation.lockMode,
+            allowShared: allocation.allowShared,
+            metadataJson: allocation.metadataJson
+          })),
+          actorUserId: actor.userId
+        });
+      }
+    }
+
+    if (nextEntryInput.hostTeamId) {
+      await upsertOccurrenceTeamInvite({
+        orgId: actor.orgId,
+        occurrenceId: overrideOccurrence.id,
+        teamId: nextEntryInput.hostTeamId,
+        role: "host",
+        inviteStatus: "accepted",
+        invitedByUserId: actor.userId,
+        invitedAt: new Date().toISOString(),
+        respondedByUserId: actor.userId,
+        respondedAt: new Date().toISOString()
+      });
+    }
+
+    if (shouldCopyForwardInvites) {
+      const sourceInvites = await listOccurrenceTeamInvites(actor.orgId, { occurrenceId: occurrence.id, includeInactive: true });
+      const participantInvites = sourceInvites.filter((invite) => invite.role === "participant" && ["accepted", "pending"].includes(invite.inviteStatus));
+      for (const invite of participantInvites) {
+        await upsertOccurrenceTeamInvite({
+          orgId: actor.orgId,
+          occurrenceId: overrideOccurrence.id,
+          teamId: invite.teamId,
+          role: invite.role,
+          inviteStatus: invite.inviteStatus,
+          invitedByUserId: invite.invitedByUserId,
+          invitedAt: invite.invitedAt,
+          respondedByUserId: invite.respondedByUserId,
+          respondedAt: invite.respondedAt
+        });
+      }
+    }
+
+    await upsertCalendarRuleException({
+      orgId: actor.orgId,
+      ruleId: rule.id,
+      sourceKey: occurrence.sourceKey,
+      kind: "override",
+      overrideOccurrenceId: overrideOccurrence.id,
+      payloadJson: {
+        reason: "single-occurrence-edit"
+      },
+      actorUserId: actor.userId
+    });
+
+    await setCalendarOccurrenceStatus({
+      orgId: actor.orgId,
+      occurrenceId: occurrence.id,
+      status: "cancelled",
+      actorUserId: actor.userId
+    });
+
+    revalidateCalendarRoutes(actor.orgSlug);
+    return {
+      ok: true,
+      data: {
+        occurrenceId: overrideOccurrence.id,
+        entryId: overrideEntry.id,
+        ruleId: rule.id
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to apply recurring update.");
+  }
+}
+
 export async function setOccurrenceStatusAction(input: z.input<typeof occurrenceStatusSchema>): Promise<CalendarActionResult<{ occurrenceId: string }>> {
   const parsed = occurrenceStatusSchema.safeParse(input);
 
@@ -1027,6 +1992,61 @@ export async function setOccurrenceStatusAction(input: z.input<typeof occurrence
   } catch (error) {
     rethrowIfNavigationError(error);
     return asError("Unable to update occurrence status.");
+  }
+}
+
+export async function deleteOccurrenceAction(input: z.input<typeof deleteOccurrenceSchema>): Promise<CalendarActionResult<{ occurrenceId: string }>> {
+  const parsed = deleteOccurrenceSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return asError("Invalid occurrence delete request.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const actor = await requireCalendarActor(payload.orgSlug);
+    const occurrence = await getCalendarOccurrenceById(actor.orgId, payload.occurrenceId);
+
+    if (!occurrence) {
+      return asError("Occurrence not found.");
+    }
+
+    const entry = await getCalendarEntryById(actor.orgId, occurrence.entryId);
+    if (!entry) {
+      return asError("Calendar entry not found.");
+    }
+
+    const allowed = await canManageEntry(actor.orgId, actor.userId, entry, actor.hasCalendarWrite);
+    if (!allowed) {
+      return asError("You do not have permission to delete this occurrence.");
+    }
+
+    await deleteCalendarOccurrenceRecord({
+      orgId: actor.orgId,
+      occurrenceId: payload.occurrenceId
+    });
+
+    if (entry.hostTeamId) {
+      await notifyOccurrenceCancelled({
+        orgId: actor.orgId,
+        occurrenceId: payload.occurrenceId,
+        hostTeamId: entry.hostTeamId,
+        actorUserId: actor.userId,
+        title: `${entry.title} was deleted`
+      }).catch(() => null);
+    }
+
+    revalidateCalendarRoutes(actor.orgSlug);
+
+    return {
+      ok: true,
+      data: {
+        occurrenceId: payload.occurrenceId
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to delete occurrence.");
   }
 }
 

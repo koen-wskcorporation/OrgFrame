@@ -23,6 +23,18 @@ type PanelProps = {
   panelStyle?: React.CSSProperties;
 };
 
+type PanelScreen = {
+  key: string;
+  label: string;
+};
+
+type PanelScreensProps = {
+  screens: PanelScreen[];
+  activeKey: string;
+  onChange: (key: string) => void;
+  className?: string;
+};
+
 export function Panel({
   open,
   onClose,
@@ -273,5 +285,25 @@ export function Panel({
       ) : null}
     </aside>,
     portalTarget
+  );
+}
+
+export function PanelScreens({ screens, activeKey, onChange, className }: PanelScreensProps) {
+  return (
+    <div className={cn("inline-flex w-full items-center gap-1 rounded-control border bg-surface p-1", className)}>
+      {screens.map((screen) => (
+        <button
+          className={cn(
+            "min-w-0 flex-1 rounded-control px-2 py-1.5 text-xs font-semibold transition-colors",
+            activeKey === screen.key ? "bg-surface-muted text-text" : "text-text-muted hover:bg-surface-muted hover:text-text"
+          )}
+          key={screen.key}
+          onClick={() => onChange(screen.key)}
+          type="button"
+        >
+          <span className="truncate">{screen.label}</span>
+        </button>
+      ))}
+    </div>
   );
 }

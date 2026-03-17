@@ -17,6 +17,7 @@ import {
   FacilitySpaceListBlockRender,
   sanitizeFacilitySpaceListConfig
 } from "@/modules/site-builder/blocks/facility-space-list";
+import { createDefaultTeamsDirectoryConfig, sanitizeTeamsDirectoryConfig, TeamsDirectoryBlockRender } from "@/modules/site-builder/blocks/teams-directory";
 import type { BlockContext, BlockDefinition, OrgPageBlock, OrgSiteBlockType } from "@/modules/site-builder/types";
 
 type RuntimeBlockDefinition<TType extends OrgSiteBlockType> = Omit<BlockDefinition<TType>, "Editor">;
@@ -95,6 +96,13 @@ const runtimeBlockRegistry: AnyRuntimeBlockDefinition = {
     defaultConfig: createDefaultFacilitySpaceListConfig,
     sanitizeConfig: sanitizeFacilitySpaceListConfig,
     Render: FacilitySpaceListBlockRender
+  },
+  teams_directory: {
+    type: "teams_directory",
+    displayName: "Teams Directory",
+    defaultConfig: createDefaultTeamsDirectoryConfig,
+    sanitizeConfig: sanitizeTeamsDirectoryConfig,
+    Render: TeamsDirectoryBlockRender
   }
 };
 

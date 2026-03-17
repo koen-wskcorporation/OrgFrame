@@ -5,8 +5,7 @@ import { applyBrandingVars } from "@/lib/branding/applyBrandingVars";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
 import { shouldShowBranchHeaders } from "@/lib/env/branchVisibility";
 import { getOrgRequestContext } from "@/lib/org/getOrgRequestContext";
-import { can } from "@/lib/permissions/can";
-import { listOrgPagesForHeader } from "@/modules/site-builder/db/queries";
+import { listOrgNavItemsForHeader, listOrgPagesForHeader } from "@/modules/site-builder/db/queries";
 
 export async function generateMetadata({ params }: { params: Promise<{ orgSlug: string }> }): Promise<Metadata> {
   const { orgSlug } = await params;
@@ -39,14 +38,14 @@ export default async function OrgLayout({
     orgId: orgRequest.org.orgId,
     includeUnpublished: canEditPages
   }).catch(() => []);
+  const navItems = await listOrgNavItemsForHeader({
+    orgId: orgRequest.org.orgId,
+    includeUnpublished: canEditPages
+  }).catch(() => []);
 
   const brandingVars = applyBrandingVars({ accent: orgRequest.org.branding.accent });
   const capabilities = orgRequest.capabilities;
   const canManageOrg = capabilities?.manage.canAccessArea ?? false;
-  const canActWithAi = orgRequest.membership
-    ? can(orgRequest.membership.permissions, "org.branding.write") || can(orgRequest.membership.permissions, "forms.write")
-    : false;
-  const showAiAssistant = Boolean(orgRequest.membership);
   const showHeaders = shouldShowBranchHeaders();
 
   return (
@@ -54,13 +53,12 @@ export default async function OrgLayout({
       <BrandingCssVarsBridge vars={brandingVars as Record<string, string>} />
       {showHeaders ? (
         <OrgHeader
-          canActWithAi={canActWithAi}
           canEditPages={canEditPages}
           canManageOrg={canManageOrg}
           governingBodyLogoUrl={orgRequest.org.governingBody?.logoUrl ?? null}
           governingBodyName={orgRequest.org.governingBody?.name ?? null}
+          navItems={navItems}
           pages={pages}
-          showAiAssistant={showAiAssistant}
           orgLogoUrl={orgLogoUrl}
           orgName={orgRequest.org.orgName}
           orgSlug={orgRequest.org.orgSlug}

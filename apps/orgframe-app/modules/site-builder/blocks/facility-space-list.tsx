@@ -11,7 +11,7 @@ import type {
   BlockRenderProps,
   FacilitySpaceListBlockConfig
 } from "@/modules/site-builder/types";
-import { FacilityStatusBadge } from "@orgframe/ui/modules/facilities/components/FacilityStatusBadge";
+import { FacilitySpaceListRepeater } from "@/modules/site-builder/blocks/facility-space-list-repeater";
 
 function defaultFacilitySpaceListConfig(_: BlockContext): FacilitySpaceListBlockConfig {
   return {
@@ -116,26 +116,16 @@ export function FacilitySpaceListBlockRender({ block, runtimeData }: BlockRender
         <CardContent className="space-y-4">
           <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
           {spaces.length === 0 ? <Alert variant="info">{block.config.emptyMessage}</Alert> : null}
-          <div className="space-y-2">
-            {spaces.map((space) => {
-              const depth = block.config.showHierarchy ? resolveDepth(space, byId) : 0;
-              return (
-                <article
-                  className="flex flex-wrap items-center gap-2 rounded-control border bg-surface px-3 py-2"
-                  key={space.id}
-                  style={{ marginLeft: `${depth * 12}px` }}
-                >
-                  <p className="font-medium text-text">{space.name}</p>
-                  <span className="text-xs text-text-muted">{space.spaceKind}</span>
-                  <FacilityStatusBadge status={space.currentStatus} />
-                  {!space.isBookable ? <FacilityStatusBadge status="closed" /> : null}
-                  <span className="text-xs text-text-muted">
-                    Next available: {formatNextAvailable(space.nextAvailableAtUtc, space.timezone)}
-                  </span>
-                </article>
-              );
-            })}
-          </div>
+          <FacilitySpaceListRepeater
+            items={spaces.map((space) => ({
+              currentStatus: space.currentStatus,
+              id: space.id,
+              isBookable: space.isBookable,
+              name: block.config.showHierarchy ? `${"> ".repeat(resolveDepth(space, byId))}${space.name}` : space.name,
+              nextAvailableLabel: formatNextAvailable(space.nextAvailableAtUtc, space.timezone),
+              spaceKind: space.spaceKind
+            }))}
+          />
         </CardContent>
       </Card>
     </section>

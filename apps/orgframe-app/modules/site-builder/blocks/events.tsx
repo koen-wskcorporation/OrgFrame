@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { buttonVariants } from "@orgframe/ui/ui/button";
 import { ButtonListEditor } from "@orgframe/ui/editor/buttons/ButtonListEditor";
-import { PublicCalendarWorkspace } from "@orgframe/ui/modules/calendar/components/PublicCalendarWorkspace";
+import { CalendarWorkspace } from "@orgframe/ui/modules/calendar/components/CalendarWorkspace";
 import { Alert } from "@orgframe/ui/ui/alert";
 import { Checkbox } from "@orgframe/ui/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
@@ -13,6 +12,7 @@ import { defaultInternalHref, resolveButtonHref } from "@/lib/links";
 import type { CalendarPublicCatalogItem } from "@/modules/calendar/types";
 import { asBody, asButtons, asNumber, asObject, asText } from "@/modules/site-builder/blocks/helpers";
 import type { BlockContext, BlockEditorProps, BlockRenderProps, EventsBlockConfig } from "@/modules/site-builder/types";
+import { EventsListRepeater } from "@/modules/site-builder/blocks/events-list-repeater";
 
 function defaultEventsConfig(_: BlockContext): EventsBlockConfig {
   return {
@@ -173,25 +173,21 @@ export function EventsBlockRender({ block, context, runtimeData }: BlockRenderPr
             events.length === 0 ? (
               <Alert variant="info">{block.config.emptyMessage}</Alert>
             ) : (
-              <PublicCalendarWorkspace items={events} orgSlug={context.orgSlug} title={block.config.title} />
+              <CalendarWorkspace items={events} mode="public" orgSlug={context.orgSlug} title={block.config.title} />
             )
           ) : events.length === 0 ? (
             <Alert variant="info">{block.config.emptyMessage}</Alert>
           ) : (
-            <div className="space-y-3">
-              {events.slice(0, block.config.maxItems).map((eventItem) => (
-                <article className="rounded-control border bg-surface px-3 py-3" key={eventItem.occurrenceId}>
-                  <h3 className="font-semibold text-text">
-                    <Link className="hover:underline" href={`/${context.orgSlug}/calendar/${eventItem.occurrenceId}`}>
-                      {eventItem.title}
-                    </Link>
-                  </h3>
-                  <p className="text-xs text-text-muted">{formatEventRange(eventItem)}</p>
-                  {eventItem.location ? <p className="mt-1 text-xs text-text-muted">{eventItem.location}</p> : null}
-                  {eventItem.summary ? <p className="mt-2 text-sm text-text-muted">{eventItem.summary}</p> : null}
-                </article>
-              ))}
-            </div>
+            <EventsListRepeater
+              items={events.slice(0, block.config.maxItems).map((eventItem) => ({
+                href: `/${context.orgSlug}/calendar/${eventItem.occurrenceId}`,
+                location: eventItem.location,
+                occurrenceId: eventItem.occurrenceId,
+                rangeLabel: formatEventRange(eventItem),
+                summary: eventItem.summary,
+                title: eventItem.title
+              }))}
+            />
           )}
 
           <div className="flex flex-wrap gap-2">

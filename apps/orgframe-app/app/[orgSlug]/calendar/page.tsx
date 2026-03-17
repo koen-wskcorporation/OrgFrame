@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/ui/alert";
 import { PageHeader } from "@orgframe/ui/ui/page-header";
 import { getOrgPublicContext } from "@/lib/org/getOrgPublicContext";
-import { PublicCalendarWorkspace } from "@orgframe/ui/modules/calendar/components/PublicCalendarWorkspace";
+import { CalendarWorkspace } from "@orgframe/ui/modules/calendar/components/CalendarWorkspace";
 import { listPublishedCalendarCatalog } from "@/modules/calendar/db/queries";
 
 export const metadata: Metadata = {
@@ -15,11 +15,11 @@ export default async function OrgPublicCalendarPage({ params }: { params: Promis
   const items = await listPublishedCalendarCatalog(org.orgId, { limit: 200 });
 
   return (
-    <main className="app-page-shell w-full py-8 md:py-10">
+    <main className="app-page-shell w-full pb-8 pt-0 md:pb-10 md:pt-0">
       <div className="ui-stack-page">
         <PageHeader description="Published events and games." title="Calendar" />
         {items.length === 0 ? <Alert variant="info">No published calendar items yet.</Alert> : null}
-        {items.length > 0 ? <PublicCalendarWorkspace items={items} orgSlug={org.orgSlug} title="Calendar" /> : null}
+        {items.length > 0 ? <CalendarWorkspace items={items} mode="public" orgSlug={org.orgSlug} title="Calendar" /> : null}
       </div>
     </main>
   );

@@ -9,7 +9,77 @@ export function findEntryForOccurrence(readModel: CalendarReadModel, occurrence:
   return readModel.entries.find((entry) => entry.id === occurrence.entryId) ?? null;
 }
 
-export function occurrenceToCalendarItem(readModel: CalendarReadModel, occurrence: CalendarOccurrence): UnifiedCalendarItem | null {
+function normalizeTeamChipLabel(label: string) {
+  return label
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
+    .join("/");
+}
+
+function resolveOccurrenceTeamChips(
+  readModel: CalendarReadModel,
+  occurrence: CalendarOccurrence,
+  entryHostTeamId: string | null,
+  teamLabelById: Map<string, string> | undefined
+) {
+  if (!teamLabelById || teamLabelById.size === 0) {
+    return [];
+  }
+
+  const teamIds: string[] = [];
+  if (entryHostTeamId) {
+    teamIds.push(entryHostTeamId);
+  }
+
+  for (const invite of readModel.invites) {
+    if (invite.occurrenceId !== occurrence.id) {
+      continue;
+    }
+    if (invite.inviteStatus !== "accepted" && invite.inviteStatus !== "pending") {
+      continue;
+    }
+    teamIds.push(invite.teamId);
+  }
+
+  const seen = new Set<string>();
+  const chips: string[] = [];
+  for (const teamId of teamIds) {
+    if (!teamId || seen.has(teamId)) {
+      continue;
+    }
+    seen.add(teamId);
+    const label = teamLabelById.get(teamId);
+    if (!label) {
+      continue;
+    }
+    const normalized = normalizeTeamChipLabel(label);
+    if (!normalized) {
+      continue;
+    }
+    chips.push(normalized);
+  }
+
+  return chips;
+}
+
+export function buildTeamLabelById(teams: Array<{ id: string; label: string }>) {
+  const map = new Map<string, string>();
+  for (const team of teams) {
+    const label = normalizeTeamChipLabel(team.label);
+    if (!team.id || !label) {
+      continue;
+    }
+    map.set(team.id, label);
+  }
+  return map;
+}
+
+export function occurrenceToCalendarItem(
+  readModel: CalendarReadModel,
+  occurrence: CalendarOccurrence,
+  options?: { teamLabelById?: Map<string, string> }
+): UnifiedCalendarItem | null {
   const entry = findEntryForOccurrence(readModel, occurrence);
   if (!entry) {
     return null;
@@ -23,11 +93,15 @@ export function occurrenceToCalendarItem(readModel: CalendarReadModel, occurrenc
     startsAtUtc: occurrence.startsAtUtc,
     endsAtUtc: occurrence.endsAtUtc,
     timezone: occurrence.timezone,
-    summary: entry.summary
+    summary: entry.summary,
+    teamChips: resolveOccurrenceTeamChips(readModel, occurrence, entry.hostTeamId, options?.teamLabelById)
   };
 }
 
-export function toCalendarItems(readModel: CalendarReadModel, options?: { visibility?: CalendarVisibility; entryTypes?: CalendarEntryType[] }) {
+export function toCalendarItems(
+  readModel: CalendarReadModel,
+  options?: { visibility?: CalendarVisibility; entryTypes?: CalendarEntryType[]; teamLabelById?: Map<string, string> }
+) {
   const entryTypeFilter = options?.entryTypes ? new Set(options.entryTypes) : null;
 
   return readModel.occurrences
@@ -47,7 +121,7 @@ export function toCalendarItems(readModel: CalendarReadModel, options?: { visibi
 
       return true;
     })
-    .map((occurrence) => occurrenceToCalendarItem(readModel, occurrence))
+    .map((occurrence) => occurrenceToCalendarItem(readModel, occurrence, { teamLabelById: options?.teamLabelById }))
     .filter((item): item is UnifiedCalendarItem => Boolean(item));
 }
 

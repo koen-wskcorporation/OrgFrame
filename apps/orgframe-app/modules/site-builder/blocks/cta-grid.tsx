@@ -3,8 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgf
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
 import { Textarea } from "@orgframe/ui/ui/textarea";
+import { CtaGridRepeater } from "@/modules/site-builder/blocks/cta-grid-repeater";
 import { LinkPickerField } from "@orgframe/ui/shared/LinkPickerField";
-import { ReadMoreDescription } from "@/modules/site-builder/blocks/read-more-description.client";
 import { asBody, asCtaItems, asObject, asText, createId } from "@/modules/site-builder/blocks/helpers";
 import type { BlockContext, BlockEditorProps, BlockRenderProps, CtaGridBlockConfig } from "@/modules/site-builder/types";
 import { defaultInternalLink, isExternalLink, resolveLinkHref } from "@/lib/links";
@@ -47,24 +47,15 @@ export function CtaGridBlockRender({ block, context }: BlockRenderProps<"cta_gri
   return (
     <section className="space-y-4">
       <h2 className="text-2xl font-semibold text-text">{block.config.title}</h2>
-      <div className="grid items-stretch gap-4 md:grid-cols-3">
-        {block.config.items.map((item) => (
-          <a
-            className="flex h-full min-w-0"
-            href={resolveLinkHref(context.orgSlug, item.link)}
-            key={item.id}
-            rel={isExternalLink(item.link) ? "noreferrer" : undefined}
-            target={isExternalLink(item.link) ? "_blank" : undefined}
-          >
-            <Card className="flex h-full w-full min-w-0 flex-col transition-colors hover:bg-surface-muted">
-              <CardHeader className="flex h-full min-w-0 flex-col items-start justify-start pb-6 text-left">
-                <CardTitle className="min-w-0 break-all whitespace-normal text-base">{item.title}</CardTitle>
-                <ReadMoreDescription>{item.description}</ReadMoreDescription>
-              </CardHeader>
-            </Card>
-          </a>
-        ))}
-      </div>
+      <CtaGridRepeater
+        items={block.config.items.map((item) => ({
+          description: item.description,
+          href: resolveLinkHref(context.orgSlug, item.link),
+          id: item.id,
+          isExternal: isExternalLink(item.link),
+          title: item.title
+        }))}
+      />
     </section>
   );
 }

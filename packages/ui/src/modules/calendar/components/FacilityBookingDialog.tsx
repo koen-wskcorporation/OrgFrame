@@ -7,11 +7,11 @@ import { Chip } from "@orgframe/ui/ui/chip";
 import { Select } from "@orgframe/ui/ui/select";
 import { Textarea } from "@orgframe/ui/ui/textarea";
 import { Popup } from "@orgframe/ui/ui/popup";
-import { StructureCanvasShell } from "@orgframe/ui/modules/core/components/StructureCanvasShell";
 import type { CanvasViewportHandle } from "@orgframe/ui/ui/canvas-viewport";
 import type { CalendarReadModel, FacilitySpaceConfiguration } from "@/modules/calendar/types";
 import type { FacilityReservationReadModel, FacilitySpace } from "@/modules/facilities/types";
 import { cn } from "@/lib/utils";
+import { StructureCanvas } from "@orgframe/ui/modules/core/components/StructureCanvas";
 import {
   buildSpaceById,
   collectDescendantSpaces,
@@ -37,35 +37,11 @@ type FacilityBookingDialogProps = {
   onSave: () => void;
 };
 
-type RoomLayout = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
   return value as Record<string, unknown>;
-}
-
-function asNumber(value: unknown, fallback: number) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function getRoomLayout(space: FacilitySpace, index: number): RoomLayout {
-  const metadata = asObject(space.metadataJson);
-  const floorPlan = asObject(metadata.floorPlan);
-  const fallbackX = 40 + (index % 6) * 200;
-  const fallbackY = 40 + Math.floor(index / 6) * 150;
-  return {
-    x: asNumber(floorPlan.x, fallbackX),
-    y: asNumber(floorPlan.y, fallbackY),
-    width: Math.max(80, asNumber(floorPlan.width, 200)),
-    height: Math.max(60, asNumber(floorPlan.height, 120))
-  };
 }
 
 function hasFloorPlan(space: FacilitySpace) {
@@ -180,7 +156,7 @@ export function FacilityBookingDialog({
   return (
     <Popup
       closeOnBackdrop={false}
-      contentClassName="h-full"
+      contentClassName="h-full p-4 md:p-5"
       onClose={onClose}
       open={open}
       size="full"
@@ -203,84 +179,40 @@ export function FacilityBookingDialog({
       }
     >
       <div className="grid h-full min-h-[520px] gap-4 md:grid-cols-[minmax(0,2fr),minmax(0,1fr)]">
-        <div className="relative min-h-[380px] overflow-hidden rounded-control border bg-surface">
-          {hasMapLayout ? (
-            <StructureCanvasShell
-              addButtonAriaLabel="Add space"
-              addButtonDisabled
-              autoFitOnOpen
-              canvasContentClassName="p-0"
-              canvasLayoutMode="free"
-              canvasRef={canvasRef}
-              dragInProgress={false}
-              onAdd={() => {}}
-              onViewNodeSelect={(nodeId) => {
-                const space = spaceById.get(nodeId);
-                if (!space) {
-                  return;
-                }
-                toggleSpace(space);
-              }}
-              onViewScaleChange={(scale) => setZoomPercent(Math.round(scale * 100))}
-              rootHeader={null}
-              searchPlaceholder="Search spaces"
-              searchQuery={searchQuery}
-              searchResults={filteredSpaces.map((space) => ({
-                id: space.id,
-                name: space.name,
-                kindLabel: space.spaceKind
-              }))}
-              onSearchQueryChange={setSearchQuery}
-              onSearchSubmit={(query) => setSearchQuery(query)}
-              showEditButton={false}
-              storageKey={`calendar-booking-map:${facilityId ?? "none"}`}
-              viewContentInteractive
-              viewViewportInteractive
-              zoomPercent={zoomPercent}
-            >
-              {spacesWithLayout.map((space, index) => {
-                const layout = getRoomLayout(space, index);
-                const isSelected = selectedIds.has(space.id);
-                const isConflicted = conflictedSpaceIds.has(space.id);
-                const selectable = space.status === "open" && space.isBookable;
-                const statusChip = resolveStatusChip(space);
-
-                return (
-                  <div
-                    className={cn(
-                      "absolute rounded-control border px-2 py-1 shadow-sm transition-[border-color,background-color,box-shadow,transform] duration-150 ease-out",
-                      selectable ? "cursor-pointer" : "cursor-not-allowed opacity-60",
-                      isSelected ? "border-accent bg-accent/10 shadow-card" : "border-border bg-surface",
-                      isConflicted ? "border-destructive/70 bg-destructive/10" : ""
-                    )}
-                    data-structure-node-id={space.id}
-                    key={space.id}
-                    style={{
-                      left: `${layout.x}px`,
-                      top: `${layout.y}px`,
-                      width: `${layout.width}px`,
-                      height: `${layout.height}px`
-                    }}
-                  >
-                    <div className="flex h-full flex-col justify-between gap-2">
-                      <div className="space-y-1">
-                        <p className="truncate text-xs font-semibold text-text">{space.name}</p>
-                        <p className="text-[10px] uppercase tracking-wide text-text-muted">{space.spaceKind}</p>
-                      </div>
-                      <Chip color={statusChip.color} size="compact" variant="flat">
-                        {statusChip.label}
-                      </Chip>
-                    </div>
-                  </div>
-                );
-              })}
-            </StructureCanvasShell>
-          ) : (
-            <div className="flex h-full items-center justify-center p-6">
-              <p className="text-sm text-text-muted">No facility map layout available. Use the list to select spaces.</p>
-            </div>
-          )}
-        </div>
+        {hasMapLayout ? (
+          <StructureCanvas
+            addButtonDisabled
+            autoFitKey={open ? `${facilityId ?? "none"}:${spacesWithLayout.length}` : "closed"}
+            autoFitOnOpen
+            canvasRef={canvasRef}
+            canvasContentClassName="p-0"
+            canvasGridColor="hsl(var(--border) / 0.55)"
+            canvasGridSize={25}
+            canvasLayoutMode="free"
+            facilityConflictedIds={conflictedSpaceIds}
+            facilityRootId={facilityId}
+            facilitySelectedIds={selectedIds}
+            facilitySpaces={spaces}
+            mapMode="facility"
+            onFacilitySelect={toggleSpace}
+            onSearchQueryChange={setSearchQuery}
+            onViewScaleChange={(scale) => setZoomPercent(Math.round(scale * 100))}
+            persistViewState={false}
+            respectGlobalPanels={false}
+            rootHeader={null}
+            searchQuery={searchQuery}
+            showEditButton={false}
+            storageKey={`calendar-booking-map:${facilityId ?? "none"}`}
+            viewContentInteractive
+            viewHeightMode="fill"
+            viewViewportInteractive
+            zoomPercent={zoomPercent}
+          />
+        ) : (
+          <div className="flex min-h-[380px] items-center justify-center rounded-control border bg-surface p-6">
+            <p className="text-sm text-text-muted">No facility map layout available. Use the list to select spaces.</p>
+          </div>
+        )}
 
         <div className="flex h-full flex-col gap-4 overflow-auto">
           {!hasMapLayout ? (

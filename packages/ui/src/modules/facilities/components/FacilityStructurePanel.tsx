@@ -7,6 +7,7 @@ import { Button } from "@orgframe/ui/ui/button";
 import { type CanvasViewportHandle } from "@orgframe/ui/ui/canvas-viewport";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
 import { Checkbox } from "@orgframe/ui/ui/checkbox";
+import { Chip } from "@orgframe/ui/ui/chip";
 import { useConfirmDialog } from "@orgframe/ui/ui/confirm-dialog";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
@@ -14,7 +15,7 @@ import { Panel } from "@orgframe/ui/ui/panel";
 import { Popover } from "@orgframe/ui/ui/popover";
 import { Popup } from "@orgframe/ui/ui/popup";
 import { Select } from "@orgframe/ui/ui/select";
-import { StructureCanvasShell } from "@orgframe/ui/modules/core/components/StructureCanvasShell";
+import { StructureCanvas } from "@orgframe/ui/modules/core/components/StructureCanvas";
 import type { FacilitySpace } from "@/modules/facilities/types";
 
 type StructureElementType = "room" | "court" | "field" | "custom" | "structure";
@@ -211,6 +212,31 @@ function toSpaceKind(elementType: StructureElementType): FacilitySpace["spaceKin
 
 function isNonBookableElementType(elementType: StructureElementType) {
   return elementType === "structure";
+}
+
+function resolveFacilitySpaceStatusChip(status: FacilitySpace["status"]) {
+  switch (status) {
+    case "open":
+      return { label: "Open", color: "green" as const };
+    case "closed":
+      return { label: "Closed", color: "yellow" as const };
+    case "archived":
+      return { label: "Archived", color: "neutral" as const };
+    default:
+      return { label: status, color: "neutral" as const };
+  }
+}
+
+function resolveFacilityNodeStateChip(elementType: StructureElementType, isBookable: boolean) {
+  if (elementType === "structure") {
+    return { label: "Structure", color: "neutral" as const };
+  }
+
+  if (isBookable) {
+    return { label: "Bookable", color: "green" as const };
+  }
+
+  return { label: "Not bookable", color: "yellow" as const };
 }
 
 function resolveBuildingContext(selectedSpace: FacilitySpace, byId: Map<string, FacilitySpace>) {
@@ -1015,7 +1041,7 @@ export function FacilityStructurePanel({
         </CardHeader>
         <CardContent>
             <div onPointerDownCapture={handleCanvasPointerDownCapture}>
-              <StructureCanvasShell
+              <StructureCanvas
                 addButtonAriaLabel="Add space"
                 addButtonDisabled={!canWrite}
                 autoFitKey={
@@ -1024,50 +1050,9 @@ export function FacilityStructurePanel({
                     : `rooms:${rooms.length}`
                 }
                 canvasRef={structureCanvasRef}
-              dragInProgress={Boolean(dragState)}
-              emptyState={
-                rooms.length === 0 ? (
-                  <Alert variant="info">No mapped spaces yet. Add one to start building this layout.</Alert>
-                ) : null
-              }
-              onAdd={() => startInlineCreate("room")}
-              onSearchQueryChange={setStructureSearch}
-              onSearchSubmit={focusRoomFromSearch}
-              onViewScaleChange={(scale) => {
-                setStructureScale(scale);
-                setStructureZoomPercent(Math.round(scale * 100));
-              }}
-              rootHeader={null}
-              searchInputRef={structureSearchInputRef}
-              searchPlaceholder="Search spaces"
-              searchQuery={structureSearch}
-              searchResults={matchingRooms.map((room) => ({
-                id: room.id,
-                name: room.name,
-                kindLabel: resolveElementType(room)
-              }))}
-              storageKey={`facility-floorplan-canvas:${orgSlug}:${mappingRoot.id}`}
-              autoFitOnOpen
-              canvasLayoutMode="free"
-              canvasContentClassName="p-0"
-              canvasGridSize={CANVAS_GRID_SIZE}
-              canvasGridColor="hsl(var(--border) / 0.55)"
-              onFit={handleFitToRooms}
-              onEditOpenChange={setIsStructureCanvasEditMode}
-              persistViewState={false}
-              popupSubtitle="Edit structure map, rooms, and layout."
-              popupTitle={`Editing map: ${canvasCenterTitle}`}
-              onViewNodeSelect={(nodeId) => {
-                setActiveRoomId(nodeId);
-                setSelectedRoomIds([nodeId]);
-                setActionMenuRoomId(null);
-                setActionMenuPoint(null);
-              }}
-              viewContentInteractive
-              viewEditButtonPlacement="top-right"
-              viewViewportInteractive
-              zoomPercent={structureZoomPercent}
-            >
+                dragInProgress={Boolean(dragState)}
+                editContent={
+                  <>
                     {rooms.map((room) => {
                       const layout = roundLayout(layoutDraftByRoomId[room.id] ?? getRoomLayout(room, 0));
                       const isActive = activeRoomId === room.id;
@@ -1081,7 +1066,8 @@ export function FacilityStructurePanel({
                       const showControls = mapCanEdit && (isActive || hoveredRoomId === room.id);
                       const elementType = resolveElementType(room);
                       const isStructuralElement = elementType === "structure";
-                      const statusLabel = isStructuralElement ? elementType : room.isBookable ? "bookable" : "not bookable";
+                      const spaceStatusChip = resolveFacilitySpaceStatusChip(room.status);
+                      const nodeStateChip = resolveFacilityNodeStateChip(elementType, room.isBookable);
 
                       return (
                         <div
@@ -1232,7 +1218,14 @@ export function FacilityStructurePanel({
                                     <span className="block w-full truncate text-center text-xs font-semibold text-text" title={room.name}>
                                       {room.name}
                                     </span>
-                                    <span className="block w-full truncate text-center text-[11px] text-text-muted">{statusLabel}</span>
+                                    <span className="mt-1 flex flex-wrap items-center justify-center gap-1">
+                                      <Chip className="normal-case tracking-normal" color={spaceStatusChip.color} size="compact" variant="flat">
+                                        {spaceStatusChip.label}
+                                      </Chip>
+                                      <Chip className="normal-case tracking-normal" color={nodeStateChip.color} size="compact" variant="flat">
+                                        {nodeStateChip.label}
+                                      </Chip>
+                                    </span>
                                   </span>
                                 </div>
                               </div>
@@ -1283,7 +1276,54 @@ export function FacilityStructurePanel({
                         </div>
                       );
                     })}
-              </StructureCanvasShell>
+                  </>
+                }
+                emptyState={rooms.length === 0 ? <Alert variant="info">No mapped spaces yet. Add one to start building this layout.</Alert> : null}
+                facilityRootId={mappingRoot.id}
+                facilitySpaces={effectiveSpaces}
+                mapMode="facility"
+                onAdd={() => startInlineCreate("room")}
+                onEditOpenChange={setIsStructureCanvasEditMode}
+                onFacilitySelect={(space) => {
+                  setActiveRoomId(space.id);
+                  setSelectedRoomIds([space.id]);
+                }}
+                onFit={handleFitToRooms}
+                onSearchQueryChange={setStructureSearch}
+                onSearchSubmit={focusRoomFromSearch}
+                onViewNodeSelect={(nodeId) => {
+                  setActiveRoomId(nodeId);
+                  setSelectedRoomIds([nodeId]);
+                  setActionMenuRoomId(null);
+                  setActionMenuPoint(null);
+                }}
+                onViewScaleChange={(scale) => {
+                  setStructureScale(scale);
+                  setStructureZoomPercent(Math.round(scale * 100));
+                }}
+                persistViewState={false}
+                popupSubtitle="Edit structure map, rooms, and layout."
+                popupTitle={`Editing map: ${canvasCenterTitle}`}
+                rootHeader={null}
+                searchInputRef={structureSearchInputRef}
+                searchPlaceholder="Search spaces"
+                searchQuery={structureSearch}
+                searchResults={matchingRooms.map((room) => ({
+                  id: room.id,
+                  name: room.name,
+                  kindLabel: resolveElementType(room)
+                }))}
+                storageKey={`facility-floorplan-canvas:${orgSlug}:${mappingRoot.id}`}
+                autoFitOnOpen
+                canvasLayoutMode="free"
+                canvasContentClassName="p-0"
+                canvasGridSize={CANVAS_GRID_SIZE}
+                canvasGridColor="hsl(var(--border) / 0.55)"
+                viewContentInteractive
+                viewEditButtonPlacement="top-right"
+                viewViewportInteractive
+                zoomPercent={structureZoomPercent}
+              />
             </div>
           <Panel
             footer={

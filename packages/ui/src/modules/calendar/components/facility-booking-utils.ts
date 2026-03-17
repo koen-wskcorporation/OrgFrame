@@ -82,12 +82,67 @@ export function collectDescendantSpaces(spaces: FacilitySpace[], rootId: string)
 }
 
 export function formatFacilityLocation(facility: FacilitySpace | null, selectedSpaces: FacilitySpace[]) {
-  if (!facility || selectedSpaces.length === 0) {
+  if (!facility) {
     return "";
   }
   const names = selectedSpaces.map((space) => space.name).slice(0, 4);
   const suffix = selectedSpaces.length > 4 ? ` +${selectedSpaces.length - 4}` : "";
-  return `${facility.name} — ${names.join(", ")}${suffix}`;
+  const baseLocation = names.length > 0 ? `${facility.name} — ${names.join(", ")}${suffix}` : facility.name;
+  const address = getFacilityAddress(facility);
+  return address ? `${baseLocation} · ${address}` : baseLocation;
+}
+
+export function resolveFacilityStatusDot(status: FacilitySpace["status"]): "success" | "destructive" | "muted" {
+  if (status === "open") {
+    return "success";
+  }
+  if (status === "closed") {
+    return "destructive";
+  }
+  return "muted";
+}
+
+function asStringValue(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function getFacilityAddress(space: FacilitySpace | null) {
+  if (!space) {
+    return null;
+  }
+
+  const metadata = space.metadataJson ?? {};
+  const direct =
+    asStringValue(metadata.address) ||
+    asStringValue(metadata.fullAddress) ||
+    asStringValue(metadata.streetAddress) ||
+    asStringValue(metadata.locationAddress) ||
+    asStringValue(metadata.formattedAddress);
+
+  if (direct) {
+    return direct;
+  }
+
+  const line1 = asStringValue(metadata.addressLine1);
+  const line2 = asStringValue(metadata.addressLine2);
+  const city = asStringValue(metadata.city);
+  const state = asStringValue(metadata.state);
+  const postalCode = asStringValue(metadata.postalCode) || asStringValue(metadata.zipCode);
+  const country = asStringValue(metadata.country);
+
+  const segments = [line1, line2, city, state, postalCode, country].filter((value) => value.length > 0);
+  return segments.length > 0 ? segments.join(", ") : null;
+}
+
+export function getFacilityMapUrl(space: FacilitySpace | null) {
+  if (!space) {
+    return null;
+  }
+  const query = getFacilityAddress(space) ?? space.name;
+  if (!query) {
+    return null;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
 export function computeFacilityConflicts(input: {

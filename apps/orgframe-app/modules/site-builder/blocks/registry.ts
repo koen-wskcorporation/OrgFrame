@@ -31,6 +31,12 @@ import {
   FacilitySpaceListBlockRender,
   sanitizeFacilitySpaceListConfig
 } from "@/modules/site-builder/blocks/facility-space-list";
+import {
+  createDefaultTeamsDirectoryConfig,
+  sanitizeTeamsDirectoryConfig,
+  TeamsDirectoryBlockEditor,
+  TeamsDirectoryBlockRender
+} from "@/modules/site-builder/blocks/teams-directory";
 import type { BlockContext, BlockDefinition, DraftBlockInput, OrgPageBlock, OrgSiteBlockType } from "@/modules/site-builder/types";
 
 type AnyBlockDefinition = {
@@ -117,6 +123,14 @@ const blockRegistry: AnyBlockDefinition = {
     sanitizeConfig: sanitizeFacilitySpaceListConfig,
     Render: FacilitySpaceListBlockRender,
     Editor: FacilitySpaceListBlockEditor
+  },
+  teams_directory: {
+    type: "teams_directory",
+    displayName: "Teams Directory",
+    defaultConfig: createDefaultTeamsDirectoryConfig,
+    sanitizeConfig: sanitizeTeamsDirectoryConfig,
+    Render: TeamsDirectoryBlockRender,
+    Editor: TeamsDirectoryBlockEditor
   }
 };
 

@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import { Button } from "@orgframe/ui/ui/button";
-import { Card, CardContent, CardDescription, CardHeaderCompact, CardTitle } from "@orgframe/ui/ui/card";
-import { CardGrid, PageStack } from "@orgframe/ui/ui/layout";
+import { PageStack } from "@orgframe/ui/ui/layout";
 import { PageHeader } from "@orgframe/ui/ui/page-header";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { getOrgAdminNavItems } from "@/lib/org/toolsNav";
+import { ToolsRepeater } from "./ToolsRepeater";
 
 export const metadata: Metadata = {
   title: "Tools"
@@ -19,21 +18,7 @@ export default async function OrgToolsHomePage({ params }: { params: Promise<{ o
   return (
     <PageStack>
       <PageHeader description="Open any workspace tool from this overview." showBorder={false} title="Tools Overview" />
-      <CardGrid>
-        {toolItems.map((item) => (
-          <Card key={item.key}>
-            <CardHeaderCompact>
-              <CardTitle>{item.label}</CardTitle>
-              <CardDescription>{item.description}</CardDescription>
-            </CardHeaderCompact>
-            <CardContent className="pt-4">
-              <Button href={item.href} variant="secondary">
-                Open {item.label}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </CardGrid>
+      <ToolsRepeater items={toolItems} />
     </PageStack>
   );
 }

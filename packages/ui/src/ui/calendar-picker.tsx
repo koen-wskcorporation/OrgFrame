@@ -9,6 +9,8 @@ type CalendarPickerProps = {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  includeTime?: boolean;
+  defaultTime?: string;
   placeholder?: string;
   id?: string;
   name?: string;
@@ -21,6 +23,21 @@ const weekdayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 function isIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function isLocalDateTimeValue(value: string) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value);
+}
+
+function splitDateTimeValue(value: string) {
+  if (isIsoDate(value)) {
+    return { date: value, time: null as string | null };
+  }
+  if (isLocalDateTimeValue(value)) {
+    const [date, time] = value.split("T");
+    return { date: date ?? "", time: time ?? null };
+  }
+  return { date: "", time: null as string | null };
 }
 
 function parseIsoDate(value: string) {
@@ -139,18 +156,86 @@ function isOutsideBounds(dateIso: string, min?: string, max?: string) {
   return false;
 }
 
-export function CalendarPicker({ value, onChange, disabled, placeholder = "Select date", id, name, min, max, className }: CalendarPickerProps) {
+function normalizeTimeValue(value: string | null | undefined, fallback = "09:00") {
+  if (!value) {
+    return fallback;
+  }
+  if (!/^\d{2}:\d{2}$/.test(value)) {
+    return fallback;
+  }
+  const [hourRaw, minuteRaw] = value.split(":");
+  const hour = Number.parseInt(hourRaw ?? "", 10);
+  const minute = Number.parseInt(minuteRaw ?? "", 10);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return fallback;
+  }
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function to12HourParts(timeValue: string) {
+  const normalized = normalizeTimeValue(timeValue);
+  const [hourRaw, minuteRaw] = normalized.split(":");
+  const hour24 = Number.parseInt(hourRaw ?? "0", 10);
+  const minute = Number.parseInt(minuteRaw ?? "0", 10);
+  const meridiem = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return {
+    hour12,
+    minute,
+    meridiem
+  };
+}
+
+function from12HourParts(hour12: number, minute: number, meridiem: "AM" | "PM") {
+  let hour24 = hour12 % 12;
+  if (meridiem === "PM") {
+    hour24 += 12;
+  }
+  return `${String(hour24).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function combineDateAndTime(dateIso: string, timeValue: string) {
+  return `${dateIso}T${normalizeTimeValue(timeValue)}`;
+}
+
+function shiftTimeMinutes(timeValue: string, deltaMinutes: number) {
+  const normalized = normalizeTimeValue(timeValue);
+  const [hourRaw, minuteRaw] = normalized.split(":");
+  const hour = Number.parseInt(hourRaw ?? "0", 10);
+  const minute = Number.parseInt(minuteRaw ?? "0", 10);
+  const total = ((hour * 60 + minute + deltaMinutes) % (24 * 60) + 24 * 60) % (24 * 60);
+  const nextHour = Math.floor(total / 60);
+  const nextMinute = total % 60;
+  return `${String(nextHour).padStart(2, "0")}:${String(nextMinute).padStart(2, "0")}`;
+}
+
+export function CalendarPicker({
+  value,
+  onChange,
+  disabled,
+  includeTime = false,
+  defaultTime = "09:00",
+  placeholder = "Select date",
+  id,
+  name,
+  min,
+  max,
+  className
+}: CalendarPickerProps) {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
-  const selectedDate = parseIsoDate(value);
+  const { date: selectedDateValue, time: selectedTimeValue } = splitDateTimeValue(value);
+  const selectedDate = parseIsoDate(selectedDateValue);
   const [open, setOpen] = React.useState(false);
-  const [inputDigits, setInputDigits] = React.useState(() => isoToUsDigits(value));
+  const [inputDigits, setInputDigits] = React.useState(() => isoToUsDigits(selectedDateValue));
+  const [timeValue, setTimeValue] = React.useState(() => normalizeTimeValue(selectedTimeValue, defaultTime));
   const [visibleMonth, setVisibleMonth] = React.useState<Date>(() => startOfMonth(selectedDate ?? new Date()));
   const today = todayIsoDate();
 
   React.useEffect(() => {
-    setInputDigits(isoToUsDigits(value));
-  }, [value]);
+    setInputDigits(isoToUsDigits(selectedDateValue));
+    setTimeValue(normalizeTimeValue(selectedTimeValue, defaultTime));
+  }, [defaultTime, selectedDateValue, selectedTimeValue]);
 
   function placeCaretAtDigit(digitIndex: number) {
     const target = inputRef.current;
@@ -171,11 +256,11 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
       return;
     }
 
-    const selected = parseIsoDate(value);
+    const selected = parseIsoDate(selectedDateValue);
     if (selected) {
       setVisibleMonth(startOfMonth(selected));
     }
-  }, [open, value]);
+  }, [open, selectedDateValue]);
 
   React.useEffect(() => {
     if (!open) {
@@ -238,7 +323,7 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
 
             const nextIso = usDigitsToIsoDate(inputDigits);
             if (!nextIso || isOutsideBounds(nextIso, min, max)) {
-              setInputDigits(isoToUsDigits(value));
+              setInputDigits(isoToUsDigits(selectedDateValue));
             }
           }}
           onClick={(event) => {
@@ -285,7 +370,7 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
 
             const nextIso = usDigitsToIsoDate(nextDigits);
             if (nextIso && !isOutsideBounds(nextIso, min, max)) {
-              onChange(nextIso);
+              onChange(includeTime ? combineDateAndTime(nextIso, timeValue) : nextIso);
             }
 
             placeCaretAtDigit(nextDigits.length >= 8 ? 7 : nextDigits.length);
@@ -344,7 +429,7 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
             {days.map((day) => {
               const iso = toIsoDate(day);
               const inMonth = day.getMonth() === month;
-              const selected = iso === value;
+              const selected = iso === selectedDateValue;
               const isToday = iso === today;
               const unavailable = isOutsideBounds(iso, min, max);
 
@@ -361,7 +446,7 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
                   disabled={unavailable}
                   key={iso}
                   onClick={() => {
-                    onChange(iso);
+                    onChange(includeTime ? combineDateAndTime(iso, timeValue) : iso);
                     setInputDigits(isoToUsDigits(iso));
                     setOpen(false);
                   }}
@@ -372,6 +457,107 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
               );
             })}
           </div>
+
+          {includeTime ? (
+            <div className="mt-3 rounded-control border bg-surface-muted/40 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Time</p>
+                <div className="flex items-center gap-1">
+                  <button
+                    className="rounded-control border px-2 py-1 text-xs text-text-muted hover:bg-surface"
+                    onClick={() => {
+                      const next = shiftTimeMinutes(timeValue, -15);
+                      setTimeValue(next);
+                      if (selectedDateValue) {
+                        onChange(combineDateAndTime(selectedDateValue, next));
+                      }
+                    }}
+                    type="button"
+                  >
+                    -15m
+                  </button>
+                  <button
+                    className="rounded-control border px-2 py-1 text-xs text-text-muted hover:bg-surface"
+                    onClick={() => {
+                      const next = shiftTimeMinutes(timeValue, 15);
+                      setTimeValue(next);
+                      if (selectedDateValue) {
+                        onChange(combineDateAndTime(selectedDateValue, next));
+                      }
+                    }}
+                    type="button"
+                  >
+                    +15m
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <select
+                  className="h-9 rounded-control border bg-surface px-2 text-sm"
+                  disabled={disabled}
+                  onChange={(event) => {
+                    const current = to12HourParts(timeValue);
+                    const nextHour = Number.parseInt(event.target.value, 10);
+                    if (!Number.isInteger(nextHour)) {
+                      return;
+                    }
+                    const next = from12HourParts(nextHour, current.minute, current.meridiem as "AM" | "PM");
+                    setTimeValue(next);
+                    if (selectedDateValue) {
+                      onChange(combineDateAndTime(selectedDateValue, next));
+                    }
+                  }}
+                  value={to12HourParts(timeValue).hour12}
+                >
+                  {Array.from({ length: 12 }, (_, index) => index + 1).map((hour) => (
+                    <option key={hour} value={hour}>
+                      {hour}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="h-9 rounded-control border bg-surface px-2 text-sm"
+                  disabled={disabled}
+                  onChange={(event) => {
+                    const current = to12HourParts(timeValue);
+                    const nextMinute = Number.parseInt(event.target.value, 10);
+                    if (!Number.isInteger(nextMinute)) {
+                      return;
+                    }
+                    const next = from12HourParts(current.hour12, nextMinute, current.meridiem as "AM" | "PM");
+                    setTimeValue(next);
+                    if (selectedDateValue) {
+                      onChange(combineDateAndTime(selectedDateValue, next));
+                    }
+                  }}
+                  value={to12HourParts(timeValue).minute}
+                >
+                  {[0, 15, 30, 45].map((minute) => (
+                    <option key={minute} value={minute}>
+                      {`${minute}`.padStart(2, "0")}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="h-9 rounded-control border bg-surface px-2 text-sm"
+                  disabled={disabled}
+                  onChange={(event) => {
+                    const current = to12HourParts(timeValue);
+                    const nextMeridiem = event.target.value === "PM" ? "PM" : "AM";
+                    const next = from12HourParts(current.hour12, current.minute, nextMeridiem);
+                    setTimeValue(next);
+                    if (selectedDateValue) {
+                      onChange(combineDateAndTime(selectedDateValue, next));
+                    }
+                  }}
+                  value={to12HourParts(timeValue).meridiem}
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-3 flex items-center justify-between">
             <button
@@ -390,7 +576,7 @@ export function CalendarPicker({ value, onChange, disabled, placeholder = "Selec
               onClick={() => {
                 const next = todayIsoDate();
                 if (!isOutsideBounds(next, min, max)) {
-                  onChange(next);
+                  onChange(includeTime ? combineDateAndTime(next, timeValue) : next);
                   setInputDigits(isoToUsDigits(next));
                 }
                 setOpen(false);

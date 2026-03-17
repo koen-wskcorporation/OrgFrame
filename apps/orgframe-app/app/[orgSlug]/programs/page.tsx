@@ -1,12 +1,10 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/ui/alert";
-import { Button } from "@orgframe/ui/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
 import { PageHeader } from "@orgframe/ui/ui/page-header";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
 import { getOrgPublicContext } from "@/lib/org/getOrgPublicContext";
 import { listPublishedProgramsForCatalog } from "@/modules/programs/db/queries";
+import { ProgramsCatalogRepeater } from "./ProgramsCatalogRepeater";
 
 export const metadata: Metadata = {
   title: "Programs"
@@ -48,32 +46,20 @@ export default async function OrgProgramsCatalogPage({ params }: { params: Promi
 
         {programs.length === 0 ? <Alert variant="info">No published programs yet.</Alert> : null}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {programs.map((program) => (
-            <Card key={program.id}>
-              {program.coverImagePath ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  alt={`${program.name} cover`}
-                  className="h-44 w-full rounded-t-card object-cover"
-                  src={getOrgAssetPublicUrl(program.coverImagePath) ?? ""}
-                />
-              ) : null}
-              <CardHeader>
-                <CardTitle>{program.name}</CardTitle>
-                <CardDescription>
-                  {labelProgramType(program.programType, program.customTypeLabel)} · {formatDateRange(program.startDate, program.endDate)}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-text-muted">{program.description ?? "Program details are available on the next page."}</p>
-                <Button href={`/${org.orgSlug}/programs/${program.slug}`} variant="secondary">
-                  View program
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {programs.length > 0 ? (
+          <ProgramsCatalogRepeater
+            items={programs.map((program) => ({
+              coverImageUrl: program.coverImagePath ? getOrgAssetPublicUrl(program.coverImagePath) ?? null : null,
+              dateLabel: formatDateRange(program.startDate, program.endDate),
+              description: program.description,
+              href: `/${org.orgSlug}/programs/${program.slug}`,
+              id: program.id,
+              name: program.name,
+              slug: program.slug,
+              typeLabel: labelProgramType(program.programType, program.customTypeLabel)
+            }))}
+          />
+        ) : null}
       </div>
     </main>
   );

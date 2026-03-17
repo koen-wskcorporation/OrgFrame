@@ -2,6 +2,30 @@ export type CalendarEntryType = "event" | "practice" | "game";
 
 export type CalendarVisibility = "internal" | "published";
 
+export type CalendarScopeType = "organization" | "program" | "division" | "team" | "custom";
+
+export type CalendarPurpose =
+  | "games"
+  | "practices"
+  | "tryouts"
+  | "season_dates"
+  | "meetings"
+  | "fundraisers"
+  | "facilities"
+  | "deadlines"
+  | "custom_other";
+
+export type CalendarAudience =
+  | "me"
+  | "public"
+  | "staff"
+  | "coaches"
+  | "board"
+  | "parents"
+  | "players"
+  | "team_members_only"
+  | "private_internal";
+
 export type CalendarEntryStatus = "scheduled" | "cancelled" | "archived";
 
 export type CalendarRuleMode = "single_date" | "multiple_specific_dates" | "repeating_pattern" | "continuous_date_range" | "custom_advanced";
@@ -25,7 +49,10 @@ export type OccurrenceInviteStatus = "accepted" | "pending" | "declined" | "left
 export type CalendarEntry = {
   id: string;
   orgId: string;
+  sourceId: string | null;
   entryType: CalendarEntryType;
+  purpose: CalendarPurpose;
+  audience: CalendarAudience;
   title: string;
   summary: string | null;
   visibility: CalendarVisibility;
@@ -33,6 +60,25 @@ export type CalendarEntry = {
   hostTeamId: string | null;
   defaultTimezone: string;
   settingsJson: Record<string, unknown>;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CalendarSource = {
+  id: string;
+  orgId: string;
+  name: string;
+  scopeType: CalendarScopeType;
+  scopeId: string | null;
+  scopeLabel: string | null;
+  parentSourceId: string | null;
+  purposeDefaults: CalendarPurpose[];
+  audienceDefaults: CalendarAudience[];
+  isCustomCalendar: boolean;
+  isActive: boolean;
+  displayJson: Record<string, unknown>;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: string;
@@ -206,6 +252,7 @@ export type CalendarOccurrenceReadModel = {
 };
 
 export type CalendarReadModel = {
+  sources: CalendarSource[];
   entries: CalendarEntry[];
   rules: CalendarRule[];
   occurrences: CalendarOccurrence[];
@@ -214,4 +261,75 @@ export type CalendarReadModel = {
   allocations: FacilityAllocation[];
   ruleAllocations: CalendarRuleFacilityAllocation[];
   invites: OccurrenceTeamInvite[];
+};
+
+export type CalendarLensKind = "mine" | "this_page" | "public" | "operations" | "custom";
+
+export type CalendarPageContextType = "org" | "program" | "division" | "team" | "facility" | "public" | "embedded";
+
+export type CalendarPageContext = {
+  contextType: CalendarPageContextType;
+  orgId: string;
+  orgSlug: string;
+  programId?: string;
+  divisionId?: string;
+  teamId?: string;
+  facilityId?: string;
+};
+
+export type CalendarLensState = {
+  lens: CalendarLensKind;
+  includeScopeTypes: CalendarScopeType[];
+  excludeSourceIds: string[];
+  includePurpose: CalendarPurpose[];
+  audiencePerspective: CalendarAudience | "what_i_can_access";
+  selectedLayerIds: string[];
+  pinnedLayerIds: string[];
+  isolatedLayerId: string | null;
+  includeParentScopes: boolean;
+  includeChildScopes: boolean;
+  searchTerm: string;
+  dateMode: "all" | "range";
+  dateRange: {
+    fromUtc: string | null;
+    toUtc: string | null;
+  };
+  savedViewId: string | null;
+  savedViewName: string | null;
+};
+
+export type CalendarLayerNode = {
+  id: string;
+  parentId: string | null;
+  sourceId: string;
+  label: string;
+  scopeType: CalendarScopeType;
+  purpose: CalendarPurpose | null;
+  visible: boolean;
+  pinned: boolean;
+  isolated: boolean;
+  muted: boolean;
+};
+
+export type CalendarWhyShown = {
+  occurrenceId: string;
+  entryId: string;
+  sourceId: string | null;
+  sourceName: string | null;
+  scopeType: CalendarScopeType | null;
+  purpose: CalendarPurpose;
+  audience: CalendarAudience;
+  reasonCodes: string[];
+};
+
+export type CalendarLensSavedView = {
+  id: string;
+  orgId: string;
+  userId: string;
+  name: string;
+  contextType: CalendarPageContextType | null;
+  isDefault: boolean;
+  configJson: CalendarLensState;
+  createdAt: string;
+  updatedAt: string;
 };

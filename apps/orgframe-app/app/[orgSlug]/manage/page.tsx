@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/ui/alert";
-import { Button } from "@orgframe/ui/ui/button";
-import { Card, CardContent, CardDescription, CardHeaderCompact, CardTitle } from "@orgframe/ui/ui/card";
-import { CardGrid, PageStack } from "@orgframe/ui/ui/layout";
+import { PageStack } from "@orgframe/ui/ui/layout";
 import { PageHeader } from "@orgframe/ui/ui/page-header";
 import { WorkspaceSectionNav } from "@orgframe/ui/ui/workspace-section-nav";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { can } from "@/lib/permissions/can";
+import { ManageCardsRepeater } from "./ManageCardsRepeater";
 
 export const metadata: Metadata = {
   title: "Manage"
@@ -126,21 +125,7 @@ export default async function OrgManageOverviewPage({
       {sectionItems.length > 1 ? <WorkspaceSectionNav active={activeSection} ariaLabel="Manage sections" items={sectionItems} /> : null}
 
       {cards.length === 0 ? <Alert variant="info">No organization management modules are available with your current permissions.</Alert> : null}
-      <CardGrid>
-        {scopedCards.map((card) => (
-          <Card key={card.title}>
-            <CardHeaderCompact>
-              <CardTitle>{card.title}</CardTitle>
-              <CardDescription>{card.description}</CardDescription>
-            </CardHeaderCompact>
-            <CardContent>
-              <Button href={card.href} variant="secondary">
-                {card.cta}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </CardGrid>
+      <ManageCardsRepeater cards={scopedCards} />
     </PageStack>
   );
 }

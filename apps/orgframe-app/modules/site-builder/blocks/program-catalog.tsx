@@ -9,6 +9,7 @@ import { Textarea } from "@orgframe/ui/ui/textarea";
 import { asBody, asButtons, asNumber, asObject, asText } from "@/modules/site-builder/blocks/helpers";
 import type { BlockContext, BlockEditorProps, BlockRenderProps, ProgramCatalogBlockConfig } from "@/modules/site-builder/types";
 import { defaultInternalHref, resolveButtonHref } from "@/lib/links";
+import { ProgramCatalogRepeater } from "@/modules/site-builder/blocks/program-catalog-repeater";
 
 function defaultProgramCatalogConfig(_: BlockContext): ProgramCatalogBlockConfig {
   return {
@@ -85,25 +86,18 @@ export function ProgramCatalogBlockRender({ block, context, runtimeData }: Block
           {programs.length === 0 ? (
             <Alert variant="info">No published programs are available right now.</Alert>
           ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {programs.map((program) => (
-                <article className="rounded-control border bg-surface p-3" key={program.id}>
-                  {program.coverImageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img alt={`${program.name} cover`} className="mb-3 h-36 w-full rounded-control object-cover" src={program.coverImageUrl} />
-                  ) : null}
-                  <h3 className="font-semibold text-text">{program.name}</h3>
-                  <p className="mt-1 text-xs text-text-muted">
-                    {block.config.showType ? `${toTypeLabel(program.programType, program.customTypeLabel)} · ` : ""}
-                    {block.config.showDates ? formatDateRange(program.startDate, program.endDate) : "Program details"}
-                  </p>
-                  <p className="mt-2 text-sm text-text-muted">{program.description ?? "View details and registration options."}</p>
-                  <a className={buttonVariants({ size: "sm", variant: "secondary" })} href={`/${context.orgSlug}/programs/${program.slug}`}>
-                    View program
-                  </a>
-                </article>
-              ))}
-            </div>
+            <ProgramCatalogRepeater
+              items={programs.map((program) => ({
+                coverImageUrl: program.coverImageUrl ?? null,
+                description: program.description,
+                href: `/${context.orgSlug}/programs/${program.slug}`,
+                id: program.id,
+                metaLabel: `${block.config.showType ? `${toTypeLabel(program.programType, program.customTypeLabel)} · ` : ""}${
+                  block.config.showDates ? formatDateRange(program.startDate, program.endDate) : "Program details"
+                }`,
+                name: program.name
+              }))}
+            />
           )}
 
           <div className="flex flex-wrap gap-2">

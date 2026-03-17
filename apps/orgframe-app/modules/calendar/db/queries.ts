@@ -1,15 +1,20 @@
 import { createSupabaseServer } from "@/lib/supabase/server";
 import type {
+  CalendarAudience,
   CalendarEntry,
   CalendarEntryStatus,
   CalendarEntryType,
+  CalendarLensSavedView,
   CalendarOccurrence,
   CalendarOccurrenceReadModel,
+  CalendarPageContextType,
+  CalendarPurpose,
   CalendarPublicCatalogItem,
   CalendarReadModel,
   CalendarRule,
   CalendarRuleException,
   CalendarRuleFacilityAllocation,
+  CalendarSource,
   FacilityAllocation,
   FacilitySpaceConfiguration,
   InboxItem,
@@ -20,7 +25,9 @@ import type {
 import type { GeneratedCalendarOccurrenceInput } from "@/modules/calendar/rule-engine";
 
 const entrySelect =
-  "id, org_id, entry_type, title, summary, visibility, status, host_team_id, default_timezone, settings_json, created_by, updated_by, created_at, updated_at";
+  "id, org_id, source_id, purpose, audience, entry_type, title, summary, visibility, status, host_team_id, default_timezone, settings_json, created_by, updated_by, created_at, updated_at";
+const sourceSelect =
+  "id, org_id, name, scope_type, scope_id, scope_label, parent_source_id, purpose_defaults, audience_defaults, is_custom_calendar, is_active, display_json, created_by, updated_by, created_at, updated_at";
 const ruleSelect =
   "id, org_id, entry_id, mode, timezone, start_date, end_date, start_time, end_time, interval_count, interval_unit, by_weekday, by_monthday, end_mode, until_date, max_occurrences, sort_index, is_active, config_json, rule_hash, created_by, updated_by, created_at, updated_at";
 const occurrenceSelect =
@@ -37,10 +44,15 @@ const inviteSelect =
   "id, org_id, occurrence_id, team_id, role, invite_status, invited_by_user_id, invited_at, responded_by_user_id, responded_at, created_at, updated_at";
 const inboxSelect =
   "id, org_id, recipient_user_id, item_type, title, body, href, payload_json, is_read, read_at, is_archived, archived_at, created_by, created_at";
+const savedLensViewSelect =
+  "id, org_id, user_id, name, context_type, is_default, config_json, created_at, updated_at";
 
 type EntryRow = {
   id: string;
   org_id: string;
+  source_id: string | null;
+  purpose: CalendarPurpose | null;
+  audience: CalendarAudience | null;
   entry_type: CalendarEntryType;
   title: string;
   summary: string | null;
@@ -49,6 +61,25 @@ type EntryRow = {
   host_team_id: string | null;
   default_timezone: string;
   settings_json: unknown;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type SourceRow = {
+  id: string;
+  org_id: string;
+  name: string;
+  scope_type: CalendarSource["scopeType"];
+  scope_id: string | null;
+  scope_label: string | null;
+  parent_source_id: string | null;
+  purpose_defaults: CalendarPurpose[] | null;
+  audience_defaults: CalendarAudience[] | null;
+  is_custom_calendar: boolean;
+  is_active: boolean;
+  display_json: unknown;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -199,6 +230,18 @@ type InboxRow = {
   created_at: string;
 };
 
+type SavedLensViewRow = {
+  id: string;
+  org_id: string;
+  user_id: string;
+  name: string;
+  context_type: CalendarPageContextType | null;
+  is_default: boolean;
+  config_json: unknown;
+  created_at: string;
+  updated_at: string;
+};
+
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
@@ -210,6 +253,9 @@ function mapEntry(row: EntryRow): CalendarEntry {
   return {
     id: row.id,
     orgId: row.org_id,
+    sourceId: row.source_id,
+    purpose: row.purpose ?? (row.entry_type === "game" ? "games" : row.entry_type === "practice" ? "practices" : "custom_other"),
+    audience: row.audience ?? (row.visibility === "published" ? "public" : "private_internal"),
     entryType: row.entry_type,
     title: row.title,
     summary: row.summary,
@@ -218,6 +264,27 @@ function mapEntry(row: EntryRow): CalendarEntry {
     hostTeamId: row.host_team_id,
     defaultTimezone: row.default_timezone,
     settingsJson: asObject(row.settings_json),
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapSource(row: SourceRow): CalendarSource {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    name: row.name,
+    scopeType: row.scope_type,
+    scopeId: row.scope_id,
+    scopeLabel: row.scope_label,
+    parentSourceId: row.parent_source_id,
+    purposeDefaults: Array.isArray(row.purpose_defaults) ? row.purpose_defaults : [],
+    audienceDefaults: Array.isArray(row.audience_defaults) ? row.audience_defaults : [],
+    isCustomCalendar: row.is_custom_calendar,
+    isActive: row.is_active,
+    displayJson: asObject(row.display_json),
     createdBy: row.created_by,
     updatedBy: row.updated_by,
     createdAt: row.created_at,
@@ -385,6 +452,20 @@ function mapInbox(row: InboxRow): InboxItem {
   };
 }
 
+function mapSavedLensView(row: SavedLensViewRow): CalendarLensSavedView {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    userId: row.user_id,
+    name: row.name,
+    contextType: row.context_type,
+    isDefault: row.is_default,
+    configJson: asObject(row.config_json) as CalendarLensSavedView["configJson"],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 export async function listCalendarEntries(orgId: string): Promise<CalendarEntry[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
@@ -418,6 +499,9 @@ export async function getCalendarEntryById(orgId: string, entryId: string): Prom
 
 export async function createCalendarEntryRecord(input: {
   orgId: string;
+  sourceId?: string | null;
+  purpose?: CalendarPurpose;
+  audience?: CalendarAudience;
   entryType: CalendarEntryType;
   title: string;
   summary: string | null;
@@ -433,6 +517,9 @@ export async function createCalendarEntryRecord(input: {
     .from("calendar_entries")
     .insert({
       org_id: input.orgId,
+      source_id: input.sourceId ?? null,
+      purpose: input.purpose ?? (input.entryType === "game" ? "games" : input.entryType === "practice" ? "practices" : "custom_other"),
+      audience: input.audience ?? (input.visibility === "published" ? "public" : "private_internal"),
       entry_type: input.entryType,
       title: input.title,
       summary: input.summary,
@@ -457,6 +544,9 @@ export async function createCalendarEntryRecord(input: {
 export async function updateCalendarEntryRecord(input: {
   orgId: string;
   entryId: string;
+  sourceId?: string | null;
+  purpose?: CalendarPurpose;
+  audience?: CalendarAudience;
   entryType: CalendarEntryType;
   title: string;
   summary: string | null;
@@ -471,6 +561,9 @@ export async function updateCalendarEntryRecord(input: {
   const { data, error } = await supabase
     .from("calendar_entries")
     .update({
+      source_id: input.sourceId ?? null,
+      purpose: input.purpose ?? (input.entryType === "game" ? "games" : input.entryType === "practice" ? "practices" : "custom_other"),
+      audience: input.audience ?? (input.visibility === "published" ? "public" : "private_internal"),
       entry_type: input.entryType,
       title: input.title,
       summary: input.summary,
@@ -804,6 +897,22 @@ export async function setCalendarOccurrenceStatus(input: {
   }
 
   return mapOccurrence(data as OccurrenceRow);
+}
+
+export async function deleteCalendarOccurrenceRecord(input: {
+  orgId: string;
+  occurrenceId: string;
+}): Promise<void> {
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase
+    .from("calendar_occurrences")
+    .delete()
+    .eq("org_id", input.orgId)
+    .eq("id", input.occurrenceId);
+
+  if (error) {
+    throw new Error(`Failed to delete calendar occurrence: ${error.message}`);
+  }
 }
 
 export async function setCalendarOccurrenceStatusBySourceKey(input: {
@@ -1421,8 +1530,138 @@ export async function createInboxItems(
   }
 }
 
+export async function listCalendarSources(orgId: string): Promise<CalendarSource[]> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("calendar_sources")
+    .select(sourceSelect)
+    .eq("org_id", orgId)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to list calendar sources: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => mapSource(row as SourceRow));
+}
+
+export async function upsertCalendarSource(input: {
+  orgId: string;
+  sourceId?: string;
+  name: string;
+  scopeType: CalendarSource["scopeType"];
+  scopeId: string | null;
+  scopeLabel: string | null;
+  parentSourceId: string | null;
+  purposeDefaults: CalendarPurpose[];
+  audienceDefaults: CalendarAudience[];
+  isCustomCalendar: boolean;
+  isActive: boolean;
+  displayJson?: Record<string, unknown>;
+  actorUserId: string;
+}): Promise<CalendarSource> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("calendar_sources")
+    .upsert({
+      id: input.sourceId,
+      org_id: input.orgId,
+      name: input.name,
+      scope_type: input.scopeType,
+      scope_id: input.scopeId,
+      scope_label: input.scopeLabel,
+      parent_source_id: input.parentSourceId,
+      purpose_defaults: input.purposeDefaults,
+      audience_defaults: input.audienceDefaults,
+      is_custom_calendar: input.isCustomCalendar,
+      is_active: input.isActive,
+      display_json: input.displayJson ?? {},
+      created_by: input.actorUserId,
+      updated_by: input.actorUserId
+    })
+    .select(sourceSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to save calendar source: ${error.message}`);
+  }
+
+  return mapSource(data as SourceRow);
+}
+
+export async function listCalendarLensSavedViews(input: {
+  orgId: string;
+  userId: string;
+  contextType?: CalendarPageContextType | null;
+}): Promise<CalendarLensSavedView[]> {
+  const supabase = await createSupabaseServer();
+  let query = supabase
+    .from("calendar_lens_saved_views")
+    .select(savedLensViewSelect)
+    .eq("org_id", input.orgId)
+    .eq("user_id", input.userId)
+    .order("updated_at", { ascending: false });
+
+  if (input.contextType) {
+    query = query.eq("context_type", input.contextType);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(`Failed to list saved views: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => mapSavedLensView(row as SavedLensViewRow));
+}
+
+export async function saveCalendarLensView(input: {
+  orgId: string;
+  userId: string;
+  viewId?: string;
+  name: string;
+  contextType: CalendarPageContextType | null;
+  isDefault: boolean;
+  configJson: Record<string, unknown>;
+}): Promise<CalendarLensSavedView> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("calendar_lens_saved_views")
+    .upsert({
+      id: input.viewId,
+      org_id: input.orgId,
+      user_id: input.userId,
+      name: input.name,
+      context_type: input.contextType,
+      is_default: input.isDefault,
+      config_json: input.configJson
+    })
+    .select(savedLensViewSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to save view: ${error.message}`);
+  }
+
+  return mapSavedLensView(data as SavedLensViewRow);
+}
+
+export async function deleteCalendarLensView(input: { orgId: string; userId: string; viewId: string }): Promise<void> {
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase
+    .from("calendar_lens_saved_views")
+    .delete()
+    .eq("org_id", input.orgId)
+    .eq("user_id", input.userId)
+    .eq("id", input.viewId);
+  if (error) {
+    throw new Error(`Failed to delete saved view: ${error.message}`);
+  }
+}
+
 export async function listCalendarReadModel(orgId: string): Promise<CalendarReadModel> {
-  const [entries, rules, occurrences, exceptions, configurations, allocations, ruleAllocations, invites] = await Promise.all([
+  const [sources, entries, rules, occurrences, exceptions, configurations, allocations, ruleAllocations, invites] = await Promise.all([
+    listCalendarSources(orgId).catch(() => []),
     listCalendarEntries(orgId),
     listCalendarRules(orgId),
     listCalendarOccurrences(orgId, { includeCancelled: true }),
@@ -1434,6 +1673,7 @@ export async function listCalendarReadModel(orgId: string): Promise<CalendarRead
   ]);
 
   return {
+    sources,
     entries,
     rules,
     occurrences,

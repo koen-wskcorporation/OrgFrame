@@ -10,6 +10,8 @@ export type SelectOption = {
   disabled?: boolean;
   imageSrc?: string;
   imageAlt?: string;
+  statusDot?: "success" | "warning" | "destructive" | "muted";
+  meta?: string;
 };
 
 type SelectProps = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "children" | "onChange"> & {
@@ -34,6 +36,19 @@ function getEnabledOptionIndexes(options: SelectOption[]) {
     }
     return indexes;
   }, []);
+}
+
+function resolveStatusDotClass(statusDot: SelectOption["statusDot"]) {
+  if (statusDot === "success") {
+    return "bg-emerald-500";
+  }
+  if (statusDot === "warning") {
+    return "bg-amber-500";
+  }
+  if (statusDot === "destructive") {
+    return "bg-rose-500";
+  }
+  return "bg-zinc-400";
 }
 
 const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
@@ -264,6 +279,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                 src={selectedOption.imageSrc}
               />
             ) : null}
+            {selectedOption?.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(selectedOption.statusDot))} /> : null}
             <span className="truncate">{selectedOption?.label ?? placeholder}</span>
           </span>
           <ChevronDown className={cn(variant === "inline" ? "h-3.5 w-3.5" : "h-4 w-4", "shrink-0 text-text-muted transition-transform", open ? "rotate-180" : "")} />
@@ -309,7 +325,9 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                           src={option.imageSrc}
                         />
                       ) : null}
+                      {option.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(option.statusDot))} /> : null}
                       <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      {option.meta ? <span className="shrink-0 text-xs text-text-muted">{option.meta}</span> : null}
                       {isSelected ? <Check className="h-4 w-4 shrink-0 text-text-muted" /> : null}
                     </button>
                   </li>

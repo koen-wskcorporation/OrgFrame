@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Button } from "@orgframe/ui/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
+import { Input } from "@orgframe/ui/ui/input";
 import { useToast } from "@orgframe/ui/ui/toast";
 import {
   archiveFacilitySpaceAction,
@@ -27,6 +28,25 @@ type FacilityManageDetailPanelProps = {
   activeSection: FacilityManageDetailSection;
 };
 
+function readFacilityAddressFromMetadata(space: FacilitySpace) {
+  const metadata = space.metadataJson ?? {};
+  const address = metadata.address;
+  return typeof address === "string" ? address.trim() : "";
+}
+
+function buildMetadataWithAddress(space: FacilitySpace, addressDraft: string) {
+  const nextAddress = addressDraft.trim();
+  const metadata = { ...space.metadataJson };
+  if (nextAddress.length > 0) {
+    return {
+      ...metadata,
+      address: nextAddress
+    };
+  }
+  delete metadata.address;
+  return metadata;
+}
+
 export function FacilityManageDetailPanel({
   orgSlug,
   canWrite,
@@ -45,6 +65,14 @@ export function FacilityManageDetailPanel({
 
   const selectedSpaceStatusLabels = useMemo(() => resolveFacilitySpaceStatusLabels(currentSelectedSpace), [currentSelectedSpace]);
   const selectedSpaceStatusOptions = useMemo(() => buildFacilitySpaceStatusOptions(selectedSpaceStatusLabels), [selectedSpaceStatusLabels]);
+  const [facilityAddressDraft, setFacilityAddressDraft] = useState(() => readFacilityAddressFromMetadata(currentSelectedSpace));
+  const isTopLevelFacility = currentSelectedSpace.parentSpaceId === null;
+  const currentFacilityAddress = useMemo(() => readFacilityAddressFromMetadata(currentSelectedSpace), [currentSelectedSpace]);
+  const hasAddressChanges = facilityAddressDraft.trim() !== currentFacilityAddress;
+
+  useEffect(() => {
+    setFacilityAddressDraft(readFacilityAddressFromMetadata(currentSelectedSpace));
+  }, [currentSelectedSpace]);
 
   function applyReadModel(next: FacilityReservationReadModel) {
     setReadModel(next);
@@ -119,9 +147,64 @@ export function FacilityManageDetailPanel({
         <Card>
           <CardHeader>
             <CardTitle>Facility settings</CardTitle>
-            <CardDescription>Update status, booking controls, and archive state.</CardDescription>
+            <CardDescription>Update status, booking controls, archive state, and top-level address details.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            {isTopLevelFacility ? (
+              <div className="space-y-2 rounded-control border p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Facility address</p>
+                <Input
+                  disabled={!canWrite}
+                  onChange={(event) => setFacilityAddressDraft(event.target.value)}
+                  placeholder="Enter facility address"
+                  value={facilityAddressDraft}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    disabled={!canWrite || !hasAddressChanges || isMutating}
+                    onClick={() =>
+                      withToast(
+                        () =>
+                          updateFacilitySpaceAction({
+                            orgSlug,
+                            spaceId: currentSelectedSpace.id,
+                            name: currentSelectedSpace.name,
+                            metadataJson: buildMetadataWithAddress(currentSelectedSpace, facilityAddressDraft)
+                          }),
+                        "Facility address updated"
+                      )
+                    }
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    Save address
+                  </Button>
+                  {currentFacilityAddress ? (
+                    <Button
+                      disabled={!canWrite || isMutating}
+                      onClick={() =>
+                        withToast(
+                          () =>
+                            updateFacilitySpaceAction({
+                              orgSlug,
+                              spaceId: currentSelectedSpace.id,
+                              name: currentSelectedSpace.name,
+                              metadataJson: buildMetadataWithAddress(currentSelectedSpace, "")
+                            }),
+                          "Facility address cleared"
+                        )
+                      }
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      Clear address
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Button href={`/${orgSlug}/tools/facilities`} size="sm" variant="secondary">
                 Back to facilities

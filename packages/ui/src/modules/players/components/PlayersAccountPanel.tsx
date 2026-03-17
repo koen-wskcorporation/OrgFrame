@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgf
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
 import { Panel } from "@orgframe/ui/ui/panel";
+import { Repeater } from "@orgframe/ui/ui/repeater";
 import { Select } from "@orgframe/ui/ui/select";
 import { Textarea } from "@orgframe/ui/ui/textarea";
 import { useToast } from "@orgframe/ui/ui/toast";
@@ -316,13 +317,19 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
 
       {sortedPlayers.length === 0 ? <Alert variant="info">No players yet. Add your first player.</Alert> : null}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {sortedPlayers.map((item) => {
+      <Repeater
+        getItemKey={(item) => item.player.id}
+        getSearchValue={(item) =>
+          `${item.player.firstName} ${item.player.lastName} ${item.player.preferredName ?? ""} ${item.player.dateOfBirth ?? ""} ${item.player.gender ?? ""}`
+        }
+        items={sortedPlayers}
+        searchPlaceholder="Search players"
+        renderItem={({ item }) => {
           const myGuardianLink = item.guardians.find((guardian) => guardian.guardianUserId === currentUserId);
           const relationshipToMe = myGuardianLink?.relationship ?? "Unspecified";
 
           return (
-            <Card key={item.player.id}>
+            <Card>
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <CardTitle>
@@ -349,8 +356,8 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
               </CardContent>
             </Card>
           );
-        })}
-      </div>
+        }}
+      />
 
       <Panel
         footer={

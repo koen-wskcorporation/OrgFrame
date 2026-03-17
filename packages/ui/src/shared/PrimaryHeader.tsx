@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { HeaderProgressBar } from "@orgframe/ui/shared/HeaderProgressBar";
 import { PrimaryAccountControls } from "@orgframe/ui/shared/PrimaryAccountControls";
+import { PrimaryHeaderNav } from "@orgframe/ui/shared/PrimaryHeaderNav";
 import { AdaptiveLogo } from "@orgframe/ui/ui/adaptive-logo";
 
 type PrimaryHeaderProps = {
@@ -16,7 +17,7 @@ export function PrimaryHeader({ homeHref = "/", currentOrgSlug = null, tenantBas
       <Suspense fallback={null}>
         <HeaderProgressBar />
       </Suspense>
-      <div className="app-container flex h-16 w-full items-center justify-between">
+      <div className="app-container flex h-16 w-full items-center gap-4">
         <Link className="inline-flex min-w-0 items-center" href={homeHref}>
           <AdaptiveLogo
             alt="Sports SaaS logo"
@@ -26,7 +27,10 @@ export function PrimaryHeader({ homeHref = "/", currentOrgSlug = null, tenantBas
           />
         </Link>
 
-        <PrimaryAccountControls currentOrgSlug={currentOrgSlug} homeHref={homeHref} tenantBaseOrigin={tenantBaseOrigin} />
+        <PrimaryHeaderNav homeHref={homeHref} />
+        <div className="ml-auto shrink-0">
+          <PrimaryAccountControls currentOrgSlug={currentOrgSlug} homeHref={homeHref} tenantBaseOrigin={tenantBaseOrigin} />
+        </div>
       </div>
     </header>
   );

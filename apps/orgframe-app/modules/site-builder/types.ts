@@ -5,6 +5,7 @@ import type { OrgForm } from "@/modules/forms/types";
 import type { PlayerPickerItem } from "@/modules/players/types";
 import type { ProgramCatalogItem } from "@/modules/programs/types";
 import type { ProgramNode } from "@/modules/programs/types";
+import type { ProgramTeamDirectoryItem } from "@/modules/programs/types";
 
 export type OrgSiteBlockType =
   | "hero"
@@ -16,7 +17,8 @@ export type OrgSiteBlockType =
   | "events"
   | "form_embed"
   | "facility_availability_calendar"
-  | "facility_space_list";
+  | "facility_space_list"
+  | "teams_directory";
 
 export type HeroBlockConfig = {
   headline: string;
@@ -106,6 +108,16 @@ export type FacilitySpaceListBlockConfig = {
   emptyMessage: string;
 };
 
+export type TeamsDirectoryBlockConfig = {
+  title: string;
+  body: string;
+  maxItems: number;
+  showProgram: boolean;
+  showDivision: boolean;
+  showCounts: boolean;
+  emptyMessage: string;
+};
+
 export type OrgSiteBlockConfigMap = {
   hero: HeroBlockConfig;
   subhero: SubheroBlockConfig;
@@ -117,6 +129,7 @@ export type OrgSiteBlockConfigMap = {
   form_embed: FormEmbedBlockConfig;
   facility_availability_calendar: FacilityAvailabilityCalendarBlockConfig;
   facility_space_list: FacilitySpaceListBlockConfig;
+  teams_directory: TeamsDirectoryBlockConfig;
 };
 
 export type OrgPageBlock<TType extends OrgSiteBlockType = OrgSiteBlockType> = {
@@ -146,6 +159,23 @@ export type OrgManagePage = {
   updatedAt: string;
 };
 
+export type OrgNavLinkType = "none" | "internal" | "external";
+
+export type OrgNavItem = {
+  id: string;
+  orgId: string;
+  parentId: string | null;
+  label: string;
+  linkType: OrgNavLinkType;
+  pageSlug: string | null;
+  externalUrl: string | null;
+  openInNewTab: boolean;
+  isVisible: boolean;
+  sortIndex: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type OrgSitePageWithBlocks = {
   page: OrgSitePage;
   blocks: OrgPageBlock[];
@@ -159,6 +189,7 @@ export type BlockContext = {
 
 export type OrgSiteRuntimeData = {
   programCatalogItems?: ProgramCatalogItem[];
+  teamsDirectoryItems?: ProgramTeamDirectoryItem[];
   publicCalendarItems?: CalendarPublicCatalogItem[];
   // Temporary alias while all callsites migrate in one release.
   eventsCatalogItems?: CalendarPublicCatalogItem[];

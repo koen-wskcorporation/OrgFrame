@@ -7,6 +7,7 @@ import { listPublishedFormsForOrg } from "@/modules/forms/db/queries";
 import { listPlayersForPicker } from "@/modules/players/db/queries";
 import { listPublishedProgramsForCatalog } from "@/modules/programs/db/queries";
 import { listProgramNodes } from "@/modules/programs/db/queries";
+import { listPublishedProgramTeamsForDirectory } from "@/modules/programs/teams/db/queries";
 import { getPublishedOrgPageBySlug } from "@/modules/site-builder/db/queries";
 
 export async function getOrgSitePageForRender({
@@ -38,6 +39,8 @@ export async function getOrgSitePageForRender({
         )
         .catch(() => [])
     : [];
+  const requiresTeamsDirectory = pageData?.blocks.some((block) => block.type === "teams_directory") ?? false;
+  const teamsDirectoryItems = requiresTeamsDirectory ? await listPublishedProgramTeamsForDirectory(orgRequest.org.orgId, { limit: 200 }).catch(() => []) : [];
 
   const requiresCalendar = pageData?.blocks.some((block) => block.type === "events") ?? false;
   const now = Date.now();
@@ -81,6 +84,7 @@ export async function getOrgSitePageForRender({
 
   const runtimeData = {
     programCatalogItems,
+    teamsDirectoryItems,
     publicCalendarItems,
     eventsCatalogItems: publicCalendarItems,
     facilityAvailability,

@@ -23,7 +23,7 @@ import { AssetTile } from "@orgframe/ui/ui/asset-tile";
 import { useToast } from "@orgframe/ui/ui/toast";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
 import { cn } from "@/lib/utils";
-import { StructureCanvasShell } from "@orgframe/ui/modules/core/components/StructureCanvasShell";
+import { StructureCanvas } from "@orgframe/ui/modules/core/components/StructureCanvas";
 import { FormCreatePanel } from "@orgframe/ui/modules/forms/components/FormCreatePanel";
 import type { OrgForm } from "@/modules/forms/types";
 import { saveProgramHierarchyAction, saveProgramScheduleAction, updateProgramAction } from "@/modules/programs/actions";
@@ -81,6 +81,23 @@ function combineDateTimeLocal(date: string, time: string) {
   }
 
   return `${date}T${time || "00:00"}`;
+}
+
+function resolveProgramPublishStatusChip(isPublished: boolean) {
+  return isPublished
+    ? { label: "Published", color: "green" as const }
+    : { label: "Draft", color: "yellow" as const };
+}
+
+function resolveProgramTeamStatusChip(status: ProgramTeamSummary["team"]["status"]) {
+  switch (status) {
+    case "active":
+      return { label: "Active", color: "green" as const };
+    case "archived":
+      return { label: "Archived", color: "neutral" as const };
+    default:
+      return { label: status, color: "neutral" as const };
+  }
 }
 
 const ROOT_PARENT_KEY = "__root__";
@@ -318,6 +335,8 @@ function StructureTreeRow({
   const hasNestedDivisionBreadcrumb = node.nodeKind === "division" && breadcrumbParts.length > 1;
   const teamRosterCount = teamSummary?.memberCount ?? 0;
   const teamStaffCount = teamSummary?.staffCount ?? 0;
+  const publishStatusChip = resolveProgramPublishStatusChip(isPublished);
+  const teamStatusChip = node.nodeKind === "team" && teamSummary ? resolveProgramTeamStatusChip(teamSummary.team.status) : null;
 
   useEffect(() => {
     if (!isMenuOpen) {
@@ -420,6 +439,14 @@ function StructureTreeRow({
                   </p>
                 )}
                 <Chip size="compact">{nodeTypeLabel}</Chip>
+                <Chip className="normal-case tracking-normal" color={publishStatusChip.color} size="compact" variant="flat">
+                  {publishStatusChip.label}
+                </Chip>
+                {teamStatusChip ? (
+                  <Chip className="normal-case tracking-normal" color={teamStatusChip.color} size="compact" variant="flat">
+                    {teamStatusChip.label}
+                  </Chip>
+                ) : null}
               </div>
               {node.nodeKind === "team" ? (
                 <p className="text-[10px] text-text-muted">
@@ -1163,7 +1190,9 @@ export function ProgramEditorPanel({
       setActiveDivisionId(target.id);
     }
     focusNodeInCanvas(target.id);
-    openNodeEditPanel(target);
+    if (isStructureCanvasEditMode) {
+      openNodeEditPanel(target);
+    }
   }
 
   function updateTeamQuery(nextTeamId: string | null) {
@@ -1562,16 +1591,38 @@ export function ProgramEditorPanel({
               <CardDescription>Map out divisions and teams. Teams must always be nested under a division.</CardDescription>
             </CardHeader>
             <CardContent>
-              <StructureCanvasShell
+              <StructureCanvas
                 addButtonAriaLabel="Add division"
                 addButtonDisabled={isMutatingNodes || !isStructureCanvasEditMode}
                 autoFitKey={nodes.length}
                 autoFitOnOpen
                 canvasRef={structureCanvasRef}
                 dragInProgress={Boolean(activeDragNodeId)}
+                editContent={
+                  nodes.length > 0 || activeDragNodeId ? (
+                    <DndContext
+                      collisionDetection={closestCenter}
+                      onDragCancel={() => setActiveDragNodeId(null)}
+                      onDragEnd={handleNodeDragEnd}
+                      onDragStart={handleNodeDragStart}
+                      sensors={sensors}
+                    >
+                      {renderStructureBranch(null, { kindFilter: "division" })}
+                    </DndContext>
+                  ) : null
+                }
                 emptyState={nodes.length === 0 ? <Alert variant="info">No structure nodes yet. Add a division to start the map.</Alert> : null}
+                mapMode="program"
                 onAdd={() => openNodeCreatePanel(null, "division")}
                 onEditOpenChange={setIsStructureCanvasEditMode}
+                onProgramSelect={(node) => {
+                  setFocusedNodeId(node.id);
+                  if (node.nodeKind === "division") {
+                    setActiveDivisionId(node.id);
+                    return;
+                  }
+                  openTeamPanel(node.id);
+                }}
                 onSearchQueryChange={setStructureSearch}
                 onSearchSubmit={focusNodeFromSearch}
                 onViewNodeSelect={(nodeId) => {
@@ -1592,6 +1643,8 @@ export function ProgramEditorPanel({
                   setStructureScale(scale);
                   setStructureZoomPercent(Math.round(scale * 100));
                 }}
+                programNodes={nodes}
+                programSelectedIds={focusedNodeId ? new Set([focusedNodeId]) : undefined}
                 viewContentInteractive
                 viewViewportInteractive
                 rootHeader={
@@ -1609,20 +1662,9 @@ export function ProgramEditorPanel({
                   kindLabel: node.nodeKind
                 }))}
                 storageKey={`program-structure-canvas:${orgSlug}:${data.program.id}`}
+                viewEditButtonPlacement="top-right"
                 zoomPercent={structureZoomPercent}
-              >
-                {nodes.length > 0 || activeDragNodeId ? (
-                  <DndContext
-                    collisionDetection={closestCenter}
-                    onDragCancel={() => setActiveDragNodeId(null)}
-                    onDragEnd={handleNodeDragEnd}
-                    onDragStart={handleNodeDragStart}
-                    sensors={sensors}
-                  >
-                    {renderStructureBranch(null, { kindFilter: "division" })}
-                  </DndContext>
-                ) : null}
-              </StructureCanvasShell>
+              />
             </CardContent>
           </Card>
 

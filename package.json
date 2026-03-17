@@ -15,5 +15,8 @@
     "lint:web": "npm run lint --workspace orgframe-web",
     "typecheck:app": "npm run typecheck --workspace orgframe-app",
     "typecheck:web": "npm run typecheck --workspace orgframe-web"
+  },
+  "dependencies": {
+    "next": "^16.1.7"
   }
 }

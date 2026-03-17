@@ -8,20 +8,26 @@ import { requireOrgPermission } from "@/lib/permissions/requireOrgPermission";
 import { rethrowIfNavigationError } from "@/lib/actions/rethrowIfNavigationError";
 import { defaultPageTitleFromSlug, isReservedPageSlug, sanitizePageSlug } from "@/modules/site-builder/blocks/helpers";
 import {
+  createOrgNavItem,
+  deleteOrgNavItemById,
   deleteOrgPageById,
+  getOrgNavItemById,
   duplicateOrgPageWithBlocks,
   ensureOrgPageExists,
   getOrgPageById,
   getEditableOrgPageBySlug,
   getPublishedOrgPageBySlug,
+  listOrgNavItemsForManage,
   listOrgPagesForManage,
   listOrgPagesForLinkPicker,
   reorderOrgPages,
+  saveOrgNavItemsTree,
   saveOrgPageAndBlocks,
+  updateOrgNavItemById,
   updateOrgPageSettingsById
 } from "@/modules/site-builder/db/queries";
 import type { LinkPickerPageOption } from "@/lib/links";
-import type { DraftBlockInput, OrgManagePage, OrgPageBlock, OrgSitePage } from "@/modules/site-builder/types";
+import type { DraftBlockInput, OrgManagePage, OrgNavItem, OrgPageBlock, OrgSitePage } from "@/modules/site-builder/types";
 
 export type LoadOrgPageInput = {
   orgSlug: string;
@@ -194,6 +200,7 @@ type ManagePagesActionResult =
   | {
       ok: true;
       pages: OrgManagePage[];
+      navItems?: OrgNavItem[];
     }
   | {
       ok: false;
@@ -342,10 +349,12 @@ export async function savePageSettingsAction(input: {
     });
 
     const pages = await listOrgPagesForManage(org.orgId);
+    const navItems = await listOrgNavItemsForManage(org.orgId);
 
     return {
       ok: true,
-      pages
+      pages,
+      navItems
     };
   } catch (error) {
     rethrowIfNavigationError(error);
@@ -929,6 +938,431 @@ export async function saveOrgPagesAction(input: z.infer<typeof saveOrgPagesActio
     return {
       ok: false,
       error: "Unable to save page updates right now."
+    };
+  }
+}
+
+type HeaderMenuStateResult =
+  | {
+      ok: true;
+      pages: OrgManagePage[];
+      navItems: OrgNavItem[];
+      createdPageSlug?: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+async function loadHeaderMenuState(orgId: string) {
+  const [pages, navItems] = await Promise.all([listOrgPagesForManage(orgId), listOrgNavItemsForManage(orgId)]);
+  return {
+    pages,
+    navItems
+  };
+}
+
+function sortNavItemsForManage(items: OrgNavItem[]) {
+  return [...items].sort((a, b) => {
+    if (a.parentId !== b.parentId) {
+      const aKey = a.parentId ?? "";
+      const bKey = b.parentId ?? "";
+      return aKey.localeCompare(bKey);
+    }
+
+    if (a.sortIndex !== b.sortIndex) {
+      return a.sortIndex - b.sortIndex;
+    }
+
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+}
+
+function toNavTreeSavePayload(items: OrgNavItem[]) {
+  const siblingIndexByParent = new Map<string, number>();
+
+  return items.map((item) => {
+    const key = item.parentId ?? "__root__";
+    const nextIndex = siblingIndexByParent.get(key) ?? 0;
+    siblingIndexByParent.set(key, nextIndex + 1);
+    return {
+      id: item.id,
+      parentId: item.parentId,
+      sortIndex: nextIndex
+    };
+  });
+}
+
+function buildReparentedNavItems({
+  current,
+  itemId,
+  parentId
+}: {
+  current: OrgNavItem[];
+  itemId: string;
+  parentId: string | null;
+}) {
+  const next = sortNavItemsForManage(current).map((item) => ({ ...item }));
+  const movingItem = next.find((item) => item.id === itemId);
+
+  if (!movingItem) {
+    return null;
+  }
+
+  movingItem.parentId = parentId;
+  movingItem.sortIndex = Number.MAX_SAFE_INTEGER;
+
+  return sortNavItemsForManage(next).map((item, index) => ({
+    ...item,
+    sortIndex: index
+  }));
+}
+
+const saveOrgHeaderMenuActionSchema = z.object({
+  orgSlug: z.string().trim().min(1),
+  action: z.discriminatedUnion("type", [
+    z.object({
+      type: z.literal("reorder-tree"),
+      items: z
+        .array(
+          z.object({
+            id: z.string().trim().uuid(),
+            parentId: z.string().trim().uuid().nullable()
+          })
+        )
+        .min(1)
+    }),
+    z.object({
+      type: z.literal("set-visible"),
+      itemId: z.string().trim().uuid(),
+      isVisible: z.boolean()
+    }),
+    z.object({
+      type: z.literal("create-placeholder"),
+      label: z.string().trim().min(1).max(120),
+      parentId: z.string().trim().uuid().nullable().optional(),
+      isVisible: z.boolean().optional()
+    }),
+    z.object({
+      type: z.literal("create-page"),
+      title: z.string().trim().max(120),
+      slug: z.string().trim().max(120).optional(),
+      parentId: z.string().trim().uuid().nullable().optional(),
+      isPublished: z.boolean().optional(),
+      isVisible: z.boolean().optional()
+    }),
+    z.object({
+      type: z.literal("update-item"),
+      itemId: z.string().trim().uuid(),
+      label: z.string().trim().min(1).max(120).optional(),
+      isVisible: z.boolean().optional()
+    }),
+    z.object({
+      type: z.literal("delete-item"),
+      itemId: z.string().trim().uuid()
+    })
+  ])
+});
+
+function normalizeParentForMenu(items: OrgNavItem[], parentId?: string | null) {
+  if (!parentId) {
+    return {
+      ok: true as const,
+      parentId: null
+    };
+  }
+
+  const parent = items.find((item) => item.id === parentId);
+
+  if (!parent) {
+    return {
+      ok: false as const,
+      error: "Parent item no longer exists."
+    };
+  }
+
+  if (parent.parentId) {
+    return {
+      ok: false as const,
+      error: "Only one dropdown level is supported right now."
+    };
+  }
+
+  return {
+    ok: true as const,
+    parentId: parent.id
+  };
+}
+
+function validateNavTree(items: Array<{ id: string; parentId: string | null }>) {
+  const ids = new Set(items.map((item) => item.id));
+  const parentById = new Map(items.map((item) => [item.id, item.parentId]));
+
+  for (const item of items) {
+    if (item.parentId && !ids.has(item.parentId)) {
+      return "One or more menu parents are invalid.";
+    }
+
+    if (item.parentId === item.id) {
+      return "Menu items can't nest into themselves.";
+    }
+
+    let cursor = item.parentId;
+    let depth = 0;
+    const seen = new Set<string>([item.id]);
+
+    while (cursor) {
+      if (seen.has(cursor)) {
+        return "Menu nesting contains a loop.";
+      }
+      seen.add(cursor);
+      depth += 1;
+
+      if (depth > 1) {
+        return "Only one dropdown level is supported right now.";
+      }
+
+      cursor = parentById.get(cursor) ?? null;
+    }
+  }
+
+  return null;
+}
+
+export async function saveOrgHeaderMenuAction(input: z.infer<typeof saveOrgHeaderMenuActionSchema>): Promise<HeaderMenuStateResult> {
+  const parsed = saveOrgHeaderMenuActionSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Invalid menu update."
+    };
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
+    const currentState = await loadHeaderMenuState(org.orgId);
+
+    if (payload.action.type === "reorder-tree") {
+      if (payload.action.items.length !== currentState.navItems.length) {
+        return {
+          ok: false,
+          error: "Menu order is out of date. Refresh and try again."
+        };
+      }
+
+      const currentIds = new Set(currentState.navItems.map((item) => item.id));
+      const nextIds = new Set(payload.action.items.map((item) => item.id));
+
+      if (currentIds.size !== nextIds.size || [...currentIds].some((id) => !nextIds.has(id))) {
+        return {
+          ok: false,
+          error: "Menu order is out of date. Refresh and try again."
+        };
+      }
+
+      const treeError = validateNavTree(payload.action.items);
+
+      if (treeError) {
+        return {
+          ok: false,
+          error: treeError
+        };
+      }
+
+      const siblingIndexByParent = new Map<string, number>();
+      const savePayload = payload.action.items.map((item) => {
+        const key = item.parentId ?? "__root__";
+        const nextIndex = siblingIndexByParent.get(key) ?? 0;
+        siblingIndexByParent.set(key, nextIndex + 1);
+        return {
+          id: item.id,
+          parentId: item.parentId,
+          sortIndex: nextIndex
+        };
+      });
+      await saveOrgNavItemsTree(org.orgId, savePayload);
+      return {
+        ok: true,
+        ...(await loadHeaderMenuState(org.orgId))
+      };
+    }
+
+    if (payload.action.type === "set-visible") {
+      const existing = await getOrgNavItemById(org.orgId, payload.action.itemId);
+
+      if (!existing) {
+        return {
+          ok: false,
+          error: "This menu item no longer exists."
+        };
+      }
+
+      await updateOrgNavItemById({
+        orgId: org.orgId,
+        itemId: existing.id,
+        isVisible: payload.action.isVisible
+      });
+
+      return {
+        ok: true,
+        ...(await loadHeaderMenuState(org.orgId))
+      };
+    }
+
+    if (payload.action.type === "create-placeholder") {
+      const normalizedParent = normalizeParentForMenu(currentState.navItems, payload.action.parentId ?? null);
+
+      if (!normalizedParent.ok) {
+        return {
+          ok: false,
+          error: normalizedParent.error
+        };
+      }
+
+      await createOrgNavItem({
+        orgId: org.orgId,
+        parentId: normalizedParent.parentId,
+        label: payload.action.label,
+        linkType: "none",
+        isVisible: payload.action.isVisible ?? true
+      });
+
+      return {
+        ok: true,
+        ...(await loadHeaderMenuState(org.orgId))
+      };
+    }
+
+    if (payload.action.type === "create-page") {
+      const normalizedParent = normalizeParentForMenu(currentState.navItems, payload.action.parentId ?? null);
+
+      if (!normalizedParent.ok) {
+        return {
+          ok: false,
+          error: normalizedParent.error
+        };
+      }
+
+      const requestedSlug = payload.action.slug?.trim() ? sanitizePageSlug(payload.action.slug) : "";
+
+      if (requestedSlug && requestedSlug !== "home" && isReservedPageSlug(requestedSlug)) {
+        return {
+          ok: false,
+          error: "That URL is reserved by the system. Choose a different page URL."
+        };
+      }
+
+      const slugBase = requestedSlug || sanitizePageSlug(payload.action.title || "page");
+      const availableSlug = await findAvailablePageSlug({
+        orgId: org.orgId,
+        orgSlug: org.orgSlug,
+        orgName: org.orgName,
+        preferred: slugBase
+      });
+
+      if (!availableSlug) {
+        return {
+          ok: false,
+          error: "Unable to find an available URL for this page."
+        };
+      }
+
+      const created = await ensureOrgPageExists({
+        orgId: org.orgId,
+        pageSlug: availableSlug,
+        title: payload.action.title,
+        context: {
+          orgSlug: org.orgSlug,
+          orgName: org.orgName,
+          pageSlug: availableSlug
+        }
+      });
+
+      if (payload.action.isPublished === false) {
+        await updateOrgPageSettingsById({
+          orgId: org.orgId,
+          pageId: created.page.id,
+          title: created.page.title,
+          slug: created.page.slug,
+          isPublished: false
+        });
+      }
+
+      const stateAfterCreate = await loadHeaderMenuState(org.orgId);
+      const createdNavItem = stateAfterCreate.navItems.find((item) => item.linkType === "internal" && item.pageSlug === created.page.slug) ?? null;
+
+      if (createdNavItem) {
+        await updateOrgNavItemById({
+          orgId: org.orgId,
+          itemId: createdNavItem.id,
+          isVisible: payload.action.isVisible ?? true
+        });
+
+        if (normalizedParent.parentId !== null) {
+          const reparented = buildReparentedNavItems({
+            current: stateAfterCreate.navItems,
+            itemId: createdNavItem.id,
+            parentId: normalizedParent.parentId
+          });
+
+          if (reparented) {
+            await saveOrgNavItemsTree(org.orgId, toNavTreeSavePayload(reparented));
+          }
+        }
+      }
+
+      return {
+        ok: true,
+        ...(await loadHeaderMenuState(org.orgId)),
+        createdPageSlug: created.page.slug
+      };
+    }
+
+    if (payload.action.type === "update-item") {
+      const existing = await getOrgNavItemById(org.orgId, payload.action.itemId);
+
+      if (!existing) {
+        return {
+          ok: false,
+          error: "This menu item no longer exists."
+        };
+      }
+
+      await updateOrgNavItemById({
+        orgId: org.orgId,
+        itemId: existing.id,
+        label: payload.action.label,
+        isVisible: payload.action.isVisible
+      });
+
+      return {
+        ok: true,
+        ...(await loadHeaderMenuState(org.orgId))
+      };
+    }
+
+    const existing = await getOrgNavItemById(org.orgId, payload.action.itemId);
+
+    if (!existing) {
+      return {
+        ok: false,
+        error: "This menu item no longer exists."
+      };
+    }
+
+    await deleteOrgNavItemById(org.orgId, existing.id);
+    return {
+      ok: true,
+      ...(await loadHeaderMenuState(org.orgId))
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+
+    return {
+      ok: false,
+      error: "Unable to save menu updates right now."
     };
   }
 }

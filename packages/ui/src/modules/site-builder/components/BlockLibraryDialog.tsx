@@ -10,6 +10,7 @@ import {
   Megaphone,
   PanelTop,
   Sparkles,
+  Users,
   TableProperties,
   type LucideIcon
 } from "lucide-react";
@@ -71,6 +72,10 @@ const tileMetaByType: Record<
   facility_space_list: {
     icon: TableProperties,
     description: "Hierarchical status list for spaces with open/closed/booked indicators."
+  },
+  teams_directory: {
+    icon: Users,
+    description: "Directory of active teams across published programs."
   }
 };
 
