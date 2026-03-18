@@ -2231,7 +2231,7 @@ export async function commitRun(input: z.input<typeof commitRunSchema>): Promise
   }
 
   revalidatePath(`/${org.orgSlug}/manage/sportsconnect`);
-  revalidatePath(`/${org.orgSlug}/tools/manage/sportsconnect`);
+  revalidatePath(`/${org.orgSlug}/manage/sportsconnect`);
   revalidatePath(`/${org.orgSlug}/manage/forms`);
 
   return {

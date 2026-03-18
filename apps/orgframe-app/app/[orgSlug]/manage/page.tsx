@@ -33,7 +33,7 @@ export default async function OrgManageOverviewPage({
       section: "organization" as const,
       title: "Org Info",
       description: "View core organization metadata and identifiers.",
-      href: `/${orgSlug}/tools/manage/info`,
+      href: `/${orgSlug}/manage/info`,
       cta: "Open Org Info",
       enabled: canManageOrg
     },
@@ -41,7 +41,7 @@ export default async function OrgManageOverviewPage({
       section: "organization" as const,
       title: "Custom Domains",
       description: "Connect your own domain and review DNS setup requirements.",
-      href: `/${orgSlug}/tools/manage/domains`,
+      href: `/${orgSlug}/manage/domains`,
       cta: "Open Domains",
       enabled: canManageOrg
     },
@@ -49,7 +49,7 @@ export default async function OrgManageOverviewPage({
       section: "organization" as const,
       title: "Branding",
       description: "Update logo, icon, and organization accent color.",
-      href: `/${orgSlug}/tools/manage/branding`,
+      href: `/${orgSlug}/manage/branding`,
       cta: "Open Branding",
       enabled: canReadBranding
     },
@@ -57,7 +57,7 @@ export default async function OrgManageOverviewPage({
       section: "organization" as const,
       title: "User Accounts",
       description: "Invite users, manage core access levels, and account recovery.",
-      href: `/${orgSlug}/tools/manage/access`,
+      href: `/${orgSlug}/manage/access`,
       cta: "Open Accounts & Access",
       enabled: canManageOrg
     },
@@ -65,7 +65,7 @@ export default async function OrgManageOverviewPage({
       section: "organization" as const,
       title: "Billing",
       description: "View subscription details and billing controls.",
-      href: `/${orgSlug}/tools/manage/billing`,
+      href: `/${orgSlug}/manage/billing`,
       cta: "Open Billing",
       enabled: canManageOrg
     },
@@ -73,7 +73,7 @@ export default async function OrgManageOverviewPage({
       section: "operations" as const,
       title: "Inbox",
       description: "Review unified communications and resolve contact identities.",
-      href: `/${orgSlug}/tools/inbox`,
+      href: `/${orgSlug}/manage/inbox`,
       cta: "Open Inbox",
       enabled: canReadInbox
     },
@@ -81,7 +81,7 @@ export default async function OrgManageOverviewPage({
       section: "operations" as const,
       title: "Facilities",
       description: "Manage facility spaces, bookings, blackouts, and approvals.",
-      href: `/${orgSlug}/tools/facilities`,
+      href: `/${orgSlug}/manage/facilities`,
       cta: "Open Facilities",
       enabled: canReadFacilities
     },
@@ -89,7 +89,7 @@ export default async function OrgManageOverviewPage({
       section: "operations" as const,
       title: "SportsConnect Transfer",
       description: "Import SportsConnect enrollments, guardian accounts, players, and order history.",
-      href: `/${orgSlug}/tools/manage/sportsconnect`,
+      href: `/${orgSlug}/manage/sportsconnect`,
       cta: "Open Transfer Tool",
       enabled: canManageOrg
     }

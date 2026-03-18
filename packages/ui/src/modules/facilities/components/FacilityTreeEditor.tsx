@@ -136,12 +136,12 @@ function renderTree(
             <p className="text-xs text-text-muted">
               {space.spaceKind} · {space.isBookable ? "Bookable" : "Not bookable"}
             </p>
-            {orgSlug ? <p className="mt-1 text-sm text-text-muted">/{orgSlug}/tools/facilities/{space.id}</p> : null}
+            {orgSlug ? <p className="mt-1 text-sm text-text-muted">/{orgSlug}/manage/facilities/{space.id}</p> : null}
           </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {orgSlug ? (
-              <Button href={`/${orgSlug}/tools/facilities/${space.id}`} size="sm" variant="secondary">
+              <Button href={`/${orgSlug}/manage/facilities/${space.id}`} size="sm" variant="secondary">
                 Manage
               </Button>
             ) : null}

@@ -12,13 +12,9 @@ import { UnifiedCalendar, type UnifiedCalendarQuickAddDraft } from "@orgframe/ui
 import {
   createCalendarEntryAction,
   createManualOccurrenceAction,
-  deleteCalendarLensViewAction,
   getCalendarWorkspaceDataAction,
   inviteTeamToOccurrenceAction,
-  listCalendarLensViewsAction,
-  saveCalendarLensViewAction,
   setOccurrenceFacilityAllocationsAction,
-  setDefaultCalendarLensViewAction,
   setRuleFacilityAllocationsAction,
   updateCalendarEntryAction,
   updateOccurrenceAction,
@@ -27,8 +23,6 @@ import {
 } from "@/modules/calendar/actions";
 import type {
   CalendarEntry,
-  CalendarLensSavedView,
-  CalendarLensState,
   CalendarOccurrence,
   CalendarReadModel,
   FacilityAllocation,
@@ -47,6 +41,8 @@ import type { ScheduleRuleDraft } from "@orgframe/ui/modules/programs/schedule/c
 import { generateOccurrencesForRule } from "@/modules/calendar/rule-engine";
 import {
   buildTeamLabelById,
+  buildInitialSelectedSourceIds,
+  filterCalendarReadModelBySelectedSources,
   findEntryForOccurrence,
   findOccurrence,
   replaceOptimisticIds,
@@ -54,6 +50,9 @@ import {
   toLocalParts
 } from "@orgframe/ui/modules/calendar/components/workspace-utils";
 import { FacilityBookingDialog } from "@orgframe/ui/modules/calendar/components/FacilityBookingDialog";
+import { CalendarSourceFilterPopover } from "@orgframe/ui/modules/calendar/components/CalendarSourceFilterPopover";
+import { ScrollableSheetBody } from "@orgframe/ui/modules/calendar/components/ScrollableSheetBody";
+import { UniversalAddressField } from "@orgframe/ui/modules/calendar/components/UniversalAddressField";
 import {
   buildSpaceById,
   computeFacilityConflicts,
@@ -64,8 +63,6 @@ import {
   type FacilityBookingSelection,
   type FacilityBookingWindow
 } from "@orgframe/ui/modules/calendar/components/facility-booking-utils";
-import { defaultLensState, explainOccurrenceVisibility, filterCalendarReadModelByLens } from "@/modules/calendar/lens";
-import { CalendarLensExplorer } from "@orgframe/ui/modules/calendar/components/CalendarLensExplorer";
 
 function resolveEntryLocation(entry: CalendarEntry | null) {
   if (!entry) {
@@ -122,8 +119,7 @@ export function FacilityCalendarWorkspace({
     }
   );
   const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string | null>(null);
-  const [lensState, setLensState] = useState<CalendarLensState>(() => defaultLensState("this_page"));
-  const [savedViews, setSavedViews] = useState<CalendarLensSavedView[]>([]);
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(() => buildInitialSelectedSourceIds(initialReadModel.sources));
   const [hostTeamId, setHostTeamId] = useState(activeTeams[0]?.id ?? "");
   const [configurationId, setConfigurationId] = useState<string>("");
   const [inviteTeamId, setInviteTeamId] = useState(activeTeams[0]?.id ?? "");
@@ -163,21 +159,7 @@ export function FacilityCalendarWorkspace({
   );
   const selectedFacilityAddress = useMemo(() => getFacilityAddress(selectedFacility), [selectedFacility]);
   const teamLabelById = useMemo(() => buildTeamLabelById(activeTeams), [activeTeams]);
-  const filteredReadModel = useMemo(
-    () =>
-      filterCalendarReadModelByLens({
-        readModel,
-        sources: readModel.sources,
-        context: {
-          contextType: "facility",
-          orgId: readModel.entries[0]?.orgId ?? "",
-          orgSlug,
-          facilityId: spaceId
-        },
-        lensState
-      }),
-    [lensState, orgSlug, readModel, spaceId]
-  );
+  const filteredReadModel = useMemo(() => filterCalendarReadModelBySelectedSources(readModel, selectedSourceIds), [readModel, selectedSourceIds]);
 
   useEffect(() => {
     if (locationMode === "facility" && !selectedFacilityId && rootFacilityId) {
@@ -262,18 +244,6 @@ export function FacilityCalendarWorkspace({
   const selectedAllocations = useMemo(
     () => (selectedOccurrence ? filteredReadModel.allocations.filter((allocation) => allocation.occurrenceId === selectedOccurrence.id) : []),
     [filteredReadModel.allocations, selectedOccurrence]
-  );
-  const whyShown = useMemo(
-    () =>
-      selectedOccurrenceId
-        ? explainOccurrenceVisibility({
-            occurrenceId: selectedOccurrenceId,
-            readModel: filteredReadModel,
-            sources: readModel.sources,
-            lensState
-          })
-        : null,
-    [filteredReadModel, lensState, readModel.sources, selectedOccurrenceId]
   );
   const selectedAllocationForSpace = useMemo(
     () => selectedAllocations.find((allocation) => allocation.spaceId === spaceId) ?? null,
@@ -381,10 +351,6 @@ export function FacilityCalendarWorkspace({
 
       setReadModel(result.data.readModel);
       setFacilityReadModel(result.data.facilityReadModel);
-      const savedViewsResult = await listCalendarLensViewsAction({ orgSlug, contextType: "facility" });
-      if (savedViewsResult.ok) {
-        setSavedViews(savedViewsResult.data.views);
-      }
       if (successTitle) {
         toast({
           title: successTitle,
@@ -395,73 +361,16 @@ export function FacilityCalendarWorkspace({
   }
 
   useEffect(() => {
-    startSaving(async () => {
-      const result = await listCalendarLensViewsAction({ orgSlug, contextType: "facility" });
-      if (!result.ok) {
-        return;
+    setSelectedSourceIds((current) => {
+      const next = new Set<string>();
+      for (const source of readModel.sources) {
+        if (current.has(source.id) || source.isActive) {
+          next.add(source.id);
+        }
       }
-      setSavedViews(result.data.views);
-      const defaultView = result.data.views.find((view) => view.isDefault);
-      if (defaultView) {
-        setLensState(defaultView.configJson);
-      }
+      return next;
     });
-  }, [orgSlug]);
-
-  function handleSaveLensView(name: string, isDefault: boolean) {
-    startSaving(async () => {
-      const result = await saveCalendarLensViewAction({
-        orgSlug,
-        name,
-        contextType: "facility",
-        isDefault,
-        lensState
-      });
-      if (!result.ok) {
-        toast({
-          title: "Unable to save view",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
-      setSavedViews((current) => [result.data.view, ...current.filter((view) => view.id !== result.data.view.id)]);
-    });
-  }
-
-  function handleDeleteLensView(viewId: string) {
-    startSaving(async () => {
-      const result = await deleteCalendarLensViewAction({ orgSlug, viewId });
-      if (!result.ok) {
-        toast({
-          title: "Unable to delete view",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
-      setSavedViews((current) => current.filter((view) => view.id !== viewId));
-    });
-  }
-
-  function handleSetDefaultLensView(viewId: string) {
-    startSaving(async () => {
-      const result = await setDefaultCalendarLensViewAction({
-        orgSlug,
-        viewId,
-        contextType: "facility"
-      });
-      if (!result.ok) {
-        toast({
-          title: "Unable to set default view",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
-      setSavedViews((current) => current.map((view) => ({ ...view, isDefault: view.id === viewId })));
-    });
-  }
+  }, [readModel.sources]);
 
   function createPracticeBooking(draft: UnifiedCalendarQuickAddDraft) {
     const now = new Date().toISOString();
@@ -1097,24 +1006,12 @@ export function FacilityCalendarWorkspace({
             value={inviteTeamId}
           />
         </div>
-        <CalendarLensExplorer
-          contextType="facility"
-          description="Facility-scoped lens with layered source visibility and audience perspective."
-          lensState={lensState}
-          onDeleteView={handleDeleteLensView}
-          onLensStateChange={setLensState}
-          onSaveView={handleSaveLensView}
-          onSetDefaultView={handleSetDefaultLensView}
-          savedViews={savedViews}
-          sources={readModel.sources}
-          title="Facility Calendar Explorer"
-          whyShown={whyShown}
-        />
-
         <UnifiedCalendar
           canEdit={canWrite}
           disableHoverGhost={Boolean(selectedOccurrenceId) || facilityDialogOpen}
           className="min-h-0 flex-1"
+          referenceTimezone={Intl.DateTimeFormat().resolvedOptions().timeZone}
+          controlsSlot={<CalendarSourceFilterPopover onChange={setSelectedSourceIds} selectedSourceIds={selectedSourceIds} sources={readModel.sources} />}
           getConflictMessage={(draft) => {
             const hasOverlap = filteredItems.some((item) => {
               const start = new Date(item.startsAtUtc).getTime();
@@ -1182,7 +1079,7 @@ export function FacilityCalendarWorkspace({
             {locationMode === "other" ? (
               <label className="space-y-1 text-xs text-text-muted">
                 <span>Address</span>
-                <Input onChange={(event) => setLocationDraft(event.target.value)} placeholder="Enter address or custom location" value={locationDraft} />
+                <UniversalAddressField onChange={setLocationDraft} value={locationDraft} />
               </label>
             ) : null}
             {locationMode === "facility" && selectedFacility ? (
@@ -1253,7 +1150,7 @@ export function FacilityCalendarWorkspace({
           title={selectedEntry?.title ?? "Event details"}
         >
           {selectedOccurrence && selectedEntry ? (
-            <div className="space-y-3">
+            <ScrollableSheetBody className="space-y-3 pr-1">
               <label className="space-y-1 text-xs text-text-muted">
                 <span>Title</span>
                 <Input disabled={!canWrite} onChange={(event) => setEditTitle(event.target.value)} value={editTitle} />
@@ -1272,7 +1169,7 @@ export function FacilityCalendarWorkspace({
 
               <label className="space-y-1 text-xs text-text-muted">
                 <span>Location</span>
-                <Input disabled={!canWrite} onChange={(event) => setEditLocationDraft(event.target.value)} value={editLocationDraft} />
+                <UniversalAddressField disabled={!canWrite} onChange={setEditLocationDraft} value={editLocationDraft} />
               </label>
 
               {selectedOccurrence.sourceRuleId ? (
@@ -1350,7 +1247,7 @@ export function FacilityCalendarWorkspace({
               <Button disabled={!canWrite} onClick={submitEditComposer} type="button">
                 Save changes
               </Button>
-            </div>
+            </ScrollableSheetBody>
           ) : null}
         </Panel>
       </CardContent>

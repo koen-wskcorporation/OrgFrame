@@ -50,7 +50,7 @@ export default async function OrgManageFormEditorPage({
       <PageHeader
         actions={
           <>
-            <Button href={`/${orgContext.orgSlug}/tools/forms`} variant="secondary">
+            <Button href={`/${orgContext.orgSlug}/manage/forms`} variant="secondary">
               Back to forms
             </Button>
             <FormPublishToggleButton canWrite={canWriteForms} form={form} orgSlug={orgContext.orgSlug} />
@@ -75,21 +75,21 @@ export default async function OrgManageFormEditorPage({
             key: "builder",
             label: "Builder",
             description: "Fields, pages, and logic",
-            href: `/${orgContext.orgSlug}/tools/forms/${form.id}/editor`,
+            href: `/${orgContext.orgSlug}/manage/forms/${form.id}/editor`,
             prefetch: false
           },
           {
             key: "submissions",
             label: "Submissions",
             description: "Review, triage, and exports",
-            href: `/${orgContext.orgSlug}/tools/forms/${form.id}/submissions`,
+            href: `/${orgContext.orgSlug}/manage/forms/${form.id}/submissions`,
             prefetch: false
           },
           {
             key: "settings",
             label: "Settings",
             description: "Metadata, publishing, and rules",
-            href: `/${orgContext.orgSlug}/tools/forms/${form.id}/settings`,
+            href: `/${orgContext.orgSlug}/manage/forms/${form.id}/settings`,
             prefetch: false
           }
         ]}

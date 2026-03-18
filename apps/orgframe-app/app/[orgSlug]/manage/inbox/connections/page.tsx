@@ -44,7 +44,7 @@ export default async function OrgManageInboxConnectionsPage({ params }: { params
         showBorder={false}
         title="Inbox Connections"
         actions={
-          <Button href={`/${orgContext.orgSlug}/tools/inbox`} variant="secondary">
+          <Button href={`/${orgContext.orgSlug}/manage/inbox`} variant="secondary">
             Open Conversations
           </Button>
         }

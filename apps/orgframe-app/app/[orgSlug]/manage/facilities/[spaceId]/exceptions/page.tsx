@@ -11,5 +11,5 @@ export default async function OrgManageFacilityExceptionsPage({
   params: Promise<{ orgSlug: string; spaceId: string }>;
 }) {
   const { orgSlug } = await params;
-  redirect(`/${orgSlug}/tools/calendar`);
+  redirect(`/${orgSlug}/manage/calendar`);
 }

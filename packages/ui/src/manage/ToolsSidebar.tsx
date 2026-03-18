@@ -3,9 +3,9 @@
 import { useMemo } from "react";
 import { Building2, CalendarDays, CreditCard, FileText, Globe, Inbox, LayoutDashboard, MapPinned, Palette, Settings, Users, Wrench, type LucideIcon } from "lucide-react";
 import { OrgAreaSidebarNav, OrgAreaSidebarNavMobile, type OrgAreaSidebarConfig } from "@orgframe/ui/manage/OrgAreaSidebarNav";
-import { getOrgAdminNavItems, type OrgAdminNavIcon } from "@/lib/org/toolsNav";
+import { getOrgAdminNavItems, type OrgAdminNavIcon } from "@/lib/org/adminNav";
 
-type ToolsSidebarProps = {
+type ManageSidebarProps = {
   orgSlug: string;
   mobile?: boolean;
   showHeader?: boolean;
@@ -28,10 +28,9 @@ const iconMap: Record<OrgAdminNavIcon, LucideIcon> = {
 
 function navConfig(orgSlug: string): OrgAreaSidebarConfig {
   const items = getOrgAdminNavItems(orgSlug);
-  const toolsOverviewHref = `/${orgSlug}/tools`;
 
   const topLevel = items.filter((item) => !item.parentKey);
-  const manageItem = topLevel.find((item) => item.href.endsWith("/tools/manage"));
+  const manageItem = topLevel.find((item) => item.key === "manage");
 
   if (!manageItem) {
     throw new Error("Org admin navigation is missing a manage item.");
@@ -50,7 +49,7 @@ function navConfig(orgSlug: string): OrgAreaSidebarConfig {
         label: item.label,
         icon,
         href: item.href,
-        match: item.href === toolsOverviewHref ? ("exact" as const) : ("prefix" as const)
+        match: "prefix" as const
       };
     }
 
@@ -72,11 +71,11 @@ function navConfig(orgSlug: string): OrgAreaSidebarConfig {
   });
 
   return {
-    title: "Tools",
+    title: "Manage",
     subtitle: "Manage Your Org",
-    mobileLabel: "Tools",
-    ariaLabel: "Tools area navigation",
-    collapseStorageKey: `tools-sidebar:${orgSlug}:collapsed`,
+    mobileLabel: "Manage",
+    ariaLabel: "Manage area navigation",
+    collapseStorageKey: `manage-sidebar:${orgSlug}:collapsed`,
     autoCollapse: {
       enabled: true,
       includeChildItemHrefs: true,
@@ -86,16 +85,20 @@ function navConfig(orgSlug: string): OrgAreaSidebarConfig {
   };
 }
 
-export function ToolsSidebar({ orgSlug, mobile = false, showHeader = true }: ToolsSidebarProps) {
+export function ManageSidebar({ orgSlug, mobile = false, showHeader = true }: ManageSidebarProps) {
   const config = useMemo(() => navConfig(orgSlug), [orgSlug]);
   return <OrgAreaSidebarNav config={config} mobile={mobile} showHeader={showHeader} />;
 }
 
-type ToolsSidebarMobileProps = {
+type ManageSidebarMobileProps = {
   orgSlug: string;
 };
 
-export function ToolsSidebarMobile({ orgSlug }: ToolsSidebarMobileProps) {
+export function ManageSidebarMobile({ orgSlug }: ManageSidebarMobileProps) {
   const config = useMemo(() => navConfig(orgSlug), [orgSlug]);
   return <OrgAreaSidebarNavMobile config={config} />;
 }
+
+// Backward-compat aliases while imports migrate.
+export const ToolsSidebar = ManageSidebar;
+export const ToolsSidebarMobile = ManageSidebarMobile;

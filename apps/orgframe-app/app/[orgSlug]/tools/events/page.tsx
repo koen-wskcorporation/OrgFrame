@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 
 export default async function OrgToolsEventsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
-  redirect(`/${orgSlug}/tools/calendar`);
+  redirect(`/${orgSlug}/manage/calendar`);
 }

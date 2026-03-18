@@ -34,7 +34,7 @@ import { NavItem } from "@orgframe/ui/ui/nav-item";
 import { PublishStatusIcon } from "@orgframe/ui/ui/publish-status-icon";
 import { useToast } from "@orgframe/ui/ui/toast";
 import { AdaptiveLogo } from "@orgframe/ui/ui/adaptive-logo";
-import { getOrgAdminNavItems, type OrgAdminNavIcon } from "@/lib/org/toolsNav";
+import { getOrgAdminNavItems, type OrgAdminNavIcon } from "@/lib/org/adminNav";
 import { cn } from "@/lib/utils";
 import { saveOrgHeaderMenuAction, savePageSettingsAction } from "@/modules/site-builder/actions";
 import {

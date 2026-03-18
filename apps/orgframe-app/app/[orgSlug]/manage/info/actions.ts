@@ -24,12 +24,12 @@ export async function saveOrgGoverningBodyAction(orgSlug: string, formData: Form
       .eq("id", orgContext.orgId);
 
     if (error) {
-      redirect(`/${orgSlug}/tools/manage/info?error=save_failed`);
+      redirect(`/${orgSlug}/manage/info?error=save_failed`);
     }
 
-    redirect(`/${orgSlug}/tools/manage/info?saved=1`);
+    redirect(`/${orgSlug}/manage/info?saved=1`);
   } catch (error) {
     rethrowIfNavigationError(error);
-    redirect(`/${orgSlug}/tools/manage/info?error=save_failed`);
+    redirect(`/${orgSlug}/manage/info?error=save_failed`);
   }
 }

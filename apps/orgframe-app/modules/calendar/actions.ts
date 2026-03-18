@@ -26,6 +26,7 @@ import {
   listCalendarOccurrencesByRule,
   listCalendarReadModel,
   listCalendarLensSavedViews,
+  listCalendarRules,
   listCalendarRuleFacilityAllocations,
   listCalendarRuleExceptions,
   listFacilitySpaceConfigurations,
@@ -113,6 +114,18 @@ function shiftLocalDate(input: string, days: number) {
   const date = new Date(Date.UTC(year, month - 1, day));
   date.setUTCDate(date.getUTCDate() + days);
   return `${date.getUTCFullYear()}-${`${date.getUTCMonth() + 1}`.padStart(2, "0")}-${`${date.getUTCDate()}`.padStart(2, "0")}`;
+}
+
+function resolveOriginalSourceKey(value: string): string {
+  if (!value.startsWith("override:")) {
+    return value;
+  }
+  const withoutPrefix = value.slice("override:".length);
+  const lastColon = withoutPrefix.lastIndexOf(":");
+  if (lastColon <= 0) {
+    return withoutPrefix || value;
+  }
+  return withoutPrefix.slice(0, lastColon);
 }
 
 function resolveTimezone(value: string | null | undefined) {
@@ -392,9 +405,9 @@ async function canManageEntry(orgId: string, userId: string, entry: CalendarEntr
 }
 
 function revalidateCalendarRoutes(orgSlug: string) {
-  revalidatePath(`/${orgSlug}/tools/calendar`);
-  revalidatePath(`/${orgSlug}/tools/facilities`);
-  revalidatePath(`/${orgSlug}/tools/programs`);
+  revalidatePath(`/${orgSlug}/manage/calendar`);
+  revalidatePath(`/${orgSlug}/manage/facilities`);
+  revalidatePath(`/${orgSlug}/manage/programs`);
   revalidatePath(`/${orgSlug}`);
   revalidatePath(`/${orgSlug}`, "layout");
 }
@@ -600,6 +613,12 @@ const occurrenceStatusSchema = z.object({
 const deleteOccurrenceSchema = z.object({
   orgSlug: textSchema.min(1),
   occurrenceId: z.string().uuid()
+});
+
+const deleteRecurringOccurrenceSchema = z.object({
+  orgSlug: textSchema.min(1),
+  occurrenceId: z.string().uuid(),
+  deleteScope: z.enum(["occurrence", "following", "series"])
 });
 
 const allocationSchema = z.object({
@@ -2047,6 +2066,150 @@ export async function deleteOccurrenceAction(input: z.input<typeof deleteOccurre
   } catch (error) {
     rethrowIfNavigationError(error);
     return asError("Unable to delete occurrence.");
+  }
+}
+
+export async function deleteRecurringOccurrenceAction(
+  input: z.input<typeof deleteRecurringOccurrenceSchema>
+): Promise<CalendarActionResult<{ occurrenceId: string; scope: "occurrence" | "following" | "series" }>> {
+  const parsed = deleteRecurringOccurrenceSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return asError("Invalid recurring delete request.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const actor = await requireCalendarActor(payload.orgSlug);
+    const occurrence = await getCalendarOccurrenceById(actor.orgId, payload.occurrenceId);
+    if (!occurrence) {
+      return asError("Occurrence not found.");
+    }
+    if (!occurrence.sourceRuleId) {
+      return asError("This occurrence is not part of a recurring series.");
+    }
+
+    const rule = await getCalendarRuleById(actor.orgId, occurrence.sourceRuleId);
+    if (!rule) {
+      return asError("Recurring rule not found.");
+    }
+
+    const entry = await getCalendarEntryById(actor.orgId, occurrence.entryId);
+    if (!entry) {
+      return asError("Calendar entry not found.");
+    }
+
+    const allowed = await canManageEntry(actor.orgId, actor.userId, entry, actor.hasCalendarWrite);
+    if (!allowed) {
+      return asError("You do not have permission to delete this recurring event.");
+    }
+
+    if (payload.deleteScope === "series") {
+      await deleteCalendarRuleRecord(actor.orgId, rule.id);
+
+      const remainingRules = await listCalendarRules(actor.orgId, { entryId: entry.id });
+      const remainingOccurrences = await listCalendarOccurrences(actor.orgId, {
+        entryId: entry.id,
+        includeCancelled: true
+      });
+      if (remainingRules.length === 0 && remainingOccurrences.length === 0) {
+        await deleteCalendarEntryRecord(actor.orgId, entry.id);
+      }
+
+      revalidateCalendarRoutes(actor.orgSlug);
+      return {
+        ok: true,
+        data: {
+          occurrenceId: payload.occurrenceId,
+          scope: payload.deleteScope
+        }
+      };
+    }
+
+    if (payload.deleteScope === "following") {
+      const splitUntilDate = shiftLocalDate(occurrence.localDate, -1);
+      if (!rule.startDate || splitUntilDate < rule.startDate) {
+        await deleteCalendarRuleRecord(actor.orgId, rule.id);
+      } else {
+        const ruleResult = await upsertCalendarRuleAction({
+          orgSlug: payload.orgSlug,
+          entryId: rule.entryId,
+          ruleId: rule.id,
+          mode: rule.mode,
+          timezone: rule.timezone,
+          startDate: rule.startDate,
+          endDate: rule.endDate ?? undefined,
+          startTime: rule.startTime ?? undefined,
+          endTime: rule.endTime ?? undefined,
+          intervalCount: rule.intervalCount ?? 1,
+          intervalUnit: rule.intervalUnit ?? "week",
+          byWeekday: rule.byWeekday ?? [],
+          byMonthday: rule.byMonthday ?? [],
+          endMode: "until_date",
+          untilDate: splitUntilDate,
+          maxOccurrences: null,
+          configJson: rule.configJson
+        });
+        if (!ruleResult.ok) {
+          return asError(ruleResult.error);
+        }
+      }
+
+      const supabase = await createSupabaseServer();
+      const { error: deleteError } = await supabase
+        .from("calendar_occurrences")
+        .delete()
+        .eq("org_id", actor.orgId)
+        .eq("source_rule_id", rule.id)
+        .gte("starts_at_utc", occurrence.startsAtUtc);
+      if (deleteError) {
+        return asError(`Unable to delete following occurrences: ${deleteError.message}`);
+      }
+
+      revalidateCalendarRoutes(actor.orgSlug);
+      return {
+        ok: true,
+        data: {
+          occurrenceId: payload.occurrenceId,
+          scope: payload.deleteScope
+        }
+      };
+    }
+
+    const originalSourceKey = resolveOriginalSourceKey(occurrence.sourceKey);
+    await upsertCalendarRuleException({
+      orgId: actor.orgId,
+      ruleId: rule.id,
+      sourceKey: originalSourceKey,
+      kind: "skip",
+      overrideOccurrenceId: null,
+      payloadJson: {
+        reason: "single-occurrence-delete"
+      },
+      actorUserId: actor.userId
+    });
+    await deleteCalendarRuleException({
+      orgId: actor.orgId,
+      ruleId: rule.id,
+      sourceKey: originalSourceKey,
+      kind: "override"
+    }).catch(() => null);
+    await deleteCalendarOccurrenceRecord({
+      orgId: actor.orgId,
+      occurrenceId: occurrence.id
+    });
+
+    revalidateCalendarRoutes(actor.orgSlug);
+    return {
+      ok: true,
+      data: {
+        occurrenceId: payload.occurrenceId,
+        scope: payload.deleteScope
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to delete recurring occurrence.");
   }
 }
 

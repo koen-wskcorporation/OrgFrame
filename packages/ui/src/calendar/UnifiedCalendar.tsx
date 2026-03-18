@@ -30,6 +30,7 @@ export type UnifiedCalendarQuickAddDraft = {
 type UnifiedCalendarProps = {
   items: UnifiedCalendarItem[];
   initialView?: UnifiedCalendarView;
+  referenceTimezone?: string;
   canEdit?: boolean;
   quickAddUx?: "internal" | "external";
   disableHoverGhost?: boolean;
@@ -55,6 +56,7 @@ type UnifiedCalendarProps = {
   }) => React.ReactNode;
   headerSlot?: React.ReactNode;
   filterSlot?: React.ReactNode;
+  controlsSlot?: React.ReactNode;
 };
 
 function startOfDay(value: Date) {
@@ -75,6 +77,35 @@ function addDays(value: Date, amount: number) {
 
 function startOfWeek(value: Date) {
   return addDays(startOfDay(value), -startOfDay(value).getDay());
+}
+
+function todayInTimezone(timezone?: string) {
+  const now = new Date();
+  const resolvedTimezone = timezone?.trim();
+  if (!resolvedTimezone) {
+    return startOfDay(now);
+  }
+
+  try {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: resolvedTimezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+    const parts = formatter.formatToParts(now);
+    const byType = new Map(parts.map((part) => [part.type, part.value]));
+    const year = Number.parseInt(byType.get("year") ?? "", 10);
+    const month = Number.parseInt(byType.get("month") ?? "", 10);
+    const day = Number.parseInt(byType.get("day") ?? "", 10);
+    if (Number.isInteger(year) && Number.isInteger(month) && Number.isInteger(day)) {
+      return new Date(year, month - 1, day);
+    }
+  } catch {
+    return startOfDay(now);
+  }
+
+  return startOfDay(now);
 }
 
 function startOfMonth(value: Date) {
@@ -168,6 +199,7 @@ function formatResizeBoundaryLabel(timestampMs: number) {
 export function UnifiedCalendar({
   items,
   initialView = "week",
+  referenceTimezone,
   canEdit = true,
   quickAddUx = "internal",
   disableHoverGhost = false,
@@ -183,10 +215,14 @@ export function UnifiedCalendar({
   getConflictMessage,
   renderQuickAddFields,
   headerSlot,
-  filterSlot
+  filterSlot,
+  controlsSlot
 }: UnifiedCalendarProps) {
   const [view, setView] = useState<UnifiedCalendarView>(initialView);
-  const [anchorDate, setAnchorDate] = useState<Date>(() => startOfDay(new Date()));
+  const [anchorDate, setAnchorDate] = useState<Date>(() => {
+    const today = todayInTimezone(referenceTimezone);
+    return initialView === "week" ? startOfWeek(today) : today;
+  });
   const [currentTime, setCurrentTime] = useState<Date>(() => new Date());
   const [weekWindowStart, setWeekWindowStart] = useState<Date>(() => addDays(startOfWeek(new Date()), -WEEK_WINDOW_CENTER_OFFSET));
   const [dragCreateStart, setDragCreateStart] = useState<string | null>(null);
@@ -213,6 +249,7 @@ export function UnifiedCalendar({
   const weekScrollRef = useRef<HTMLDivElement | null>(null);
   const weekScrollShiftRef = useRef(false);
   const weekScrollResetRef = useRef(false);
+  const previousViewRef = useRef<UnifiedCalendarView>(initialView);
   const suppressHoverSlot = quickAddOpen || Boolean(resizeDrag) || Boolean(dragMoveItemId) || disableHoverGhost;
 
   function buildDefaultQuickAddDraft(anchor: Date) {
@@ -326,7 +363,7 @@ export function UnifiedCalendar({
 
       if (event.key === "t" || event.key === "T") {
         event.preventDefault();
-        setAnchorDate(startOfDay(new Date()));
+        setAnchorDate(todayInTimezone(referenceTimezone));
         return;
       }
 
@@ -344,7 +381,7 @@ export function UnifiedCalendar({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [anchorDate, onQuickAddIntent, quickAddUx, view]);
+  }, [anchorDate, onQuickAddIntent, quickAddUx, referenceTimezone, view]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -352,6 +389,14 @@ export function UnifiedCalendar({
     }, 60 * 1000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    const previousView = previousViewRef.current;
+    previousViewRef.current = view;
+    if (view === "week" && previousView !== "week") {
+      setAnchorDate(startOfWeek(todayInTimezone(referenceTimezone)));
+    }
+  }, [referenceTimezone, view]);
 
   useEffect(() => {
     if (view !== "week") {
@@ -549,38 +594,35 @@ export function UnifiedCalendar({
     <div className={cn(rootClasses, className)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex items-center gap-1 rounded-control border bg-surface p-1">
-          {(["month", "week", "day"] as const).map((candidateView) => (
-            <button
-              className={cn(
-                "rounded-control px-2 py-1 text-xs font-semibold transition-colors",
-                view === candidateView ? "bg-surface-muted text-text" : "text-text-muted hover:bg-surface-muted hover:text-text"
-              )}
-              key={candidateView}
-              onClick={() => setView(candidateView)}
-              type="button"
-            >
-              {candidateView}
-            </button>
-          ))}
-        </div>
-
-        <div className="inline-flex items-center gap-1 rounded-control border bg-surface p-1">
           <button className="inline-flex h-8 w-8 items-center justify-center rounded-control hover:bg-surface-muted" onClick={() => shiftAnchor("previous")} type="button">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button className="rounded-control px-2 py-1 text-xs font-semibold text-text-muted hover:bg-surface-muted" onClick={() => setAnchorDate(startOfDay(new Date()))} type="button">
+          <button className="rounded-control px-2 py-1 text-xs font-semibold text-text-muted hover:bg-surface-muted" onClick={() => setAnchorDate(todayInTimezone(referenceTimezone))} type="button">
             Today
           </button>
           <button className="inline-flex h-8 w-8 items-center justify-center rounded-control hover:bg-surface-muted" onClick={() => shiftAnchor("next")} type="button">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
-      </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-text">{formatHeading(anchorDate, view)}</h2>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-1 rounded-control border bg-surface p-1">
+            {(["month", "week", "day"] as const).map((candidateView) => (
+              <button
+                className={cn(
+                  "rounded-control px-2 py-1 text-xs font-semibold capitalize transition-colors",
+                  view === candidateView ? "bg-surface-muted text-text" : "text-text-muted hover:bg-surface-muted hover:text-text"
+                )}
+                key={candidateView}
+                onClick={() => setView(candidateView)}
+                type="button"
+              >
+                {candidateView}
+              </button>
+            ))}
+          </div>
           {filterSlot}
+          {controlsSlot}
           {headerSlot}
           {canEdit ? (
             <Button
@@ -607,6 +649,8 @@ export function UnifiedCalendar({
           ) : null}
         </div>
       </div>
+
+      <h2 className="text-base font-semibold text-text">{formatHeading(anchorDate, view)}</h2>
 
       {view === "month" ? (
         <div className="space-y-1">
@@ -751,7 +795,7 @@ export function UnifiedCalendar({
               shiftWeekWindow(WEEK_WINDOW_CENTER_OFFSET);
             }
           }}
-          style={{ height: "100%", maxHeight: `${WEEK_VISIBLE_HOURS * WEEK_HOUR_HEIGHT_PX}px` }}
+          style={{ height: "100%" }}
         >
           {(() => {
             const weekDays = Array.from({ length: WEEK_WINDOW_DAYS }, (_, index) => addDays(weekWindowStart, index));
@@ -803,6 +847,9 @@ export function UnifiedCalendar({
                 </div>
 
                 <div className="shrink-0">
+                  <div className="border-b bg-surface px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    {anchorDate.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+                  </div>
                   <div className="sticky top-0 z-10 flex border-b bg-surface">
                     {weekDays.map((day) => (
                       <button
@@ -812,7 +859,7 @@ export function UnifiedCalendar({
                         style={{ width: `${WEEK_DAY_WIDTH_PX}px`, height: "40px" }}
                         type="button"
                       >
-                        {day.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                        {day.toLocaleDateString(undefined, { weekday: "short", day: "numeric" })}
                       </button>
                     ))}
                   </div>

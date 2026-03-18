@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@orgframe/ui/ui/button";
-import { Card, CardContent, CardDescription, CardHeaderCompact, CardTitle } from "@orgframe/ui/ui/card";
-import { Repeater } from "@orgframe/ui/ui/repeater";
+import { SearchableLinkCards, type SearchableLinkCardItem } from "@orgframe/ui/ui/searchable-link-cards";
 
 type ManageCardItem = {
   section: "organization" | "operations";
@@ -17,26 +15,21 @@ type ManageCardsRepeaterProps = {
 };
 
 export function ManageCardsRepeater({ cards }: ManageCardsRepeaterProps) {
+  const items: SearchableLinkCardItem[] = cards.map((card) => ({
+    key: `${card.section}-${card.title}`,
+    title: card.title,
+    description: card.description,
+    href: card.href,
+    ctaLabel: card.cta,
+    searchText: `${card.title} ${card.description} ${card.section}`
+  }));
+
   return (
-    <Repeater
+    <SearchableLinkCards
       emptyMessage="No management modules matched your search."
-      getItemKey={(card) => `${card.section}-${card.title}`}
-      getSearchValue={(card) => `${card.title} ${card.description} ${card.section}`}
-      items={cards}
       searchPlaceholder="Search management modules"
-      renderItem={({ item, view }) => (
-        <Card className={view === "list" ? "sm:flex sm:items-center sm:justify-between sm:gap-4" : undefined}>
-          <CardHeaderCompact className={view === "list" ? "sm:flex-1" : undefined}>
-            <CardTitle>{item.title}</CardTitle>
-            <CardDescription>{item.description}</CardDescription>
-          </CardHeaderCompact>
-          <CardContent className={view === "list" ? "pt-0 sm:pb-0 sm:pt-0" : undefined}>
-            <Button href={item.href} variant="secondary">
-              {item.cta}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      items={items}
+      defaultCtaPrefix=""
     />
   );
 }

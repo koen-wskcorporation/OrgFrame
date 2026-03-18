@@ -11,5 +11,5 @@ export default async function OrgManageProgramDetailPage({
   params: Promise<{ orgSlug: string; programId: string }>;
 }) {
   const { orgSlug, programId } = await params;
-  redirect(`/${orgSlug}/tools/programs/${programId}/structure`);
+  redirect(`/${orgSlug}/manage/programs/${programId}/structure`);
 }

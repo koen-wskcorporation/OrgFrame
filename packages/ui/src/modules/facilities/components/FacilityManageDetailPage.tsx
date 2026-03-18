@@ -47,19 +47,19 @@ export async function FacilityManageDetailPage({
             key: "overview",
             label: "Overview",
             description: "Status, visibility, and controls",
-            href: `/${orgContext.orgSlug}/tools/facilities/${selectedSpace.id}/overview`
+            href: `/${orgContext.orgSlug}/manage/facilities/${selectedSpace.id}/overview`
           },
           {
             key: "structure",
             label: "Structure",
             description: "Zones, rooms, and nested layout",
-            href: `/${orgContext.orgSlug}/tools/facilities/${selectedSpace.id}/structure`
+            href: `/${orgContext.orgSlug}/manage/facilities/${selectedSpace.id}/structure`
           },
           {
             key: "settings",
             label: "Settings",
             description: "Status, booking controls, and archive",
-            href: `/${orgContext.orgSlug}/tools/facilities/${selectedSpace.id}/settings`
+            href: `/${orgContext.orgSlug}/manage/facilities/${selectedSpace.id}/settings`
           }
         ]}
       />

@@ -23,7 +23,7 @@ export async function saveOrgBrandingAction(orgSlug: string, formData: FormData)
     const accent = getField(formData, "accent");
 
     if (accent && !isValidHexColor(accent)) {
-      redirect(`/${orgSlug}/tools/manage/branding?error=invalid_accent`);
+      redirect(`/${orgSlug}/manage/branding?error=invalid_accent`);
     }
 
     const logoPath = getOptionalPath(formData, "logoPath");
@@ -39,12 +39,12 @@ export async function saveOrgBrandingAction(orgSlug: string, formData: FormData)
     const { error } = await supabase.from("orgs").update(updates).eq("id", orgContext.orgId);
 
     if (error) {
-      redirect(`/${orgSlug}/tools/manage/branding?error=save_failed`);
+      redirect(`/${orgSlug}/manage/branding?error=save_failed`);
     }
 
-    redirect(`/${orgSlug}/tools/manage/branding?saved=1`);
+    redirect(`/${orgSlug}/manage/branding?saved=1`);
   } catch (error) {
     rethrowIfNavigationError(error);
-    redirect(`/${orgSlug}/tools/manage/branding?error=save_failed`);
+    redirect(`/${orgSlug}/manage/branding?error=save_failed`);
   }
 }

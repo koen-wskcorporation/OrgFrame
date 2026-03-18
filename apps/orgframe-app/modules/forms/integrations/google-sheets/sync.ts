@@ -277,7 +277,7 @@ function buildSubmissionManageUrl(input: {
     params.set("section", input.section);
   }
 
-  const basePath = `/${input.orgSlug}/tools/forms/${input.formId}/submissions`;
+  const basePath = `/${input.orgSlug}/manage/forms/${input.formId}/submissions`;
   return `${input.appOrigin}${basePath}?${params.toString()}`;
 }
 

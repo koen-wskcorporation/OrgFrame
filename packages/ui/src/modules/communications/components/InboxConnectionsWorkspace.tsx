@@ -233,7 +233,7 @@ export function InboxConnectionsWorkspace({ orgSlug, canWrite, initialIntegratio
             <Button disabled={!canWrite || isMutating} onClick={launchFacebookPopup} type="button">
               Connect with Facebook
             </Button>
-            <Button href={`/${orgSlug}/tools/inbox`} variant="secondary">
+            <Button href={`/${orgSlug}/manage/inbox`} variant="secondary">
               Back to Inbox
             </Button>
           </div>

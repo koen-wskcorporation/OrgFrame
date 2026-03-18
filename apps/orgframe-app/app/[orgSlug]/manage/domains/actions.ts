@@ -58,7 +58,7 @@ export async function saveOrgCustomDomainAction(orgSlug: string, formData: FormD
     });
 
     if (!parsed.success) {
-      redirect(`/${orgSlug}/tools/manage/domains?error=invalid_domain`);
+      redirect(`/${orgSlug}/manage/domains?error=invalid_domain`);
     }
 
     const orgContext = await requireOrgPermission(orgSlug, "org.manage.read");
@@ -66,7 +66,7 @@ export async function saveOrgCustomDomainAction(orgSlug: string, formData: FormD
     const platformHost = getPlatformHost();
 
     if (!isValidCustomDomain(domain) || domain === platformHost) {
-      redirect(`/${orgSlug}/tools/manage/domains?error=invalid_domain`);
+      redirect(`/${orgSlug}/manage/domains?error=invalid_domain`);
     }
 
     const supabase = await createSupabaseServer();
@@ -102,11 +102,11 @@ export async function saveOrgCustomDomainAction(orgSlug: string, formData: FormD
     }
 
     revalidatePath(`/${orgSlug}/manage/domains`);
-    revalidatePath(`/${orgSlug}/tools/manage/domains`);
-    redirect(`/${orgSlug}/tools/manage/domains?saved=1`);
+    revalidatePath(`/${orgSlug}/manage/domains`);
+    redirect(`/${orgSlug}/manage/domains?saved=1`);
   } catch (error) {
     rethrowIfNavigationError(error);
-    redirect(`/${orgSlug}/tools/manage/domains?error=${toSaveErrorCode(error)}`);
+    redirect(`/${orgSlug}/manage/domains?error=${toSaveErrorCode(error)}`);
   }
 }
 
@@ -126,7 +126,7 @@ export async function verifyOrgCustomDomainAction(orgSlug: string) {
     }
 
     if (!existing) {
-      redirect(`/${orgSlug}/tools/manage/domains?error=missing_domain`);
+      redirect(`/${orgSlug}/manage/domains?error=missing_domain`);
     }
 
     const result = await verifyCustomDomainDns(existing.domain, existing.verification_token);
@@ -145,16 +145,16 @@ export async function verifyOrgCustomDomainAction(orgSlug: string) {
     }
 
     revalidatePath(`/${orgSlug}/manage/domains`);
-    revalidatePath(`/${orgSlug}/tools/manage/domains`);
+    revalidatePath(`/${orgSlug}/manage/domains`);
 
     if (!result.verified) {
-      redirect(`/${orgSlug}/tools/manage/domains?error=verification_failed`);
+      redirect(`/${orgSlug}/manage/domains?error=verification_failed`);
     }
 
-    redirect(`/${orgSlug}/tools/manage/domains?verified=1`);
+    redirect(`/${orgSlug}/manage/domains?verified=1`);
   } catch (error) {
     rethrowIfNavigationError(error);
-    redirect(`/${orgSlug}/tools/manage/domains?error=verification_failed`);
+    redirect(`/${orgSlug}/manage/domains?error=verification_failed`);
   }
 }
 
@@ -170,10 +170,10 @@ export async function removeOrgCustomDomainAction(orgSlug: string) {
     }
 
     revalidatePath(`/${orgSlug}/manage/domains`);
-    revalidatePath(`/${orgSlug}/tools/manage/domains`);
-    redirect(`/${orgSlug}/tools/manage/domains?removed=1`);
+    revalidatePath(`/${orgSlug}/manage/domains`);
+    redirect(`/${orgSlug}/manage/domains?removed=1`);
   } catch (error) {
     rethrowIfNavigationError(error);
-    redirect(`/${orgSlug}/tools/manage/domains?error=remove_failed`);
+    redirect(`/${orgSlug}/manage/domains?error=remove_failed`);
   }
 }

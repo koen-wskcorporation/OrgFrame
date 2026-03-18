@@ -41,7 +41,7 @@ export default async function OrgManageInboxPage({ params }: { params: Promise<{
     <PageStack>
       <PageHeader
         actions={
-          <Button href={`/${orgContext.orgSlug}/tools/inbox/connections`} size="sm" variant="secondary">
+          <Button href={`/${orgContext.orgSlug}/manage/inbox/connections`} size="sm" variant="secondary">
             Connections
           </Button>
         }

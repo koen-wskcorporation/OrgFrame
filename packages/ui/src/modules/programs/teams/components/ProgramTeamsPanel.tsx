@@ -83,7 +83,7 @@ export function ProgramTeamsPanel({ orgSlug, programId, canWrite, nodes, teamSum
               <CardTitle>Teams</CardTitle>
               <CardDescription>Manage team rosters, staff assignments, and metadata.</CardDescription>
             </div>
-            <Button href={`/${orgSlug}/tools/programs/${programId}/structure`} type="button" variant="secondary">
+            <Button href={`/${orgSlug}/manage/programs/${programId}/structure`} type="button" variant="secondary">
               Open structure
             </Button>
           </div>
@@ -133,7 +133,7 @@ export function ProgramTeamsPanel({ orgSlug, programId, canWrite, nodes, teamSum
                     <Button onClick={() => setActiveTeamId(summary.team.id)} size="sm" type="button" variant="secondary">
                       Manage
                     </Button>
-                    <Button href={`/${orgSlug}/tools/programs/${programId}/structure?teamId=${summary.team.id}`} size="sm" type="button" variant="ghost">
+                    <Button href={`/${orgSlug}/manage/programs/${programId}/structure?teamId=${summary.team.id}`} size="sm" type="button" variant="ghost">
                       Open in structure
                     </Button>
                   </div>

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { ToolsSidebar, ToolsSidebarMobile } from "@orgframe/ui/manage/ToolsSidebar";
+import { ManageSidebar, ManageSidebarMobile } from "@orgframe/ui/manage/ToolsSidebar";
 import { UniversalAppShell } from "@orgframe/ui/shared/UniversalAppShell";
 import { getOrgAuthContext } from "@/lib/org/getOrgAuthContext";
 import { getOrgCapabilities } from "@/lib/permissions/orgCapabilities";
@@ -26,8 +26,8 @@ export default async function OrgManageLayout({
 
   return (
     <UniversalAppShell
-      mobileSidebar={<ToolsSidebarMobile orgSlug={orgContext.orgSlug} />}
-      sidebar={<ToolsSidebar orgSlug={orgContext.orgSlug} />}
+      mobileSidebar={<ManageSidebarMobile orgSlug={orgContext.orgSlug} />}
+      sidebar={<ManageSidebar orgSlug={orgContext.orgSlug} />}
     >
       {children}
     </UniversalAppShell>

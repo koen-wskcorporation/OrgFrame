@@ -60,7 +60,7 @@ export function CreateOrganizationDialog({ renderTrigger }: CreateOrganizationDi
       setOpen(false);
       setOrgName("");
       setOrgSlug("");
-      router.push(`/${result.orgSlug}/tools/manage`);
+      router.push(`/${result.orgSlug}/manage`);
     });
   }
 

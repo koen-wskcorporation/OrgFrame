@@ -140,8 +140,8 @@ async function requireCommunicationsWrite(orgSlug: string) {
 }
 
 function revalidateInboxPaths(orgSlug: string) {
-  revalidatePath(`/${orgSlug}/tools/inbox`);
-  revalidatePath(`/${orgSlug}/tools/inbox`, "layout");
+  revalidatePath(`/${orgSlug}/manage/inbox`);
+  revalidatePath(`/${orgSlug}/manage/inbox`, "layout");
   revalidatePath(`/${orgSlug}/manage/inbox`);
   revalidatePath(`/${orgSlug}/manage/inbox`, "layout");
 }
@@ -488,7 +488,7 @@ export async function connectFacebookPageAction(
     });
 
     revalidateInboxPaths(org.orgSlug);
-    revalidatePath(`/${org.orgSlug}/tools/inbox/connections`);
+    revalidatePath(`/${org.orgSlug}/manage/inbox/connections`);
     revalidatePath(`/${org.orgSlug}/manage/inbox/connections`);
 
     return {
@@ -525,7 +525,7 @@ export async function disconnectInboxIntegrationAction(
     });
 
     revalidateInboxPaths(org.orgSlug);
-    revalidatePath(`/${org.orgSlug}/tools/inbox/connections`);
+    revalidatePath(`/${org.orgSlug}/manage/inbox/connections`);
     revalidatePath(`/${org.orgSlug}/manage/inbox/connections`);
 
     return {

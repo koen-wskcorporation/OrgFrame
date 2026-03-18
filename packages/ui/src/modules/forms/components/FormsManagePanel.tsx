@@ -110,7 +110,7 @@ export function FormsManagePanel({ orgSlug, forms, programs, canWrite = true }: 
         <CardContent className="ui-list-stack">
           {sortedForms.length === 0 ? <Alert variant="info">No forms yet.</Alert> : null}
           {sortedForms.map((form) => (
-            <Link className="ui-list-item ui-list-item-hover block" href={`/${orgSlug}/tools/forms/${form.id}/editor`} key={form.id}>
+            <Link className="ui-list-item ui-list-item-hover block" href={`/${orgSlug}/manage/forms/${form.id}/editor`} key={form.id}>
               <div className="flex items-center gap-1.5">
                 <PublishStatusIcon
                   disabled={!canWrite}

@@ -157,7 +157,7 @@ function buildChangeset(input: {
         }
       }
     ],
-    revalidatePaths: [`/${input.org.slug}/tools/manage/info`, `/${input.org.slug}/manage/info`, `/${input.org.slug}`]
+    revalidatePaths: [`/${input.org.slug}/manage/info`, `/${input.org.slug}/manage/info`, `/${input.org.slug}`]
   };
 }
 

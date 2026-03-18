@@ -1,4 +1,4 @@
-import type { CalendarOccurrence, CalendarReadModel, CalendarVisibility, CalendarEntryType } from "@/modules/calendar/types";
+import type { CalendarOccurrence, CalendarReadModel, CalendarSource, CalendarVisibility, CalendarEntryType } from "@/modules/calendar/types";
 import type { UnifiedCalendarItem } from "@orgframe/ui/calendar/UnifiedCalendar";
 
 export function findOccurrence(readModel: CalendarReadModel, occurrenceId: string) {
@@ -143,6 +143,38 @@ export function toLocalParts(isoUtc: string, timezone: string) {
   return {
     localDate: `${byType.get("year")}-${byType.get("month")}-${byType.get("day")}`,
     localTime: `${byType.get("hour")}:${byType.get("minute")}`
+  };
+}
+
+export function buildInitialSelectedSourceIds(sources: CalendarSource[]) {
+  return new Set(sources.filter((source) => source.isActive).map((source) => source.id));
+}
+
+export function filterCalendarReadModelBySelectedSources(readModel: CalendarReadModel, selectedSourceIds: Set<string>): CalendarReadModel {
+  const selectedEntries = readModel.entries.filter((entry) => {
+    if (!entry.sourceId) {
+      return true;
+    }
+    return selectedSourceIds.has(entry.sourceId);
+  });
+  const entryIds = new Set(selectedEntries.map((entry) => entry.id));
+
+  const selectedOccurrences = readModel.occurrences.filter((occurrence) => entryIds.has(occurrence.entryId));
+  const occurrenceIds = new Set(selectedOccurrences.map((occurrence) => occurrence.id));
+
+  const selectedRules = readModel.rules.filter((rule) => entryIds.has(rule.entryId));
+  const ruleIds = new Set(selectedRules.map((rule) => rule.id));
+
+  return {
+    ...readModel,
+    entries: selectedEntries,
+    occurrences: selectedOccurrences,
+    rules: selectedRules,
+    exceptions: readModel.exceptions.filter((exception) => ruleIds.has(exception.ruleId)),
+    allocations: readModel.allocations.filter((allocation) => occurrenceIds.has(allocation.occurrenceId)),
+    ruleAllocations: readModel.ruleAllocations.filter((allocation) => ruleIds.has(allocation.ruleId)),
+    invites: readModel.invites.filter((invite) => occurrenceIds.has(invite.occurrenceId)),
+    sources: readModel.sources.filter((source) => selectedSourceIds.has(source.id))
   };
 }
 

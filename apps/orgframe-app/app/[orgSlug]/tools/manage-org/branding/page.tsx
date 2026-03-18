@@ -25,5 +25,5 @@ export default async function OrgBrandingLegacyPage({
   }
 
   const suffix = nextQuery.toString();
-  redirect(`/${orgSlug}/tools/manage/branding${suffix ? `?${suffix}` : ""}`);
+  redirect(`/${orgSlug}/manage/branding${suffix ? `?${suffix}` : ""}`);
 }

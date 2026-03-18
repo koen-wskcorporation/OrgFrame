@@ -214,7 +214,7 @@ export function FacilityBookingDialog({
           </div>
         )}
 
-        <div className="flex h-full flex-col gap-4 overflow-auto">
+        <div className="flex min-h-0 h-full flex-col gap-4 overflow-y-auto">
           {!hasMapLayout ? (
             <div className="rounded-control border bg-surface p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Spaces</p>

@@ -136,9 +136,9 @@ function asReservationConflictError(error: unknown) {
 }
 
 function revalidateFacilitiesRoutes(orgSlug: string) {
-  revalidatePath(`/${orgSlug}/tools/facilities`);
   revalidatePath(`/${orgSlug}/manage/facilities`);
-  revalidatePath(`/${orgSlug}/tools/calendar`);
+  revalidatePath(`/${orgSlug}/manage/facilities`);
+  revalidatePath(`/${orgSlug}/manage/calendar`);
 }
 
 const facilityLeafKinds = new Set<FacilitySpaceKind>(["room", "field", "court"]);

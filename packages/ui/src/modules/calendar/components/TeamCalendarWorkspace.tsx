@@ -11,15 +11,12 @@ import { UnifiedCalendar, type UnifiedCalendarQuickAddDraft } from "@orgframe/ui
 import {
   createCalendarEntryAction,
   createManualOccurrenceAction,
-  deleteCalendarLensViewAction,
+  deleteRecurringOccurrenceAction,
   deleteOccurrenceAction,
   getCalendarWorkspaceDataAction,
   leaveSharedOccurrenceAction,
-  listCalendarLensViewsAction,
   respondToTeamInviteAction,
-  saveCalendarLensViewAction,
   setOccurrenceFacilityAllocationsAction,
-  setDefaultCalendarLensViewAction,
   setRuleFacilityAllocationsAction,
   updateCalendarEntryAction,
   updateRecurringOccurrenceAction,
@@ -28,8 +25,6 @@ import {
 } from "@/modules/calendar/actions";
 import type {
   CalendarEntry,
-  CalendarLensSavedView,
-  CalendarLensState,
   CalendarOccurrence,
   CalendarReadModel,
   FacilityAllocation,
@@ -48,6 +43,8 @@ import type { ScheduleRuleDraft } from "@orgframe/ui/modules/programs/schedule/c
 import { generateOccurrencesForRule } from "@/modules/calendar/rule-engine";
 import {
   buildTeamLabelById,
+  buildInitialSelectedSourceIds,
+  filterCalendarReadModelBySelectedSources,
   findEntryForOccurrence,
   findOccurrence,
   replaceOptimisticIds,
@@ -55,6 +52,9 @@ import {
   toLocalParts
 } from "@orgframe/ui/modules/calendar/components/workspace-utils";
 import { FacilityBookingDialog } from "@orgframe/ui/modules/calendar/components/FacilityBookingDialog";
+import { CalendarSourceFilterPopover } from "@orgframe/ui/modules/calendar/components/CalendarSourceFilterPopover";
+import { ScrollableSheetBody } from "@orgframe/ui/modules/calendar/components/ScrollableSheetBody";
+import { UniversalAddressField } from "@orgframe/ui/modules/calendar/components/UniversalAddressField";
 import {
   buildSpaceById,
   computeFacilityConflicts,
@@ -65,8 +65,6 @@ import {
   type FacilityBookingSelection,
   type FacilityBookingWindow
 } from "@orgframe/ui/modules/calendar/components/facility-booking-utils";
-import { defaultLensState, explainOccurrenceVisibility, filterCalendarReadModelByLens } from "@/modules/calendar/lens";
-import { CalendarLensExplorer } from "@orgframe/ui/modules/calendar/components/CalendarLensExplorer";
 
 function resolveEntryLocation(entry: CalendarEntry | null) {
   if (!entry) {
@@ -123,8 +121,7 @@ export function TeamCalendarWorkspace({
     }
   );
   const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string | null>(null);
-  const [lensState, setLensState] = useState<CalendarLensState>(() => defaultLensState("this_page"));
-  const [savedViews, setSavedViews] = useState<CalendarLensSavedView[]>([]);
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(() => buildInitialSelectedSourceIds(initialReadModel.sources));
   const [quickAddDraft, setQuickAddDraft] = useState<(UnifiedCalendarQuickAddDraft & { open: boolean }) | null>(null);
   const [createScreen, setCreateScreen] = useState<"basics" | "location" | "schedule">("basics");
   const [locationDraft, setLocationDraft] = useState("");
@@ -138,6 +135,11 @@ export function TeamCalendarWorkspace({
   const [editEndsAtLocal, setEditEndsAtLocal] = useState("");
   const [editLocationDraft, setEditLocationDraft] = useState("");
   const [editScope, setEditScope] = useState<"occurrence" | "following" | "series">("series");
+  const [pendingRecurringMutation, setPendingRecurringMutation] = useState<{
+    type: "delete";
+    occurrenceId: string;
+  } | null>(null);
+  const [pendingRecurringScope, setPendingRecurringScope] = useState<"occurrence" | "following" | "series">("occurrence");
   const [ruleDraft, setRuleDraft] = useState<ScheduleRuleDraft>(() =>
     buildRuleDraftFromWindow(new Date().toISOString(), new Date(Date.now() + 60 * 60 * 1000).toISOString(), Intl.DateTimeFormat().resolvedOptions().timeZone)
   );
@@ -157,31 +159,8 @@ export function TeamCalendarWorkspace({
     };
   }, [readModel, teamInvites]);
   const filteredReadModel = useMemo(
-    () =>
-      filterCalendarReadModelByLens({
-        readModel: scopedReadModel,
-        sources: scopedReadModel.sources,
-        context: {
-          contextType: "team",
-          orgId: scopedReadModel.entries[0]?.orgId ?? "",
-          orgSlug,
-          teamId
-        },
-        lensState
-      }),
-    [lensState, orgSlug, scopedReadModel, teamId]
-  );
-  const whyShown = useMemo(
-    () =>
-      selectedOccurrenceId
-        ? explainOccurrenceVisibility({
-            occurrenceId: selectedOccurrenceId,
-            readModel: filteredReadModel,
-            sources: scopedReadModel.sources,
-            lensState
-          })
-        : null,
-    [filteredReadModel, lensState, scopedReadModel.sources, selectedOccurrenceId]
+    () => filterCalendarReadModelBySelectedSources(scopedReadModel, selectedSourceIds),
+    [scopedReadModel, selectedSourceIds]
   );
 
   const teamLabelById = useMemo(() => {
@@ -369,10 +348,6 @@ export function TeamCalendarWorkspace({
 
       setReadModel(result.data.readModel);
       setFacilityReadModel(result.data.facilityReadModel);
-      const savedViewsResult = await listCalendarLensViewsAction({ orgSlug, contextType: "team" });
-      if (savedViewsResult.ok) {
-        setSavedViews(savedViewsResult.data.views);
-      }
       if (successTitle) {
         toast({
           title: successTitle,
@@ -383,78 +358,16 @@ export function TeamCalendarWorkspace({
   }
 
   useEffect(() => {
-    startSaving(async () => {
-      const result = await listCalendarLensViewsAction({ orgSlug, contextType: "team" });
-      if (!result.ok) {
-        return;
+    setSelectedSourceIds((current) => {
+      const next = new Set<string>();
+      for (const source of scopedReadModel.sources) {
+        if (current.has(source.id) || source.isActive) {
+          next.add(source.id);
+        }
       }
-      setSavedViews(result.data.views);
-      const defaultView = result.data.views.find((view) => view.isDefault);
-      if (defaultView) {
-        setLensState(defaultView.configJson);
-      }
+      return next;
     });
-  }, [orgSlug]);
-
-  function handleSaveLensView(name: string, isDefault: boolean) {
-    startSaving(async () => {
-      const result = await saveCalendarLensViewAction({
-        orgSlug,
-        name,
-        contextType: "team",
-        isDefault,
-        lensState
-      });
-      if (!result.ok) {
-        toast({
-          title: "Unable to save view",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
-      setSavedViews((current) => [result.data.view, ...current.filter((view) => view.id !== result.data.view.id)]);
-      setLensState((current) => ({
-        ...current,
-        savedViewId: result.data.view.id,
-        savedViewName: result.data.view.name
-      }));
-    });
-  }
-
-  function handleDeleteLensView(viewId: string) {
-    startSaving(async () => {
-      const result = await deleteCalendarLensViewAction({ orgSlug, viewId });
-      if (!result.ok) {
-        toast({
-          title: "Unable to delete view",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
-      setSavedViews((current) => current.filter((view) => view.id !== viewId));
-    });
-  }
-
-  function handleSetDefaultLensView(viewId: string) {
-    startSaving(async () => {
-      const result = await setDefaultCalendarLensViewAction({
-        orgSlug,
-        viewId,
-        contextType: "team"
-      });
-      if (!result.ok) {
-        toast({
-          title: "Unable to set default view",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
-      setSavedViews((current) => current.map((view) => ({ ...view, isDefault: view.id === viewId })));
-    });
-  }
+  }, [scopedReadModel.sources]);
 
   function quickAddTeamPractice(draft: UnifiedCalendarQuickAddDraft) {
     const now = new Date().toISOString();
@@ -1127,24 +1040,15 @@ export function TeamCalendarWorkspace({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <CalendarLensExplorer
-        contextType="team"
-        description="Team-first lens with optional parent scopes and layered composition."
-        lensState={lensState}
-        onDeleteView={handleDeleteLensView}
-        onLensStateChange={setLensState}
-        onSaveView={handleSaveLensView}
-        onSetDefaultView={handleSetDefaultLensView}
-        savedViews={savedViews}
-        sources={scopedReadModel.sources}
-        title="Team Calendar Explorer"
-        whyShown={whyShown}
-      />
       <UnifiedCalendar
         canEdit={canWrite}
         disableHoverGhost={Boolean(selectedOccurrenceId) || Boolean(quickAddDraft?.open) || facilityDialogOpen}
         className="min-h-0 flex-1"
         quickAddUx="external"
+        referenceTimezone={Intl.DateTimeFormat().resolvedOptions().timeZone}
+        controlsSlot={
+          <CalendarSourceFilterPopover onChange={setSelectedSourceIds} selectedSourceIds={selectedSourceIds} sources={scopedReadModel.sources} />
+        }
         getConflictMessage={(draft) => {
           const hasOverlap = items.some((item) => {
             const start = new Date(item.startsAtUtc).getTime();
@@ -1241,7 +1145,7 @@ export function TeamCalendarWorkspace({
         title={composerTitle}
       >
         {createMode && quickAddDraft ? (
-          <div className="space-y-4">
+          <ScrollableSheetBody className="space-y-4 pr-1">
             <PanelScreens activeKey={createScreen} onChange={(key) => setCreateScreen(key as typeof createScreen)} screens={createScreens as unknown as { key: string; label: string }[]} />
 
             {createScreen === "basics" ? (
@@ -1295,7 +1199,7 @@ export function TeamCalendarWorkspace({
                 {locationMode === "other" ? (
                   <label className="space-y-1 text-xs text-text-muted">
                     <span>Address</span>
-                    <Input onChange={(event) => setLocationDraft(event.target.value)} placeholder="Enter address or custom location" value={locationDraft} />
+                    <UniversalAddressField onChange={setLocationDraft} value={locationDraft} />
                   </label>
                 ) : null}
                 {locationMode === "facility" && selectedFacility ? (
@@ -1378,11 +1282,11 @@ export function TeamCalendarWorkspace({
                 <RecurringEventEditor canWrite={canWrite} draft={ruleDraft} onChange={setRuleDraft} />
               </>
             ) : null}
-          </div>
+          </ScrollableSheetBody>
         ) : null}
 
         {selectedOccurrence && selectedEntry ? (
-            <div className="space-y-3">
+            <ScrollableSheetBody className="space-y-3 pr-1">
               <label className="space-y-1 text-xs text-text-muted">
                 <span>Title</span>
                 <Input disabled={selectedInvite?.role !== "host"} onChange={(event) => setEditTitle(event.target.value)} value={editTitle} />
@@ -1403,7 +1307,11 @@ export function TeamCalendarWorkspace({
 
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Location</p>
-                <Input disabled={selectedInvite?.role !== "host"} onChange={(event) => setEditLocationDraft(event.target.value)} value={editLocationDraft} />
+                <UniversalAddressField
+                  disabled={selectedInvite?.role !== "host"}
+                  onChange={setEditLocationDraft}
+                  value={editLocationDraft}
+                />
               </div>
 
               {selectedOccurrence.sourceRuleId ? (
@@ -1554,6 +1462,14 @@ export function TeamCalendarWorkspace({
               {selectedInvite?.role === "host" ? (
                 <Button
                   onClick={() => {
+                    if (selectedOccurrence.sourceRuleId) {
+                      setPendingRecurringMutation({
+                        type: "delete",
+                        occurrenceId: selectedOccurrence.id
+                      });
+                      setPendingRecurringScope("occurrence");
+                      return;
+                    }
                     setReadModel((current) => ({
                       ...current,
                       occurrences: current.occurrences.filter((occurrence) => occurrence.id !== selectedOccurrence.id),
@@ -1587,8 +1503,65 @@ export function TeamCalendarWorkspace({
                   Delete host occurrence
                 </Button>
               ) : null}
-            </div>
+            </ScrollableSheetBody>
           ) : null}
+      </Panel>
+      <Panel
+        footer={
+          <>
+            <Button onClick={() => setPendingRecurringMutation(null)} type="button" variant="ghost">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!pendingRecurringMutation) {
+                  return;
+                }
+                const mutation = pendingRecurringMutation;
+                setPendingRecurringMutation(null);
+                startSaving(async () => {
+                  const result = await deleteRecurringOccurrenceAction({
+                    orgSlug,
+                    occurrenceId: mutation.occurrenceId,
+                    deleteScope: pendingRecurringScope
+                  });
+                  if (!result.ok) {
+                    toast({
+                      title: "Unable to delete recurring occurrence",
+                      description: result.error,
+                      variant: "destructive"
+                    });
+                    refreshWorkspace();
+                    return;
+                  }
+                  refreshWorkspace("Recurring occurrence deleted");
+                });
+              }}
+              type="button"
+            >
+              Apply
+            </Button>
+          </>
+        }
+        onClose={() => setPendingRecurringMutation(null)}
+        open={Boolean(pendingRecurringMutation)}
+        subtitle="Choose how far this recurring delete should apply."
+        title="Delete Recurring Occurrence"
+      >
+        <div className="space-y-3">
+          <label className="space-y-1 text-xs text-text-muted">
+            <span>Scope</span>
+            <Select
+              onChange={(event) => setPendingRecurringScope(event.target.value as typeof pendingRecurringScope)}
+              options={[
+                { label: "This occurrence only", value: "occurrence" },
+                { label: "This and following", value: "following" },
+                { label: "Entire series", value: "series" }
+              ]}
+              value={pendingRecurringScope}
+            />
+          </label>
+        </div>
       </Panel>
     </div>
   );

@@ -1558,7 +1558,7 @@ export function ProgramEditorPanel({
                         <p className="truncate font-semibold text-text">{form.name}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Link className="text-sm font-semibold text-link hover:underline" href={`/${orgSlug}/tools/forms/${form.id}/editor`}>
+                        <Link className="text-sm font-semibold text-link hover:underline" href={`/${orgSlug}/manage/forms/${form.id}/editor`}>
                           Manage form
                         </Link>
                       </div>

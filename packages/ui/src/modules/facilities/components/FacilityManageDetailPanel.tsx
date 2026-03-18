@@ -206,7 +206,7 @@ export function FacilityManageDetailPanel({
               </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
-              <Button href={`/${orgSlug}/tools/facilities`} size="sm" variant="secondary">
+              <Button href={`/${orgSlug}/manage/facilities`} size="sm" variant="secondary">
                 Back to facilities
               </Button>
               <Button

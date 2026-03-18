@@ -12,12 +12,9 @@ import { UnifiedCalendar, type UnifiedCalendarQuickAddDraft } from "@orgframe/ui
 import {
   createCalendarEntryAction,
   createManualOccurrenceAction,
-  deleteCalendarLensViewAction,
+  deleteRecurringOccurrenceAction,
   deleteOccurrenceAction,
   getCalendarWorkspaceDataAction,
-  saveCalendarLensViewAction,
-  setDefaultCalendarLensViewAction,
-  listCalendarLensViewsAction,
   inviteTeamToOccurrenceAction,
   setOccurrenceFacilityAllocationsAction,
   setRuleFacilityAllocationsAction,
@@ -29,8 +26,6 @@ import {
 import type {
   CalendarEntry,
   CalendarEntryType,
-  CalendarLensSavedView,
-  CalendarLensState,
   CalendarOccurrence,
   CalendarReadModel,
   FacilityAllocation,
@@ -49,6 +44,8 @@ import type { ScheduleRuleDraft } from "@orgframe/ui/modules/programs/schedule/c
 import { generateOccurrencesForRule } from "@/modules/calendar/rule-engine";
 import {
   buildTeamLabelById,
+  buildInitialSelectedSourceIds,
+  filterCalendarReadModelBySelectedSources,
   findEntryForOccurrence,
   findOccurrence,
   replaceOptimisticIds,
@@ -56,6 +53,9 @@ import {
   toLocalParts
 } from "@orgframe/ui/modules/calendar/components/workspace-utils";
 import { FacilityBookingDialog } from "@orgframe/ui/modules/calendar/components/FacilityBookingDialog";
+import { CalendarSourceFilterPopover } from "@orgframe/ui/modules/calendar/components/CalendarSourceFilterPopover";
+import { ScrollableSheetBody } from "@orgframe/ui/modules/calendar/components/ScrollableSheetBody";
+import { UniversalAddressField } from "@orgframe/ui/modules/calendar/components/UniversalAddressField";
 import { UniversalSharePopup, type ShareTarget } from "@orgframe/ui/modules/calendar/components/UniversalSharePopup";
 import {
   buildSpaceById,
@@ -67,8 +67,6 @@ import {
   type FacilityBookingSelection,
   type FacilityBookingWindow
 } from "@orgframe/ui/modules/calendar/components/facility-booking-utils";
-import { defaultLensState, explainOccurrenceVisibility, filterCalendarReadModelByLens } from "@/modules/calendar/lens";
-import { CalendarLensExplorer } from "@orgframe/ui/modules/calendar/components/CalendarLensExplorer";
 
 function resolveEntryLocation(entry: CalendarEntry | null) {
   if (!entry) {
@@ -115,8 +113,7 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
     }
   );
   const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string | null>(null);
-  const [lensState, setLensState] = useState<CalendarLensState>(() => defaultLensState("mine"));
-  const [savedViews, setSavedViews] = useState<CalendarLensSavedView[]>([]);
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(() => buildInitialSelectedSourceIds(initialReadModel.sources));
   const [quickEntryType, setQuickEntryType] = useState<CalendarEntryType>("event");
   const [quickHostTeamId, setQuickHostTeamId] = useState<string>(activeTeams[0]?.id ?? "");
   const [inviteTeamId, setInviteTeamId] = useState<string>(activeTeams[0]?.id ?? "");
@@ -136,6 +133,13 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
   const [editEndsAtLocal, setEditEndsAtLocal] = useState("");
   const [editLocationDraft, setEditLocationDraft] = useState("");
   const [editScope, setEditScope] = useState<"occurrence" | "following" | "series">("series");
+  const [pendingRecurringMutation, setPendingRecurringMutation] = useState<{
+    type: "move" | "resize" | "delete";
+    occurrenceId: string;
+    startsAtUtc?: string;
+    endsAtUtc?: string;
+  } | null>(null);
+  const [pendingRecurringScope, setPendingRecurringScope] = useState<"occurrence" | "following" | "series">("occurrence");
   const [ruleDraft, setRuleDraft] = useState<ScheduleRuleDraft>(() =>
     buildRuleDraftFromWindow(new Date().toISOString(), new Date(Date.now() + 60 * 60 * 1000).toISOString(), Intl.DateTimeFormat().resolvedOptions().timeZone)
   );
@@ -158,32 +162,7 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
   );
   const selectedLocation = useMemo(() => resolveEntryLocation(selectedEntry), [selectedEntry]);
   const teamLabelById = useMemo(() => buildTeamLabelById(activeTeams), [activeTeams]);
-  const filteredReadModel = useMemo(
-    () =>
-      filterCalendarReadModelByLens({
-        readModel,
-        sources: readModel.sources,
-        context: {
-          contextType: "org",
-          orgId: readModel.entries[0]?.orgId ?? "",
-          orgSlug
-        },
-        lensState
-      }),
-    [lensState, orgSlug, readModel]
-  );
-  const whyShown = useMemo(
-    () =>
-      selectedOccurrenceId
-        ? explainOccurrenceVisibility({
-            occurrenceId: selectedOccurrenceId,
-            readModel: filteredReadModel,
-            sources: readModel.sources,
-            lensState
-          })
-        : null,
-    [filteredReadModel, lensState, readModel.sources, selectedOccurrenceId]
-  );
+  const filteredReadModel = useMemo(() => filterCalendarReadModelBySelectedSources(readModel, selectedSourceIds), [readModel, selectedSourceIds]);
 
   const calendarItems = useMemo(
     () =>
@@ -425,10 +404,6 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
 
       setReadModel(result.data.readModel);
       setFacilityReadModel(result.data.facilityReadModel);
-      const savedViewsResult = await listCalendarLensViewsAction({ orgSlug, contextType: "org" });
-      if (savedViewsResult.ok) {
-        setSavedViews(savedViewsResult.data.views);
-      }
       if (successTitle) {
         toast({
           title: successTitle,
@@ -439,91 +414,16 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
   }
 
   useEffect(() => {
-    startSaving(async () => {
-      const result = await listCalendarLensViewsAction({ orgSlug, contextType: "org" });
-      if (!result.ok) {
-        return;
+    setSelectedSourceIds((current) => {
+      const next = new Set<string>();
+      for (const source of readModel.sources) {
+        if (current.has(source.id) || source.isActive) {
+          next.add(source.id);
+        }
       }
-      setSavedViews(result.data.views);
-      const defaultView = result.data.views.find((view) => view.isDefault);
-      if (defaultView) {
-        setLensState(defaultView.configJson);
-      }
+      return next;
     });
-  }, [orgSlug]);
-
-  function handleSaveLensView(name: string, isDefault: boolean) {
-    startSaving(async () => {
-      const result = await saveCalendarLensViewAction({
-        orgSlug,
-        name,
-        contextType: "org",
-        isDefault,
-        lensState
-      });
-      if (!result.ok) {
-        toast({
-          title: "Unable to save view",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
-      setSavedViews((current) => [result.data.view, ...current.filter((view) => view.id !== result.data.view.id)]);
-      setLensState((current) => ({
-        ...current,
-        savedViewId: result.data.view.id,
-        savedViewName: result.data.view.name
-      }));
-      toast({
-        title: "Calendar view saved",
-        variant: "success"
-      });
-    });
-  }
-
-  function handleDeleteLensView(viewId: string) {
-    startSaving(async () => {
-      const result = await deleteCalendarLensViewAction({ orgSlug, viewId });
-      if (!result.ok) {
-        toast({
-          title: "Unable to delete view",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
-      setSavedViews((current) => current.filter((view) => view.id !== viewId));
-      setLensState((current) =>
-        current.savedViewId === viewId
-          ? {
-              ...current,
-              savedViewId: null,
-              savedViewName: null
-            }
-          : current
-      );
-    });
-  }
-
-  function handleSetDefaultLensView(viewId: string) {
-    startSaving(async () => {
-      const result = await setDefaultCalendarLensViewAction({
-        orgSlug,
-        viewId,
-        contextType: "org"
-      });
-      if (!result.ok) {
-        toast({
-          title: "Unable to set default view",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
-      setSavedViews((current) => current.map((view) => ({ ...view, isDefault: view.id === viewId })));
-    });
-  }
+  }, [readModel.sources]);
 
   function createFromDraft(draft: UnifiedCalendarQuickAddDraft) {
     const now = new Date().toISOString();
@@ -1068,6 +968,70 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
     });
   }
 
+  async function runRecurringMutation(input: { occurrenceId: string; startsAtUtc: string; endsAtUtc: string; scope: "occurrence" | "following" | "series" }) {
+    const occurrence = findOccurrence(readModel, input.occurrenceId);
+    if (!occurrence || !occurrence.sourceRuleId) {
+      return;
+    }
+    const entry = findEntryForOccurrence(readModel, occurrence);
+    const rule = readModel.rules.find((item) => item.id === occurrence.sourceRuleId) ?? null;
+    if (!entry || !rule) {
+      return;
+    }
+
+    const ruleShape = scheduleDraftFromCalendarRule(rule);
+    const startParts = toLocalParts(input.startsAtUtc, occurrence.timezone);
+    const endParts = toLocalParts(input.endsAtUtc, occurrence.timezone);
+    const result = await updateRecurringOccurrenceAction({
+      orgSlug,
+      occurrenceId: occurrence.id,
+      editScope: input.scope,
+      entryType: entry.entryType,
+      title: entry.title,
+      summary: entry.summary ?? "",
+      visibility: entry.visibility,
+      status: entry.status,
+      hostTeamId: entry.hostTeamId,
+      timezone: occurrence.timezone,
+      location: resolveEntryLocation(entry),
+      localDate: startParts.localDate,
+      localStartTime: startParts.localTime,
+      localEndTime: endParts.localTime,
+      metadataJson: occurrence.metadataJson,
+      recurrence: {
+        mode: ruleShape.mode,
+        timezone: ruleShape.timezone,
+        startDate: ruleShape.startDate,
+        endDate: ruleShape.endDate,
+        startTime: ruleShape.startTime,
+        endTime: ruleShape.endTime,
+        intervalCount: ruleShape.intervalCount,
+        intervalUnit: ruleShape.intervalUnit,
+        byWeekday: ruleShape.byWeekday,
+        byMonthday: ruleShape.byMonthday,
+        endMode: ruleShape.endMode,
+        untilDate: ruleShape.untilDate,
+        maxOccurrences: ruleShape.maxOccurrences ? Number.parseInt(ruleShape.maxOccurrences, 10) : null,
+        configJson: {
+          specificDates: ruleShape.specificDates
+        }
+      },
+      copyForwardInvites: true,
+      copyForwardFacilities: true
+    });
+    if (!result.ok) {
+      toast({
+        title: "Unable to update recurring event",
+        description: result.error,
+        variant: "destructive"
+      });
+      refreshWorkspace();
+      return;
+    }
+
+    refreshWorkspace("Recurring event updated");
+  }
+
   function moveOccurrence(itemId: string, startsAtUtc: string, endsAtUtc: string) {
     const occurrence = findOccurrence(readModel, itemId);
     if (!occurrence) {
@@ -1107,6 +1071,17 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
 
     if (isOptimisticId(occurrence.id)) {
       pendingOccurrenceUpdatesRef.current.set(occurrence.id, { startsAtUtc, endsAtUtc, timezone: occurrence.timezone });
+      return;
+    }
+
+    if (occurrence.sourceRuleId) {
+      setPendingRecurringMutation({
+        type: "move",
+        occurrenceId: occurrence.id,
+        startsAtUtc,
+        endsAtUtc
+      });
+      setPendingRecurringScope("occurrence");
       return;
     }
 
@@ -1176,6 +1151,17 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
 
     if (isOptimisticId(occurrence.id)) {
       pendingOccurrenceUpdatesRef.current.set(occurrence.id, { startsAtUtc: occurrence.startsAtUtc, endsAtUtc, timezone: occurrence.timezone });
+      return;
+    }
+
+    if (occurrence.sourceRuleId) {
+      setPendingRecurringMutation({
+        type: "resize",
+        occurrenceId: occurrence.id,
+        startsAtUtc: occurrence.startsAtUtc,
+        endsAtUtc
+      });
+      setPendingRecurringScope("occurrence");
       return;
     }
 
@@ -1473,24 +1459,17 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
       <CardHeader className="shrink-0">
         <CardTitle>Calendar Workspace</CardTitle>
         <CardDescription>Unified events, practices, and games with drag-create, drag-move, and resize actions.</CardDescription>
-        <CalendarLensExplorer
-          contextType="org"
-          lensState={lensState}
-          onDeleteView={handleDeleteLensView}
-          onLensStateChange={setLensState}
-          onSaveView={handleSaveLensView}
-          onSetDefaultView={handleSetDefaultLensView}
-          savedViews={savedViews}
-          sources={readModel.sources}
-          whyShown={whyShown}
-        />
       </CardHeader>
       <UnifiedCalendar
         canEdit={canWrite}
         disableHoverGhost={Boolean(selectedOccurrenceId) || Boolean(quickAddDraft?.open) || facilityDialogOpen}
         framed={false}
         quickAddUx="external"
+        referenceTimezone={Intl.DateTimeFormat().resolvedOptions().timeZone}
         className="min-h-0 flex-1 px-5 pb-5 md:px-6 md:pb-6"
+        controlsSlot={
+          <CalendarSourceFilterPopover onChange={setSelectedSourceIds} selectedSourceIds={selectedSourceIds} sources={readModel.sources} />
+        }
         getConflictMessage={(draft) => {
           const hasOverlap = calendarItems.some((item) => {
             const start = new Date(item.startsAtUtc).getTime();
@@ -1605,7 +1584,7 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
         title={composerTitle}
       >
         {createMode && quickAddDraft ? (
-          <div className="space-y-4">
+          <ScrollableSheetBody className="space-y-4 pr-1">
             <PanelScreens activeKey={createScreen} onChange={(key) => setCreateScreen(key as typeof createScreen)} screens={createScreens as unknown as { key: string; label: string }[]} />
 
             {createScreen === "basics" ? (
@@ -1698,7 +1677,7 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
                 {locationMode === "other" ? (
                   <label className="space-y-1 text-xs text-text-muted">
                     <span>Address</span>
-                    <Input onChange={(event) => setLocationDraft(event.target.value)} placeholder="Enter address or custom location" value={locationDraft} />
+                    <UniversalAddressField onChange={setLocationDraft} value={locationDraft} />
                   </label>
                 ) : null}
 
@@ -1782,11 +1761,11 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
                 <RecurringEventEditor canWrite={canWrite} draft={ruleDraft} onChange={setRuleDraft} />
               </>
             ) : null}
-          </div>
+          </ScrollableSheetBody>
         ) : null}
 
         {editMode && selectedOccurrence && selectedEntry ? (
-          <div className="space-y-4">
+          <ScrollableSheetBody className="space-y-4 pr-1">
             <label className="space-y-1 text-xs text-text-muted">
               <span>Title</span>
               <Input onChange={(event) => setEditTitle(event.target.value)} value={editTitle} />
@@ -1804,7 +1783,7 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
 
             <label className="space-y-1 text-xs text-text-muted">
               <span>Location</span>
-              <Input onChange={(event) => setEditLocationDraft(event.target.value)} value={editLocationDraft} />
+              <UniversalAddressField onChange={setEditLocationDraft} value={editLocationDraft} />
             </label>
 
             {selectedOccurrence.sourceRuleId ? (
@@ -1922,6 +1901,16 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
               className="w-full"
               disabled={!canWrite}
               onClick={() => {
+                if (selectedOccurrence.sourceRuleId) {
+                  setPendingRecurringMutation({
+                    type: "delete",
+                    occurrenceId: selectedOccurrence.id,
+                    startsAtUtc: selectedOccurrence.startsAtUtc,
+                    endsAtUtc: selectedOccurrence.endsAtUtc
+                  });
+                  setPendingRecurringScope("occurrence");
+                  return;
+                }
                 setReadModel((current) => ({
                   ...current,
                   occurrences: current.occurrences.filter((occurrence) => occurrence.id !== selectedOccurrence.id),
@@ -1953,8 +1942,78 @@ export function OrgCalendarWorkspace({ orgSlug, canWrite, initialReadModel, init
             >
               Delete occurrence
             </Button>
-          </div>
+          </ScrollableSheetBody>
         ) : null}
+      </Panel>
+      <Panel
+        footer={
+          <>
+            <Button onClick={() => setPendingRecurringMutation(null)} type="button" variant="ghost">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!pendingRecurringMutation) {
+                  return;
+                }
+                const mutation = pendingRecurringMutation;
+                setPendingRecurringMutation(null);
+                startSaving(async () => {
+                  if (mutation.type === "delete") {
+                    const result = await deleteRecurringOccurrenceAction({
+                      orgSlug,
+                      occurrenceId: mutation.occurrenceId,
+                      deleteScope: pendingRecurringScope
+                    });
+                    if (!result.ok) {
+                      toast({
+                        title: "Unable to delete recurring occurrence",
+                        description: result.error,
+                        variant: "destructive"
+                      });
+                      refreshWorkspace();
+                      return;
+                    }
+                    refreshWorkspace("Recurring occurrence deleted");
+                    return;
+                  }
+
+                  if (!mutation.startsAtUtc || !mutation.endsAtUtc) {
+                    return;
+                  }
+                  await runRecurringMutation({
+                    occurrenceId: mutation.occurrenceId,
+                    startsAtUtc: mutation.startsAtUtc,
+                    endsAtUtc: mutation.endsAtUtc,
+                    scope: pendingRecurringScope
+                  });
+                });
+              }}
+              type="button"
+            >
+              Apply
+            </Button>
+          </>
+        }
+        onClose={() => setPendingRecurringMutation(null)}
+        open={Boolean(pendingRecurringMutation)}
+        subtitle="Choose how far this recurring change should apply."
+        title="Apply Recurring Change"
+      >
+        <div className="space-y-3">
+          <label className="space-y-1 text-xs text-text-muted">
+            <span>Scope</span>
+            <Select
+              onChange={(event) => setPendingRecurringScope(event.target.value as typeof pendingRecurringScope)}
+              options={[
+                { label: "This occurrence only", value: "occurrence" },
+                { label: "This and following", value: "following" },
+                { label: "Entire series", value: "series" }
+              ]}
+              value={pendingRecurringScope}
+            />
+          </label>
+        </div>
       </Panel>
     </Card>
   );

@@ -6,5 +6,5 @@ export default async function OrgManageFormDetailPage({
   params: Promise<{ orgSlug: string; formId: string }>;
 }) {
   const { orgSlug, formId } = await params;
-  redirect(`/${orgSlug}/tools/forms/${formId}/editor`);
+  redirect(`/${orgSlug}/manage/forms/${formId}/editor`);
 }

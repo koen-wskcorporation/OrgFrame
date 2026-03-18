@@ -173,7 +173,7 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
       setStartDate("");
       setEndDate("");
       setCoverImagePath("");
-      router.push(`/${orgSlug}/tools/programs/${result.data.programId}`);
+      router.push(`/${orgSlug}/manage/programs/${result.data.programId}`);
     });
   }
 
@@ -203,7 +203,7 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
           title: "Program duplicated",
           variant: "success"
         });
-        router.push(`/${orgSlug}/tools/programs/${result.data.programId}`);
+        router.push(`/${orgSlug}/manage/programs/${result.data.programId}`);
       } finally {
         setDuplicateProgramId(null);
       }
@@ -230,7 +230,7 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
           {sortedPrograms.map((program) => (
             <div className="ui-list-item ui-list-item-hover" key={program.id}>
               <div className="flex items-start justify-between gap-3">
-                <Link className="block min-w-0 flex-1" href={`/${orgSlug}/tools/programs/${program.id}`}>
+                <Link className="block min-w-0 flex-1" href={`/${orgSlug}/manage/programs/${program.id}`}>
                   <div className="flex items-center gap-1.5">
                     <PublishStatusIcon
                       disabled={!canWrite}
