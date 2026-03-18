@@ -4,9 +4,9 @@ import { AssetTile } from "@orgframe/ui/ui/asset-tile";
 import { Button } from "@orgframe/ui/ui/button";
 import { Checkbox } from "@orgframe/ui/ui/checkbox";
 import { ButtonListEditor } from "@orgframe/ui/editor/buttons/ButtonListEditor";
+import { RichTextEditor } from "@orgframe/ui/editor/RichTextEditor";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
-import { Textarea } from "@orgframe/ui/ui/textarea";
 import { getOrgSiteAssetPublicUrl } from "@/modules/site-builder/storage";
 import type { BlockEditorProps, CtaCardBlockConfig } from "@/modules/site-builder/types";
 
@@ -34,10 +34,10 @@ export function CtaCardBlockEditorClient({ block, onChange, context }: BlockEdit
         />
       </FormField>
       <FormField label="Body">
-        <Textarea
-          className="min-h-[110px]"
-          onChange={(event) => {
-            updateConfig({ body: event.target.value });
+        <RichTextEditor
+          minHeight={130}
+          onChange={(next) => {
+            updateConfig({ body: next });
           }}
           value={block.config.body}
         />

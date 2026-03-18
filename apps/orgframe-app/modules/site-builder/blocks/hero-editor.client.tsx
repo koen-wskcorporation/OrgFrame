@@ -2,10 +2,10 @@
 
 import { AssetTile } from "@orgframe/ui/ui/asset-tile";
 import { Button } from "@orgframe/ui/ui/button";
+import { RichTextEditor } from "@orgframe/ui/editor/RichTextEditor";
 import { ButtonListEditor } from "@orgframe/ui/editor/buttons/ButtonListEditor";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
-import { Textarea } from "@orgframe/ui/ui/textarea";
 import { getOrgSiteAssetPublicUrl } from "@/modules/site-builder/storage";
 import type { BlockEditorProps, HeroBlockConfig } from "@/modules/site-builder/types";
 
@@ -34,10 +34,10 @@ export function HeroBlockEditorClient({ block, context, onChange }: BlockEditorP
       </FormField>
 
       <FormField label="Subheadline">
-        <Textarea
-          className="min-h-[100px]"
-          onChange={(event) => {
-            updateConfig({ subheadline: event.target.value });
+        <RichTextEditor
+          minHeight={120}
+          onChange={(next) => {
+            updateConfig({ subheadline: next });
           }}
           value={block.config.subheadline}
         />

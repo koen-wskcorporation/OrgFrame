@@ -2,11 +2,26 @@ import { asText, defaultPageTitleFromSlug, sanitizePageSlug } from "@/modules/si
 import { createDefaultBlocksForPage, normalizeDraftBlocks, normalizeRowBlocks } from "@/modules/site-builder/blocks/registry";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import type { LinkPickerPageOption } from "@/lib/links";
-import type { BlockContext, DraftBlockInput, OrgManagePage, OrgNavItem, OrgSitePage, OrgSitePageWithBlocks } from "@/modules/site-builder/types";
+import { listPublishedCalendarCatalog } from "@/modules/calendar/db/queries";
+import { listPublishedFormsForOrg } from "@/modules/forms/db/queries";
+import { listProgramNodes, listPublishedProgramsForCatalog } from "@/modules/programs/db/queries";
+import type {
+  BlockContext,
+  DraftBlockInput,
+  OrgManagePage,
+  OrgNavItem,
+  OrgSitePage,
+  OrgSitePageWithBlocks,
+  OrgSiteStructureNode,
+  ResolvedOrgSiteStructureNode
+} from "@/modules/site-builder/types";
 
-const pageSelect = "id, org_id, slug, title, is_published, sort_index, created_at, updated_at";
+const pageSelect =
+  "id, org_id, slug, title, is_published, page_lifecycle, temporary_window_start_utc, temporary_window_end_utc, sort_index, created_at, updated_at";
 const blockSelect = "id, type, sort_index, config";
 const navSelect = "id, org_id, parent_id, label, link_type, page_slug, external_url, open_in_new_tab, is_visible, sort_index, created_at, updated_at";
+const siteStructureNodeSelect =
+  "id, org_id, parent_id, sort_index, label, node_kind, page_slug, external_url, page_lifecycle, source_type, source_scope_json, generation_rules_json, child_behavior, route_behavior_json, label_behavior, temporary_window_start_utc, temporary_window_end_utc, is_clickable, is_visible, is_system_node, created_at, updated_at";
 
 type PageRow = {
   id: string;
@@ -14,6 +29,9 @@ type PageRow = {
   slug: string;
   title: string;
   is_published: boolean;
+  page_lifecycle: "permanent" | "temporary";
+  temporary_window_start_utc: string | null;
+  temporary_window_end_utc: string | null;
   sort_index: number;
   created_at: string;
   updated_at: string;
@@ -41,6 +59,39 @@ type NavRow = {
   updated_at: string;
 };
 
+type SiteStructureNodeRow = {
+  id: string;
+  org_id: string;
+  parent_id: string | null;
+  sort_index: number;
+  label: string;
+  node_kind: OrgSiteStructureNode["nodeKind"];
+  page_slug: string | null;
+  external_url: string | null;
+  page_lifecycle: OrgSiteStructureNode["pageLifecycle"];
+  source_type: OrgSiteStructureNode["sourceType"];
+  source_scope_json: unknown;
+  generation_rules_json: unknown;
+  child_behavior: OrgSiteStructureNode["childBehavior"];
+  route_behavior_json: unknown;
+  label_behavior: OrgSiteStructureNode["labelBehavior"];
+  temporary_window_start_utc: string | null;
+  temporary_window_end_utc: string | null;
+  is_clickable: boolean;
+  is_visible: boolean;
+  is_system_node: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
+}
+
 function mapPage(row: PageRow): OrgSitePage {
   return {
     id: row.id,
@@ -48,6 +99,9 @@ function mapPage(row: PageRow): OrgSitePage {
     slug: row.slug,
     title: row.title,
     isPublished: row.is_published,
+    pageLifecycle: row.page_lifecycle === "temporary" ? "temporary" : "permanent",
+    temporaryWindowStartUtc: row.temporary_window_start_utc,
+    temporaryWindowEndUtc: row.temporary_window_end_utc,
     sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -60,6 +114,9 @@ function mapManagePage(row: PageRow): OrgManagePage {
     slug: row.slug,
     title: row.title,
     isPublished: row.is_published,
+    pageLifecycle: row.page_lifecycle === "temporary" ? "temporary" : "permanent",
+    temporaryWindowStartUtc: row.temporary_window_start_utc,
+    temporaryWindowEndUtc: row.temporary_window_end_utc,
     sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -78,6 +135,33 @@ function mapNavItem(row: NavRow): OrgNavItem {
     openInNewTab: row.open_in_new_tab,
     isVisible: row.is_visible,
     sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapSiteStructureNode(row: SiteStructureNodeRow): OrgSiteStructureNode {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    parentId: row.parent_id,
+    sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
+    label: row.label,
+    nodeKind: row.node_kind,
+    pageSlug: row.page_slug,
+    externalUrl: row.external_url,
+    pageLifecycle: row.page_lifecycle === "temporary" ? "temporary" : "permanent",
+    sourceType: row.source_type,
+    sourceScopeJson: asObject(row.source_scope_json),
+    generationRulesJson: asObject(row.generation_rules_json),
+    childBehavior: row.child_behavior,
+    routeBehaviorJson: asObject(row.route_behavior_json),
+    labelBehavior: row.label_behavior,
+    temporaryWindowStartUtc: row.temporary_window_start_utc,
+    temporaryWindowEndUtc: row.temporary_window_end_utc,
+    isClickable: Boolean(row.is_clickable),
+    isVisible: Boolean(row.is_visible),
+    isSystemNode: Boolean(row.is_system_node),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -226,7 +310,19 @@ async function loadPageBySlug(orgId: string, pageSlug: string, includeUnpublishe
     return null;
   }
 
-  return mapPage(data as PageRow);
+  const mapped = mapPage(data as PageRow);
+
+  if (!includeUnpublished && mapped.pageLifecycle === "temporary") {
+    const nowIso = new Date().toISOString();
+    if (mapped.temporaryWindowStartUtc && mapped.temporaryWindowStartUtc > nowIso) {
+      return null;
+    }
+    if (mapped.temporaryWindowEndUtc && mapped.temporaryWindowEndUtc <= nowIso) {
+      return null;
+    }
+  }
+
+  return mapped;
 }
 
 export async function getOrgPageById(orgId: string, pageId: string): Promise<OrgSitePage | null> {
@@ -822,13 +918,19 @@ export async function updateOrgPageSettingsById({
   pageId,
   title,
   slug,
-  isPublished
+  isPublished,
+  pageLifecycle,
+  temporaryWindowStartUtc,
+  temporaryWindowEndUtc
 }: {
   orgId: string;
   pageId: string;
   title: string;
   slug: string;
   isPublished: boolean;
+  pageLifecycle?: OrgManagePage["pageLifecycle"];
+  temporaryWindowStartUtc?: string | null;
+  temporaryWindowEndUtc?: string | null;
 }): Promise<OrgManagePage | null> {
   const supabase = await createSupabaseServer();
   const { data: existing, error: existingError } = await supabase
@@ -852,7 +954,10 @@ export async function updateOrgPageSettingsById({
     .update({
       title,
       slug,
-      is_published: isPublished
+      is_published: isPublished,
+      page_lifecycle: pageLifecycle,
+      temporary_window_start_utc: temporaryWindowStartUtc,
+      temporary_window_end_utc: temporaryWindowEndUtc
     })
     .eq("org_id", orgId)
     .eq("id", pageId)
@@ -1048,4 +1153,565 @@ export async function listOrgPagesForLinkPicker(orgId: string): Promise<LinkPick
   }
 
   return pages;
+}
+
+export async function listOrgSiteStructureNodesForManage(orgId: string): Promise<OrgSiteStructureNode[]> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_site_structure_nodes")
+    .select(siteStructureNodeSelect)
+    .eq("org_id", orgId)
+    .order("parent_id", { ascending: true, nullsFirst: true })
+    .order("sort_index", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to list site structure nodes: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => mapSiteStructureNode(row as SiteStructureNodeRow));
+}
+
+export async function getOrgSiteStructureNodeById(orgId: string, nodeId: string): Promise<OrgSiteStructureNode | null> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_site_structure_nodes")
+    .select(siteStructureNodeSelect)
+    .eq("org_id", orgId)
+    .eq("id", nodeId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load site structure node: ${error.message}`);
+  }
+
+  return data ? mapSiteStructureNode(data as SiteStructureNodeRow) : null;
+}
+
+export async function createOrgSiteStructureNode(input: {
+  orgId: string;
+  parentId: string | null;
+  label: string;
+  nodeKind: OrgSiteStructureNode["nodeKind"];
+  pageSlug?: string | null;
+  externalUrl?: string | null;
+  pageLifecycle?: OrgSiteStructureNode["pageLifecycle"];
+  sourceType?: OrgSiteStructureNode["sourceType"];
+  sourceScopeJson?: Record<string, unknown>;
+  generationRulesJson?: Record<string, unknown>;
+  childBehavior?: OrgSiteStructureNode["childBehavior"];
+  routeBehaviorJson?: Record<string, unknown>;
+  labelBehavior?: OrgSiteStructureNode["labelBehavior"];
+  temporaryWindowStartUtc?: string | null;
+  temporaryWindowEndUtc?: string | null;
+  isClickable?: boolean;
+  isVisible?: boolean;
+  isSystemNode?: boolean;
+}) {
+  const supabase = await createSupabaseServer();
+  const sortIndex = await getNextNavSortIndex(input.orgId, input.parentId);
+  const { data, error } = await supabase
+    .from("org_site_structure_nodes")
+    .insert({
+      org_id: input.orgId,
+      parent_id: input.parentId,
+      sort_index: sortIndex,
+      label: input.label,
+      node_kind: input.nodeKind,
+      page_slug: input.pageSlug ?? null,
+      external_url: input.externalUrl ?? null,
+      page_lifecycle: input.pageLifecycle ?? "permanent",
+      source_type: input.sourceType ?? "none",
+      source_scope_json: input.sourceScopeJson ?? {},
+      generation_rules_json: input.generationRulesJson ?? {},
+      child_behavior: input.childBehavior ?? "manual",
+      route_behavior_json: input.routeBehaviorJson ?? {},
+      label_behavior: input.labelBehavior ?? "manual",
+      temporary_window_start_utc: input.temporaryWindowStartUtc ?? null,
+      temporary_window_end_utc: input.temporaryWindowEndUtc ?? null,
+      is_clickable: input.isClickable ?? true,
+      is_visible: input.isVisible ?? true,
+      is_system_node: input.isSystemNode ?? false
+    })
+    .select(siteStructureNodeSelect)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create site structure node: ${error.message}`);
+  }
+
+  return mapSiteStructureNode(data as SiteStructureNodeRow);
+}
+
+export async function updateOrgSiteStructureNodeById(input: {
+  orgId: string;
+  nodeId: string;
+  label?: string;
+  nodeKind?: OrgSiteStructureNode["nodeKind"];
+  pageSlug?: string | null;
+  externalUrl?: string | null;
+  pageLifecycle?: OrgSiteStructureNode["pageLifecycle"];
+  sourceType?: OrgSiteStructureNode["sourceType"];
+  sourceScopeJson?: Record<string, unknown>;
+  generationRulesJson?: Record<string, unknown>;
+  childBehavior?: OrgSiteStructureNode["childBehavior"];
+  routeBehaviorJson?: Record<string, unknown>;
+  labelBehavior?: OrgSiteStructureNode["labelBehavior"];
+  temporaryWindowStartUtc?: string | null;
+  temporaryWindowEndUtc?: string | null;
+  isClickable?: boolean;
+  isVisible?: boolean;
+  parentId?: string | null;
+}) {
+  const supabase = await createSupabaseServer();
+  const updates: Record<string, unknown> = {};
+
+  if (input.label !== undefined) updates.label = input.label;
+  if (input.nodeKind !== undefined) updates.node_kind = input.nodeKind;
+  if (input.pageSlug !== undefined) updates.page_slug = input.pageSlug;
+  if (input.externalUrl !== undefined) updates.external_url = input.externalUrl;
+  if (input.pageLifecycle !== undefined) updates.page_lifecycle = input.pageLifecycle;
+  if (input.sourceType !== undefined) updates.source_type = input.sourceType;
+  if (input.sourceScopeJson !== undefined) updates.source_scope_json = input.sourceScopeJson;
+  if (input.generationRulesJson !== undefined) updates.generation_rules_json = input.generationRulesJson;
+  if (input.childBehavior !== undefined) updates.child_behavior = input.childBehavior;
+  if (input.routeBehaviorJson !== undefined) updates.route_behavior_json = input.routeBehaviorJson;
+  if (input.labelBehavior !== undefined) updates.label_behavior = input.labelBehavior;
+  if (input.temporaryWindowStartUtc !== undefined) updates.temporary_window_start_utc = input.temporaryWindowStartUtc;
+  if (input.temporaryWindowEndUtc !== undefined) updates.temporary_window_end_utc = input.temporaryWindowEndUtc;
+  if (input.isClickable !== undefined) updates.is_clickable = input.isClickable;
+  if (input.isVisible !== undefined) updates.is_visible = input.isVisible;
+  if (input.parentId !== undefined) updates.parent_id = input.parentId;
+
+  const { data, error } = await supabase
+    .from("org_site_structure_nodes")
+    .update(updates)
+    .eq("org_id", input.orgId)
+    .eq("id", input.nodeId)
+    .select(siteStructureNodeSelect)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to update site structure node: ${error.message}`);
+  }
+
+  return data ? mapSiteStructureNode(data as SiteStructureNodeRow) : null;
+}
+
+export async function deleteOrgSiteStructureNodeById(orgId: string, nodeId: string): Promise<boolean> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("org_site_structure_nodes")
+    .delete()
+    .eq("org_id", orgId)
+    .eq("id", nodeId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to delete site structure node: ${error.message}`);
+  }
+
+  return Boolean(data);
+}
+
+export async function reorderOrgSiteStructureNodes(
+  orgId: string,
+  items: Array<{ id: string; parentId: string | null; sortIndex: number }>
+): Promise<OrgSiteStructureNode[]> {
+  const supabase = await createSupabaseServer();
+  const offset = items.length + 3000;
+
+  for (const [index, item] of items.entries()) {
+    const { error } = await supabase
+      .from("org_site_structure_nodes")
+      .update({
+        parent_id: item.parentId,
+        sort_index: offset + index
+      })
+      .eq("org_id", orgId)
+      .eq("id", item.id);
+
+    if (error) {
+      throw new Error(`Failed to stage site structure order: ${error.message}`);
+    }
+  }
+
+  for (const item of items) {
+    const { error } = await supabase
+      .from("org_site_structure_nodes")
+      .update({
+        parent_id: item.parentId,
+        sort_index: item.sortIndex
+      })
+      .eq("org_id", orgId)
+      .eq("id", item.id);
+
+    if (error) {
+      throw new Error(`Failed to save site structure order: ${error.message}`);
+    }
+  }
+
+  return listOrgSiteStructureNodesForManage(orgId);
+}
+
+function isNodeCurrentlyVisible(node: OrgSiteStructureNode, nowIso: string) {
+  if (!node.isVisible) {
+    return false;
+  }
+
+  if (node.pageLifecycle !== "temporary") {
+    return true;
+  }
+
+  if (node.temporaryWindowStartUtc && node.temporaryWindowStartUtc > nowIso) {
+    return false;
+  }
+
+  if (node.temporaryWindowEndUtc && node.temporaryWindowEndUtc <= nowIso) {
+    return false;
+  }
+
+  return true;
+}
+
+function resolveStaticNodeHref(orgSlug: string, node: OrgSiteStructureNode, pagesBySlug: Map<string, OrgManagePage>) {
+  if (!node.isClickable) {
+    return null;
+  }
+
+  if (node.nodeKind === "static_page") {
+    if (!node.pageSlug) {
+      return null;
+    }
+
+    const page = pagesBySlug.get(node.pageSlug);
+    if (!page) {
+      return null;
+    }
+
+    return page.slug === "home" ? `/${orgSlug}` : `/${orgSlug}/${page.slug}`;
+  }
+
+  if (node.nodeKind === "static_link") {
+    return node.externalUrl?.trim() || null;
+  }
+
+  return null;
+}
+
+function buildResolvedTree(items: ResolvedOrgSiteStructureNode[]) {
+  const byId = new Map<string, ResolvedOrgSiteStructureNode>();
+  const roots: ResolvedOrgSiteStructureNode[] = [];
+
+  for (const item of items) {
+    byId.set(item.id, item);
+  }
+
+  for (const item of items) {
+    if (!item.parentId) {
+      roots.push(item);
+      continue;
+    }
+
+    const parent = byId.get(item.parentId);
+    if (!parent) {
+      roots.push(item);
+      continue;
+    }
+
+    parent.children.push(item);
+  }
+
+  const sortNode = (node: ResolvedOrgSiteStructureNode) => {
+    node.children.sort((a, b) => a.sortIndex - b.sortIndex || a.label.localeCompare(b.label));
+    node.children.forEach(sortNode);
+  };
+  roots.sort((a, b) => a.sortIndex - b.sortIndex || a.label.localeCompare(b.label));
+  roots.forEach(sortNode);
+  return roots;
+}
+
+export async function resolveOrgSiteStructureForHeader({
+  orgId,
+  orgSlug,
+  includeUnpublished
+}: {
+  orgId: string;
+  orgSlug: string;
+  includeUnpublished: boolean;
+}): Promise<ResolvedOrgSiteStructureNode[]> {
+  const [nodes, pages, programs, forms, events] = await Promise.all([
+    listOrgSiteStructureNodesForManage(orgId),
+    listOrgPagesForHeader({ orgId, includeUnpublished: true }),
+    listPublishedProgramsForCatalog(orgId).catch(() => []),
+    listPublishedFormsForOrg(orgId).catch(() => []),
+    listPublishedCalendarCatalog(orgId, { limit: 200 }).catch(() => [])
+  ]);
+
+  const pagesBySlug = new Map(pages.map((page) => [page.slug, page]));
+  const nowIso = new Date().toISOString();
+  const base: ResolvedOrgSiteStructureNode[] = [];
+
+  for (const node of nodes) {
+    const href = resolveStaticNodeHref(orgSlug, node, pagesBySlug);
+    const page = node.pageSlug ? pagesBySlug.get(node.pageSlug) ?? null : null;
+    const visible =
+      isNodeCurrentlyVisible(node, nowIso) &&
+      (includeUnpublished || node.nodeKind !== "static_page" || Boolean(page?.isPublished));
+
+    if (!visible) {
+      continue;
+    }
+
+    base.push({
+      id: node.id,
+      parentId: node.parentId,
+      label: node.label,
+      href,
+      target: node.nodeKind === "static_link" && href && /^https?:\/\//i.test(href) ? "_blank" : null,
+      rel: node.nodeKind === "static_link" && href && /^https?:\/\//i.test(href) ? "noopener noreferrer" : null,
+      sortIndex: node.sortIndex,
+      nodeKind: node.nodeKind,
+      sourceType: node.sourceType,
+      pageLifecycle: node.pageLifecycle,
+      isVisible: true,
+      isClickable: node.isClickable,
+      isGenerated: false,
+      isDerived: false,
+      isEditable: !node.isSystemNode,
+      reasonDisabled: null,
+      metaJson: {},
+      children: []
+    });
+
+    const generationRules = node.generationRulesJson ?? {};
+    const routeBehavior = node.routeBehaviorJson ?? {};
+    const fallbackBehavior = typeof generationRules.fallbackBehavior === "string" ? generationRules.fallbackBehavior : "show_empty";
+    const exposeNestedLevels = generationRules.exposeNestedLevels !== false;
+    const emptyStateLabel = typeof generationRules.emptyStateLabel === "string" && generationRules.emptyStateLabel.trim() ? generationRules.emptyStateLabel.trim() : null;
+
+    if (node.sourceType === "programs_tree") {
+      const programsBasePath =
+        typeof routeBehavior.basePath === "string" && routeBehavior.basePath.trim().startsWith("/")
+          ? routeBehavior.basePath.trim()
+          : "/programs";
+      const rootHref = node.isClickable ? `/${orgSlug}${programsBasePath}` : null;
+      const rootId = `${node.id}:generated:programs`;
+      base.push({
+        id: rootId,
+        parentId: node.id,
+        label: node.labelBehavior === "source_name" ? "Programs" : "Programs",
+        href: rootHref,
+        target: null,
+        rel: null,
+        sortIndex: 0,
+        nodeKind: "system_generated",
+        sourceType: "programs_tree",
+        pageLifecycle: "permanent",
+        isVisible: true,
+        isClickable: Boolean(rootHref),
+        isGenerated: true,
+        isDerived: true,
+        isEditable: false,
+        reasonDisabled: "Generated from live program hierarchy.",
+        metaJson: { generatedLevel: "programs" },
+        children: []
+      });
+
+      for (const [programIndex, program] of programs.entries()) {
+        const programNodeId = `${node.id}:generated:program:${program.id}`;
+        base.push({
+          id: programNodeId,
+          parentId: rootId,
+          label: program.name,
+          href: `/${orgSlug}${programsBasePath}/${program.slug}`,
+          target: null,
+          rel: null,
+          sortIndex: programIndex,
+          nodeKind: "system_generated",
+          sourceType: "programs_tree",
+          pageLifecycle: "permanent",
+          isVisible: true,
+          isClickable: true,
+          isGenerated: true,
+          isDerived: true,
+          isEditable: false,
+          reasonDisabled: "Generated from published programs.",
+          metaJson: { programId: program.id, generatedLevel: "program" },
+          children: []
+        });
+
+        if (!exposeNestedLevels) {
+          continue;
+        }
+
+        const programNodes = await listProgramNodes(program.id, { publishedOnly: true }).catch(() => []);
+        const divisions = programNodes.filter((entry) => entry.nodeKind === "division");
+        const teamsByDivision = new Map<string, Array<{ id: string; name: string; slug: string }>>();
+        for (const team of programNodes.filter((entry) => entry.nodeKind === "team")) {
+          const parentId = team.parentId ?? "";
+          const current = teamsByDivision.get(parentId) ?? [];
+          current.push({ id: team.id, name: team.name, slug: team.slug });
+          teamsByDivision.set(parentId, current);
+        }
+        for (const [divisionIndex, division] of divisions.entries()) {
+          const divisionNodeId = `${node.id}:generated:division:${division.id}`;
+          base.push({
+            id: divisionNodeId,
+            parentId: programNodeId,
+            label: division.name,
+            href: `/${orgSlug}${programsBasePath}/${program.slug}/${division.slug}`,
+            target: null,
+            rel: null,
+            sortIndex: divisionIndex,
+            nodeKind: "system_generated",
+            sourceType: "programs_tree",
+            pageLifecycle: "permanent",
+            isVisible: true,
+            isClickable: true,
+            isGenerated: true,
+            isDerived: true,
+            isEditable: false,
+            reasonDisabled: "Generated from division records.",
+            metaJson: { programId: program.id, divisionId: division.id, generatedLevel: "division" },
+            children: []
+          });
+
+          const teams = (teamsByDivision.get(division.id) ?? []).sort((a, b) => a.name.localeCompare(b.name));
+          for (const [teamIndex, team] of teams.entries()) {
+            base.push({
+              id: `${node.id}:generated:team:${team.id}`,
+              parentId: divisionNodeId,
+              label: team.name,
+              href: `/${orgSlug}${programsBasePath}/${program.slug}/${division.slug}/${team.slug}`,
+              target: null,
+              rel: null,
+              sortIndex: teamIndex,
+              nodeKind: "system_generated",
+              sourceType: "programs_tree",
+              pageLifecycle: "permanent",
+              isVisible: true,
+              isClickable: true,
+              isGenerated: true,
+              isDerived: true,
+              isEditable: false,
+              reasonDisabled: "Generated from team records.",
+              metaJson: { programId: program.id, divisionId: division.id, teamId: team.id, generatedLevel: "team" },
+              children: []
+            });
+          }
+        }
+      }
+    }
+
+    if (node.sourceType === "published_forms") {
+      for (const [formIndex, form] of forms.entries()) {
+        base.push({
+          id: `${node.id}:generated:form:${form.id}`,
+          parentId: node.id,
+          label: form.name,
+          href: `/${orgSlug}/register/${form.slug}`,
+          target: null,
+          rel: null,
+          sortIndex: formIndex,
+          nodeKind: "system_generated",
+          sourceType: "published_forms",
+          pageLifecycle: "permanent",
+          isVisible: true,
+          isClickable: true,
+          isGenerated: true,
+          isDerived: true,
+          isEditable: false,
+          reasonDisabled: "Generated from published forms.",
+          metaJson: { formId: form.id, generatedLevel: "form" },
+          children: []
+        });
+      }
+    }
+
+    if (node.sourceType === "published_events") {
+      const eventsBasePath =
+        typeof routeBehavior.basePath === "string" && routeBehavior.basePath.trim().startsWith("/")
+          ? routeBehavior.basePath.trim()
+          : "/events";
+      base.push({
+        id: `${node.id}:generated:events-root`,
+        parentId: node.id,
+        label: "Events",
+        href: `/${orgSlug}${eventsBasePath}`,
+        target: null,
+        rel: null,
+        sortIndex: 0,
+        nodeKind: "system_generated",
+        sourceType: "published_events",
+        pageLifecycle: "permanent",
+        isVisible: true,
+        isClickable: true,
+        isGenerated: true,
+        isDerived: true,
+        isEditable: false,
+        reasonDisabled: "Generated from published events.",
+        metaJson: { generatedLevel: "events" },
+        children: []
+      });
+
+      const eventItems = events.filter((entry) => entry.entryType === "event");
+      for (const [eventIndex, event] of eventItems.entries()) {
+        base.push({
+          id: `${node.id}:generated:event:${event.occurrenceId}`,
+          parentId: `${node.id}:generated:events-root`,
+          label: event.title,
+          href: `/${orgSlug}/calendar/${event.occurrenceId}`,
+          target: null,
+          rel: null,
+          sortIndex: eventIndex,
+          nodeKind: "system_generated",
+          sourceType: "published_events",
+          pageLifecycle: "permanent",
+          isVisible: true,
+          isClickable: true,
+          isGenerated: true,
+          isDerived: true,
+          isEditable: false,
+          reasonDisabled: "Generated from published event occurrences.",
+          metaJson: { occurrenceId: event.occurrenceId, generatedLevel: "event_occurrence" },
+          children: []
+        });
+      }
+    }
+
+    if (node.sourceType !== "none") {
+      const insertedChildren = base.filter((entry) => entry.parentId === node.id).length;
+      if (insertedChildren === 0 && fallbackBehavior === "hide_root") {
+        const index = base.findIndex((entry) => entry.id === node.id);
+        if (index >= 0) {
+          base.splice(index, 1);
+        }
+      } else if (insertedChildren === 0) {
+        base.push({
+          id: `${node.id}:generated:empty`,
+          parentId: node.id,
+          label: emptyStateLabel ?? "No published items",
+          href: null,
+          target: null,
+          rel: null,
+          sortIndex: 0,
+          nodeKind: "system_generated",
+          sourceType: node.sourceType,
+          pageLifecycle: "permanent",
+          isVisible: true,
+          isClickable: false,
+          isGenerated: true,
+          isDerived: true,
+          isEditable: false,
+          reasonDisabled: "No records currently available for this dynamic source.",
+          metaJson: { generatedLevel: "empty_state" },
+          children: []
+        });
+      }
+    }
+  }
+
+  return buildResolvedTree(base);
 }

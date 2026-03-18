@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DndContext, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
-import { Eye, EyeOff, GripVertical, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { Alert } from "@orgframe/ui/ui/alert";
 import { Button } from "@orgframe/ui/ui/button";
@@ -24,6 +24,7 @@ import { useToast } from "@orgframe/ui/ui/toast";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
 import { cn } from "@/lib/utils";
 import { StructureCanvas } from "@orgframe/ui/modules/core/components/StructureCanvas";
+import { StructureNode } from "@orgframe/ui/modules/core/components/StructureNode";
 import { FormCreatePanel } from "@orgframe/ui/modules/forms/components/FormCreatePanel";
 import type { OrgForm } from "@/modules/forms/types";
 import { saveProgramHierarchyAction, saveProgramScheduleAction, updateProgramAction } from "@/modules/programs/actions";
@@ -305,9 +306,7 @@ function StructureTreeRow({
   teamChildren?: ReactNode;
   branchChildren?: ReactNode;
 }) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRowHovered, setIsRowHovered] = useState(false);
-  const rowRef = useRef<HTMLDivElement | null>(null);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: node.id,
     disabled
@@ -338,182 +337,97 @@ function StructureTreeRow({
   const publishStatusChip = resolveProgramPublishStatusChip(isPublished);
   const teamStatusChip = node.nodeKind === "team" && teamSummary ? resolveProgramTeamStatusChip(teamSummary.team.status) : null;
 
-  useEffect(() => {
-    if (!isMenuOpen) {
-      return;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) {
-        return;
-      }
-
-      if (rowRef.current?.contains(target)) {
-        return;
-      }
-
-      setIsMenuOpen(false);
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [isMenuOpen, rowRef]);
-
   return (
     <div
       className="flex w-full flex-col items-center"
-      onPointerDown={() => {
-        if (node.nodeKind === "division") {
-          onActivateDivision(node.id);
-        }
-      }}
-      onClick={(event) => {
-        if (node.nodeKind !== "team" || !onOpenTeam) {
-          return;
-        }
-
-        const target = event.target;
-        if (target instanceof HTMLElement && target.closest("button, a, input, textarea, select")) {
-          return;
-        }
-
-        onOpenTeam(node.id);
-      }}
-      ref={rowRef}
     >
       <div
         className={cn(
-          "w-full rounded-control border bg-surface shadow-sm transition-shadow",
-          node.nodeKind === "team" ? "cursor-pointer" : "cursor-default",
+          "w-full",
           node.nodeKind === "division" ? "min-w-[240px]" : "min-w-0",
-          node.nodeKind === "division" ? "p-2" : "px-2 py-1",
-          isDragging && "shadow-card",
-          isFocused && "border-accent ring-2 ring-accent/60",
-          isSearchMatch && "border-accent ring-1 ring-accent/40",
-          isIntoOver && "border-accent bg-accent/5"
+          isDragging && "shadow-card"
         )}
         onPointerEnter={() => setIsRowHovered(true)}
         onPointerLeave={() => setIsRowHovered(false)}
-        data-canvas-pan-ignore="true"
-        data-structure-node-id={node.id}
         ref={setNodeRef}
         style={style}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex min-w-0 items-start gap-1">
-            <button
-              aria-label={`Drag ${node.name}`}
-              className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center text-text-muted hover:text-text"
-              disabled={disabled}
-              type="button"
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical className="h-3 w-3" />
-            </button>
-            <div className="min-w-0 flex-1">
-              <div className="mt-0.5 flex items-center gap-1">
-                <PublishStatusIcon
-                  disabled={disabled}
-                  isLoading={isPublishToggling}
-                  isPublished={isPublished}
-                  onToggle={() => onTogglePublished(node)}
-                  size="compact"
-                  statusLabel={isPublished ? `Published status for ${node.name}` : `Unpublished status for ${node.name}`}
-                />
-                {hasNestedDivisionBreadcrumb ? (
-                  <p className="truncate whitespace-nowrap text-xs font-semibold text-text" title={breadcrumbParts.join(" / ")}>
-                    {breadcrumbParts.map((segment, index) => (
-                      <span className={index === breadcrumbParts.length - 1 ? "text-text" : "text-text-muted"} key={`${segment}-${index}`}>
-                        {segment}
-                        {index < breadcrumbParts.length - 1 ? " / " : ""}
-                      </span>
-                    ))}
-                  </p>
-                ) : (
-                  <p className="truncate text-xs font-semibold text-text" title={node.name}>
-                    {node.name}
-                  </p>
-                )}
-                <Chip size="compact">{nodeTypeLabel}</Chip>
-                <Chip className="normal-case tracking-normal" color={publishStatusChip.color} size="compact" variant="flat">
-                  {publishStatusChip.label}
+        <StructureNode
+          chips={
+            <>
+              <Chip size="compact">{nodeTypeLabel}</Chip>
+              <Chip className="normal-case tracking-normal" color={publishStatusChip.color} size="compact" variant="flat">
+                {publishStatusChip.label}
+              </Chip>
+              {teamStatusChip ? (
+                <Chip className="normal-case tracking-normal" color={teamStatusChip.color} size="compact" variant="flat">
+                  {teamStatusChip.label}
                 </Chip>
-                {teamStatusChip ? (
-                  <Chip className="normal-case tracking-normal" color={teamStatusChip.color} size="compact" variant="flat">
-                    {teamStatusChip.label}
-                  </Chip>
-                ) : null}
-              </div>
-              {node.nodeKind === "team" ? (
-                <p className="text-[10px] text-text-muted">
-                  Roster {teamRosterCount} · Staff {teamStaffCount}
-                </p>
               ) : null}
-            </div>
+            </>
+          }
+          className={cn(
+            "w-full",
+            node.nodeKind === "division" ? "p-2" : "px-2 py-1",
+            isSearchMatch && "border-accent ring-1 ring-accent/40",
+            isIntoOver && "border-accent bg-accent/5"
+          )}
+          draggable={!disabled}
+          dragHandleProps={
+            disabled
+              ? undefined
+              : {
+                  attributes: attributes as unknown as Record<string, unknown>,
+                  listeners: listeners as unknown as Record<string, unknown>
+                }
+          }
+          focused={isFocused}
+          forceSingleLine
+          movementLocked={disabled}
+          nodeId={node.id}
+          onClick={(event) => {
+            if (node.nodeKind === "division") {
+              onActivateDivision(node.id);
+              return;
+            }
+
+            if (!onOpenTeam) {
+              return;
+            }
+            const target = event.target;
+            if (target instanceof HTMLElement && target.closest("button, a, input, textarea, select")) {
+              return;
+            }
+            onOpenTeam(node.id);
+          }}
+          onDoubleClick={(event) => {
+            if (disabled) {
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            onEdit(node);
+          }}
+          quickActions={{
+            onEdit: () => onEdit(node),
+            onDelete: () => onDelete(node.id),
+            canEdit: !disabled,
+            canDelete: !disabled
+          }}
+          subtitle={node.nodeKind === "team" ? `Roster ${teamRosterCount} · Staff ${teamStaffCount}` : undefined}
+          title={hasNestedDivisionBreadcrumb ? breadcrumbParts.join(" / ") : node.name}
+        >
+          <div className="absolute left-1 top-1 z-10" data-canvas-pan-ignore="true">
+            <PublishStatusIcon
+              disabled={disabled}
+              isLoading={isPublishToggling}
+              isPublished={isPublished}
+              onToggle={() => onTogglePublished(node)}
+              size="compact"
+              statusLabel={isPublished ? `Published status for ${node.name}` : `Unpublished status for ${node.name}`}
+            />
           </div>
-          <div className="relative shrink-0">
-            <div className="flex items-center gap-1">
-              <button
-                aria-label="Open node actions"
-                className="h-6 w-6 rounded-control border border-border bg-surface-muted text-text-muted hover:bg-surface hover:text-text"
-                disabled={disabled}
-                onClick={() => setIsMenuOpen((current) => !current)}
-                type="button"
-              >
-                <MoreHorizontal className="mx-auto h-3.5 w-3.5" />
-              </button>
-            </div>
-            {isMenuOpen ? (
-              <div className="absolute right-0 top-8 z-20 w-44 rounded-control border bg-surface p-2 shadow-floating">
-                <div className="space-y-1">
-                  <Button
-                    className="w-full justify-start"
-                    onClick={() => {
-                      onTogglePublished(node);
-                      setIsMenuOpen(false);
-                    }}
-                    size="sm"
-                    type="button"
-                    variant={isPublished ? "secondary" : "primary"}
-                  >
-                    {isPublished ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    {isPublished ? "Unpublish" : "Publish"}
-                  </Button>
-                  <Button
-                    className="w-full justify-start"
-                    onClick={() => {
-                      onEdit(node);
-                      setIsMenuOpen(false);
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    Edit details
-                  </Button>
-                  <Button
-                    className="ui-button-danger w-full justify-start"
-                    onClick={() => {
-                      onDelete(node.id);
-                      setIsMenuOpen(false);
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Delete
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
+        </StructureNode>
         {node.nodeKind === "division" ? (
           <div className="mt-2">
             <div className="mb-1 flex items-center justify-between gap-2">

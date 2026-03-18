@@ -1,17 +1,18 @@
 import { Button } from "@orgframe/ui/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
+import { RichTextEditor } from "@orgframe/ui/editor/RichTextEditor";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
-import { Textarea } from "@orgframe/ui/ui/textarea";
 import { CtaGridRepeater } from "@/modules/site-builder/blocks/cta-grid-repeater";
 import { LinkPickerField } from "@orgframe/ui/shared/LinkPickerField";
 import { asBody, asCtaItems, asObject, asText, createId } from "@/modules/site-builder/blocks/helpers";
+import { sanitizeRichTextHtml } from "@/modules/site-builder/blocks/rich-text";
 import type { BlockContext, BlockEditorProps, BlockRenderProps, CtaGridBlockConfig } from "@/modules/site-builder/types";
 import { defaultInternalLink, isExternalLink, resolveLinkHref } from "@/lib/links";
 
 function defaultQuickLinksConfig(context: BlockContext): CtaGridBlockConfig {
   return {
-    title: "Quick Links",
+    title: "Featured Links",
     items: [
       {
         id: createId(),
@@ -36,10 +37,14 @@ export function createDefaultCtaGridConfig(context: BlockContext) {
 export function sanitizeCtaGridConfig(config: unknown, context: BlockContext): CtaGridBlockConfig {
   const fallback = defaultQuickLinksConfig(context);
   const value = asObject(config);
+  const items = asCtaItems(value.items, fallback.items).map((item) => ({
+    ...item,
+    description: sanitizeRichTextHtml(item.description, fallback.items[0]?.description ?? "")
+  }));
 
   return {
     title: asText(value.title, fallback.title, 120),
-    items: asCtaItems(value.items, fallback.items)
+    items
   };
 }
 
@@ -138,10 +143,10 @@ export function CtaGridBlockEditor({ block, context, onChange }: BlockEditorProp
               </FormField>
 
               <FormField label="Description">
-                <Textarea
-                  className="min-h-[90px]"
-                  onChange={(event) => {
-                    updateItem(item.id, { description: asBody(event.target.value, "", 180) });
+                <RichTextEditor
+                  minHeight={110}
+                  onChange={(next) => {
+                    updateItem(item.id, { description: asBody(next, "", 1000) });
                   }}
                   value={item.description}
                 />

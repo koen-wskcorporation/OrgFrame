@@ -52,6 +52,8 @@ type StructureCanvasShellProps = {
   persistViewState?: boolean;
   viewEditButtonPlacement?: "bottom-center" | "top-right";
   showEditButton?: boolean;
+  initialEditOpen?: boolean;
+  embeddedEditMode?: boolean;
   viewContentInteractive?: boolean;
   viewViewportInteractive?: boolean;
   onViewNodeSelect?: (nodeId: string) => void;
@@ -98,6 +100,8 @@ export function StructureCanvasShell({
   persistViewState = true,
   viewEditButtonPlacement = "bottom-center",
   showEditButton = true,
+  initialEditOpen = false,
+  embeddedEditMode = false,
   viewContentInteractive = false,
   viewViewportInteractive = false,
   onViewNodeSelect,
@@ -105,7 +109,7 @@ export function StructureCanvasShell({
   viewHeightMode = "default",
   respectGlobalPanels = true
 }: StructureCanvasShellProps) {
-  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(initialEditOpen);
   const [isAutoFitPending, setIsAutoFitPending] = useState(false);
   const [isPopupLayoutSettled, setIsPopupLayoutSettled] = useState(false);
   const [isCanvasHot, setIsCanvasHot] = useState(false);
@@ -117,6 +121,7 @@ export function StructureCanvasShell({
   const onFitRef = useRef(onFit);
   const manualFocusRef = useRef(false);
   const normalizedSearch = searchQuery.trim();
+  const panelAwareEditMode = embeddedEditMode || isEditOpen;
 
   useEffect(() => {
     onFitRef.current = onFit;
@@ -125,6 +130,12 @@ export function StructureCanvasShell({
   useEffect(() => {
     onEditOpenChange?.(isEditOpen);
   }, [isEditOpen, onEditOpenChange]);
+
+  useEffect(() => {
+    if (initialEditOpen) {
+      setIsEditOpen(true);
+    }
+  }, [initialEditOpen]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -260,16 +271,22 @@ export function StructureCanvasShell({
       return;
     }
 
-    if (isEditOpen) {
+    if (panelAwareEditMode) {
       const updateInsets = () => {
         const actionBarHeight = actionBarRef.current?.getBoundingClientRect().height ?? 0;
-        setSafeAreaInsets({ left: 0, right: 0, top: 0, bottom: Math.round(actionBarHeight + 12) });
+        const popupPanelDock = document.getElementById("popup-panel-dock");
+        const popupPanelWidth = popupPanelDock ? popupPanelDock.getBoundingClientRect().width : 0;
+        setSafeAreaInsets({ left: 0, right: Math.round(popupPanelWidth), top: 0, bottom: Math.round(actionBarHeight + 12) });
       };
 
       updateInsets();
       const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => updateInsets()) : null;
       if (actionBarRef.current) {
         resizeObserver?.observe(actionBarRef.current);
+      }
+      const popupPanelDock = document.getElementById("popup-panel-dock");
+      if (popupPanelDock) {
+        resizeObserver?.observe(popupPanelDock);
       }
       window.addEventListener("resize", updateInsets);
 
@@ -334,7 +351,7 @@ export function StructureCanvasShell({
       panelResizeObserver?.disconnect();
       window.removeEventListener("resize", updateInsets);
     };
-  }, [isEditOpen, respectGlobalPanels]);
+  }, [panelAwareEditMode, respectGlobalPanels]);
 
   useLayoutEffect(() => {
     if (!autoFitOnOpen) {
@@ -351,7 +368,7 @@ export function StructureCanvasShell({
     setIsAutoFitPending(true);
 
     const getScope = () =>
-      isEditOpen
+      panelAwareEditMode
         ? ((actionBarRef.current?.closest("[data-popup-editor-root='true']") as HTMLElement | null) ?? null)
         : shellRootRef.current;
 
@@ -413,7 +430,7 @@ export function StructureCanvasShell({
         return;
       }
 
-      if (isEditOpen && !isPopupLayoutSettled) {
+      if (!embeddedEditMode && isEditOpen && !isPopupLayoutSettled) {
         return;
       }
 
@@ -496,10 +513,10 @@ export function StructureCanvasShell({
       }
       window.removeEventListener("resize", schedule);
     };
-  }, [autoFitKey, autoFitOnOpen, canvasLayoutMode, canvasRef, isEditOpen, isPopupLayoutSettled, safeAreaInsets]);
+  }, [autoFitKey, autoFitOnOpen, canvasLayoutMode, canvasRef, embeddedEditMode, isEditOpen, isPopupLayoutSettled, panelAwareEditMode, safeAreaInsets]);
 
   function renderShell({ editable, fullscreen }: { editable: boolean; fullscreen: boolean }) {
-    const hideUntilAutoFit = autoFitOnOpen && isAutoFitPending && editable === isEditOpen;
+    const hideUntilAutoFit = autoFitOnOpen && isAutoFitPending && (embeddedEditMode ? editable : editable === isEditOpen);
     const allowContentInteraction = editable || viewContentInteractive;
     const allowViewportInteraction = editable || viewViewportInteractive;
     return (
@@ -688,6 +705,10 @@ export function StructureCanvasShell({
         ) : null}
       </div>
     );
+  }
+
+  if (embeddedEditMode) {
+    return <div className="h-full min-h-0" ref={shellRootRef}>{renderShell({ editable: true, fullscreen: true })}</div>;
   }
 
   return (

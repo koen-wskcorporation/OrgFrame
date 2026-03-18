@@ -51,11 +51,10 @@ export function ReadMoreDescription({ children }: ReadMoreDescriptionProps) {
           "min-w-0 text-sm text-text-muted whitespace-normal break-words break-all",
           !expanded && "overflow-hidden"
         )}
+        dangerouslySetInnerHTML={{ __html: children }}
         ref={contentRef}
         style={!expanded && collapsedMaxHeight ? { maxHeight: `${collapsedMaxHeight}px` } : undefined}
-      >
-        {children}
-      </p>
+      />
       {canExpand ? (
         <Button
           className="mt-2 h-auto px-0 text-xs hover:bg-transparent"

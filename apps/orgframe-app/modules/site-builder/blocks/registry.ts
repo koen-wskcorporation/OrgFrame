@@ -1,6 +1,15 @@
 import { createId } from "@/modules/site-builder/blocks/helpers";
 import { CtaGridBlockEditor, CtaGridBlockRender, createDefaultCtaGridConfig, sanitizeCtaGridConfig } from "@/modules/site-builder/blocks/cta-grid";
 import { CtaCardBlockEditor, CtaCardBlockRender, createDefaultCtaCardConfig, sanitizeCtaCardConfig } from "@/modules/site-builder/blocks/cta-card";
+import {
+  AnnouncementHighlightBlockEditor,
+  AnnouncementHighlightBlockRender,
+  createDefaultAnnouncementHighlightConfig,
+  sanitizeAnnouncementHighlightConfig
+} from "@/modules/site-builder/blocks/announcement-highlight";
+import { createDefaultStatsMetricsConfig, sanitizeStatsMetricsConfig, StatsMetricsBlockEditor, StatsMetricsBlockRender } from "@/modules/site-builder/blocks/stats-metrics";
+import { createDefaultDocumentLinksConfig, DocumentLinksBlockEditor, DocumentLinksBlockRender, sanitizeDocumentLinksConfig } from "@/modules/site-builder/blocks/document-links";
+import { ContactInfoBlockEditor, ContactInfoBlockRender, createDefaultContactInfoConfig, sanitizeContactInfoConfig } from "@/modules/site-builder/blocks/contact-info";
 import { createDefaultHeroConfig, HeroBlockRender, sanitizeHeroConfig } from "@/modules/site-builder/blocks/hero";
 import { HeroBlockEditorClient } from "@/modules/site-builder/blocks/hero-editor.client";
 import { createDefaultSubheroConfig, sanitizeSubheroConfig, SubheroBlockRender } from "@/modules/site-builder/blocks/subhero";
@@ -62,7 +71,7 @@ const blockRegistry: AnyBlockDefinition = {
   },
   cta_grid: {
     type: "cta_grid",
-    displayName: "Quick Links",
+    displayName: "Link Cards",
     defaultConfig: createDefaultCtaGridConfig,
     sanitizeConfig: sanitizeCtaGridConfig,
     Render: CtaGridBlockRender,
@@ -75,6 +84,38 @@ const blockRegistry: AnyBlockDefinition = {
     sanitizeConfig: sanitizeCtaCardConfig,
     Render: CtaCardBlockRender,
     Editor: CtaCardBlockEditor
+  },
+  announcement_highlight: {
+    type: "announcement_highlight",
+    displayName: "Announcement Highlights",
+    defaultConfig: createDefaultAnnouncementHighlightConfig,
+    sanitizeConfig: sanitizeAnnouncementHighlightConfig,
+    Render: AnnouncementHighlightBlockRender,
+    Editor: AnnouncementHighlightBlockEditor
+  },
+  stats_metrics: {
+    type: "stats_metrics",
+    displayName: "Stats & Metrics",
+    defaultConfig: createDefaultStatsMetricsConfig,
+    sanitizeConfig: sanitizeStatsMetricsConfig,
+    Render: StatsMetricsBlockRender,
+    Editor: StatsMetricsBlockEditor
+  },
+  document_links: {
+    type: "document_links",
+    displayName: "Document Links",
+    defaultConfig: createDefaultDocumentLinksConfig,
+    sanitizeConfig: sanitizeDocumentLinksConfig,
+    Render: DocumentLinksBlockRender,
+    Editor: DocumentLinksBlockEditor
+  },
+  contact_info: {
+    type: "contact_info",
+    displayName: "Contact Info",
+    defaultConfig: createDefaultContactInfoConfig,
+    sanitizeConfig: sanitizeContactInfoConfig,
+    Render: ContactInfoBlockRender,
+    Editor: ContactInfoBlockEditor
   },
   schedule_preview: {
     type: "schedule_preview",
@@ -160,9 +201,10 @@ export function createDefaultBlocksForPage(pageSlug: string, context: BlockConte
   if (pageSlug === "home") {
     return [
       createDefaultBlock("hero", context),
-      createDefaultBlock("cta_grid", context),
-      createDefaultBlock("cta_card", context),
-      createDefaultBlock("schedule_preview", context)
+      createDefaultBlock("announcement_highlight", context),
+      createDefaultBlock("stats_metrics", context),
+      createDefaultBlock("contact_info", context),
+      createDefaultBlock("document_links", context)
     ];
   }
 

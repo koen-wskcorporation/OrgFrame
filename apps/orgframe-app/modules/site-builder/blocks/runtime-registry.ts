@@ -1,6 +1,14 @@
 import { createId } from "@/modules/site-builder/blocks/helpers";
 import { CtaGridBlockRender, createDefaultCtaGridConfig, sanitizeCtaGridConfig } from "@/modules/site-builder/blocks/cta-grid";
 import { CtaCardBlockRender, createDefaultCtaCardConfig, sanitizeCtaCardConfig } from "@/modules/site-builder/blocks/cta-card";
+import {
+  AnnouncementHighlightBlockRender,
+  createDefaultAnnouncementHighlightConfig,
+  sanitizeAnnouncementHighlightConfig
+} from "@/modules/site-builder/blocks/announcement-highlight";
+import { createDefaultStatsMetricsConfig, sanitizeStatsMetricsConfig, StatsMetricsBlockRender } from "@/modules/site-builder/blocks/stats-metrics";
+import { createDefaultDocumentLinksConfig, DocumentLinksBlockRender, sanitizeDocumentLinksConfig } from "@/modules/site-builder/blocks/document-links";
+import { ContactInfoBlockRender, createDefaultContactInfoConfig, sanitizeContactInfoConfig } from "@/modules/site-builder/blocks/contact-info";
 import { createDefaultHeroConfig, HeroBlockRender, sanitizeHeroConfig } from "@/modules/site-builder/blocks/hero";
 import { createDefaultSubheroConfig, sanitizeSubheroConfig, SubheroBlockRender } from "@/modules/site-builder/blocks/subhero";
 import { createDefaultSchedulePreviewConfig, sanitizeSchedulePreviewConfig, SchedulePreviewBlockRender } from "@/modules/site-builder/blocks/schedule-preview";
@@ -43,7 +51,7 @@ const runtimeBlockRegistry: AnyRuntimeBlockDefinition = {
   },
   cta_grid: {
     type: "cta_grid",
-    displayName: "Quick Links",
+    displayName: "Link Cards",
     defaultConfig: createDefaultCtaGridConfig,
     sanitizeConfig: sanitizeCtaGridConfig,
     Render: CtaGridBlockRender
@@ -54,6 +62,34 @@ const runtimeBlockRegistry: AnyRuntimeBlockDefinition = {
     defaultConfig: createDefaultCtaCardConfig,
     sanitizeConfig: sanitizeCtaCardConfig,
     Render: CtaCardBlockRender
+  },
+  announcement_highlight: {
+    type: "announcement_highlight",
+    displayName: "Announcement Highlights",
+    defaultConfig: createDefaultAnnouncementHighlightConfig,
+    sanitizeConfig: sanitizeAnnouncementHighlightConfig,
+    Render: AnnouncementHighlightBlockRender
+  },
+  stats_metrics: {
+    type: "stats_metrics",
+    displayName: "Stats & Metrics",
+    defaultConfig: createDefaultStatsMetricsConfig,
+    sanitizeConfig: sanitizeStatsMetricsConfig,
+    Render: StatsMetricsBlockRender
+  },
+  document_links: {
+    type: "document_links",
+    displayName: "Document Links",
+    defaultConfig: createDefaultDocumentLinksConfig,
+    sanitizeConfig: sanitizeDocumentLinksConfig,
+    Render: DocumentLinksBlockRender
+  },
+  contact_info: {
+    type: "contact_info",
+    displayName: "Contact Info",
+    defaultConfig: createDefaultContactInfoConfig,
+    sanitizeConfig: sanitizeContactInfoConfig,
+    Render: ContactInfoBlockRender
   },
   schedule_preview: {
     type: "schedule_preview",

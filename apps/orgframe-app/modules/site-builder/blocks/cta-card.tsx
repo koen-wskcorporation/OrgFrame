@@ -3,7 +3,8 @@
 import { buttonVariants } from "@orgframe/ui/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
 import { cn } from "@/lib/utils";
-import { asBody, asButtons, asNumber, asObject, asOptionalStoragePath, asText } from "@/modules/site-builder/blocks/helpers";
+import { asButtons, asNumber, asObject, asOptionalStoragePath, asText } from "@/modules/site-builder/blocks/helpers";
+import { sanitizeRichTextHtml } from "@/modules/site-builder/blocks/rich-text";
 import { CtaCardBlockEditorClient } from "@/modules/site-builder/blocks/cta-card-editor.client";
 import { getOrgSiteAssetPublicUrl } from "@/modules/site-builder/storage";
 import type { BlockContext, BlockRenderProps, CtaCardBlockConfig } from "@/modules/site-builder/types";
@@ -51,7 +52,7 @@ export function sanitizeCtaCardConfig(config: unknown, context: BlockContext): C
 
   return {
     heading: asText(value.heading ?? value.title, fallback.heading, 120),
-    body: asBody(value.body, fallback.body, 500),
+    body: sanitizeRichTextHtml(value.body, fallback.body).slice(0, 4000),
     imagePath: asOptionalStoragePath(value.imagePath ?? value.backgroundImagePath),
     focalX: asNumber(value.focalX, fallback.focalX, 0, 1),
     focalY: asNumber(value.focalY, fallback.focalY, 0, 1),
@@ -84,7 +85,7 @@ export function CtaCardBlockRender({ block, context }: BlockRenderProps<"cta_car
           <CardTitle className="text-2xl">{block.config.heading}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          <div className="prose max-w-none text-sm text-text-muted md:text-base" dangerouslySetInnerHTML={{ __html: block.config.body }} />
           <div className="flex flex-wrap gap-2">
             {block.config.buttons.map((button) => (
               <a

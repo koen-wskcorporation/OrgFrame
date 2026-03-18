@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import type { CanvasViewportHandle } from "@orgframe/ui/ui/canvas-viewport";
 import { StructureCanvasShell, type StructureSearchItem } from "@orgframe/ui/modules/core/components/StructureCanvasShell";
-import { cn } from "@/lib/utils";
+import { StructureNode } from "@orgframe/ui/modules/core/components/StructureNode";
 import type { FacilitySpace } from "@/modules/facilities/types";
 import type { ProgramNode } from "@/modules/programs/types";
 
@@ -126,48 +126,6 @@ function isDescendantOf(space: FacilitySpace, ancestorId: string, byId: Map<stri
   return false;
 }
 
-function StructureNodeCard({
-  title,
-  subtitle,
-  isSelected,
-  isConflicted,
-  isStructural,
-  selectable = true
-}: {
-  title: string;
-  subtitle: string;
-  isSelected?: boolean;
-  isConflicted?: boolean;
-  isStructural?: boolean;
-  selectable?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "h-full min-h-[56px] w-full rounded-control border px-2 py-1 shadow-sm transition-[left,top,width,height,transform,box-shadow,border-color,background-color] duration-100 ease-out",
-        selectable ? "cursor-pointer" : "cursor-not-allowed opacity-60",
-        isSelected ? "border-accent bg-accent/10" : isStructural ? "border-dashed border-border/80 bg-surface/70" : "border-border bg-surface",
-        isConflicted ? "border-destructive/70 bg-destructive/10" : ""
-      )}
-    >
-      <div className="pointer-events-none absolute inset-0">
-        <div className="pointer-events-none flex h-full w-full items-center justify-center" data-canvas-pan-ignore="true">
-          <div className="group relative inline-flex max-w-[86%] items-center rounded-full border border-border/70 bg-surface/95 px-4 py-1.5 text-center shadow-sm">
-            <div className="min-w-0 px-1.5 text-center">
-              <span className="flex min-w-0 w-full max-w-[16rem] flex-col items-center leading-tight">
-                <span className="block w-full truncate text-center text-xs font-semibold text-text" title={title}>
-                  {title}
-                </span>
-                <span className="block w-full truncate text-center text-[11px] text-text-muted">{subtitle}</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ProgramMapNodes({
   nodes,
   selectedNodeIds,
@@ -208,7 +166,7 @@ function ProgramMapNodes({
                   onSelectNode?.(division);
                 }}
               >
-                <StructureNodeCard isSelected={selectedDivision} subtitle="division" title={division.name} />
+                <StructureNode movementLocked nodeId={division.id} selected={selectedDivision} subtitle="division" title={division.name} />
               </div>
               <div className="flex flex-col gap-2">
                 {teams.map((team) => {
@@ -222,7 +180,7 @@ function ProgramMapNodes({
                         onSelectNode?.(team);
                       }}
                     >
-                      <StructureNodeCard isSelected={selectedTeam} subtitle="team" title={team.name} />
+                      <StructureNode movementLocked nodeId={team.id} selected={selectedTeam} subtitle="team" title={team.name} />
                     </div>
                   );
                 })}
@@ -414,11 +372,12 @@ export function StructureCanvas(props: StructureCanvasProps) {
                   height: `${layout.height}px`
                 }}
               >
-                <StructureNodeCard
-                  isConflicted={isConflicted}
-                  isSelected={isSelected}
-                  isStructural={isStructuralElement}
-                  selectable={selectable}
+                <StructureNode
+                  conflicted={isConflicted}
+                  movementLocked={!selectable}
+                  nodeId={room.id}
+                  selected={isSelected}
+                  structural={isStructuralElement}
                   subtitle={statusLabel}
                   title={room.name}
                 />

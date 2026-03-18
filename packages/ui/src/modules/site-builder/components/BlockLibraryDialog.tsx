@@ -4,12 +4,15 @@ import {
   CalendarClock,
   CalendarDays,
   ClipboardCheck,
+  FileText,
+  Megaphone,
   LayoutDashboard,
   LayoutList,
   MapPinned,
-  Megaphone,
   PanelTop,
   Sparkles,
+  Phone,
+  BarChart3,
   Users,
   TableProperties,
   type LucideIcon
@@ -43,11 +46,27 @@ const tileMetaByType: Record<
   },
   cta_grid: {
     icon: LayoutDashboard,
-    description: "Grid of quick links to key programs, forms, or resources."
+    description: "Card grid of featured links to key programs, forms, or resources."
   },
   cta_card: {
     icon: Megaphone,
     description: "Single promotional card with image, text, and action buttons."
+  },
+  announcement_highlight: {
+    icon: Megaphone,
+    description: "Editorial announcement cards for timely public updates."
+  },
+  stats_metrics: {
+    icon: BarChart3,
+    description: "Key program and community metrics in compact cards."
+  },
+  document_links: {
+    icon: FileText,
+    description: "Policy docs, handbooks, and downloadable resources."
+  },
+  contact_info: {
+    icon: Phone,
+    description: "Primary contact channels and organization details."
   },
   schedule_preview: {
     icon: CalendarDays,

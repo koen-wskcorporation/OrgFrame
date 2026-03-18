@@ -1,7 +1,8 @@
 import { buttonVariants } from "@orgframe/ui/ui/button";
 import { cn } from "@/lib/utils";
 import { defaultInternalHref, normalizeButtons, resolveButtonHref } from "@/lib/links";
-import { asBody, asObject, asText, defaultPageTitleFromSlug } from "@/modules/site-builder/blocks/helpers";
+import { asObject, asText, defaultPageTitleFromSlug } from "@/modules/site-builder/blocks/helpers";
+import { sanitizeRichTextHtml } from "@/modules/site-builder/blocks/rich-text";
 import type { BlockContext, BlockRenderProps, SubheroBlockConfig } from "@/modules/site-builder/types";
 
 function defaultSubheroConfig(context: BlockContext): SubheroBlockConfig {
@@ -25,7 +26,7 @@ export function sanitizeSubheroConfig(config: unknown, context: BlockContext): S
 
   return {
     headline: asText(value.headline, fallback.headline, 120),
-    subheadline: asBody(value.subheadline, fallback.subheadline, 320),
+    subheadline: sanitizeRichTextHtml(value.subheadline, fallback.subheadline).slice(0, 3000),
     buttons: normalizeButtons(value.buttons, { max: 3 })
   };
 }
@@ -39,7 +40,7 @@ export function SubheroBlockRender({ block, context }: BlockRenderProps<"subhero
     <section className="rounded-card border bg-surface p-6 shadow-card md:p-10">
       <div className="w-full space-y-4">
         <h1 className="text-3xl font-semibold text-text md:text-5xl">{block.config.headline}</h1>
-        <p className="text-sm text-text-muted md:text-lg">{block.config.subheadline}</p>
+        <div className="prose max-w-none text-sm text-text-muted md:text-lg" dangerouslySetInnerHTML={{ __html: block.config.subheadline }} />
         {block.config.buttons.length > 0 ? (
           <div className="flex flex-wrap gap-3">
             {block.config.buttons.map((button) => (

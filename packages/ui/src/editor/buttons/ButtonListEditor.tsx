@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { ButtonConfigDialog } from "@orgframe/ui/editor/buttons/ButtonConfigDialog";
 import { buttonVariantLabelByValue, type ButtonConfig } from "@orgframe/ui/editor/buttons/types";
+import { buttonVariants } from "@orgframe/ui/ui/button";
 import { IconButton } from "@orgframe/ui/ui/icon-button";
 import { cn } from "@/lib/utils";
 import { createLocalId, normalizeButtons } from "@/lib/links";
@@ -158,7 +159,17 @@ export function ButtonListEditor({
                   type="button"
                 >
                   <span className="max-w-[180px] min-w-0 truncate">{button.label}</span>
-                  <span className="shrink-0 text-[10px] uppercase tracking-wide text-text-muted">{buttonVariantLabelByValue[button.variant]}</span>
+                  <span
+                    className={cn(
+                      buttonVariants({
+                        size: "sm",
+                        variant: button.variant
+                      }),
+                      "h-6 px-2 text-[10px] uppercase tracking-wide"
+                    )}
+                  >
+                    {buttonVariantLabelByValue[button.variant]}
+                  </span>
                 </button>
                 <IconButton className="h-9 w-9 border-l rounded-none" icon={<X />} label={`Remove ${button.label}`} onClick={() => removeButton(index)} />
               </div>

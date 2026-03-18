@@ -12,6 +12,10 @@ export type OrgSiteBlockType =
   | "subhero"
   | "cta_grid"
   | "cta_card"
+  | "announcement_highlight"
+  | "stats_metrics"
+  | "document_links"
+  | "contact_info"
   | "schedule_preview"
   | "program_catalog"
   | "events"
@@ -57,6 +61,50 @@ export type CtaCardBlockConfig = {
   zoom: number;
   accentHighlight: boolean;
   buttons: SiteButton[];
+};
+
+export type AnnouncementHighlightItem = {
+  id: string;
+  title: string;
+  body: string;
+  dateLabel: string;
+};
+
+export type AnnouncementHighlightBlockConfig = {
+  title: string;
+  items: AnnouncementHighlightItem[];
+};
+
+export type StatsMetricsItem = {
+  id: string;
+  label: string;
+  value: string;
+  detail: string;
+};
+
+export type StatsMetricsBlockConfig = {
+  title: string;
+  items: StatsMetricsItem[];
+};
+
+export type DocumentLinksItem = {
+  id: string;
+  title: string;
+  description: string;
+  href: string;
+};
+
+export type DocumentLinksBlockConfig = {
+  title: string;
+  items: DocumentLinksItem[];
+};
+
+export type ContactInfoBlockConfig = {
+  title: string;
+  body: string;
+  email: string;
+  phone: string;
+  address: string;
 };
 
 export type SchedulePreviewBlockConfig = {
@@ -123,6 +171,10 @@ export type OrgSiteBlockConfigMap = {
   subhero: SubheroBlockConfig;
   cta_grid: CtaGridBlockConfig;
   cta_card: CtaCardBlockConfig;
+  announcement_highlight: AnnouncementHighlightBlockConfig;
+  stats_metrics: StatsMetricsBlockConfig;
+  document_links: DocumentLinksBlockConfig;
+  contact_info: ContactInfoBlockConfig;
   schedule_preview: SchedulePreviewBlockConfig;
   program_catalog: ProgramCatalogBlockConfig;
   events: EventsBlockConfig;
@@ -144,6 +196,9 @@ export type OrgSitePage = {
   slug: string;
   title: string;
   isPublished: boolean;
+  pageLifecycle: "permanent" | "temporary";
+  temporaryWindowStartUtc: string | null;
+  temporaryWindowEndUtc: string | null;
   sortIndex: number;
   createdAt: string;
   updatedAt: string;
@@ -154,6 +209,9 @@ export type OrgManagePage = {
   slug: string;
   title: string;
   isPublished: boolean;
+  pageLifecycle: "permanent" | "temporary";
+  temporaryWindowStartUtc: string | null;
+  temporaryWindowEndUtc: string | null;
   sortIndex: number;
   createdAt: string;
   updatedAt: string;
@@ -174,6 +232,62 @@ export type OrgNavItem = {
   sortIndex: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type OrgSiteStructureNodeKind = "static_page" | "static_link" | "dynamic_page" | "dynamic_link" | "system_generated";
+
+export type OrgSiteStructureSourceType = "none" | "programs_tree" | "published_forms" | "published_events";
+
+export type OrgSiteStructureChildBehavior = "manual" | "generated_locked" | "generated_with_manual_overrides";
+
+export type OrgSiteStructureLabelBehavior = "manual" | "source_name";
+
+export type OrgSiteStructurePageLifecycle = "permanent" | "temporary";
+
+export type OrgSiteStructureNode = {
+  id: string;
+  orgId: string;
+  parentId: string | null;
+  sortIndex: number;
+  label: string;
+  nodeKind: OrgSiteStructureNodeKind;
+  pageSlug: string | null;
+  externalUrl: string | null;
+  pageLifecycle: OrgSiteStructurePageLifecycle;
+  sourceType: OrgSiteStructureSourceType;
+  sourceScopeJson: Record<string, unknown>;
+  generationRulesJson: Record<string, unknown>;
+  childBehavior: OrgSiteStructureChildBehavior;
+  routeBehaviorJson: Record<string, unknown>;
+  labelBehavior: OrgSiteStructureLabelBehavior;
+  temporaryWindowStartUtc: string | null;
+  temporaryWindowEndUtc: string | null;
+  isClickable: boolean;
+  isVisible: boolean;
+  isSystemNode: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ResolvedOrgSiteStructureNode = {
+  id: string;
+  parentId: string | null;
+  label: string;
+  href: string | null;
+  target: "_blank" | null;
+  rel: string | null;
+  sortIndex: number;
+  nodeKind: OrgSiteStructureNodeKind | "system_generated";
+  sourceType: OrgSiteStructureSourceType;
+  pageLifecycle: OrgSiteStructurePageLifecycle;
+  isVisible: boolean;
+  isClickable: boolean;
+  isGenerated: boolean;
+  isDerived: boolean;
+  isEditable: boolean;
+  reasonDisabled: string | null;
+  metaJson: Record<string, unknown>;
+  children: ResolvedOrgSiteStructureNode[];
 };
 
 export type OrgSitePageWithBlocks = {

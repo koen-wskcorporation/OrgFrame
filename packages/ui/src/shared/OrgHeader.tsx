@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   CalendarDays,
@@ -10,41 +10,32 @@ import {
   CreditCard,
   FileText,
   Globe,
-  GripVertical,
-  LayoutDashboard,
   Inbox,
+  LayoutDashboard,
   MapPinned,
   Palette,
   Pencil,
-  Plus,
   Settings,
-  SlidersHorizontal,
-  Trash2,
   Users,
   Wrench,
   type LucideIcon
 } from "lucide-react";
-import { SortableCanvas, type SortableRenderMeta } from "@orgframe/ui/editor/SortableCanvas";
-import { EditorSettingsDialog } from "@orgframe/ui/shared/EditorSettingsDialog";
-import { Button } from "@orgframe/ui/ui/button";
-import { Checkbox } from "@orgframe/ui/ui/checkbox";
-import { IconButton } from "@orgframe/ui/ui/icon-button";
-import { Input } from "@orgframe/ui/ui/input";
-import { NavItem } from "@orgframe/ui/ui/nav-item";
-import { PublishStatusIcon } from "@orgframe/ui/ui/publish-status-icon";
-import { useToast } from "@orgframe/ui/ui/toast";
+import { ProgramHeaderBar } from "@orgframe/ui/shared/ProgramHeaderBar";
+import { SiteStructureEditorPopup } from "@orgframe/ui/modules/site-builder/components/SiteStructureEditorPopup";
 import { AdaptiveLogo } from "@orgframe/ui/ui/adaptive-logo";
+import { Button } from "@orgframe/ui/ui/button";
+import { NavItem } from "@orgframe/ui/ui/nav-item";
+import { useToast } from "@orgframe/ui/ui/toast";
 import { getOrgAdminNavItems, type OrgAdminNavIcon } from "@/lib/org/adminNav";
 import { cn } from "@/lib/utils";
-import { saveOrgHeaderMenuAction, savePageSettingsAction } from "@/modules/site-builder/actions";
+import { saveOrgSiteStructureAction } from "@/modules/site-builder/actions";
 import {
   ORG_SITE_EDITOR_STATE_EVENT,
   ORG_SITE_OPEN_EDITOR_EVENT,
   ORG_SITE_OPEN_EDITOR_REQUEST_KEY,
   ORG_SITE_SET_EDITOR_EVENT
 } from "@/modules/site-builder/events";
-import type { OrgManagePage, OrgNavItem } from "@/modules/site-builder/types";
-import { ProgramHeaderBar } from "@orgframe/ui/shared/ProgramHeaderBar";
+import type { OrgManagePage, OrgSiteStructureNode, ResolvedOrgSiteStructureNode } from "@/modules/site-builder/types";
 
 type OrgHeaderProps = {
   orgSlug: string;
@@ -55,16 +46,15 @@ type OrgHeaderProps = {
   canManageOrg: boolean;
   canEditPages: boolean;
   pages: OrgManagePage[];
-  navItems: OrgNavItem[];
-};
-
-type NavTreeNode = {
-  item: OrgNavItem;
-  children: NavTreeNode[];
+  siteStructureNodes: OrgSiteStructureNode[];
+  resolvedSiteStructure: ResolvedOrgSiteStructureNode[];
 };
 
 type HeaderMenuNode = {
-  item: OrgNavItem;
+  item: {
+    id: string;
+    label: string;
+  };
   href: string | null;
   rel: string | undefined;
   target: string | undefined;
@@ -72,15 +62,6 @@ type HeaderMenuNode = {
   children: HeaderMenuNode[];
 };
 
-type EditMenuRow = {
-  item: OrgNavItem;
-  depth: number;
-  hasChildren: boolean;
-  linkedPage: OrgManagePage | null;
-  href: string | null;
-};
-
-const ROOT_PARENT_KEY = "__root__";
 const toolsNavIconMap: Record<OrgAdminNavIcon, LucideIcon> = {
   wrench: Wrench,
   settings: Settings,
@@ -145,383 +126,58 @@ function sortedPages(pages: OrgManagePage[]) {
   return [...pages].sort((a, b) => a.sortIndex - b.sortIndex || a.createdAt.localeCompare(b.createdAt));
 }
 
-function sortedNavItems(items: OrgNavItem[]) {
-  return [...items].sort((a, b) => {
-    if (a.parentId !== b.parentId) {
-      const aParent = a.parentId ?? "";
-      const bParent = b.parentId ?? "";
-      return aParent.localeCompare(bParent);
-    }
-
-    if (a.sortIndex !== b.sortIndex) {
-      return a.sortIndex - b.sortIndex;
-    }
-
-    return a.createdAt.localeCompare(b.createdAt);
-  });
-}
-
-function keyForParent(parentId: string | null) {
-  return parentId ?? ROOT_PARENT_KEY;
-}
-
-function buildNavTree(items: OrgNavItem[]) {
-  const sorted = sortedNavItems(items);
-  const byParent = new Map<string, OrgNavItem[]>();
-
-  for (const item of sorted) {
-    const key = keyForParent(item.parentId);
-    const list = byParent.get(key) ?? [];
-    list.push(item);
-    byParent.set(key, list);
-  }
-
-  const visit = (parentId: string | null, path: Set<string>): NavTreeNode[] => {
-    const key = keyForParent(parentId);
-    const siblings = byParent.get(key) ?? [];
-
-    return siblings.map((item) => {
-      if (path.has(item.id)) {
-        return {
-          item,
-          children: []
-        };
-      }
-
-      const nextPath = new Set(path);
-      nextPath.add(item.id);
-      return {
-        item,
-        children: visit(item.id, nextPath)
-      };
-    });
-  };
-
-  return visit(null, new Set());
-}
-
-function flattenNavRows({
+function buildResolvedHeaderMenuNodes({
   nodes,
-  pagesBySlug,
-  orgSlug,
-  allowUnpublishedLinks,
-  depth = 0
-}: {
-  nodes: NavTreeNode[];
-  pagesBySlug: Map<string, OrgManagePage>;
-  orgSlug: string;
-  allowUnpublishedLinks: boolean;
-  depth?: number;
-}): EditMenuRow[] {
-  const rows: EditMenuRow[] = [];
-
-  for (const node of nodes) {
-    const linkedPage = node.item.pageSlug ? pagesBySlug.get(node.item.pageSlug) ?? null : null;
-    const hasPageHref = Boolean(linkedPage) && (allowUnpublishedLinks || linkedPage?.isPublished);
-    const href = node.item.linkType === "internal" ? (hasPageHref && linkedPage ? pageHref(orgSlug, linkedPage.slug) : null) : node.item.linkType === "external" ? node.item.externalUrl ?? null : null;
-
-    rows.push({
-      item: node.item,
-      depth,
-      hasChildren: node.children.length > 0,
-      linkedPage,
-      href
-    });
-
-    rows.push(
-      ...flattenNavRows({
-        nodes: node.children,
-        pagesBySlug,
-        orgSlug,
-        allowUnpublishedLinks,
-        depth: depth + 1
-      })
-    );
-  }
-
-  return rows;
-}
-
-function flattenNavForSave(nodes: NavTreeNode[]) {
-  const next: Array<{ id: string; parentId: string | null }> = [];
-
-  const visit = (entries: NavTreeNode[]) => {
-    for (const entry of entries) {
-      next.push({
-        id: entry.item.id,
-        parentId: entry.item.parentId
-      });
-      visit(entry.children);
-    }
-  };
-
-  visit(nodes);
-
-  return next;
-}
-
-function resolveHeaderHref(item: OrgNavItem, orgSlug: string, pagesBySlug: Map<string, OrgManagePage>) {
-  if (item.linkType === "none") {
-    return null;
-  }
-
-  if (item.linkType === "external") {
-    const href = item.externalUrl?.trim() ?? "";
-    return href || null;
-  }
-
-  if (!item.pageSlug) {
-    return null;
-  }
-
-  const linkedPage = pagesBySlug.get(item.pageSlug);
-
-  if (!linkedPage || !linkedPage.isPublished) {
-    return null;
-  }
-
-  return pageHref(orgSlug, linkedPage.slug);
-}
-
-function buildHeaderMenuNodes({
-  nodes,
-  orgSlug,
-  pagesBySlug,
   currentPathname,
   hasHydrated
 }: {
-  nodes: NavTreeNode[];
-  orgSlug: string;
-  pagesBySlug: Map<string, OrgManagePage>;
+  nodes: ResolvedOrgSiteStructureNode[];
   currentPathname: string;
   hasHydrated: boolean;
 }): HeaderMenuNode[] {
-  const rendered: HeaderMenuNode[] = [];
+  const visit = (entries: ResolvedOrgSiteStructureNode[]): HeaderMenuNode[] => {
+    const rendered: HeaderMenuNode[] = [];
 
-  for (const node of nodes) {
-    const children = buildHeaderMenuNodes({
-      nodes: node.children,
-      orgSlug,
-      pagesBySlug,
-      currentPathname,
-      hasHydrated
-    });
-
-    if (!node.item.isVisible) {
-      continue;
-    }
-
-    const href = resolveHeaderHref(node.item, orgSlug, pagesBySlug);
-
-    if (!href && children.length === 0) {
-      continue;
-    }
-
-    const isActive = hasHydrated ? (href ? isActivePath(currentPathname, href) : false) || children.some((child) => child.isActive) : false;
-    rendered.push({
-      item: node.item,
-      href,
-      rel: node.item.linkType === "external" && node.item.openInNewTab ? "noopener noreferrer" : undefined,
-      target: node.item.linkType === "external" && node.item.openInNewTab ? "_blank" : undefined,
-      isActive,
-      children
-    });
-  }
-
-  return rendered;
-}
-
-function updateItemVisibility(items: OrgNavItem[], itemId: string, isVisible: boolean) {
-  return items.map((item) => (item.id === itemId ? { ...item, isVisible } : item));
-}
-
-function moveMenuItemWithDrop({
-  currentItems,
-  activeId,
-  overId,
-  activeIndex,
-  overIndex,
-  deltaY
-}: {
-  currentItems: OrgNavItem[];
-  activeId: string;
-  overId: string;
-  activeIndex: number;
-  overIndex: number;
-  deltaY: number;
-}) {
-  const nextById = new Map(currentItems.map((item) => [item.id, { ...item }]));
-  const activeItem = nextById.get(activeId);
-  const overItem = nextById.get(overId);
-
-  if (!activeItem || !overItem) {
-    return null;
-  }
-
-  let nextParentId: string | null;
-
-  if (deltaY > 18) {
-    nextParentId = overItem.parentId ?? overItem.id;
-  } else if (deltaY < -18) {
-    nextParentId = null;
-  } else {
-    nextParentId = overItem.parentId;
-  }
-
-  if (nextParentId === activeItem.id) {
-    nextParentId = activeItem.parentId;
-  }
-
-  const candidateParent = nextParentId ? nextById.get(nextParentId) ?? null : null;
-
-  if (candidateParent?.parentId) {
-    nextParentId = candidateParent.parentId;
-  }
-
-  const finalParent = nextParentId ? nextById.get(nextParentId) ?? null : null;
-
-  if (finalParent?.parentId === activeItem.id) {
-    nextParentId = null;
-  }
-
-  const siblingsByParent = new Map<string, string[]>();
-  const ordered = sortedNavItems(currentItems);
-
-  for (const item of ordered) {
-    if (item.id === activeId) {
-      continue;
-    }
-
-    const key = keyForParent(item.parentId);
-    const siblings = siblingsByParent.get(key) ?? [];
-    siblings.push(item.id);
-    siblingsByParent.set(key, siblings);
-  }
-
-  const targetKey = keyForParent(nextParentId);
-  const targetSiblings = siblingsByParent.get(targetKey) ?? [];
-  let insertIndex = targetSiblings.length;
-
-  if (overId !== activeId) {
-    let anchorId: string | null = null;
-
-    if (overItem.parentId === nextParentId) {
-      anchorId = overItem.id;
-    } else if (nextParentId === null && overItem.parentId) {
-      anchorId = overItem.parentId;
-    }
-
-    if (anchorId) {
-      const anchorIndex = targetSiblings.indexOf(anchorId);
-      if (anchorIndex >= 0) {
-        const shouldInsertAfter = overItem.parentId === nextParentId && activeIndex < overIndex;
-        insertIndex = anchorIndex + (shouldInsertAfter ? 1 : 0);
-      }
-    }
-  }
-
-  const nextTargetSiblings = [...targetSiblings];
-  nextTargetSiblings.splice(Math.max(0, Math.min(insertIndex, nextTargetSiblings.length)), 0, activeId);
-  siblingsByParent.set(targetKey, nextTargetSiblings);
-
-  for (const [parentKey, ids] of siblingsByParent.entries()) {
-    const parentId = parentKey === ROOT_PARENT_KEY ? null : parentKey;
-
-    ids.forEach((id, index) => {
-      const item = nextById.get(id);
-
-      if (!item) {
-        return;
+    for (const entry of entries) {
+      if (!entry.isVisible) {
+        continue;
       }
 
-      item.parentId = parentId;
-      item.sortIndex = index;
-    });
-  }
+      const children = visit(entry.children);
+      const href = entry.isClickable ? entry.href : null;
+      const rel = entry.rel ?? undefined;
+      const target = entry.target ?? undefined;
+      const isActive = href && hasHydrated ? isActivePath(currentPathname, href) : false;
+      const childActive = children.some((child) => child.isActive);
 
-  return sortedNavItems([...nextById.values()]);
-}
+      rendered.push({
+        item: {
+          id: entry.id,
+          label: entry.label
+        },
+        href,
+        rel,
+        target,
+        isActive: Boolean(isActive || childActive),
+        children
+      });
+    }
 
-function EditableMenuItemRow({
-  row,
-  isSaving,
-  onToggleVisibility,
-  onOpenSettings,
-  onOpenEditor,
-  onDelete,
-  meta
-}: {
-  row: EditMenuRow;
-  isSaving: boolean;
-  onToggleVisibility: (item: OrgNavItem) => void;
-  onOpenSettings: (row: EditMenuRow) => void;
-  onOpenEditor: (href: string) => void;
-  onDelete: (item: OrgNavItem) => void;
-  meta: SortableRenderMeta;
-}) {
-  const isPageItem = row.item.linkType === "internal" && Boolean(row.linkedPage);
-  const pageUnavailable = row.item.linkType === "internal" && !row.linkedPage;
-  const pageUnpublished = Boolean(row.linkedPage && !row.linkedPage.isPublished);
+    return rendered;
+  };
 
-  return (
-    <div
-      className={cn(
-        "inline-flex h-10 w-fit max-w-[min(52vw,440px)] items-center gap-2 rounded-control border bg-surface px-2",
-        meta.isDragging ? "shadow-card" : "shadow-none"
-      )}
-    >
-      <IconButton
-        icon={<GripVertical />}
-        label={`Drag ${row.item.label}`}
-        disabled={isSaving}
-        type="button"
-        {...meta.handleProps.attributes}
-        {...meta.handleProps.listeners}
-      />
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 truncate text-sm font-semibold leading-none text-text">
-          <PublishStatusIcon
-            align="right"
-            className="shrink-0"
-            disabled={isSaving}
-            isLoading={isSaving}
-            isPublished={row.item.isVisible}
-            onToggle={() => onToggleVisibility(row.item)}
-            publishLabel="Show in menu"
-            publishedStatusText="Visible"
-            size="compact"
-            statusLabel={row.item.isVisible ? `Visible status for ${row.item.label}` : `Hidden status for ${row.item.label}`}
-            unpublishedStatusText="Hidden"
-            unpublishLabel="Hide from menu"
-          />
-          {row.depth > 0 ? <span className="rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">Sub</span> : null}
-          <span className="max-w-[20ch] truncate">{row.item.label}</span>
-          {row.hasChildren ? <span className="rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">Dropdown</span> : null}
-          {pageUnavailable ? <span className="rounded-full border border-destructive/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">Missing page</span> : null}
-          {pageUnpublished ? <span className="rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">Page unpublished</span> : null}
-        </div>
-      </div>
-
-      <IconButton icon={<SlidersHorizontal />} label="Menu item settings" disabled={isSaving} onClick={() => onOpenSettings(row)} title="Menu item settings" />
-
-      {isPageItem && row.href ? <IconButton icon={<Pencil />} label="Edit page" disabled={isSaving} onClick={() => onOpenEditor(row.href ?? "")} title="Edit page" /> : null}
-
-      <IconButton icon={<Trash2 />} label="Remove from menu" disabled={isSaving} onClick={() => onDelete(row.item)} title="Remove from menu" />
-    </div>
-  );
+  return visit(nodes);
 }
 
 export function OrgHeader({
   orgSlug,
   orgName,
   orgLogoUrl,
-  governingBodyLogoUrl,
-  governingBodyName,
   canManageOrg,
   canEditPages,
   pages,
-  navItems
+  siteStructureNodes,
+  resolvedSiteStructure
 }: OrgHeaderProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const pathname = usePathname();
@@ -537,30 +193,13 @@ export function OrgHeader({
   const [expandedToolsParents, setExpandedToolsParents] = useState<Record<string, boolean>>({});
   const [isScrolled, setIsScrolled] = useState(false);
 
-  const [isMenuEditMode, setIsMenuEditMode] = useState(false);
   const [menuPages, setMenuPages] = useState<OrgManagePage[]>(() => sortedPages(pages));
-  const [menuItems, setMenuItems] = useState<OrgNavItem[]>(() => sortedNavItems(navItems));
+  const [structureNodes, setStructureNodes] = useState<OrgSiteStructureNode[]>(siteStructureNodes);
+  const [resolvedStructure, setResolvedStructure] = useState<ResolvedOrgSiteStructureNode[]>(resolvedSiteStructure);
+  const [isStructureEditorOpen, setIsStructureEditorOpen] = useState(false);
 
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [createType, setCreateType] = useState<"page" | "placeholder">("page");
-  const [createTitle, setCreateTitle] = useState("");
-  const [createSlug, setCreateSlug] = useState("");
-  const [createPublished, setCreatePublished] = useState(true);
-  const [createVisible, setCreateVisible] = useState(true);
-  const [createParentId, setCreateParentId] = useState("");
-
-  const [settingsMenuItemId, setSettingsMenuItemId] = useState<string | null>(null);
-  const [settingsMenuLabel, setSettingsMenuLabel] = useState("");
-  const [settingsMenuVisible, setSettingsMenuVisible] = useState(true);
-  const [settingsPageId, setSettingsPageId] = useState<string | null>(null);
-  const [settingsTitle, setSettingsTitle] = useState("");
-  const [settingsSlug, setSettingsSlug] = useState("");
-  const [settingsPublished, setSettingsPublished] = useState(true);
-  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [isPageContentEditing, setIsPageContentEditing] = useState(false);
-
   const [openHeaderDropdownId, setOpenHeaderDropdownId] = useState<string | null>(null);
-  const [isSavingMenu, startSavingMenu] = useTransition();
 
   useEffect(() => {
     setHasHydrated(true);
@@ -589,54 +228,17 @@ export function OrgHeader({
   }, [pages]);
 
   useEffect(() => {
-    setMenuItems(sortedNavItems(navItems));
-  }, [navItems]);
+    setStructureNodes(siteStructureNodes);
+  }, [siteStructureNodes]);
 
-  const orderedPages = useMemo(() => sortedPages(menuPages), [menuPages]);
-  const orderedMenuItems = useMemo(() => sortedNavItems(menuItems), [menuItems]);
-  const pagesBySlug = useMemo(() => new Map(orderedPages.map((page) => [page.slug, page])), [orderedPages]);
-  const navTree = useMemo(() => buildNavTree(orderedMenuItems), [orderedMenuItems]);
+  useEffect(() => {
+    setResolvedStructure(resolvedSiteStructure);
+  }, [resolvedSiteStructure]);
+
   const headerMenuNodes = useMemo(
-    () =>
-      buildHeaderMenuNodes({
-        nodes: navTree,
-        orgSlug,
-        pagesBySlug,
-        currentPathname,
-        hasHydrated
-      }),
-    [currentPathname, hasHydrated, navTree, orgSlug, pagesBySlug]
+    () => buildResolvedHeaderMenuNodes({ nodes: resolvedStructure, currentPathname, hasHydrated }),
+    [currentPathname, hasHydrated, resolvedStructure]
   );
-  const editableRows = useMemo(
-    () =>
-      flattenNavRows({
-        nodes: navTree,
-        pagesBySlug,
-        orgSlug,
-        allowUnpublishedLinks: true
-      }),
-    [navTree, orgSlug, pagesBySlug]
-  );
-  const topLevelParentOptions = useMemo(() => orderedMenuItems.filter((item) => item.parentId === null), [orderedMenuItems]);
-  const selectedSettingsMenuItem = useMemo(() => {
-    if (!settingsMenuItemId) {
-      return null;
-    }
-
-    return orderedMenuItems.find((item) => item.id === settingsMenuItemId) ?? null;
-  }, [orderedMenuItems, settingsMenuItemId]);
-  const selectedSettingsPage = useMemo(() => {
-    if (!settingsPageId) {
-      return null;
-    }
-
-    return orderedPages.find((page) => page.id === settingsPageId) ?? null;
-  }, [orderedPages, settingsPageId]);
-
-  const applyServerMenuState = useCallback((nextPages: OrgManagePage[], nextNavItems: OrgNavItem[]) => {
-    setMenuPages(sortedPages(nextPages));
-    setMenuItems(sortedNavItems(nextNavItems));
-  }, []);
 
   const openEditorOnPath = useCallback(
     (targetPath: string) => {
@@ -658,93 +260,28 @@ export function OrgHeader({
     [currentPathname, pathname, router]
   );
 
-  const onToggleVisibility = useCallback(
-    (item: OrgNavItem) => {
-      const nextVisible = !item.isVisible;
-      const previous = orderedMenuItems;
-      setMenuItems(updateItemVisibility(previous, item.id, nextVisible));
-
-      startSavingMenu(async () => {
-        const result = await saveOrgHeaderMenuAction({
-          orgSlug,
-          action: {
-            type: "set-visible",
-            itemId: item.id,
-            isVisible: nextVisible
-          }
-        });
-
-        if (!result.ok) {
-          setMenuItems(previous);
-          toast({
-            title: "Unable to update visibility",
-            description: result.error,
-            variant: "destructive"
-          });
-          return;
-        }
-
-        applyServerMenuState(result.pages, result.navItems);
+  const onSaveSiteStructure = useCallback(
+    async (action: Parameters<typeof saveOrgSiteStructureAction>[0]["action"]) => {
+      const result = await saveOrgSiteStructureAction({
+        orgSlug,
+        action
       });
-    },
-    [applyServerMenuState, orderedMenuItems, orgSlug, toast]
-  );
 
-  const onDeleteMenuItem = useCallback(
-    (item: OrgNavItem) => {
-      const isConfirmed = window.confirm(`Remove \"${item.label}\" from the header menu?`);
-
-      if (!isConfirmed) {
+      if (!result.ok) {
+        toast({
+          title: "Unable to save site structure",
+          description: result.error,
+          variant: "destructive"
+        });
         return;
       }
 
-      const previous = orderedMenuItems;
-      setMenuItems(previous.filter((candidate) => candidate.id !== item.id));
-
-      startSavingMenu(async () => {
-        const result = await saveOrgHeaderMenuAction({
-          orgSlug,
-          action: {
-            type: "delete-item",
-            itemId: item.id
-          }
-        });
-
-        if (!result.ok) {
-          setMenuItems(previous);
-          toast({
-            title: "Unable to remove menu item",
-            description: result.error,
-            variant: "destructive"
-          });
-          return;
-        }
-
-        applyServerMenuState(result.pages, result.navItems);
-      });
+      setMenuPages(sortedPages(result.pages));
+      setStructureNodes(result.nodes);
+      setResolvedStructure(result.resolved);
     },
-    [applyServerMenuState, orderedMenuItems, orgSlug, toast]
+    [orgSlug, toast]
   );
-
-  const onOpenSettings = useCallback((row: EditMenuRow) => {
-    setSettingsMenuItemId(row.item.id);
-    setSettingsMenuLabel(row.item.label);
-    setSettingsMenuVisible(row.item.isVisible);
-
-    if (row.item.linkType === "internal" && row.linkedPage) {
-      setSettingsPageId(row.linkedPage.id);
-      setSettingsTitle(row.linkedPage.title);
-      setSettingsSlug(row.linkedPage.slug);
-      setSettingsPublished(row.linkedPage.isPublished);
-    } else {
-      setSettingsPageId(null);
-      setSettingsTitle("");
-      setSettingsSlug("");
-      setSettingsPublished(true);
-    }
-
-    setSettingsDialogOpen(true);
-  }, []);
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 8);
@@ -759,8 +296,6 @@ export function OrgHeader({
     setIsToolsMenuOpen(false);
     setOpenHeaderDropdownId(null);
   }, [pathname]);
-
-  const hasInlineEditingActive = isMenuEditMode || isPageContentEditing;
 
   useEffect(() => {
     setExpandedToolsParents((current) => {
@@ -872,182 +407,94 @@ export function OrgHeader({
           </div>
 
           <nav className="hidden min-w-0 flex-1 md:block">
-            {!isMenuEditMode ? (
-              <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto">
-                {headerMenuNodes.map((node) => {
-                  const isOpen = openHeaderDropdownId === node.item.id;
+            <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto">
+              {headerMenuNodes.map((node) => {
+                const isOpen = openHeaderDropdownId === node.item.id;
 
-                  if (node.children.length === 0) {
-                    return (
-                      <NavItem
-                        active={node.isActive}
-                        href={node.href ?? undefined}
-                        key={node.item.id}
-                        rel={node.rel}
-                        target={node.target}
-                        variant="header"
-                      >
-                        {node.item.label}
-                      </NavItem>
-                    );
-                  }
-
+                if (node.children.length === 0) {
                   return (
-                    <div
-                      className="relative"
+                    <NavItem
+                      active={node.isActive}
+                      href={node.href ?? undefined}
                       key={node.item.id}
-                      onBlurCapture={(event) => {
-                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                          setOpenHeaderDropdownId((current) => (current === node.item.id ? null : current));
-                        }
-                      }}
-                      onMouseEnter={() => {
-                        setOpenHeaderDropdownId(node.item.id);
-                      }}
-                      onMouseLeave={() => {
-                        setOpenHeaderDropdownId((current) => (current === node.item.id ? null : current));
-                      }}
+                      rel={node.rel}
+                      target={node.target}
+                      variant="header"
                     >
-                      <NavItem
-                        active={node.isActive}
-                        ariaExpanded={isOpen}
-                        ariaHaspopup="menu"
-                        href={node.href ?? undefined}
-                        key={node.item.id}
-                        rel={node.rel}
-                        rightSlot={<ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen ? "rotate-180" : "rotate-0")} />}
-                        target={node.target}
-                        variant="header"
-                        onClick={
-                          node.href
-                            ? undefined
-                            : () => {
-                                setOpenHeaderDropdownId((current) => (current === node.item.id ? null : node.item.id));
-                              }
-                        }
-                      >
-                        {node.item.label}
-                      </NavItem>
-
-                      {isOpen ? (
-                        <div className="absolute right-0 top-[calc(100%+0.35rem)] z-50 w-[16rem] rounded-card border bg-surface p-2 shadow-floating" role="menu">
-                          {node.children.map((child) => (
-                            <NavItem
-                              active={child.isActive}
-                              href={child.href ?? undefined}
-                              key={child.item.id}
-                              rel={child.rel}
-                              role="menuitem"
-                              target={child.target}
-                              variant="dropdown"
-                              onClick={() => {
-                                setOpenHeaderDropdownId(null);
-                              }}
-                            >
-                              {child.item.label}
-                            </NavItem>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
+                      {node.item.label}
+                    </NavItem>
                   );
-                })}
-              </div>
-            ) : (
-              <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto">
-                <SortableCanvas
-                  className="flex min-w-0 items-center justify-end gap-2"
-                  getId={(row) => row.item.id}
-                  itemClassName="shrink-0"
-                  items={editableRows}
-                  onDrop={(event) => {
-                    const nextItems = moveMenuItemWithDrop({
-                      currentItems: orderedMenuItems,
-                      activeId: event.activeId,
-                      overId: event.overId,
-                      activeIndex: event.activeIndex,
-                      overIndex: event.overIndex,
-                      deltaY: event.delta.y
-                    });
+                }
 
-                    if (!nextItems) {
-                      return true;
-                    }
-
-                    const previous = orderedMenuItems;
-                    setMenuItems(nextItems);
-
-                    startSavingMenu(async () => {
-                      const nextTree = buildNavTree(nextItems);
-                      const result = await saveOrgHeaderMenuAction({
-                        orgSlug,
-                        action: {
-                          type: "reorder-tree",
-                          items: flattenNavForSave(nextTree)
-                        }
-                      });
-
-                      if (!result.ok) {
-                        setMenuItems(previous);
-                        toast({
-                          title: "Unable to reorder menu",
-                          description: result.error,
-                          variant: "destructive"
-                        });
-                        return;
+                return (
+                  <div
+                    className="relative"
+                    key={node.item.id}
+                    onBlurCapture={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        setOpenHeaderDropdownId((current) => (current === node.item.id ? null : current));
                       }
+                    }}
+                    onMouseEnter={() => {
+                      setOpenHeaderDropdownId(node.item.id);
+                    }}
+                    onMouseLeave={() => {
+                      setOpenHeaderDropdownId((current) => (current === node.item.id ? null : current));
+                    }}
+                  >
+                    <NavItem
+                      active={node.isActive}
+                      ariaExpanded={isOpen}
+                      ariaHaspopup="menu"
+                      href={node.href ?? undefined}
+                      key={node.item.id}
+                      rel={node.rel}
+                      rightSlot={<ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen ? "rotate-180" : "rotate-0")} />}
+                      target={node.target}
+                      variant="header"
+                      onClick={
+                        node.href
+                          ? undefined
+                          : () => {
+                              setOpenHeaderDropdownId((current) => (current === node.item.id ? null : node.item.id));
+                            }
+                      }
+                    >
+                      {node.item.label}
+                    </NavItem>
 
-                      applyServerMenuState(result.pages, result.navItems);
-                    });
-
-                    return true;
-                  }}
-                  onReorder={() => {
-                    // Sorting is handled in onDrop to support drag-to-nest.
-                  }}
-                  sortingStrategy="horizontal"
-                  renderItem={(row, meta) => (
-                    <EditableMenuItemRow
-                      isSaving={isSavingMenu}
-                      meta={meta}
-                      onDelete={onDeleteMenuItem}
-                      onOpenEditor={(href) => {
-                        setIsMenuEditMode(false);
-                        openEditorOnPath(href);
-                      }}
-                      onOpenSettings={onOpenSettings}
-                      onToggleVisibility={onToggleVisibility}
-                      row={row}
-                    />
-                  )}
-                />
-
-                <IconButton
-                  icon={<Plus className="h-4 w-4" />}
-                  label="Add menu item"
-                  onClick={() => {
-                    setCreateType("page");
-                    setCreateTitle("");
-                    setCreateSlug("");
-                    setCreatePublished(true);
-                    setCreateVisible(true);
-                    setCreateParentId("");
-                    setCreateDialogOpen(true);
-                  }}
-                />
-              </div>
-            )}
+                    {isOpen ? (
+                      <div className="absolute right-0 top-[calc(100%+0.35rem)] z-50 w-[16rem] rounded-card border bg-surface p-2 shadow-floating" role="menu">
+                        {node.children.map((child) => (
+                          <NavItem
+                            active={child.isActive}
+                            href={child.href ?? undefined}
+                            key={child.item.id}
+                            rel={child.rel}
+                            role="menuitem"
+                            target={child.target}
+                            variant="dropdown"
+                            onClick={() => {
+                              setOpenHeaderDropdownId(null);
+                            }}
+                          >
+                            {child.item.label}
+                          </NavItem>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
           </nav>
 
           {hasHeaderActions ? <span aria-hidden className="hidden h-6 w-px shrink-0 bg-border md:block" /> : null}
 
           <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0">
-            {canEditPages && hasInlineEditingActive ? (
+            {canEditPages && isPageContentEditing ? (
               <Button
                 onClick={() => {
-                  setIsMenuEditMode(false);
-                  setCreateDialogOpen(false);
-                  setSettingsDialogOpen(false);
                   setIsToolsMenuOpen(false);
                   window.dispatchEvent(
                     new CustomEvent(ORG_SITE_SET_EDITOR_EVENT, {
@@ -1066,19 +513,17 @@ export function OrgHeader({
               </Button>
             ) : null}
 
-            {canEditCurrentPage && !hasInlineEditingActive ? (
+            {canEditCurrentPage && !isPageContentEditing ? (
               <Button onClick={() => openEditorOnPath(currentPathname || orgBasePath)} size="md" type="button" variant="ghost">
                 <Pencil className="h-4 w-4" />
                 Edit Page
               </Button>
             ) : null}
 
-            {canEditPages && !hasInlineEditingActive ? (
+            {canEditPages && !isPageContentEditing ? (
               <Button
                 onClick={() => {
-                  setIsMenuEditMode(true);
-                  setCreateDialogOpen(false);
-                  setSettingsDialogOpen(false);
+                  setIsStructureEditorOpen(true);
                   setIsToolsMenuOpen(false);
                 }}
                 size="md"
@@ -1086,11 +531,11 @@ export function OrgHeader({
                 variant="ghost"
               >
                 <LayoutDashboard className="h-4 w-4" />
-                Edit Menu
+                Edit Site
               </Button>
             ) : null}
 
-            {canManageOrg && !hasInlineEditingActive ? (
+            {canManageOrg && !isPageContentEditing ? (
               <div
                 className="relative"
                 onBlurCapture={(event) => {
@@ -1189,311 +634,19 @@ export function OrgHeader({
         <ProgramHeaderBar orgSlug={orgSlug} />
       </div>
 
-      <EditorSettingsDialog
-        footer={
-          <>
-            <Button
-              onClick={() => {
-                setCreateDialogOpen(false);
-              }}
-              size="sm"
-              variant="secondary"
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={isSavingMenu || !createTitle.trim()}
-              loading={isSavingMenu}
-              onClick={() => {
-                startSavingMenu(async () => {
-                  const parentId = createParentId || null;
-                  const result =
-                    createType === "page"
-                      ? await saveOrgHeaderMenuAction({
-                          orgSlug,
-                          action: {
-                            type: "create-page",
-                            title: createTitle,
-                            slug: createSlug.trim() ? createSlug : undefined,
-                            parentId,
-                            isPublished: createPublished,
-                            isVisible: createVisible
-                          }
-                        })
-                      : await saveOrgHeaderMenuAction({
-                          orgSlug,
-                          action: {
-                            type: "create-placeholder",
-                            label: createTitle,
-                            parentId,
-                            isVisible: createVisible
-                          }
-                        });
-
-                  if (!result.ok) {
-                    toast({
-                      title: createType === "page" ? "Unable to create page" : "Unable to create dropdown",
-                      description: result.error,
-                      variant: "destructive"
-                    });
-                    return;
-                  }
-
-                  applyServerMenuState(result.pages, result.navItems);
-                  setCreateTitle("");
-                  setCreateSlug("");
-                  setCreatePublished(true);
-                  setCreateVisible(true);
-                  setCreateParentId("");
-                  setCreateDialogOpen(false);
-                });
-              }}
-              size="sm"
-            >
-              Create
-            </Button>
-          </>
-        }
-        onClose={() => {
-          setCreateDialogOpen(false);
+      <SiteStructureEditorPopup
+        nodes={structureNodes}
+        onClose={() => setIsStructureEditorOpen(false)}
+        onOpenPageEditor={(pageSlug) => {
+          setIsStructureEditorOpen(false);
+          openEditorOnPath(pageHref(orgSlug, pageSlug));
         }}
-        open={createDialogOpen}
-        size="md"
-        title={createType === "page" ? "Create page" : "Create dropdown"}
-      >
-        <div className="space-y-3">
-          <div className="inline-flex w-full rounded-control border bg-surface p-1">
-            <button
-              className={cn("flex-1 rounded-control px-3 py-2 text-sm font-semibold", createType === "page" ? "bg-surface-muted text-text" : "text-text-muted")}
-              onClick={() => setCreateType("page")}
-              type="button"
-            >
-              Page
-            </button>
-            <button
-              className={cn("flex-1 rounded-control px-3 py-2 text-sm font-semibold", createType === "placeholder" ? "bg-surface-muted text-text" : "text-text-muted")}
-              onClick={() => setCreateType("placeholder")}
-              type="button"
-            >
-              Dropdown
-            </button>
-          </div>
-
-          <Input
-            onChange={(event) => setCreateTitle(event.target.value)}
-            placeholder={createType === "page" ? "Page title" : "Dropdown label"}
-            value={createTitle}
-          />
-
-          {createType === "page" ? <Input onChange={(event) => setCreateSlug(event.target.value)} placeholder="URL slug (optional)" value={createSlug} /> : null}
-
-          <label className="space-y-1 text-sm font-semibold text-text">
-            Parent menu item
-            <select
-              className="mt-1 h-10 w-full rounded-control border border-border bg-surface px-3 text-sm text-text"
-              onChange={(event) => setCreateParentId(event.target.value)}
-              value={createParentId}
-            >
-              <option value="">Top level</option>
-              {topLevelParentOptions.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {createType === "page" ? (
-            <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm">
-              <Checkbox
-                checked={createPublished}
-                onChange={(event) => {
-                  setCreatePublished(event.target.checked);
-                }}
-              />
-              Publish page
-            </label>
-          ) : null}
-
-          <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm">
-            <Checkbox
-              checked={createVisible}
-              onChange={(event) => {
-                setCreateVisible(event.target.checked);
-              }}
-            />
-            Visible in menu
-          </label>
-        </div>
-      </EditorSettingsDialog>
-
-      <EditorSettingsDialog
-        footer={
-          <>
-            <Button
-              onClick={() => {
-                setSettingsDialogOpen(false);
-              }}
-              size="sm"
-              variant="secondary"
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={isSavingMenu || !settingsMenuItemId}
-              loading={isSavingMenu}
-              onClick={() => {
-                if (!settingsMenuItemId) {
-                  return;
-                }
-
-                startSavingMenu(async () => {
-                  if (settingsPageId) {
-                    const previousSlug = selectedSettingsPage?.slug ?? settingsSlug;
-                    const pageResult = await savePageSettingsAction({
-                      orgSlug,
-                      pageId: settingsPageId,
-                      title: settingsTitle,
-                      pageSlug: settingsSlug,
-                      isPublished: settingsPublished
-                    });
-
-                    if (!pageResult.ok) {
-                      toast({
-                        title: "Unable to save page settings",
-                        description: pageResult.error,
-                        variant: "destructive"
-                      });
-                      return;
-                    }
-
-                    if (pageResult.navItems) {
-                      applyServerMenuState(pageResult.pages, pageResult.navItems);
-                    } else {
-                      setMenuPages(sortedPages(pageResult.pages));
-                      setMenuItems((current) =>
-                        sortedNavItems(
-                          current.map((item) => {
-                            if (item.linkType !== "internal" || item.pageSlug !== previousSlug) {
-                              return item;
-                            }
-
-                            return {
-                              ...item,
-                              pageSlug: settingsSlug,
-                              label: settingsTitle
-                            };
-                          })
-                        )
-                      );
-                    }
-
-                    const menuResult = await saveOrgHeaderMenuAction({
-                      orgSlug,
-                      action: {
-                        type: "update-item",
-                        itemId: settingsMenuItemId,
-                        isVisible: settingsMenuVisible
-                      }
-                    });
-
-                    if (!menuResult.ok) {
-                      toast({
-                        title: "Page saved, but menu visibility failed",
-                        description: menuResult.error,
-                        variant: "destructive"
-                      });
-                      return;
-                    }
-
-                    applyServerMenuState(menuResult.pages, menuResult.navItems);
-                    setSettingsDialogOpen(false);
-                    return;
-                  }
-
-                  const result = await saveOrgHeaderMenuAction({
-                    orgSlug,
-                    action: {
-                      type: "update-item",
-                      itemId: settingsMenuItemId,
-                      label: settingsMenuLabel,
-                      isVisible: settingsMenuVisible
-                    }
-                  });
-
-                  if (!result.ok) {
-                    toast({
-                      title: "Unable to save menu item",
-                      description: result.error,
-                      variant: "destructive"
-                    });
-                    return;
-                  }
-
-                  applyServerMenuState(result.pages, result.navItems);
-                  setSettingsDialogOpen(false);
-                });
-              }}
-              size="sm"
-            >
-              Save
-            </Button>
-          </>
-        }
-        onClose={() => {
-          setSettingsDialogOpen(false);
-        }}
-        open={settingsDialogOpen}
-        size="md"
-        title={settingsPageId ? "Page settings" : "Menu item settings"}
-      >
-        <div className="space-y-3">
-          {settingsPageId ? (
-            <>
-              <Input onChange={(event) => setSettingsTitle(event.target.value)} placeholder="Page title" value={settingsTitle} />
-              <Input
-                disabled={selectedSettingsPage?.slug === "home"}
-                onChange={(event) => setSettingsSlug(event.target.value)}
-                placeholder="URL slug"
-                value={settingsSlug}
-              />
-              <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm">
-                <Checkbox
-                  checked={settingsPublished}
-                  disabled={selectedSettingsPage?.slug === "home"}
-                  onChange={(event) => {
-                    setSettingsPublished(event.target.checked);
-                  }}
-                />
-                Publish page
-              </label>
-              <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm">
-                <Checkbox
-                  checked={settingsMenuVisible}
-                  onChange={(event) => {
-                    setSettingsMenuVisible(event.target.checked);
-                  }}
-                />
-                Visible in menu
-              </label>
-              {selectedSettingsPage?.slug === "home" ? <p className="text-xs text-text-muted">Home always uses /.</p> : null}
-            </>
-          ) : (
-            <>
-              <Input onChange={(event) => setSettingsMenuLabel(event.target.value)} placeholder="Menu label" value={settingsMenuLabel} />
-              <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm">
-                <Checkbox
-                  checked={settingsMenuVisible}
-                  onChange={(event) => {
-                    setSettingsMenuVisible(event.target.checked);
-                  }}
-                />
-                Visible in menu
-              </label>
-            </>
-          )}
-        </div>
-      </EditorSettingsDialog>
+        onSave={onSaveSiteStructure}
+        open={isStructureEditorOpen}
+        orgSlug={orgSlug}
+        pages={menuPages}
+        resolved={resolvedStructure}
+      />
     </div>
   );
 }

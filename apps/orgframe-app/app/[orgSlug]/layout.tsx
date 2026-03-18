@@ -5,7 +5,7 @@ import { applyBrandingVars } from "@/lib/branding/applyBrandingVars";
 import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
 import { shouldShowBranchHeaders } from "@/lib/env/branchVisibility";
 import { getOrgRequestContext } from "@/lib/org/getOrgRequestContext";
-import { listOrgNavItemsForHeader, listOrgPagesForHeader } from "@/modules/site-builder/db/queries";
+import { listOrgPagesForHeader, listOrgSiteStructureNodesForManage, resolveOrgSiteStructureForHeader } from "@/modules/site-builder/db/queries";
 
 export async function generateMetadata({ params }: { params: Promise<{ orgSlug: string }> }): Promise<Metadata> {
   const { orgSlug } = await params;
@@ -38,8 +38,10 @@ export default async function OrgLayout({
     orgId: orgRequest.org.orgId,
     includeUnpublished: canEditPages
   }).catch(() => []);
-  const navItems = await listOrgNavItemsForHeader({
+  const siteStructureNodes = await listOrgSiteStructureNodesForManage(orgRequest.org.orgId).catch(() => []);
+  const resolvedSiteStructure = await resolveOrgSiteStructureForHeader({
     orgId: orgRequest.org.orgId,
+    orgSlug: orgRequest.org.orgSlug,
     includeUnpublished: canEditPages
   }).catch(() => []);
 
@@ -57,8 +59,9 @@ export default async function OrgLayout({
           canManageOrg={canManageOrg}
           governingBodyLogoUrl={orgRequest.org.governingBody?.logoUrl ?? null}
           governingBodyName={orgRequest.org.governingBody?.name ?? null}
-          navItems={navItems}
           pages={pages}
+          resolvedSiteStructure={resolvedSiteStructure}
+          siteStructureNodes={siteStructureNodes}
           orgLogoUrl={orgLogoUrl}
           orgName={orgRequest.org.orgName}
           orgSlug={orgRequest.org.orgSlug}

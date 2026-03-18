@@ -1,6 +1,5 @@
 "use client";
 
-import { Copy, Settings2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Alert } from "@orgframe/ui/ui/alert";
 import { Button } from "@orgframe/ui/ui/button";
@@ -12,10 +11,10 @@ import { useConfirmDialog } from "@orgframe/ui/ui/confirm-dialog";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
 import { Panel } from "@orgframe/ui/ui/panel";
-import { Popover } from "@orgframe/ui/ui/popover";
 import { Popup } from "@orgframe/ui/ui/popup";
 import { Select } from "@orgframe/ui/ui/select";
 import { StructureCanvas } from "@orgframe/ui/modules/core/components/StructureCanvas";
+import { StructureNode } from "@orgframe/ui/modules/core/components/StructureNode";
 import type { FacilitySpace } from "@/modules/facilities/types";
 
 type StructureElementType = "room" | "court" | "field" | "custom" | "structure";
@@ -334,9 +333,6 @@ export function FacilityStructurePanel({
   const [inlineCreateDraft, setInlineCreateDraft] = useState<InlineCreateDraft | null>(null);
   const [inlineCreateLayout, setInlineCreateLayout] = useState<RoomLayout | null>(null);
   const [nodeEditorDraft, setNodeEditorDraft] = useState<InlineEditDraft | null>(null);
-  const [actionMenuRoomId, setActionMenuRoomId] = useState<string | null>(null);
-  const [actionMenuPoint, setActionMenuPoint] = useState<{ x: number; y: number } | null>(null);
-  const [actionMenuStamp, setActionMenuStamp] = useState(0);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isStructureCanvasEditMode, setIsStructureCanvasEditMode] = useState(false);
@@ -361,7 +357,6 @@ export function FacilityStructurePanel({
   const layoutDraftByRoomIdRef = useRef<Record<string, RoomLayout>>({});
   const structureCanvasRef = useRef<CanvasViewportHandle | null>(null);
   const structureSearchInputRef = useRef<HTMLInputElement | null>(null);
-  const actionMenuAnchorRef = useRef<HTMLSpanElement | null>(null);
   const optimisticIdRef = useRef(0);
   const [optimisticSpaces, setOptimisticSpaces] = useState<FacilitySpace[]>(spaces);
 
@@ -437,8 +432,6 @@ export function FacilityStructurePanel({
     setActiveRoomId(null);
     setSelectedRoomIds([]);
     setHoveredRoomId(null);
-    setActionMenuRoomId(null);
-    setActionMenuPoint(null);
   }
 
   function handleCanvasPointerDownCapture(event: ReactPointerEvent<HTMLDivElement>) {
@@ -532,23 +525,8 @@ export function FacilityStructurePanel({
     return rooms.filter((room) => normalizeSearchKey(room.name).includes(queryKey));
   }, [normalizeSearchKey, normalizedSearch, rooms]);
 
-  const actionMenuRoom = useMemo(
-    () => (actionMenuRoomId ? (spaceById.get(actionMenuRoomId) ?? null) : null),
-    [actionMenuRoomId, spaceById]
-  );
   const canvasCenterTitle = mappingRoot.name;
   const mapCanEdit = canWrite && isStructureCanvasEditMode;
-
-  useEffect(() => {
-    if (!actionMenuRoomId) {
-      return;
-    }
-
-    if (!spaceById.has(actionMenuRoomId)) {
-      setActionMenuRoomId(null);
-      setActionMenuPoint(null);
-    }
-  }, [actionMenuRoomId, spaceById]);
 
   function persistRoomLayout(roomId: string, layout: RoomLayout) {
     const room = spaceById.get(roomId);
@@ -736,8 +714,6 @@ export function FacilityStructurePanel({
   }
 
   function openEditRoomPanel(room: FacilitySpace) {
-    setActionMenuRoomId(null);
-    setActionMenuPoint(null);
     setActiveRoomId(room.id);
     setSelectedRoomIds([room.id]);
     setNodeEditorDraft({
@@ -937,10 +913,6 @@ export function FacilityStructurePanel({
       setActiveRoomId(null);
     }
     setSelectedRoomIds((current) => current.filter((roomId) => roomId !== spaceId));
-    if (actionMenuRoomId === spaceId) {
-      setActionMenuRoomId(null);
-      setActionMenuPoint(null);
-    }
     if (nodeEditorDraft?.spaceId === spaceId) {
       setNodeEditorDraft(null);
       setIsEditOpen(false);
@@ -1070,19 +1042,22 @@ export function FacilityStructurePanel({
                       const nodeStateChip = resolveFacilityNodeStateChip(elementType, room.isBookable);
 
                       return (
-                        <div
-                          data-structure-node-id={room.id}
-                          className={`absolute rounded-control border px-2 py-1 shadow-sm transition-[left,top,width,height,transform,box-shadow,border-color,background-color] duration-100 ease-out ${
-                            isDraggingThisRoom ? "transition-none shadow-lg" : ""
-                          } ${
-                            isActive
-                              ? "border-accent bg-accent/10"
-                              : isSelected
-                                ? "border-accent/60 bg-accent/5"
-                              : isStructuralElement
-                                ? "border-dashed border-border/80 bg-surface/70"
-                                : "border-border bg-surface"
-                          }`}
+                        <StructureNode
+                          className={`absolute ${isDraggingThisRoom ? "transition-none shadow-lg" : ""} ${isSelected && !isActive ? "border-accent/60 bg-accent/5" : ""}`}
+                          chips={
+                            <>
+                              <Chip className="normal-case tracking-normal" color={spaceStatusChip.color} size="compact" variant="flat">
+                                {spaceStatusChip.label}
+                              </Chip>
+                              <Chip className="normal-case tracking-normal" color={nodeStateChip.color} size="compact" variant="flat">
+                                {nodeStateChip.label}
+                              </Chip>
+                            </>
+                          }
+                          conflicted={false}
+                          focused={isActive}
+                          movementLocked={!mapCanEdit}
+                          nodeId={room.id}
                           key={room.id}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -1092,14 +1067,6 @@ export function FacilityStructurePanel({
 
                             setActiveRoomId(room.id);
                             setSelectedRoomIds([room.id]);
-                            if (mapCanEdit) {
-                              setActionMenuRoomId(room.id);
-                              setActionMenuPoint({ x: event.clientX, y: event.clientY });
-                              setActionMenuStamp((current) => current + 1);
-                            } else {
-                              setActionMenuRoomId(null);
-                              setActionMenuPoint(null);
-                            }
                           }}
                           onDoubleClick={(event) => {
                             if (!mapCanEdit) {
@@ -1192,6 +1159,20 @@ export function FacilityStructurePanel({
                               hasCrossedThreshold: false
                             });
                           }}
+                          quickActions={
+                            mapCanEdit
+                              ? {
+                                  onEdit: () => openEditRoomPanel(room),
+                                  onDuplicate: () => duplicateRoom(room),
+                                  onDelete: () => {
+                                    void deleteRoom(room.id);
+                                  },
+                                  canEdit: true,
+                                  canDuplicate: true,
+                                  canDelete: true
+                                }
+                              : undefined
+                          }
                           style={{
                             left: `${layout.x}px`,
                             top: `${layout.y}px`,
@@ -1209,28 +1190,9 @@ export function FacilityStructurePanel({
                                   ? "grab"
                                   : "default"
                           }}
+                          structural={isStructuralElement}
+                          title={room.name}
                         >
-                          <div className="pointer-events-none absolute inset-0">
-                            <div className="pointer-events-none flex h-full w-full items-center justify-center" data-canvas-pan-ignore="true">
-                              <div className="group relative inline-flex max-w-[86%] items-center rounded-full border border-border/70 bg-surface/95 px-4 py-1.5 text-center shadow-sm">
-                                <div className="min-w-0 px-1.5 text-center">
-                                  <span className="flex min-w-0 w-full max-w-[16rem] flex-col items-center leading-tight">
-                                    <span className="block w-full truncate text-center text-xs font-semibold text-text" title={room.name}>
-                                      {room.name}
-                                    </span>
-                                    <span className="mt-1 flex flex-wrap items-center justify-center gap-1">
-                                      <Chip className="normal-case tracking-normal" color={spaceStatusChip.color} size="compact" variant="flat">
-                                        {spaceStatusChip.label}
-                                      </Chip>
-                                      <Chip className="normal-case tracking-normal" color={nodeStateChip.color} size="compact" variant="flat">
-                                        {nodeStateChip.label}
-                                      </Chip>
-                                    </span>
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
                           {showControls ? (
                             <>
                               {(
@@ -1273,7 +1235,7 @@ export function FacilityStructurePanel({
                               ))}
                             </>
                           ) : null}
-                        </div>
+                        </StructureNode>
                       );
                     })}
                   </>
@@ -1294,8 +1256,6 @@ export function FacilityStructurePanel({
                 onViewNodeSelect={(nodeId) => {
                   setActiveRoomId(nodeId);
                   setSelectedRoomIds([nodeId]);
-                  setActionMenuRoomId(null);
-                  setActionMenuPoint(null);
                 }}
                 onViewScaleChange={(scale) => {
                   setStructureScale(scale);
@@ -1506,86 +1466,6 @@ export function FacilityStructurePanel({
           </Popup>
         </CardContent>
       </Card>
-      <span
-        aria-hidden
-        className="pointer-events-none fixed h-px w-px"
-        ref={actionMenuAnchorRef}
-        style={
-          actionMenuPoint
-            ? {
-                left: `${actionMenuPoint.x}px`,
-                top: `${actionMenuPoint.y}px`
-              }
-            : {
-                left: "-9999px",
-                top: "-9999px"
-              }
-        }
-      />
-      <Popover
-        anchorRef={actionMenuAnchorRef}
-        className="w-auto rounded-[999px] border border-border/70 bg-surface/95 p-1 shadow-floating backdrop-blur"
-        key={`node-actions:${actionMenuRoomId ?? "none"}:${actionMenuStamp}`}
-        offset={10}
-        onClose={() => {
-          setActionMenuRoomId(null);
-          setActionMenuPoint(null);
-        }}
-        open={Boolean(actionMenuRoom && mapCanEdit && actionMenuPoint)}
-        placement="bottom-start"
-      >
-        <div className="flex items-center gap-1">
-          <Button
-            aria-label="Node settings"
-            className="h-8 w-8 rounded-full p-0"
-            onClick={() => {
-              if (!actionMenuRoom) {
-                return;
-              }
-              openEditRoomPanel(actionMenuRoom);
-            }}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <Settings2 className="h-4 w-4" />
-          </Button>
-          <Button
-            aria-label="Duplicate node"
-            className="h-8 w-8 rounded-full p-0"
-            disabled={!mapCanEdit}
-            onClick={() => {
-              if (!actionMenuRoom) {
-                return;
-              }
-              duplicateRoom(actionMenuRoom);
-              setActionMenuRoomId(null);
-              setActionMenuPoint(null);
-            }}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-          <Button
-            aria-label="Delete node"
-            className="h-8 w-8 rounded-full p-0 text-danger"
-            onClick={() => {
-              if (!actionMenuRoom) {
-                return;
-              }
-              void deleteRoom(actionMenuRoom.id);
-            }}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </Popover>
-
     </>
   );
 }

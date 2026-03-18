@@ -1,9 +1,9 @@
 "use client";
 
 import { ButtonListEditor } from "@orgframe/ui/editor/buttons/ButtonListEditor";
+import { RichTextEditor } from "@orgframe/ui/editor/RichTextEditor";
 import { FormField } from "@orgframe/ui/ui/form-field";
 import { Input } from "@orgframe/ui/ui/input";
-import { Textarea } from "@orgframe/ui/ui/textarea";
 import type { BlockEditorProps, SubheroBlockConfig } from "@/modules/site-builder/types";
 
 export function SubheroBlockEditorClient({ block, context, onChange }: BlockEditorProps<"subhero">) {
@@ -29,10 +29,10 @@ export function SubheroBlockEditorClient({ block, context, onChange }: BlockEdit
       </FormField>
 
       <FormField label="Subheadline">
-        <Textarea
-          className="min-h-[100px]"
-          onChange={(event) => {
-            updateConfig({ subheadline: event.target.value });
+        <RichTextEditor
+          minHeight={120}
+          onChange={(next) => {
+            updateConfig({ subheadline: next });
           }}
           value={block.config.subheadline}
         />

@@ -19,11 +19,13 @@ type CtaGridRepeaterProps = {
 export function CtaGridRepeater({ items }: CtaGridRepeaterProps) {
   return (
     <Repeater
+      disableSearch
+      disableViewToggle
       emptyMessage="No cards are available."
+      fixedView="grid"
       getItemKey={(item) => item.id}
       getSearchValue={(item) => `${item.title} ${item.description}`}
       items={items}
-      searchPlaceholder="Search cards"
       renderItem={({ item }) => (
         <a
           className="flex h-full min-w-0"

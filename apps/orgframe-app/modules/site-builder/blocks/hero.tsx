@@ -2,7 +2,8 @@
 
 import { buttonVariants } from "@orgframe/ui/ui/button";
 import { cn } from "@/lib/utils";
-import { asBody, asButtons, asNumber, asObject, asOptionalStoragePath, asText } from "@/modules/site-builder/blocks/helpers";
+import { asButtons, asNumber, asObject, asOptionalStoragePath, asText } from "@/modules/site-builder/blocks/helpers";
+import { sanitizeRichTextHtml } from "@/modules/site-builder/blocks/rich-text";
 import { getOrgSiteAssetPublicUrl } from "@/modules/site-builder/storage";
 import type { BlockContext, BlockRenderProps, HeroBlockConfig } from "@/modules/site-builder/types";
 import { defaultInternalHref, resolveButtonHref } from "@/lib/links";
@@ -56,7 +57,7 @@ export function sanitizeHeroConfig(config: unknown, context: BlockContext): Hero
 
   return {
     headline: asText(value.headline, fallback.headline, 120),
-    subheadline: asBody(value.subheadline, fallback.subheadline, 320),
+    subheadline: sanitizeRichTextHtml(value.subheadline, fallback.subheadline).slice(0, 3000),
     buttons: asButtons(migratedButtons, fallback.buttons, { max: 3 }),
     backgroundImagePath: asOptionalStoragePath(value.backgroundImagePath),
     focalX: asNumber(value.focalX, fallback.focalX, 0, 1),
@@ -99,7 +100,10 @@ export function HeroBlockRender({ block, context }: BlockRenderProps<"hero">) {
             <h1 className={hasImage ? "text-3xl font-semibold text-white md:text-5xl" : "text-3xl font-semibold text-text md:text-5xl"}>
               {block.config.headline}
             </h1>
-            <p className={hasImage ? "text-sm text-white/90 md:text-lg" : "text-sm text-text-muted md:text-lg"}>{block.config.subheadline}</p>
+            <div
+              className={hasImage ? "prose prose-invert max-w-none text-sm text-white/90 md:text-lg" : "prose max-w-none text-sm text-text-muted md:text-lg"}
+              dangerouslySetInnerHTML={{ __html: block.config.subheadline }}
+            />
             <div className="flex flex-wrap gap-3">
               {block.config.buttons.map((button) => (
                 <a
