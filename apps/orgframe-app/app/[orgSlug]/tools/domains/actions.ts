@@ -7,6 +7,7 @@ import { normalizeDomain, getPlatformHost } from "@/src/shared/domains/customDom
 import { verifyCustomDomainDns } from "@/src/shared/domains/verification";
 import { attachDomainToVercelProject } from "@/src/shared/domains/vercelProjectDomains";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
+import { requireOrgToolEnabled } from "@/src/shared/org/requireOrgToolEnabled";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 
@@ -63,7 +64,7 @@ function toSaveErrorCode(error: unknown): string {
 
   const message = error.message.toLowerCase();
 
-  if (message.includes("org_custom_domains_domain_key") || message.includes("duplicate key")) {
+  if (message.includes("org_custom_domains_domain_key") || message.includes("custom_domains_domain_key") || message.includes("duplicate key")) {
     return "domain_taken";
   }
 
@@ -90,6 +91,7 @@ export async function saveOrgCustomDomainAction(orgSlug: string, formData: FormD
     }
 
     const orgContext = await requireOrgPermission(orgSlug, "org.manage.read");
+    requireOrgToolEnabled(orgContext.toolAvailability, "domains");
     const domain = normalizeDomain(parsed.data.domain);
     const platformHost = getPlatformHost();
 
@@ -106,7 +108,7 @@ export async function saveOrgCustomDomainAction(orgSlug: string, formData: FormD
     const supabase = await createSupabaseServer();
 
     const { data: existing, error: existingError } = await supabase
-      .schema("site").from("org_custom_domains")
+      .schema("orgs").from("custom_domains")
       .select("domain, status, verification_token")
       .eq("org_id", orgContext.orgId)
       .maybeSingle();
@@ -131,7 +133,7 @@ export async function saveOrgCustomDomainAction(orgSlug: string, formData: FormD
       }
     }
 
-    const { error } = await supabase.schema("site").from("org_custom_domains").upsert(
+    const { error } = await supabase.schema("orgs").from("custom_domains").upsert(
       {
         org_id: orgContext.orgId,
         domain,
@@ -176,10 +178,11 @@ export async function verifyOrgCustomDomainAction(orgSlug: string, formData?: Fo
     const step = formData ? getField(formData, "step") || "3" : "3";
     const method = formData ? getField(formData, "method") : "";
     const orgContext = await requireOrgPermission(orgSlug, "org.manage.read");
+    requireOrgToolEnabled(orgContext.toolAvailability, "domains");
     const supabase = await createSupabaseServer();
 
     const { data: existing, error: existingError } = await supabase
-      .schema("site").from("org_custom_domains")
+      .schema("orgs").from("custom_domains")
       .select("domain, verification_token")
       .eq("org_id", orgContext.orgId)
       .maybeSingle();
@@ -202,7 +205,7 @@ export async function verifyOrgCustomDomainAction(orgSlug: string, formData?: Fo
     const result = await verifyCustomDomainDns(existing.domain, existing.verification_token);
 
     const { error: updateError } = await supabase
-      .schema("site").from("org_custom_domains")
+      .schema("orgs").from("custom_domains")
       .update({
         status: result.status,
         verified_at: result.verified ? new Date().toISOString() : null,
@@ -248,9 +251,10 @@ export async function verifyOrgCustomDomainAction(orgSlug: string, formData?: Fo
 export async function removeOrgCustomDomainAction(orgSlug: string) {
   try {
     const orgContext = await requireOrgPermission(orgSlug, "org.manage.read");
+    requireOrgToolEnabled(orgContext.toolAvailability, "domains");
     const supabase = await createSupabaseServer();
 
-    const { error } = await supabase.schema("site").from("org_custom_domains").delete().eq("org_id", orgContext.orgId);
+    const { error } = await supabase.schema("orgs").from("custom_domains").delete().eq("org_id", orgContext.orgId);
 
     if (error) {
       throw new Error(error.message);

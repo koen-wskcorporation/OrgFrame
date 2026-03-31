@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowUp, Bot, Send, Sparkles } from "lucide-react";
+import { Bot } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Input } from "@orgframe/ui/primitives/input";
 import { Panel } from "@orgframe/ui/primitives/panel";
-import { SpinnerIcon } from "@orgframe/ui/primitives/spinner-icon";
-import { cn } from "@orgframe/ui/primitives/utils";
-import type { AiConversationMessage } from "@/src/features/ai/types";
+import { MagicComposer } from "@/src/features/ai/components/MagicComposer";
+import { InlineThread } from "@/src/features/ai/components/InlineThread";
+import { nextCommandSurfaceState, trimConversation, type CommandSurfaceState, type CommandTurn } from "@/src/features/ai/components/command-surface";
+import type { AiConversationMessage, AiResultCard, AiSuggestedAction, AiUiContext } from "@/src/features/ai/types";
 
 type OrgOption = {
   orgSlug: string;
@@ -17,54 +17,10 @@ type OrgOption = {
   orgIconUrl?: string | null;
 };
 
-type ChatRole = "user" | "assistant";
-
-type WorkspaceMessage = {
-  id: string;
-  role: ChatRole;
-  content: string;
-  createdAt: number;
+type ThreadState = {
+  threadId: string;
+  turns: CommandTurn[];
 };
-
-type DirectRouteIntent = {
-  href: string;
-  label: string;
-  prefill: string | null;
-};
-
-type AiRunResult = {
-  assistantText: string;
-  errorMessage: string | null;
-};
-
-type CommandPopoverState =
-  | {
-      kind: "answer";
-      title: string;
-      message: string;
-      primaryLabel?: string;
-      secondaryLabel?: string;
-      primaryAction?: "open_workspace" | "dismiss";
-    }
-  | {
-      kind: "preview";
-      title: string;
-      message: string;
-      actionLabel: string;
-      actionHref: string;
-    }
-  | {
-      kind: "suggestions";
-      title: string;
-      options: string[];
-    }
-  | {
-      kind: "error";
-      title: string;
-      message: string;
-      actionLabel?: string;
-      action?: "open_workspace" | "dismiss";
-    };
 
 type OrgAiCommandCenterProps = {
   initialOrgSlug?: string | null;
@@ -72,7 +28,7 @@ type OrgAiCommandCenterProps = {
   disabled?: boolean;
 };
 
-function createMessageId() {
+function createId() {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
   }
@@ -84,293 +40,176 @@ function normalizeSpace(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function inferPrefillText(prompt: string) {
-  const match = prompt.match(/(?:for|named|called)\s+["']?([^"'.,!?]{2,80})/i);
-  if (!match) {
-    return null;
-  }
-
-  return normalizeSpace(match[1] ?? "") || null;
+function toConversation(turns: CommandTurn[]): AiConversationMessage[] {
+  return turns.map((turn) => ({ role: turn.role, content: turn.content }));
 }
 
-function inferDirectRouteIntent(orgSlug: string, prompt: string): DirectRouteIntent | null {
-  const text = prompt.toLowerCase();
-  const asksForAction = /(create|new|add|open|go to|navigate|take me|launch|start)/.test(text);
-
-  if (!asksForAction) {
-    return null;
+function cleanText(value: string | null | undefined, max = 120) {
+  if (!value) {
+    return undefined;
   }
-
-  const prefill = inferPrefillText(prompt);
-
-  if (/program/.test(text)) {
-    return {
-      href: `/${orgSlug}/tools/programs${prefill ? `?ai_prefill=${encodeURIComponent(prefill)}` : ""}`,
-      label: "Programs",
-      prefill
-    };
+  const normalized = normalizeSpace(value);
+  if (!normalized) {
+    return undefined;
   }
-
-  if (/form|registration/.test(text)) {
-    return {
-      href: `/${orgSlug}/tools/forms${prefill ? `?ai_prefill=${encodeURIComponent(prefill)}` : ""}`,
-      label: "Forms",
-      prefill
-    };
-  }
-
-  if (/inbox|message|communication/.test(text)) {
-    return {
-      href: `/${orgSlug}/tools/inbox`,
-      label: "Inbox",
-      prefill: null
-    };
-  }
-
-  if (/calendar|schedule/.test(text)) {
-    return {
-      href: `/${orgSlug}/tools/calendar${prefill ? `?ai_prefill=${encodeURIComponent(prefill)}` : ""}`,
-      label: "Calendar",
-      prefill
-    };
-  }
-
-  if (/facilit|field|court|venue/.test(text)) {
-    return {
-      href: `/${orgSlug}/tools/facilities${prefill ? `?ai_prefill=${encodeURIComponent(prefill)}` : ""}`,
-      label: "Facilities",
-      prefill
-    };
-  }
-
-  if (/site|page|website/.test(text)) {
-    return {
-      href: `/${orgSlug}/tools/site${prefill ? `?ai_prefill=${encodeURIComponent(prefill)}` : ""}`,
-      label: "Site",
-      prefill
-    };
-  }
-
-  if (/access|member|permission/.test(text)) {
-    return {
-      href: `/${orgSlug}/tools/access`,
-      label: "Access",
-      prefill: null
-    };
-  }
-
-  return null;
+  return normalized.slice(0, max);
 }
 
-function shouldOpenWorkspace(prompt: string, assistantText: string) {
-  if (prompt.length > 130) {
-    return true;
+type UiScopeModule = NonNullable<AiUiContext["page"]["currentModule"]>;
+
+function inferModuleFromPath(pathname: string): UiScopeModule {
+  const segments = pathname.split("/").map((segment) => segment.trim()).filter(Boolean);
+  if (segments.length === 0) {
+    return "unknown";
   }
 
-  if (assistantText.length > 280) {
-    return true;
+  let scopedSegments = segments;
+  if (segments[0] !== "tools" && segments[0] !== "account" && segments.length > 1) {
+    scopedSegments = segments.slice(1);
   }
 
-  return /(analy[sz]e|trend|forecast|strategy|report|recommend|improve|plan|compare|multi[- ]turn|deeper)/i.test(prompt);
+  const [root] = scopedSegments;
+  if (root === "tools") {
+    const tool = scopedSegments[1];
+    if (tool === "calendar" || tool === "events") return "calendar";
+    if (tool === "facilities") return "facilities";
+    if (tool === "programs") return "programs";
+    if (tool === "inbox") return "communications";
+    if (tool === "files") return "files";
+    return "unknown";
+  }
+
+  if (root === "calendar") return "calendar";
+  if (root === "facilities") return "facilities";
+  if (root === "programs" || root === "program") return "programs";
+  if (root === "teams") return "teams";
+  if (root === "communications" || root === "inbox") return "communications";
+  if (root === "files") return "files";
+  if (root === "account") return scopedSegments[1] === "players" ? "players" : "account";
+
+  return "unknown";
 }
 
-function shouldUsePreviewPopover(prompt: string) {
-  return /(show|open|view|edit).{0,40}(detail|profile|info|information|contact)/i.test(prompt);
-}
-
-function getRelatedWorkspaceHref(orgSlug: string | null, prompt: string) {
-  const targetPrompt = prompt.toLowerCase();
-
-  if (/player/.test(targetPrompt)) {
-    return "/account/players";
-  }
-  if (/program/.test(targetPrompt)) {
-    return `/${orgSlug}/tools/programs`;
-  }
-  if (/form|registration/.test(targetPrompt)) {
-    return orgSlug ? `/${orgSlug}/tools/forms` : "/account";
+function buildUiContext(input: { pathname: string; orgSlug: string | null; source: AiUiContext["source"] }): AiUiContext | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
   }
 
-  return orgSlug ? `/${orgSlug}/tools/inbox` : "/account";
-}
+  const location = window.location;
+  const selection = window.getSelection?.();
+  const selectedText = cleanText(selection?.toString() ?? "", 500);
+  const active = document.activeElement as HTMLElement | null;
+  const queryParams = Object.fromEntries(new URLSearchParams(location.search).entries());
+  const segments = input.pathname.split("/").map((segment) => segment.trim()).filter(Boolean);
+  const maybeOrgSlugFromPath = segments[0] && segments[0] !== "tools" && segments[0] !== "account" ? segments[0] : undefined;
+  const scopedSegments = maybeOrgSlugFromPath ? segments.slice(1) : segments;
+  const isToolsRoute = scopedSegments[0] === "tools";
+  const tool = isToolsRoute ? scopedSegments[1] : undefined;
 
-function buildCommandSuggestions(value: string) {
-  const text = value.toLowerCase().trim();
-  if (text.length < 2) {
-    return [];
+  let entityType: string | undefined;
+  let entityId: string | undefined;
+  if (tool === "facilities" && scopedSegments[2]) {
+    entityType = "facility";
+    entityId = scopedSegments[2];
+  } else if (tool === "programs" && scopedSegments[2]) {
+    entityType = "program";
+    entityId = scopedSegments[2];
+  } else if (scopedSegments[0] === "programs" && scopedSegments[1]) {
+    entityType = "program";
+    entityId = scopedSegments[1];
+  } else if (scopedSegments[0] === "teams" && scopedSegments[1]) {
+    entityType = "team";
+    entityId = scopedSegments[1];
+  } else if (scopedSegments[0] === "calendar" && scopedSegments[1]) {
+    entityType = "occurrence";
+    entityId = scopedSegments[1];
   }
 
-  if (text.includes("schedule")) {
-    return ["Schedule a new game", "View upcoming schedule", "Reschedule a practice"];
-  }
-  if (text.includes("program")) {
-    return ["Create a new program", "Open programs workspace", "Publish a program"];
-  }
-  if (text.includes("player")) {
-    return ["Show player profile", "Add player to team", "View active players"];
-  }
-  if (text.includes("form")) {
-    return ["Create registration form", "Open forms workspace", "View form submissions"];
-  }
-
-  return ["Open programs workspace", "Open forms workspace", "View inbox", "Open calendar workspace"];
-}
-
-function toConversation(messages: WorkspaceMessage[]): AiConversationMessage[] {
-  return messages.slice(-12).map((message) => ({
-    role: message.role,
-    content: message.content
-  }));
-}
-
-async function runAiRequest({
-  orgSlug,
-  userMessage,
-  conversation
-}: {
-  orgSlug?: string | null;
-  userMessage: string;
-  conversation: AiConversationMessage[];
-}): Promise<AiRunResult> {
-  const response = await fetch("/api/ai", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      orgSlug: orgSlug ?? undefined,
-      mode: "ask",
-      phase: "plan",
-      userMessage,
-      conversation
-    })
-  });
-
-  if (!response.ok) {
-    return {
-      assistantText: "",
-      errorMessage: "The assistant is unavailable right now."
-    };
-  }
-
-  if (!response.body) {
-    return {
-      assistantText: "",
-      errorMessage: "The assistant response stream did not start."
-    };
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-
-  let buffer = "";
-  let assistantText = "";
-  let doneText = "";
-  let errorMessage: string | null = null;
-
-  const parseEventBlock = (block: string) => {
-    const lines = block.split("\n");
-    let eventName = "";
-    const dataLines: string[] = [];
-
-    for (const rawLine of lines) {
-      const line = rawLine.trimEnd();
-      if (!line) {
-        continue;
-      }
-
-      if (line.startsWith("event:")) {
-        eventName = line.slice(6).trim();
-        continue;
-      }
-
-      if (line.startsWith("data:")) {
-        dataLines.push(line.slice(5).trim());
-      }
-    }
-
-    if (!eventName || dataLines.length === 0) {
-      return;
-    }
-
-    const rawData = dataLines.join("\n");
-    let payload: { text?: string; message?: string };
-    try {
-      payload = JSON.parse(rawData) as { text?: string; message?: string };
-    } catch {
-      throw new Error("Received an invalid assistant stream payload.");
-    }
-
-    if (eventName === "assistant.delta" && typeof payload.text === "string") {
-      assistantText += payload.text;
-      return;
-    }
-
-    if (eventName === "assistant.done" && typeof payload.text === "string") {
-      doneText = payload.text;
-      return;
-    }
-
-    if (eventName === "error") {
-      errorMessage = typeof payload.message === "string" ? payload.message : "The assistant could not process this request.";
-    }
-  };
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-
-      let markerIndex = buffer.indexOf("\n\n");
-      while (markerIndex !== -1) {
-        const eventBlock = buffer.slice(0, markerIndex).trim();
-        buffer = buffer.slice(markerIndex + 2);
-
-        if (eventBlock) {
-          parseEventBlock(eventBlock);
+  const activeElementContext =
+    active && active.tagName
+      ? {
+          tagName: active.tagName.toLowerCase(),
+          role: cleanText(active.getAttribute("role"), 40),
+          id: cleanText(active.id, 80),
+          name: cleanText(active.getAttribute("name"), 80),
+          ariaLabel: cleanText(active.getAttribute("aria-label"), 120),
+          placeholder: cleanText(active.getAttribute("placeholder"), 120),
+          datasetContext: cleanText(active.getAttribute("data-context"), 120)
         }
-
-        markerIndex = buffer.indexOf("\n\n");
-      }
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "The assistant stream was interrupted.";
-    return {
-      assistantText: doneText || assistantText,
-      errorMessage: message
-    };
-  }
-
-  if (buffer.trim()) {
-    parseEventBlock(buffer.trim());
-  }
+      : undefined;
 
   return {
-    assistantText: doneText || assistantText,
-    errorMessage
+    source: input.source,
+    requestedAt: new Date().toISOString(),
+    route: {
+      pathname: input.pathname,
+      search: cleanText(location.search, 300),
+      hash: cleanText(location.hash, 120),
+      title: cleanText(document.title, 180),
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined
+    },
+    page: {
+      currentModule: inferModuleFromPath(input.pathname),
+      tool: cleanText(tool, 80),
+      entityType: cleanText(entityType, 80),
+      entityId: cleanText(entityId, 120),
+      orgSlugFromPath: cleanText(maybeOrgSlugFromPath ?? input.orgSlug ?? undefined, 80)
+    },
+    selection:
+      selectedText || activeElementContext
+        ? {
+            text: selectedText,
+            activeElement: activeElementContext
+          }
+        : undefined,
+    viewport: {
+      width: Math.max(1, Math.round(window.innerWidth || 0)),
+      height: Math.max(1, Math.round(window.innerHeight || 0)),
+      isMobile: window.matchMedia?.("(max-width: 768px)").matches ?? false
+    },
+    runtime: {
+      timezone: cleanText(Intl.DateTimeFormat().resolvedOptions().timeZone, 80),
+      language: cleanText(navigator.language, 40),
+      online: typeof navigator.onLine === "boolean" ? navigator.onLine : undefined,
+      visibilityState: cleanText(document.visibilityState, 40)
+    }
   };
+}
+
+function buildSuggestions(value: string) {
+  const text = value.toLowerCase().trim();
+  if (text.length < 2) {
+    return ["Show player profile", "Open account access", "Reschedule this event", "Open calendar timeline"];
+  }
+
+  if (text.includes("schedule") || text.includes("calendar")) {
+    return ["Move Saturday game to Sunday", "Find schedule conflicts", "Open calendar timeline"];
+  }
+
+  if (text.includes("player")) {
+    return ["Show player profile", "Link guardian access", "View active players"];
+  }
+
+  if (text.includes("account")) {
+    return ["Open account details", "Show linked players", "Review guardian access"];
+  }
+
+  return ["Show player profile", "Open account access", "Reschedule this event"];
 }
 
 export function OrgAiCommandCenter({ initialOrgSlug = null, orgOptions, disabled = false }: OrgAiCommandCenterProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const commandBarRef = useRef<HTMLDivElement | null>(null);
-  const commandInputRef = useRef<HTMLInputElement | null>(null);
-  const workspaceScrollRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const sidebarScrollRef = useRef<HTMLDivElement | null>(null);
 
-  const [commandValue, setCommandValue] = useState("");
-  const [workspaceValue, setWorkspaceValue] = useState("");
-  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
-  const [isCommandRunning, setIsCommandRunning] = useState(false);
-  const [isWorkspaceRunning, setIsWorkspaceRunning] = useState(false);
-  const [workspaceMessages, setWorkspaceMessages] = useState<WorkspaceMessage[]>([]);
-  const [commandPopover, setCommandPopover] = useState<CommandPopoverState | null>(null);
-  const [isCommandInputFocused, setIsCommandInputFocused] = useState(false);
+  const [surfaceState, setSurfaceState] = useState<CommandSurfaceState>("idle");
+  const [composerValue, setComposerValue] = useState("");
+  const [streamingText, setStreamingText] = useState("");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isInlineOpen, setIsInlineOpen] = useState(false);
+  const [threadsByScope, setThreadsByScope] = useState<Record<string, ThreadState>>({});
 
   const activePathOrgSlug = useMemo(() => {
     const firstSegment = pathname.split("/").filter(Boolean)[0] ?? null;
@@ -390,380 +229,363 @@ export function OrgAiCommandCenter({ initialOrgSlug = null, orgOptions, disabled
     return orgOptions[0] ?? null;
   }, [activePathOrgSlug, initialOrgSlug, orgOptions]);
 
-  const activeOrgSlug = activeOrg?.orgSlug ?? null;
-  const resolvedOrgSlug = activeOrgSlug ?? initialOrgSlug ?? null;
+  const resolvedOrgSlug = activeOrg?.orgSlug ?? initialOrgSlug ?? null;
   const activeOrgName = activeOrg?.orgName ?? "Organization";
-  const activeOrgContextLabel = resolvedOrgSlug ? `${activeOrgName} (${resolvedOrgSlug})` : "Account context";
+  const scopeKey = resolvedOrgSlug ? `org:${resolvedOrgSlug}` : "account";
+  const activeThread = threadsByScope[scopeKey] ?? null;
+  const activeTurns = activeThread?.turns ?? [];
+  const activeThreadId = activeThread?.threadId ?? null;
+  const isRunning = surfaceState === "streaming";
+  const suggestions = useMemo(() => buildSuggestions(composerValue), [composerValue]);
 
-  const appendWorkspaceMessage = useCallback((role: ChatRole, content: string) => {
-    const normalized = normalizeSpace(content);
-    if (!normalized) {
+  useEffect(() => {
+    setThreadsByScope((current) => {
+      if (current[scopeKey]) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [scopeKey]: {
+          threadId: createId(),
+          turns: []
+        }
+      };
+    });
+  }, [scopeKey]);
+
+  useEffect(() => {
+    if (!isSidebarOpen) {
       return;
     }
 
-    setWorkspaceMessages((current) => [
-      ...current,
-      {
-        id: createMessageId(),
-        role,
-        content: normalized,
-        createdAt: Date.now()
-      }
-    ]);
-  }, []);
-
-  const runAndHandleAssistant = useCallback(
-    async ({ userMessage, conversation, source }: { userMessage: string; conversation: AiConversationMessage[]; source: "command" | "workspace" }) => {
-      const result = await runAiRequest({
-        orgSlug: resolvedOrgSlug,
-        userMessage,
-        conversation
-      }).catch((error) => ({
-        assistantText: "",
-        errorMessage: error instanceof Error ? error.message : "The assistant request failed to complete."
-      }));
-
-      const assistantReply = normalizeSpace(result.assistantText);
-
-      if (result.errorMessage) {
-        setCommandPopover({
-          kind: "error",
-          title: "Assistant error",
-          message: result.errorMessage,
-          action: "open_workspace",
-          actionLabel: "Open AI Workspace"
-        });
-      }
-
-      if (!assistantReply) {
-        return;
-      }
-
-      if (source === "workspace") {
-        appendWorkspaceMessage("assistant", assistantReply);
-        return;
-      }
-
-      if (shouldOpenWorkspace(userMessage, assistantReply)) {
-        appendWorkspaceMessage("user", userMessage);
-        appendWorkspaceMessage("assistant", assistantReply);
-        setCommandPopover(null);
-        setIsWorkspaceOpen(true);
-        return;
-      }
-
-      if (shouldUsePreviewPopover(userMessage)) {
-        setCommandPopover({
-          kind: "preview",
-          title: "Quick preview",
-          message: assistantReply,
-          actionLabel: "View Full Profile",
-          actionHref: getRelatedWorkspaceHref(resolvedOrgSlug, userMessage)
-        });
-        return;
-      }
-
-      const looksLikeConfirmation = /are you sure|cannot be undone|confirm/i.test(assistantReply);
-      setCommandPopover({
-        kind: "answer",
-        title: looksLikeConfirmation ? "Please confirm" : "Assistant response",
-        message: assistantReply,
-        primaryLabel: looksLikeConfirmation ? "Confirm" : "Open AI Workspace",
-        secondaryLabel: looksLikeConfirmation ? "Cancel" : "Dismiss",
-        primaryAction: looksLikeConfirmation ? "open_workspace" : "open_workspace"
-      });
-    },
-    [appendWorkspaceMessage, resolvedOrgSlug]
-  );
-
-  const submitCommand = useCallback(async () => {
-    const prompt = normalizeSpace(commandValue);
-    if (!prompt || isCommandRunning || disabled) {
-      return;
-    }
-
-    setCommandValue("");
-    setCommandPopover(null);
-
-    if (resolvedOrgSlug) {
-      const directIntent = inferDirectRouteIntent(resolvedOrgSlug, prompt);
-      if (directIntent) {
-        router.push(directIntent.href);
-        setCommandPopover({
-          kind: "answer",
-          title: "Command handled",
-          message: directIntent.prefill ? `Opened ${directIntent.label} with "${directIntent.prefill}".` : `Opened ${directIntent.label}.`,
-          primaryLabel: "Dismiss",
-          primaryAction: "dismiss"
-        });
-        return;
-      }
-    }
-
-    setIsCommandRunning(true);
-    try {
-      await runAndHandleAssistant({
-        userMessage: prompt,
-        conversation: toConversation(workspaceMessages),
-        source: "command"
-      });
-    } finally {
-      setIsCommandRunning(false);
-    }
-  }, [commandValue, disabled, isCommandRunning, resolvedOrgSlug, router, runAndHandleAssistant, workspaceMessages]);
-
-  const submitWorkspaceMessage = useCallback(async () => {
-    const prompt = normalizeSpace(workspaceValue);
-    if (!prompt || isWorkspaceRunning || disabled) {
-      return;
-    }
-
-    setWorkspaceValue("");
-    appendWorkspaceMessage("user", prompt);
-    setIsWorkspaceRunning(true);
-
-    try {
-      const nextConversation = [...workspaceMessages, { id: createMessageId(), role: "user" as const, content: prompt, createdAt: Date.now() }];
-      await runAndHandleAssistant({
-        userMessage: prompt,
-        conversation: toConversation(nextConversation),
-        source: "workspace"
-      });
-    } finally {
-      setIsWorkspaceRunning(false);
-    }
-  }, [appendWorkspaceMessage, disabled, isWorkspaceRunning, resolvedOrgSlug, runAndHandleAssistant, workspaceMessages, workspaceValue]);
+    sidebarScrollRef.current?.scrollTo({
+      top: sidebarScrollRef.current.scrollHeight,
+      behavior: "smooth"
+    });
+  }, [activeTurns, isSidebarOpen, streamingText]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setCommandPopover(null);
+        setIsInlineOpen(false);
         return;
       }
 
-      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) {
-        return;
-      }
-
-      if (event.key.toLowerCase() !== "k") {
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "k") {
         return;
       }
 
       event.preventDefault();
-      commandInputRef.current?.focus();
-      commandInputRef.current?.select();
+      composerRef.current?.focus();
+      setIsInlineOpen(true);
     };
 
     window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {
-    if (!isWorkspaceOpen) {
+    if (!isInlineOpen) {
       return;
     }
 
-    workspaceScrollRef.current?.scrollTo({
-      top: workspaceScrollRef.current.scrollHeight,
-      behavior: "smooth"
+    const onPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current) {
+        return;
+      }
+      if (!rootRef.current.contains(event.target as Node)) {
+        setIsInlineOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [isInlineOpen]);
+
+  const appendTurn = useCallback((turn: CommandTurn) => {
+    setThreadsByScope((current) => {
+      const existing = current[scopeKey] ?? { threadId: createId(), turns: [] };
+      const nextTurns = trimConversation([...existing.turns, turn], 20);
+      return {
+        ...current,
+        [scopeKey]: {
+          ...existing,
+          turns: nextTurns
+        }
+      };
     });
-  }, [isWorkspaceOpen, workspaceMessages]);
+  }, [scopeKey]);
 
-  useEffect(() => {
-    if (!isCommandInputFocused || disabled || isCommandRunning || isWorkspaceOpen) {
-      return;
-    }
+  const patchLastAssistantTurnMeta = useCallback((meta: { resultCards: AiResultCard[]; suggestedActions: AiSuggestedAction[] }) => {
+    setThreadsByScope((current) => {
+      const existing = current[scopeKey];
+      if (!existing || existing.turns.length === 0) {
+        return current;
+      }
 
-    const suggestions = buildCommandSuggestions(commandValue);
-    if (suggestions.length === 0) {
-      return;
-    }
-
-    setCommandPopover({
-      kind: "suggestions",
-      title: "Suggestions",
-      options: suggestions
+      const turns = [...existing.turns];
+      for (let index = turns.length - 1; index >= 0; index -= 1) {
+        const turn = turns[index];
+        if (turn.role !== "assistant") {
+          continue;
+        }
+        turns[index] = {
+          ...turn,
+          resultCards: meta.resultCards,
+          suggestedActions: meta.suggestedActions
+        };
+        return {
+          ...current,
+          [scopeKey]: {
+            ...existing,
+            turns
+          }
+        };
+      }
+      return current;
     });
-  }, [commandValue, disabled, isCommandInputFocused, isCommandRunning, isWorkspaceOpen]);
+  }, [scopeKey]);
 
-  useEffect(() => {
-    if (!commandPopover) {
-      return;
-    }
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!commandBarRef.current) {
+  const runAiConversation = useCallback(
+    async (prompt: string, surface: "command" | "inline" | "sidebar") => {
+      if (disabled || isRunning) {
         return;
       }
 
-      if (!commandBarRef.current.contains(event.target as Node)) {
-        setCommandPopover(null);
+      const userTurn: CommandTurn = {
+        id: createId(),
+        role: "user",
+        content: prompt,
+        createdAt: Date.now()
+      };
+      appendTurn(userTurn);
+      setComposerValue("");
+      setStreamingText("");
+      setSurfaceState((current) => nextCommandSurfaceState(current, { type: "submit" }));
+      setIsInlineOpen(true);
+
+      const turnId = createId();
+      const conversation = toConversation(trimConversation([...activeTurns, userTurn], 20));
+
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          orgSlug: resolvedOrgSlug ?? undefined,
+          mode: "ask",
+          phase: "plan",
+          userMessage: prompt,
+          threadId: activeThreadId ?? createId(),
+          turnId,
+          surface,
+          conversation,
+          uiContext: buildUiContext({
+            pathname,
+            orgSlug: resolvedOrgSlug,
+            source: surface === "sidebar" ? "workspace" : "command_bar"
+          })
+        })
+      });
+
+      if (!response.ok || !response.body) {
+        appendTurn({
+          id: createId(),
+          role: "assistant",
+          content: "The assistant is unavailable right now.",
+          createdAt: Date.now()
+        });
+        setSurfaceState((current) => nextCommandSurfaceState(current, { type: "response.completed" }));
+        return;
       }
-    };
 
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-    };
-  }, [commandPopover]);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let doneText = "";
+      let streamed = "";
+      let capturedMeta: { resultCards: AiResultCard[]; suggestedActions: AiSuggestedAction[] } | null = null;
 
-  const openWorkspaceFromPopover = useCallback(() => {
-    if (commandValue.trim()) {
-      appendWorkspaceMessage("user", commandValue.trim());
+      const parseEventBlock = (block: string) => {
+        const lines = block.split("\n");
+        let eventName = "";
+        const dataLines: string[] = [];
+
+        for (const rawLine of lines) {
+          const line = rawLine.trimEnd();
+          if (!line) continue;
+          if (line.startsWith("event:")) {
+            eventName = line.slice(6).trim();
+            continue;
+          }
+          if (line.startsWith("data:")) {
+            dataLines.push(line.slice(5).trim());
+          }
+        }
+
+        if (!eventName || dataLines.length === 0) return;
+
+        try {
+          const payload = JSON.parse(dataLines.join("\n")) as {
+            text?: string;
+            message?: string;
+            resultCards?: AiResultCard[];
+            suggestedActions?: AiSuggestedAction[];
+          };
+          if (eventName === "assistant.delta" && typeof payload.text === "string") {
+            streamed += payload.text;
+            setStreamingText(streamed);
+          }
+          if (eventName === "assistant.done" && typeof payload.text === "string") {
+            doneText = payload.text;
+          }
+          if (eventName === "assistant.meta") {
+            capturedMeta = {
+              resultCards: Array.isArray(payload.resultCards) ? payload.resultCards : [],
+              suggestedActions: Array.isArray(payload.suggestedActions) ? payload.suggestedActions : []
+            };
+          }
+          if (eventName === "error" && typeof payload.message === "string") {
+            doneText = payload.message;
+          }
+        } catch {
+          doneText = "The assistant sent an invalid response.";
+        }
+      };
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          let markerIndex = buffer.indexOf("\n\n");
+          while (markerIndex !== -1) {
+            const eventBlock = buffer.slice(0, markerIndex).trim();
+            buffer = buffer.slice(markerIndex + 2);
+            if (eventBlock) {
+              parseEventBlock(eventBlock);
+            }
+            markerIndex = buffer.indexOf("\n\n");
+          }
+        }
+      } finally {
+        if (buffer.trim()) {
+          parseEventBlock(buffer.trim());
+        }
+      }
+
+      const finalText = normalizeSpace(doneText || streamed || "No response.");
+      const assistantMeta = capturedMeta as { resultCards: AiResultCard[]; suggestedActions: AiSuggestedAction[] } | null;
+      appendTurn({
+        id: createId(),
+        role: "assistant",
+        content: finalText,
+        createdAt: Date.now(),
+        resultCards: assistantMeta?.resultCards,
+        suggestedActions: assistantMeta?.suggestedActions
+      });
+      if (assistantMeta) {
+        patchLastAssistantTurnMeta(assistantMeta);
+      }
+      setStreamingText("");
+      setSurfaceState((current) => nextCommandSurfaceState(current, { type: "response.completed" }));
+    },
+    [activeThreadId, activeTurns, appendTurn, disabled, isRunning, patchLastAssistantTurnMeta, pathname, resolvedOrgSlug]
+  );
+
+  const submitFromComposer = useCallback(async () => {
+    const prompt = normalizeSpace(composerValue);
+    if (!prompt || isRunning || disabled) {
+      return;
     }
-    setCommandPopover(null);
-    setIsWorkspaceOpen(true);
-  }, [appendWorkspaceMessage, commandValue]);
+
+    const surface = isSidebarOpen ? "sidebar" : isInlineOpen ? "inline" : "command";
+    await runAiConversation(prompt, surface);
+  }, [composerValue, disabled, isInlineOpen, isRunning, isSidebarOpen, runAiConversation]);
+
+  const handleAction = useCallback(
+    (action: AiSuggestedAction) => {
+      if (action.actionType === "handoff_sidebar") {
+        setIsSidebarOpen(true);
+        setIsInlineOpen(true);
+        setSurfaceState((current) => nextCommandSurfaceState(current, { type: "handoff.sidebar" }));
+        return;
+      }
+
+      if (action.actionType === "navigate") {
+        const href = typeof action.payload.href === "string" ? action.payload.href : null;
+        if (href) {
+          router.push(href);
+        }
+        return;
+      }
+    },
+    [router]
+  );
+
+  const clearThread = useCallback(() => {
+    setThreadsByScope((current) => {
+      const existing = current[scopeKey] ?? { threadId: createId(), turns: [] };
+      return {
+        ...current,
+        [scopeKey]: {
+          ...existing,
+          turns: []
+        }
+      };
+    });
+    setStreamingText("");
+    setSurfaceState((current) => nextCommandSurfaceState(current, { type: "thread.cleared" }));
+  }, [scopeKey]);
+
+  const contextLabel = resolvedOrgSlug ? `${activeOrgName} (${resolvedOrgSlug})` : "Account context";
 
   return (
     <>
-      <div className="relative min-w-0 w-full max-w-[22rem]" ref={commandBarRef}>
-        <form
-          className="flex min-w-0 items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submitCommand();
+      <div className="relative w-full max-w-[22rem] xl:max-w-[26rem]" ref={rootRef}>
+        <MagicComposer
+          compact
+          disabled={disabled}
+          inputId="org-ai-command-input"
+          inputRef={composerRef}
+          loading={isRunning}
+          onChange={(value) => {
+            setComposerValue(value);
+            setSurfaceState((current) => nextCommandSurfaceState(current, { type: "input.changed", value }));
           }}
-        >
-          <label className="sr-only" htmlFor="org-ai-command-input">
-            Ask the assistant
-          </label>
-          <div className="relative min-w-0 flex-1">
-            <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-            <Input
-              className="h-9 bg-surface pl-9 pr-12"
-              disabled={disabled || isCommandRunning}
-              id="org-ai-command-input"
-              onBlur={(event) => {
-                setIsCommandInputFocused(false);
-                requestAnimationFrame(() => {
-                  const nextTarget = (document.activeElement as Node | null) ?? (event.relatedTarget as Node | null);
-                  if (!nextTarget || !commandBarRef.current?.contains(nextTarget)) {
-                    setCommandPopover(null);
-                  }
-                });
-              }}
-              onChange={(event) => {
-                setCommandValue(event.target.value);
-                setCommandPopover(null);
-              }}
-              onFocus={() => setIsCommandInputFocused(true)}
-              onKeyDown={(event) => {
-                event.stopPropagation();
-              }}
-              placeholder={resolvedOrgSlug ? "Ask OrgAI" : "Ask OrgAI about your account"}
-              ref={commandInputRef}
-              value={commandValue}
-            />
-            <Button
-              className="absolute right-1.5 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full p-0"
-              disabled={!normalizeSpace(commandValue)}
-              loading={isCommandRunning}
-              size="sm"
-              type="submit"
-              variant="secondary"
-            >
-              <ArrowUp className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </form>
-        {commandPopover ? (
-          <div className="absolute left-0 top-[calc(100%+0.45rem)] z-[260] w-[min(92vw,28rem)] overflow-hidden rounded-card border bg-surface shadow-floating">
-            <div className="max-h-72 space-y-3 overflow-y-auto p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{commandPopover.title}</p>
+          onSubmit={() => {
+            void submitFromComposer();
+          }}
+          placeholder={resolvedOrgSlug ? "Ask OrgAI in context..." : "Ask OrgAI about your account..."}
+          suggestions={[]}
+          value={composerValue}
+        />
 
-              {commandPopover.kind === "suggestions" ? (
-                <div className="space-y-1.5">
-                  {commandPopover.options.map((option) => (
-                    <button
-                      className="block w-full rounded-control border border-border/70 bg-surface-muted/35 px-2.5 py-2 text-left text-sm text-text transition-colors hover:bg-surface-muted"
-                      key={option}
-                      onMouseDown={(event) => {
-                        // Prevent input blur from collapsing the popover before click executes.
-                        event.preventDefault();
-                      }}
-                      onClick={() => {
-                        if (resolvedOrgSlug) {
-                          const directIntent = inferDirectRouteIntent(resolvedOrgSlug, option);
-                          if (directIntent) {
-                            setCommandPopover(null);
-                            setCommandValue("");
-                            router.push(directIntent.href);
-                            return;
-                          }
-                        }
-                        setCommandValue(option);
-                        setCommandPopover(null);
-                        commandInputRef.current?.focus();
-                      }}
-                      type="button"
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {commandPopover.kind === "answer" || commandPopover.kind === "preview" || commandPopover.kind === "error" ? (
-                <p className="whitespace-pre-wrap text-sm text-text">{commandPopover.message}</p>
-              ) : null}
-
-              {commandPopover.kind === "preview" ? (
-                <Button
-                  onClick={() => {
-                    setCommandPopover(null);
-                    router.push(commandPopover.actionHref);
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                >
-                  {commandPopover.actionLabel}
-                </Button>
-              ) : null}
-
-              {commandPopover.kind === "answer" ? (
-                <div className="flex items-center gap-2">
-                  {commandPopover.primaryLabel ? (
-                    <Button
-                      onClick={() => {
-                        if (commandPopover.primaryAction === "open_workspace") {
-                          openWorkspaceFromPopover();
-                          return;
-                        }
-                        setCommandPopover(null);
-                      }}
-                      size="sm"
-                      type="button"
-                      variant="secondary"
-                    >
-                      {commandPopover.primaryLabel}
-                    </Button>
-                  ) : null}
-                  {commandPopover.secondaryLabel ? (
-                    <Button onClick={() => setCommandPopover(null)} size="sm" type="button" variant="ghost">
-                      {commandPopover.secondaryLabel}
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {commandPopover.kind === "error" && commandPopover.actionLabel ? (
-                <Button
-                  onClick={() => {
-                    if (commandPopover.action === "open_workspace") {
-                      openWorkspaceFromPopover();
-                      return;
-                    }
-                    setCommandPopover(null);
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                >
-                  {commandPopover.actionLabel}
+        {isInlineOpen || activeTurns.length > 0 || streamingText ? (
+          <div className="absolute left-0 right-0 top-[calc(100%+0.45rem)] z-[260] space-y-2 rounded-card border bg-surface p-2.5 shadow-floating">
+            <InlineThread messages={activeTurns} onAction={handleAction} running={isRunning} streamingText={streamingText} />
+            <div className="flex items-center gap-2">
+              <Button onClick={() => setIsSidebarOpen(true)} size="sm" type="button" variant="secondary">
+                Continue in Sidebar
+              </Button>
+              <Button
+                onClick={() => {
+                  setIsInlineOpen(false);
+                }}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                Hide
+              </Button>
+              {activeTurns.length > 0 ? (
+                <Button onClick={clearThread} size="sm" type="button" variant="ghost">
+                  Clear
                 </Button>
               ) : null}
             </div>
@@ -774,90 +596,48 @@ export function OrgAiCommandCenter({ initialOrgSlug = null, orgOptions, disabled
       <Panel
         contentClassName="space-y-3"
         footer={
-          <form
-            className="flex items-center gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitWorkspaceMessage();
-            }}
-          >
-            <label className="sr-only" htmlFor="org-ai-workspace-input">
-              Continue AI conversation
-            </label>
-            <Input
-              className="h-10"
-              disabled={disabled || isWorkspaceRunning}
-              id="org-ai-workspace-input"
-              onChange={(event) => setWorkspaceValue(event.target.value)}
-              onKeyDown={(event) => {
-                event.stopPropagation();
+          <div className="space-y-2">
+            <MagicComposer
+              disabled={disabled}
+              loading={isRunning}
+              onChange={setComposerValue}
+              onSubmit={() => {
+                void submitFromComposer();
               }}
-              placeholder={resolvedOrgSlug ? `Continue conversation for ${activeOrgContextLabel}...` : "Continue conversation for your account..."}
-              value={workspaceValue}
+              placeholder={resolvedOrgSlug ? `Continue with ${activeOrgName}...` : "Continue conversation..."}
+              suggestions={isRunning ? [] : suggestions}
+              value={composerValue}
             />
-            <Button disabled={!normalizeSpace(workspaceValue)} loading={isWorkspaceRunning} size="sm" type="submit">
-              <Send className="h-4 w-4" />
-              Send
-            </Button>
-          </form>
-        }
-        onClose={() => setIsWorkspaceOpen(false)}
-        open={isWorkspaceOpen}
-        globalPanel
-        panelClassName="rounded-none border-y-0 border-r-0 max-w-[min(100vw,460px)] !w-[min(100vw,460px)]"
-        pushMode="app"
-        subtitle="Persistent AI conversation for deeper planning and analysis."
-        title={
-          <span className="inline-flex items-center gap-2">
-            <Bot className="h-4 w-4" />
-            AI Workspace
-          </span>
-        }
-      >
-        <div className="flex h-full min-h-[55vh] flex-col gap-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">{activeOrgContextLabel}</div>
-
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1" ref={workspaceScrollRef}>
-            {workspaceMessages.length === 0 ? (
-              <div className="rounded-control border border-dashed bg-surface-muted/35 p-3 text-sm text-text-muted">
-                Start in the command bar, or continue here for multi-turn analysis and execution planning.
-              </div>
-            ) : null}
-
-            {workspaceMessages.map((message) => (
-              <article
-                className={cn(
-                  "max-w-[94%] rounded-control border px-3 py-2 text-sm",
-                  message.role === "assistant"
-                    ? "mr-auto border-border bg-surface text-text"
-                    : "ml-auto border-accent/35 bg-accent/10 text-text"
-                )}
-                key={message.id}
-              >
-                <p className="whitespace-pre-wrap break-words">{message.content}</p>
-              </article>
-            ))}
-
-            {isWorkspaceRunning ? (
-              <div className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm text-text-muted">
-                <SpinnerIcon className="h-4 w-4" />
-                Assistant is working...
+            {activeTurns.length > 0 ? (
+              <div className="flex items-center justify-end">
+                <Button onClick={clearThread} size="sm" type="button" variant="ghost">
+                  Clear thread
+                </Button>
               </div>
             ) : null}
           </div>
-
-          {workspaceMessages.length > 0 ? (
-            <div className="flex items-center justify-between text-xs text-text-muted">
-              <span>{workspaceMessages.length} messages</span>
-              <button
-                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold text-text-muted transition-colors hover:bg-surface-muted hover:text-text"
-                onClick={() => setWorkspaceMessages([])}
-                type="button"
-              >
-                <span>Clear</span>
-              </button>
-            </div>
-          ) : null}
+        }
+        onClose={() => {
+          setIsSidebarOpen(false);
+          setSurfaceState((current) => nextCommandSurfaceState(current, { type: "sidebar.closed" }));
+        }}
+        open={isSidebarOpen}
+        globalPanel
+        panelClassName="rounded-none border-y-0 border-r-0 max-w-[min(100vw,520px)] !w-[min(100vw,520px)]"
+        pushMode="app"
+        subtitle="Advanced copilot for long-form planning, entity workflows, and execution reviews."
+        title={
+          <span className="inline-flex items-center gap-2">
+            <Bot className="h-4 w-4" />
+            Advanced Copilot
+          </span>
+        }
+      >
+        <div className="flex h-full min-h-[56vh] flex-col gap-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">{contextLabel}</div>
+          <div className="min-h-0 flex-1" ref={sidebarScrollRef}>
+            <InlineThread compact messages={activeTurns} onAction={handleAction} running={isRunning} streamingText={streamingText} />
+          </div>
         </div>
       </Panel>
     </>

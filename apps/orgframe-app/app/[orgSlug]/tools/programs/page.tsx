@@ -5,8 +5,10 @@ import { PageStack } from "@orgframe/ui/primitives/layout";
 import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { ProgramsManagePanel } from "@/src/features/programs/components/ProgramsManagePanel";
 import { listProgramsForManage } from "@/src/features/programs/db/queries";
+import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
   title: "Programs"
@@ -15,6 +17,14 @@ export const metadata: Metadata = {
 export default async function OrgManageProgramsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
   const orgContext = await getOrgAuthContext(orgSlug);
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "programs")) {
+    return (
+      <PageStack>
+        <PageHeader description="Create and manage program catalogs, structure maps, and schedules." showBorder={false} title="Programs" />
+        <ToolUnavailablePanel title="Programs" />
+      </PageStack>
+    );
+  }
   const canReadPrograms = can(orgContext.membershipPermissions, "programs.read") || can(orgContext.membershipPermissions, "programs.write");
   const canWritePrograms = can(orgContext.membershipPermissions, "programs.write");
 

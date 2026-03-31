@@ -8,10 +8,12 @@ import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { PageTabs } from "@orgframe/ui/primitives/page-tabs";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { FormPublishToggleButton } from "@/src/features/forms/components/FormPublishToggleButton";
 import { FormSettingsPanel } from "@/src/features/forms/components/FormSettingsPanel";
 import { getFormById } from "@/src/features/forms/db/queries";
 import { listProgramNodes, listProgramsForManage } from "@/src/features/programs/db/queries";
+import { ToolUnavailablePanel } from "../../../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
   title: "Form Settings"
@@ -24,6 +26,14 @@ export default async function OrgManageFormSettingsRedirectPage({
 }) {
   const { orgSlug, formId } = await params;
   const orgContext = await getOrgAuthContext(orgSlug);
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "forms")) {
+    return (
+      <PageStack>
+        <PageHeader description="Configure metadata, registration mapping, and publish state for this form." showBorder={false} title="Form Settings" />
+        <ToolUnavailablePanel title="Forms" />
+      </PageStack>
+    );
+  }
   const canReadForms = can(orgContext.membershipPermissions, "forms.read") || can(orgContext.membershipPermissions, "forms.write");
 
   if (!canReadForms) {

@@ -4,6 +4,7 @@ import { createDataApiServiceRoleClient, createSupabaseServer } from "@/src/shar
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
 import { getGoverningBodyLogoUrl } from "@/src/shared/branding/getGoverningBodyLogoUrl";
+import { filterPermissionsByOrgTools, resolveOrgToolAvailability } from "@/src/shared/org/features";
 import { isReservedOrgSlug } from "@/src/shared/org/reservedSlugs";
 import type { OrgRole } from "@/src/features/core/access";
 import type { OrgAuthContext, OrgBranding, OrgGoverningBody } from "@/src/shared/org/types";
@@ -65,7 +66,7 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
   const supabase = await createSupabaseServer();
   const { data: org, error: orgError } = await supabase
     .schema("orgs").from("orgs")
-    .select("id, slug, name, logo_path, icon_path, brand_primary, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
+    .select("id, slug, name, logo_path, icon_path, brand_primary, features_json, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
     .eq("slug", orgSlug)
     .maybeSingle();
 
@@ -78,7 +79,7 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
   }
 
   const { data: membership, error: membershipError } = await supabase
-    .schema("orgs").from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("role")
     .eq("org_id", org.id)
     .eq("user_id", user.id)
@@ -91,7 +92,7 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
     // but still scoped to the authenticated user id from this request.
     const serviceRole = createDataApiServiceRoleClient();
     const { data: serviceRoleMembership, error: serviceRoleMembershipError } = await serviceRole
-      .schema("orgs").from("org_memberships")
+      .schema("orgs").from("memberships")
       .select("role")
       .eq("org_id", org.id)
       .eq("user_id", user.id)
@@ -105,7 +106,9 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
   }
 
   const membershipRole = resolvedMembership.role as OrgRole;
-  const membershipPermissions = await resolveOrgRolePermissions(supabase, org.id, membershipRole);
+  const toolAvailability = resolveOrgToolAvailability(org.features_json);
+  const basePermissions = await resolveOrgRolePermissions(supabase, org.id, membershipRole);
+  const membershipPermissions = filterPermissionsByOrgTools(basePermissions, toolAvailability);
 
   return {
     orgId: org.id,
@@ -115,7 +118,8 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
     membershipRole,
     membershipPermissions,
     branding: mapBranding(org),
-    governingBody: mapGoverningBody(org.governing_body)
+    governingBody: mapGoverningBody(org.governing_body),
+    toolAvailability
   };
 });
 

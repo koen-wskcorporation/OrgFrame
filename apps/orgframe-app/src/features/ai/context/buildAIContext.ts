@@ -12,10 +12,12 @@ import {
 import { logAIContext } from "@/src/features/ai/context/logger";
 import { resolveScope } from "@/src/features/ai/context/resolveScope";
 import type { AIContext } from "@/src/features/ai/context/types";
+import { getSignedProfileAvatarUrl } from "@/src/features/core/account/storage/getSignedProfileAvatarUrl";
 import { listPlayersForPicker } from "@/src/features/players/db/queries";
 import { isReservedOrgSlug } from "@/src/shared/org/reservedSlugs";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
+import { filterPermissionsByOrgTools, resolveOrgToolAvailability } from "@/src/shared/org/features";
 import { extractOrgSlugFromSubdomain, getTenantBaseHosts, normalizeHost } from "@/src/shared/domains/customDomains";
 import type { OrgRole } from "@/src/features/core/access";
 
@@ -26,6 +28,47 @@ type OrgResolution = {
   orgSlug: string;
   resolvedFrom: AIContext["debug"]["resolvedFrom"]["org"];
 };
+
+type UserProfileRow = {
+  first_name: string | null;
+  last_name: string | null;
+  avatar_path: string | null;
+};
+
+function cleanText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function sanitizeUserMetadata(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const source = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+
+  for (const [key, raw] of Object.entries(source)) {
+    if (!key.trim()) {
+      continue;
+    }
+
+    if (["string", "number", "boolean"].includes(typeof raw) || raw === null) {
+      result[key] = raw;
+      continue;
+    }
+
+    if (Array.isArray(raw)) {
+      result[key] = raw.slice(0, 10);
+      continue;
+    }
+
+    if (typeof raw === "object") {
+      result[key] = "[object]";
+    }
+  }
+
+  return result;
+}
 
 function getRequestId(req: Request) {
   return req.headers.get("x-request-id")?.trim() || randomUUID();
@@ -140,6 +183,24 @@ export async function buildAIContext(req: Request): Promise<AIContext> {
   const orgResolution = resolveOrgSlugOptional(req, requestUrl);
   const supabase = await createSupabaseServer();
 
+  const [profileResult, authUserResult] = await Promise.all([
+    supabase.schema("people").from("users").select("first_name, last_name, avatar_path").eq("user_id", sessionUser.id).maybeSingle(),
+    supabase.auth.getUser()
+  ]);
+
+  const profile = (profileResult.data as UserProfileRow | null) ?? null;
+  const avatarPath = profile?.avatar_path ?? null;
+  const avatarUrl = avatarPath ? await getSignedProfileAvatarUrl(avatarPath, 60 * 10).catch(() => null) : null;
+  const authUser = authUserResult.data.user;
+  const firstName = cleanText(profile?.first_name) || null;
+  const lastName = cleanText(profile?.last_name) || null;
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || null;
+  const phone = cleanText(authUser?.phone) || null;
+  const metadata = {
+    userMetadata: sanitizeUserMetadata(authUser?.user_metadata),
+    appMetadata: sanitizeUserMetadata(authUser?.app_metadata)
+  };
+
   let org: AIContext["org"] = null;
   let membership: AIContext["membership"] = null;
   let permissions: string[] = [];
@@ -147,7 +208,7 @@ export async function buildAIContext(req: Request): Promise<AIContext> {
   if (orgResolution) {
     const { data: resolvedOrg, error: orgError } = await supabase
       .schema("orgs").from("orgs")
-      .select("id, slug, name")
+      .select("id, slug, name, features_json")
       .eq("slug", orgResolution.orgSlug)
       .maybeSingle();
 
@@ -166,7 +227,7 @@ export async function buildAIContext(req: Request): Promise<AIContext> {
     };
 
     const { data: resolvedMembership, error: membershipError } = await supabase
-      .schema("orgs").from("org_memberships")
+      .schema("orgs").from("memberships")
       .select("role")
       .eq("org_id", resolvedOrg.id)
       .eq("user_id", sessionUser.id)
@@ -184,7 +245,8 @@ export async function buildAIContext(req: Request): Promise<AIContext> {
       role: resolvedMembership.role,
       permissions: []
     };
-    permissions = await resolveOrgRolePermissions(supabase, resolvedOrg.id, resolvedMembership.role as OrgRole);
+    const basePermissions = await resolveOrgRolePermissions(supabase, resolvedOrg.id, resolvedMembership.role as OrgRole);
+    permissions = filterPermissionsByOrgTools(basePermissions, resolveOrgToolAvailability(resolvedOrg.features_json));
     membership.permissions = permissions;
   }
 
@@ -205,7 +267,17 @@ export async function buildAIContext(req: Request): Promise<AIContext> {
     requestId,
     user: {
       id: sessionUser.id,
-      email: sessionUser.email
+      email: sessionUser.email,
+      name: fullName ?? undefined,
+      firstName,
+      lastName,
+      fullName,
+      phone,
+      avatarPath,
+      avatarUrl,
+      emailVerified: Boolean(authUser?.email_confirmed_at),
+      lastSignInAt: cleanText(authUser?.last_sign_in_at) || null,
+      metadata
     },
     org,
     membership,

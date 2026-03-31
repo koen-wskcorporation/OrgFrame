@@ -5,9 +5,11 @@ import { PageStack } from "@orgframe/ui/primitives/layout";
 import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { FormsManagePanel } from "@/src/features/forms/components/FormsManagePanel";
 import { listFormsForManage } from "@/src/features/forms/db/queries";
 import { listProgramsForManage } from "@/src/features/programs/db/queries";
+import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
   title: "Forms"
@@ -16,6 +18,14 @@ export const metadata: Metadata = {
 export default async function OrgManageFormsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
   const orgContext = await getOrgAuthContext(orgSlug);
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "forms")) {
+    return (
+      <PageStack>
+        <PageHeader description="Build, publish, and operate generic and registration forms." showBorder={false} title="Forms" />
+        <ToolUnavailablePanel title="Forms" />
+      </PageStack>
+    );
+  }
   const canReadForms = can(orgContext.membershipPermissions, "forms.read") || can(orgContext.membershipPermissions, "forms.write");
   const canWriteForms = can(orgContext.membershipPermissions, "forms.write");
 

@@ -10,9 +10,10 @@ import { consumeAiRateLimit } from "@/src/features/ai/rate-limit";
 import { aiRequestSchema } from "@/src/features/ai/schemas";
 import { createSseResponse } from "@/src/features/ai/sse";
 import { runAiTool } from "@/src/features/ai/tools";
+import { deriveAssistantMeta } from "@/src/features/ai/metadata";
 import { can } from "@/src/shared/permissions/can";
 import { isPermission, type Permission } from "@/src/features/core/access";
-import type { AiActAuditDetail, AiConversationMessage, AiMode, AiResolvedContext } from "@/src/features/ai/types";
+import type { AiActAuditDetail, AiConversationMessage, AiMode, AiResolvedContext, AiUiContext } from "@/src/features/ai/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export const revalidate = 0;
 const PROPOSAL_TTL_MS = 30 * 60 * 1000;
 
 function trimmedConversation(conversation: AiConversationMessage[]) {
-  return conversation.slice(-12);
+  return conversation.slice(-20);
 }
 
 function nowIso() {
@@ -73,6 +74,17 @@ function toLegacyAiContext(context: AIContext): AiResolvedContext {
   return {
     userId: context.user.id,
     email: context.user.email,
+    userAccount: {
+      firstName: context.user.firstName,
+      lastName: context.user.lastName,
+      fullName: context.user.fullName,
+      phone: context.user.phone,
+      avatarPath: context.user.avatarPath,
+      avatarUrl: context.user.avatarUrl,
+      emailVerified: context.user.emailVerified,
+      lastSignInAt: context.user.lastSignInAt,
+      metadata: context.user.metadata
+    },
     org: context.org
       ? {
           orgId: context.org.id,
@@ -90,6 +102,34 @@ function toLegacyAiContext(context: AIContext): AiResolvedContext {
       canExecuteOrgActions: Boolean(context.org) && (can(permissions, "org.branding.write") || can(permissions, "forms.write")),
       canReadOrg: Boolean(context.org) && can(permissions, ["org.dashboard.read"])
     }
+  };
+}
+
+function applyUiContext(base: AiResolvedContext, uiContext?: AiUiContext): AiResolvedContext {
+  if (!uiContext) {
+    return base;
+  }
+
+  const nextScope: AiResolvedContext["scope"] = {
+    ...base.scope
+  };
+
+  if (uiContext.page.currentModule) {
+    nextScope.currentModule = uiContext.page.currentModule;
+  }
+
+  if (uiContext.page.entityType) {
+    nextScope.entityType = uiContext.page.entityType;
+  }
+
+  if (uiContext.page.entityId) {
+    nextScope.entityId = uiContext.page.entityId;
+  }
+
+  return {
+    ...base,
+    scope: nextScope,
+    uiContext
   };
 }
 
@@ -156,7 +196,7 @@ export async function POST(request: NextRequest) {
     let context: AiResolvedContext;
     try {
       const aiContext = await withAIContext(contextRequest, async (ctx) => ctx);
-      context = toLegacyAiContext(aiContext);
+      context = applyUiContext(toLegacyAiContext(aiContext), payload.uiContext);
     } catch (error) {
       const aiContextError =
         error instanceof AIContextError ? error : new AIContextError("INTERNAL", error instanceof Error ? error.message : "Failed to build AI context.", 500);
@@ -302,7 +342,9 @@ export async function POST(request: NextRequest) {
       });
 
       emit("assistant.done", {
-        text: executionResult.summary
+        text: executionResult.summary,
+        threadId: payload.threadId,
+        turnId: payload.turnId
       });
 
       return;
@@ -356,7 +398,9 @@ export async function POST(request: NextRequest) {
       });
 
       emit("assistant.done", {
-        text: "Canceled proposed changes. No data was modified."
+        text: "Canceled proposed changes. No data was modified.",
+        threadId: payload.threadId,
+        turnId: payload.turnId
       });
 
       return;
@@ -483,8 +527,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const assistantMeta = deriveAssistantMeta({
+      prompt: payload.userMessage,
+      assistantText: planningResult.assistantText,
+      orgSlug: context.org?.orgSlug
+    });
+    emit("assistant.meta", assistantMeta);
+
     emit("assistant.done", {
-      text: planningResult.assistantText
+      text: planningResult.assistantText,
+      threadId: payload.threadId,
+      turnId: payload.turnId
     });
   });
 }

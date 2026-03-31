@@ -1,6 +1,58 @@
 import { z } from "zod";
 
 const textSchema = z.string().trim();
+const optionalTextSchema = z.string().trim().min(1).optional();
+
+const aiUiContextSchema = z.object({
+  source: z.enum(["command_bar", "workspace"]),
+  requestedAt: z.string().trim().min(1).max(80),
+  route: z.object({
+    pathname: z.string().trim().min(1).max(300),
+    search: optionalTextSchema,
+    hash: optionalTextSchema,
+    title: z.string().trim().min(1).max(180).optional(),
+    referrerPath: z.string().trim().min(1).max(300).optional(),
+    queryParams: z.record(z.string().trim().min(1).max(80), z.string().trim().min(1).max(200)).optional()
+  }),
+  page: z.object({
+    currentModule: z.enum(["calendar", "facilities", "programs", "teams", "communications", "files", "account", "players", "unknown"]).optional(),
+    tool: optionalTextSchema,
+    entityType: optionalTextSchema,
+    entityId: optionalTextSchema,
+    orgSlugFromPath: optionalTextSchema
+  }),
+  selection: z
+    .object({
+      text: z.string().trim().min(1).max(500).optional(),
+      activeElement: z
+        .object({
+          tagName: z.string().trim().min(1).max(40),
+          role: optionalTextSchema,
+          id: optionalTextSchema,
+          name: optionalTextSchema,
+          ariaLabel: z.string().trim().min(1).max(120).optional(),
+          placeholder: z.string().trim().min(1).max(120).optional(),
+          datasetContext: z.string().trim().min(1).max(120).optional()
+        })
+        .optional()
+    })
+    .optional(),
+  viewport: z
+    .object({
+      width: z.number().int().positive().max(12000),
+      height: z.number().int().positive().max(12000),
+      isMobile: z.boolean()
+    })
+    .optional(),
+  runtime: z
+    .object({
+      timezone: optionalTextSchema,
+      language: optionalTextSchema,
+      online: z.boolean().optional(),
+      visibilityState: optionalTextSchema
+    })
+    .optional()
+});
 
 export const aiConversationMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -12,9 +64,13 @@ export const aiRequestSchema = z.object({
   userMessage: textSchema.min(1).max(4000),
   mode: z.enum(["ask", "act"]),
   conversation: z.array(aiConversationMessageSchema).max(24).default([]),
+  threadId: z.string().trim().min(1).max(120).optional(),
+  turnId: z.string().trim().min(1).max(120).optional(),
+  surface: z.enum(["command", "inline", "sidebar"]).optional(),
   phase: z.enum(["plan", "confirm", "cancel"]).optional().default("plan"),
   proposalId: z.string().uuid().optional(),
-  entitySelections: z.record(z.string().trim().min(1), z.string().trim().min(1)).optional().default({})
+  entitySelections: z.record(z.string().trim().min(1), z.string().trim().min(1)).optional().default({}),
+  uiContext: aiUiContextSchema.optional()
 });
 
 export const aiEntityCandidateSchema = z.object({
@@ -108,6 +164,15 @@ export const aiActAuditDetailSchema = z.object({
 export const resolveEntitiesInputSchema = z.object({
   orgSlug: z.string().trim().min(1),
   freeText: z.string().trim().min(1).max(4000)
+});
+
+export const queryOrgDataInputSchema = z.object({
+  orgSlug: z.string().trim().min(1),
+  metric: z.enum(["form_submission_count", "forms_summary", "programs_summary", "events_summary", "org_overview"]).optional().default("form_submission_count"),
+  question: z.string().trim().min(1).max(4000).optional(),
+  formId: z.string().trim().min(1).optional(),
+  formSlug: z.string().trim().min(1).optional(),
+  formName: z.string().trim().min(1).max(200).optional()
 });
 
 export const proposeChangesInputSchema = z.object({

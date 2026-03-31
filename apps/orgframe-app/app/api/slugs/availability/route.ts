@@ -118,7 +118,7 @@ async function resolveOrgIdBySlug(orgSlug: string) {
 
 async function pageSlugExists(orgId: string, slug: string) {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.schema("site").from("site_pages").select("id").eq("org_id", orgId).eq("slug", slug).maybeSingle();
+  const { data, error } = await supabase.schema("site").from("pages").select("id").eq("org_id", orgId).eq("slug", slug).maybeSingle();
 
   if (error) {
     throw new Error(error.message);

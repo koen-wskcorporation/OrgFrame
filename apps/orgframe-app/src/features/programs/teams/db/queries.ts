@@ -616,7 +616,7 @@ export async function listTeamRosterCandidates(programId: string): Promise<Progr
 export async function listTeamStaffCandidates(orgId: string): Promise<ProgramTeamStaffCandidate[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("orgs").from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("user_id, role")
     .eq("org_id", orgId)
     .order("created_at", { ascending: true });

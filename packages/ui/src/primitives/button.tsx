@@ -5,7 +5,7 @@ import { SpinnerIcon } from "./spinner-icon";
 import { cn } from "./utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-transparent px-4 text-sm font-semibold leading-none transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-55 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
+  "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-transparent px-4 text-sm font-semibold leading-none transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-55 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -39,12 +39,8 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(
   ({ children, className, href, loading = false, prefetch, replace, scroll, variant, size, ...props }, ref) => {
     const classes = cn(buttonVariants({ variant, size }), className);
-    const content = (
-      <>
-        {loading ? <SpinnerIcon className="h-4 w-4" /> : null}
-        <span className={cn("inline-flex items-center gap-2", loading ? "[&_svg]:opacity-0" : undefined)}>{children}</span>
-      </>
-    );
+    const content = <span className={cn("inline-flex items-center gap-2", loading ? "opacity-0" : undefined)}>{children}</span>;
+    const loadingSpinner = loading ? <SpinnerIcon className="pointer-events-none absolute inset-0 m-auto h-4 w-4" /> : null;
 
     if (typeof href === "string") {
       const isDisabled = Boolean(props.disabled || loading);
@@ -64,6 +60,7 @@ const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonPro
           tabIndex={isDisabled ? -1 : linkProps.tabIndex}
           {...linkProps}
         >
+          {loadingSpinner}
           {content}
         </Link>
       );
@@ -80,6 +77,7 @@ const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonPro
         type={type}
         {...buttonProps}
       >
+        {loadingSpinner}
         {content}
       </button>
     );

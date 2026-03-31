@@ -23,7 +23,7 @@ export async function GET() {
 
   const supabase = await createSupabaseServer();
   const { data: profile } = await supabase
-    .schema("people").from("user_profiles")
+    .schema("people").from("users")
     .select("first_name, last_name, avatar_path")
     .eq("user_id", sessionUser.id)
     .maybeSingle();

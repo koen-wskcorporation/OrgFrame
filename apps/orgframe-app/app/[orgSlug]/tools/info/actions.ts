@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
+import { requireOrgToolEnabled } from "@/src/shared/org/requireOrgToolEnabled";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 
@@ -13,6 +14,7 @@ function getField(formData: FormData, key: string) {
 export async function saveOrgGoverningBodyAction(orgSlug: string, formData: FormData) {
   try {
     const orgContext = await requireOrgPermission(orgSlug, "org.branding.write");
+    requireOrgToolEnabled(orgContext.toolAvailability, "info");
     const governingBodyId = getField(formData, "governingBodyId");
 
     const supabase = await createSupabaseServer();

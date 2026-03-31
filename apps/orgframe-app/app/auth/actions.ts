@@ -48,6 +48,11 @@ type AuthAccountLookupResult = {
   avatarUrl: string | null;
 };
 
+type SendActivationEmailResult = {
+  ok: boolean;
+  message: string;
+};
+
 type AuthUserRow = {
   id: string;
   email: string | null;
@@ -156,7 +161,7 @@ export async function lookupAuthAccountAction(formData: FormData): Promise<AuthA
   }
 
   const { data: profile } = await supabase
-    .schema("people").from("user_profiles")
+    .schema("people").from("users")
     .select("first_name, last_name, avatar_path")
     .eq("user_id", user.id)
     .maybeSingle();
@@ -274,6 +279,42 @@ export async function requestPasswordResetAction(formData: FormData) {
   }
 
   redirect("/auth/reset?message=reset_email_sent");
+}
+
+export async function sendActivationEmail(input: { email: string }): Promise<SendActivationEmailResult> {
+  const email = cleanValue(input.email).toLowerCase();
+  if (!isLikelyEmail(email)) {
+    return {
+      ok: false,
+      message: "Invalid email address."
+    };
+  }
+
+  try {
+    const origin = await getRequestOrigin();
+    const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent("/auth/reset?mode=update")}`;
+    const supabase = await createSupabaseServer();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo
+    });
+
+    if (error) {
+      return {
+        ok: false,
+        message: "Unable to send activation email right now."
+      };
+    }
+
+    return {
+      ok: true,
+      message: "Activation email sent. Check your inbox to verify your email and set a password."
+    };
+  } catch {
+    return {
+      ok: false,
+      message: "Unable to send activation email right now."
+    };
+  }
 }
 
 export async function updatePasswordFromResetAction(formData: FormData) {

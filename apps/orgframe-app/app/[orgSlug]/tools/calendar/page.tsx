@@ -6,9 +6,11 @@ import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { ManageCalendarSection } from "@/app/[orgSlug]/tools/calendar/ManageCalendarSection";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { getCalendarWorkspaceDataAction } from "@/src/features/calendar/actions";
 import type { CalendarReadModel } from "@/src/features/calendar/types";
 import type { FacilityReservationReadModel } from "@/src/features/facilities/types";
+import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
   title: "Calendar"
@@ -21,6 +23,14 @@ export default async function ManageCalendarPage({
 }) {
   const { orgSlug } = await params;
   const orgContext = await getOrgAuthContext(orgSlug);
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "calendar")) {
+    return (
+      <PageStack className="app-page-stack--fill min-h-0 h-[calc(100dvh-var(--org-header-height,0px)-var(--layout-gap))]">
+        <PageHeader description="Organization calendar for events, practices, games, and shared facility scheduling." showBorder={false} title="Calendar" />
+        <ToolUnavailablePanel title="Calendar" />
+      </PageStack>
+    );
+  }
   const canRead =
     can(orgContext.membershipPermissions, "calendar.read") ||
     can(orgContext.membershipPermissions, "calendar.write") ||

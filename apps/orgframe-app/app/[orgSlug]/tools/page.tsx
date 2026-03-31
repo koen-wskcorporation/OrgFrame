@@ -27,6 +27,7 @@ export default async function OrgManageOverviewPage({
   const canReadBranding = can(orgContext.membershipPermissions, "org.branding.read") || can(orgContext.membershipPermissions, "org.branding.write");
   const canReadFacilities = can(orgContext.membershipPermissions, "facilities.read") || can(orgContext.membershipPermissions, "facilities.write");
   const canReadInbox = can(orgContext.membershipPermissions, "communications.read") || can(orgContext.membershipPermissions, "communications.write");
+  const tools = orgContext.toolAvailability;
 
   const cards = [
     {
@@ -35,7 +36,7 @@ export default async function OrgManageOverviewPage({
       description: "View core organization metadata and identifiers.",
       href: "/tools/info",
       cta: "Open Org Info",
-      enabled: canManageOrg
+      enabled: tools.info && canManageOrg
     },
     {
       section: "organization" as const,
@@ -43,7 +44,7 @@ export default async function OrgManageOverviewPage({
       description: "Connect your own domain and review DNS setup requirements.",
       href: "/tools/domains",
       cta: "Open Domains",
-      enabled: canManageOrg
+      enabled: tools.domains && canManageOrg
     },
     {
       section: "organization" as const,
@@ -51,7 +52,7 @@ export default async function OrgManageOverviewPage({
       description: "Update logo, icon, and organization accent color.",
       href: "/tools/branding",
       cta: "Open Branding",
-      enabled: canReadBranding
+      enabled: tools.branding && canReadBranding
     },
     {
       section: "organization" as const,
@@ -59,7 +60,7 @@ export default async function OrgManageOverviewPage({
       description: "Invite users, manage core access levels, and account recovery.",
       href: "/tools/access",
       cta: "Open Accounts & Access",
-      enabled: canManageOrg
+      enabled: tools.access && canManageOrg
     },
     {
       section: "organization" as const,
@@ -67,7 +68,7 @@ export default async function OrgManageOverviewPage({
       description: "View subscription details and billing controls.",
       href: "/tools/billing",
       cta: "Open Billing",
-      enabled: canManageOrg
+      enabled: tools.billing && canManageOrg
     },
     {
       section: "operations" as const,
@@ -75,7 +76,7 @@ export default async function OrgManageOverviewPage({
       description: "Review unified communications and resolve contact identities.",
       href: "/tools/inbox",
       cta: "Open Inbox",
-      enabled: canReadInbox
+      enabled: tools.inbox && canReadInbox
     },
     {
       section: "operations" as const,
@@ -83,15 +84,15 @@ export default async function OrgManageOverviewPage({
       description: "Manage facility spaces, bookings, blackouts, and approvals.",
       href: "/tools/facilities",
       cta: "Open Facilities",
-      enabled: canReadFacilities
+      enabled: tools.facilities && canReadFacilities
     },
     {
       section: "operations" as const,
-      title: "SportsConnect Transfer",
-      description: "Import SportsConnect enrollments, guardian accounts, players, and order history.",
-      href: "/tools/sportsconnect",
-      cta: "Open Transfer Tool",
-      enabled: canManageOrg
+      title: "Smart Import",
+      description: "Upload CSV/XLSX files and run staged imports with AI-assisted conflict review.",
+      href: "/tools/imports",
+      cta: "Open Smart Import",
+      enabled: tools.imports && canManageOrg
     }
   ].filter((card) => card.enabled);
 

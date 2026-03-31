@@ -6,8 +6,10 @@ import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
 import { can } from "@/src/shared/permissions/can";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { BrandingForm } from "./BrandingForm";
 import { saveOrgBrandingAction } from "./actions";
+import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
   title: "Branding"
@@ -27,6 +29,14 @@ export default async function OrgBrandingSettingsPage({
 }) {
   const { orgSlug } = await params;
   const orgContext = await requireOrgPermission(orgSlug, "org.branding.read");
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "branding")) {
+    return (
+      <PageStack>
+        <PageHeader description="Control how your organization appears across public and staff routes." showBorder={false} title="Branding" />
+        <ToolUnavailablePanel title="Branding" />
+      </PageStack>
+    );
+  }
   const canManageBranding = can(orgContext.membershipPermissions, "org.branding.write");
 
   const query = await searchParams;

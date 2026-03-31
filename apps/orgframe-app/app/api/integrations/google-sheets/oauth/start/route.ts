@@ -80,7 +80,7 @@ async function requireFormsWriteContext(request: NextRequest) {
   }
 
   const { data: membership, error: membershipError } = await supabase
-    .schema("orgs").from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("role")
     .eq("org_id", org.id)
     .eq("user_id", user.id)

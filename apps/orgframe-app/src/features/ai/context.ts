@@ -10,6 +10,17 @@ function buildDefaultContext(input: { userId: string; email: string | null; org:
   return {
     userId,
     email,
+    userAccount: {
+      firstName: null,
+      lastName: null,
+      fullName: null,
+      phone: null,
+      avatarPath: null,
+      avatarUrl: null,
+      emailVerified: false,
+      lastSignInAt: null,
+      metadata: {}
+    },
     org,
     account: {
       activePlayerId: null,
@@ -48,7 +59,7 @@ async function resolveOrgBySlug(orgSlug: string): Promise<AiResolvedOrg | null> 
 async function resolveOrgPermissions(orgId: string, userId: string): Promise<Permission[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("orgs").from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("role")
     .eq("org_id", orgId)
     .eq("user_id", userId)

@@ -9,9 +9,11 @@ import { buildGoDaddyQuickConnect, type GoDaddyQuickConnect } from "@/src/shared
 import { getVercelDomainDnsInstructions, type VercelDnsInstruction } from "@/src/shared/domains/vercelProjectDomains";
 import { can } from "@/src/shared/permissions/can";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { DomainSetupModal } from "./DomainSetupModal";
 import { removeOrgCustomDomainAction, saveOrgCustomDomainAction, verifyOrgCustomDomainAction } from "./actions";
+import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
   title: "Custom Domains"
@@ -69,11 +71,19 @@ export default async function OrgManageDomainsPage({
 }) {
   const { orgSlug } = await params;
   const [orgContext, query] = await Promise.all([requireOrgPermission(orgSlug, "org.manage.read"), searchParams]);
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "domains")) {
+    return (
+      <PageStack>
+        <PageHeader description="Connect your domain in a guided flow designed for non-technical users." showBorder={false} title="Custom Domains" />
+        <ToolUnavailablePanel title="Custom Domains" />
+      </PageStack>
+    );
+  }
   const canManage = can(orgContext.membershipPermissions, "org.manage.read");
 
   const supabase = await createSupabaseServer();
   const { data: domainData, error: domainError } = await supabase
-    .schema("site").from("org_custom_domains")
+    .schema("orgs").from("custom_domains")
     .select("domain, status, verification_token, verified_at, last_error")
     .eq("org_id", orgContext.orgId)
     .maybeSingle();

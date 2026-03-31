@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useMemo, useState, useTransition, type CSSProperties } from "react";
 import { ChevronRight } from "lucide-react";
-import { lookupAuthAccountAction, signInAction, signUpAction } from "@/app/auth/actions";
-import { sendActivationEmail } from "@/src/features/sportsconnect/actions";
+import { lookupAuthAccountAction, sendActivationEmail, signInAction, signUpAction } from "@/app/auth/actions";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
 import { FormField } from "@orgframe/ui/primitives/form-field";

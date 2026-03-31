@@ -1,3 +1,6 @@
+import type { OrgCapabilities } from "@/src/shared/permissions/orgCapabilities";
+import { isOrgToolEnabled, type OrgToolAvailability } from "@/src/shared/org/features";
+
 export type OrgAdminNavIcon =
   | "wrench"
   | "settings"
@@ -22,8 +25,54 @@ export type OrgAdminNavItem = {
   showInHome?: boolean;
 };
 
-export function getOrgAdminNavItems(_orgSlug: string): OrgAdminNavItem[] {
-  return [
+type OrgAdminNavVisibility = {
+  capabilities: OrgCapabilities | null;
+  toolAvailability: OrgToolAvailability;
+};
+
+function hasAnyVisibleChild(items: OrgAdminNavItem[], parentKey: string) {
+  return items.some((item) => item.parentKey === parentKey);
+}
+
+function isNavItemVisible(item: OrgAdminNavItem, visibility?: OrgAdminNavVisibility) {
+  if (!visibility) {
+    return true;
+  }
+
+  const { capabilities, toolAvailability } = visibility;
+
+  switch (item.key) {
+    case "manage-general":
+      return isOrgToolEnabled(toolAvailability, "info") && Boolean(capabilities?.manage.canRead);
+    case "manage-domains":
+      return isOrgToolEnabled(toolAvailability, "domains") && Boolean(capabilities?.manage.canRead);
+    case "manage-branding":
+      return isOrgToolEnabled(toolAvailability, "branding") && Boolean(capabilities?.manage.canRead);
+    case "manage-accounts":
+      return isOrgToolEnabled(toolAvailability, "access") && Boolean(capabilities?.manage.canRead);
+    case "manage-billing":
+      return isOrgToolEnabled(toolAvailability, "billing") && Boolean(capabilities?.manage.canRead);
+    case "manage-imports":
+      return isOrgToolEnabled(toolAvailability, "imports") && Boolean(capabilities?.manage.canRead);
+    case "programs":
+      return isOrgToolEnabled(toolAvailability, "programs") && Boolean(capabilities?.programs.canAccess);
+    case "calendar":
+      return isOrgToolEnabled(toolAvailability, "calendar") && Boolean(capabilities?.calendar.canAccess || capabilities?.programs.canAccess);
+    case "facilities":
+      return isOrgToolEnabled(toolAvailability, "facilities") && Boolean(capabilities?.facilities.canAccess);
+    case "forms":
+      return isOrgToolEnabled(toolAvailability, "forms") && Boolean(capabilities?.forms.canAccess);
+    case "inbox":
+      return isOrgToolEnabled(toolAvailability, "inbox") && Boolean(capabilities?.communications.canAccess);
+    case "manage":
+      return Boolean(capabilities?.manage.canRead);
+    default:
+      return true;
+  }
+}
+
+export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVisibility): OrgAdminNavItem[] {
+  const items: OrgAdminNavItem[] = [
     {
       key: "manage-general",
       label: "General",
@@ -70,10 +119,10 @@ export function getOrgAdminNavItems(_orgSlug: string): OrgAdminNavItem[] {
       showInHome: false
     },
     {
-      key: "manage-sportsconnect",
-      label: "SportsConnect Transfer",
-      href: "/tools/sportsconnect",
-      description: "Import SportsConnect enrollments, players, and order history.",
+      key: "manage-imports",
+      label: "Smart Import",
+      href: "/tools/imports",
+      description: "Run staged imports for people, programs, and commerce data.",
       icon: "file-text",
       parentKey: "manage",
       showInHome: false
@@ -127,6 +176,16 @@ export function getOrgAdminNavItems(_orgSlug: string): OrgAdminNavItem[] {
       showInHome: true
     }
   ];
+
+  const visibleItems = items.filter((item) => isNavItemVisible(item, visibility));
+
+  return visibleItems.filter((item) => {
+    if (item.key !== "manage") {
+      return true;
+    }
+
+    return hasAnyVisibleChild(visibleItems, "manage");
+  });
 }
 
 export type OrgToolsNavIcon = OrgAdminNavIcon;

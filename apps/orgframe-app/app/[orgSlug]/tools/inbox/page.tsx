@@ -6,8 +6,10 @@ import { PageStack } from "@orgframe/ui/primitives/layout";
 import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { getInboxWorkspaceDataAction } from "@/src/features/communications/actions";
 import { InboxWorkspace } from "@/src/features/communications/components/InboxWorkspace";
+import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
   title: "Inbox"
@@ -16,6 +18,14 @@ export const metadata: Metadata = {
 export default async function OrgManageInboxPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
   const orgContext = await getOrgAuthContext(orgSlug);
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "inbox")) {
+    return (
+      <PageStack>
+        <PageHeader description="Unified communication inbox and identity resolution." showBorder={false} title="Inbox" />
+        <ToolUnavailablePanel title="Inbox" />
+      </PageStack>
+    );
+  }
 
   const canRead = can(orgContext.membershipPermissions, "communications.read") || can(orgContext.membershipPermissions, "communications.write");
   const canWrite = can(orgContext.membershipPermissions, "communications.write");

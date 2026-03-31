@@ -6,7 +6,9 @@ import { PageTabs } from "@orgframe/ui/primitives/page-tabs";
 import { FacilityManageDetailPanel, type FacilityManageDetailSection } from "@/src/features/facilities/components/FacilityManageDetailPanel";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { listFacilityReservationReadModel } from "@/src/features/facilities/db/queries";
+import { ToolUnavailablePanel } from "../../ToolUnavailablePanel";
 
 export async function FacilityManageDetailPage({
   orgSlug,
@@ -18,6 +20,18 @@ export async function FacilityManageDetailPage({
   activeSection: FacilityManageDetailSection;
 }) {
   const orgContext = await getOrgAuthContext(orgSlug);
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "facilities")) {
+    return (
+      <PageStack>
+        <PageHeader
+          description="Manage structure and settings for this facility space."
+          showBorder={false}
+          title="Facility unavailable"
+        />
+        <ToolUnavailablePanel title="Facilities" />
+      </PageStack>
+    );
+  }
   const canReadFacilities = can(orgContext.membershipPermissions, "facilities.read") || can(orgContext.membershipPermissions, "facilities.write");
   const canWriteFacilities = can(orgContext.membershipPermissions, "facilities.write");
 

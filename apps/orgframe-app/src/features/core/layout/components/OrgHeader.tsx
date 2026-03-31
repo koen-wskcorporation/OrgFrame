@@ -22,14 +22,13 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { ProgramHeaderBar } from "@/src/features/core/layout/components/ProgramHeaderBar";
-import { SiteStructureEditorPopup } from "@/src/features/site/components/SiteStructureEditorPopup";
 import { AdaptiveLogo } from "@orgframe/ui/primitives/adaptive-logo";
 import { Button } from "@orgframe/ui/primitives/button";
 import { NavItem } from "@orgframe/ui/primitives/nav-item";
-import { useToast } from "@orgframe/ui/primitives/toast";
 import { getOrgAdminNavItems, type OrgAdminNavIcon } from "@/src/features/core/navigation/config/adminNav";
+import type { OrgCapabilities } from "@/src/shared/permissions/orgCapabilities";
+import type { OrgToolAvailability } from "@/src/shared/org/features";
 import { cn } from "@orgframe/ui/primitives/utils";
-import { saveOrgSiteStructureAction } from "@/src/features/site/actions";
 import {
   ORG_SITE_EDITOR_STATE_EVENT,
   ORG_SITE_OPEN_BLOCK_LIBRARY_EVENT,
@@ -37,7 +36,7 @@ import {
   ORG_SITE_OPEN_EDITOR_REQUEST_KEY,
   ORG_SITE_SET_EDITOR_EVENT
 } from "@/src/features/site/events";
-import type { OrgManagePage, OrgSiteStructureItem, ResolvedOrgSiteStructureItemNode } from "@/src/features/site/types";
+import type { OrgManagePage, ResolvedOrgSiteStructureItemNode } from "@/src/features/site/types";
 
 type OrgHeaderProps = {
   orgSlug: string;
@@ -47,8 +46,9 @@ type OrgHeaderProps = {
   governingBodyName?: string | null;
   canManageOrg: boolean;
   canEditPages: boolean;
+  capabilities: OrgCapabilities | null;
+  toolAvailability: OrgToolAvailability;
   pages: OrgManagePage[];
-  siteStructureNodes: OrgSiteStructureItem[];
   resolvedSiteStructure: ResolvedOrgSiteStructureItemNode[];
 };
 
@@ -234,14 +234,14 @@ export function OrgHeader({
   orgLogoUrl,
   canManageOrg,
   canEditPages,
+  capabilities,
+  toolAvailability,
   pages,
-  siteStructureNodes,
   resolvedSiteStructure
 }: OrgHeaderProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const { toast } = useToast();
   const [hasHydrated, setHasHydrated] = useState(false);
 
   const orgBasePath = `/${orgSlug}`;
@@ -252,11 +252,6 @@ export function OrgHeader({
   const [expandedToolsParents, setExpandedToolsParents] = useState<Record<string, boolean>>({});
   const [isScrolled, setIsScrolled] = useState(false);
 
-  const [menuPages, setMenuPages] = useState<OrgManagePage[]>(() => sortedPages(pages));
-  const [structureNodes, setStructureNodes] = useState<OrgSiteStructureItem[]>(siteStructureNodes);
-  const [resolvedStructure, setResolvedStructure] = useState<ResolvedOrgSiteStructureItemNode[]>(resolvedSiteStructure);
-  const [isStructureEditorOpen, setIsStructureEditorOpen] = useState(false);
-
   const [isPageContentEditing, setIsPageContentEditing] = useState(false);
   const [isPageEditorInitializing, setIsPageEditorInitializing] = useState(false);
   const [openHeaderDropdownId, setOpenHeaderDropdownId] = useState<string | null>(null);
@@ -265,7 +260,7 @@ export function OrgHeader({
     setHasHydrated(true);
   }, []);
 
-  const toolsNavItems = useMemo(() => getOrgAdminNavItems(orgSlug), [orgSlug]);
+  const toolsNavItems = useMemo(() => getOrgAdminNavItems(orgSlug, { capabilities, toolAvailability }), [capabilities, orgSlug, toolAvailability]);
   const toolsNavTopLevelItems = useMemo(() => toolsNavItems.filter((item) => !item.parentKey), [toolsNavItems]);
   const toolsNavChildrenByParent = useMemo(() => {
     const map = new Map<string, typeof toolsNavItems>();
@@ -283,31 +278,19 @@ export function OrgHeader({
     return map;
   }, [toolsNavItems]);
 
-  useEffect(() => {
-    setMenuPages(sortedPages(pages));
-  }, [pages]);
-
-  useEffect(() => {
-    setStructureNodes(siteStructureNodes);
-  }, [siteStructureNodes]);
-
-  useEffect(() => {
-    setResolvedStructure(resolvedSiteStructure);
-  }, [resolvedSiteStructure]);
-
   const structuredHeaderMenuNodes = useMemo(
-    () => buildResolvedHeaderMenuNodes({ nodes: resolvedStructure, orgSlug, currentPathname, hasHydrated }),
-    [currentPathname, hasHydrated, orgSlug, resolvedStructure]
+    () => buildResolvedHeaderMenuNodes({ nodes: resolvedSiteStructure, orgSlug, currentPathname, hasHydrated }),
+    [currentPathname, hasHydrated, orgSlug, resolvedSiteStructure]
   );
   const fallbackHeaderMenuNodes = useMemo(
     () =>
       buildFallbackHeaderMenuNodes({
-        pages: menuPages,
+        pages,
         orgSlug,
         currentPathname,
         hasHydrated
       }),
-    [currentPathname, hasHydrated, menuPages, orgSlug]
+    [currentPathname, hasHydrated, orgSlug, pages]
   );
   const headerMenuNodes = structuredHeaderMenuNodes.length > 0 ? structuredHeaderMenuNodes : fallbackHeaderMenuNodes;
 
@@ -330,29 +313,6 @@ export function OrgHeader({
       router.push(normalizedTarget);
     },
     [currentPathname, pathname, router]
-  );
-
-  const onSaveSiteStructure = useCallback(
-    async (action: Parameters<typeof saveOrgSiteStructureAction>[0]["action"]) => {
-      const result = await saveOrgSiteStructureAction({
-        orgSlug,
-        action
-      });
-
-      if (!result.ok) {
-        toast({
-          title: "Unable to save site structure",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
-
-      setMenuPages(sortedPages(result.pages));
-      setStructureNodes(result.nodes);
-      setResolvedStructure(result.resolved);
-    },
-    [orgSlug, toast]
   );
 
   useEffect(() => {
@@ -627,7 +587,6 @@ export function OrgHeader({
             {canEditPages && !isPageContentEditing ? (
               <Button
                 onClick={() => {
-                  setIsStructureEditorOpen(true);
                   setIsToolsMenuOpen(false);
                 }}
                 size="md"
@@ -740,20 +699,6 @@ export function OrgHeader({
 
         {!isPageContentEditing ? <ProgramHeaderBar orgSlug={orgSlug} /> : null}
       </div>
-
-      <SiteStructureEditorPopup
-        nodes={structureNodes}
-        onClose={() => setIsStructureEditorOpen(false)}
-        onOpenPageEditor={(pageSlug) => {
-          setIsStructureEditorOpen(false);
-          openEditorOnPath(toOrgScopedHref(orgSlug, pageHref(orgSlug, pageSlug)) ?? "/");
-        }}
-        onSave={onSaveSiteStructure}
-        open={isStructureEditorOpen}
-        orgSlug={orgSlug}
-        pages={menuPages}
-        resolved={resolvedStructure}
-      />
     </div>
   );
 }

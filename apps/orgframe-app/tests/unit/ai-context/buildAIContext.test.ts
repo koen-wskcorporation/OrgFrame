@@ -59,7 +59,7 @@ function createSupabaseMock() {
                 };
               }
 
-              if (table === "org_memberships") {
+              if (table === "memberships") {
                 if (state.membershipQueryError) {
                   return {
                     data: null,

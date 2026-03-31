@@ -20,7 +20,7 @@ export async function listUserOrgs(): Promise<UserOrgMembership[]> {
 
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("orgs").from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("role, org:orgs!inner(id, slug, name, logo_path, icon_path)")
     .eq("user_id", user.id)
     .order("created_at", { ascending: true });

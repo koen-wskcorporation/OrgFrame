@@ -9,10 +9,12 @@ import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { PageTabs } from "@orgframe/ui/primitives/page-tabs";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { getFormGoogleSheetIntegrationAction, getFormSubmissionViewsDataAction } from "@/src/features/forms/actions";
 import { FormPublishToggleButton } from "@/src/features/forms/components/FormPublishToggleButton";
 import { FormSubmissionsPanel } from "@/src/features/forms/components/FormSubmissionsPanel";
 import { getFormById, listFormSubmissionsWithEntries } from "@/src/features/forms/db/queries";
+import { ToolUnavailablePanel } from "../../../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
   title: "Form Submissions"
@@ -26,6 +28,14 @@ export default async function OrgManageFormSubmissionsPage({
   noStore();
   const { orgSlug, formId } = await params;
   const orgContext = await getOrgAuthContext(orgSlug);
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "forms")) {
+    return (
+      <PageStack>
+        <PageHeader description="Manage form questions and submission data." showBorder={false} title="Form Submissions" />
+        <ToolUnavailablePanel title="Forms" />
+      </PageStack>
+    );
+  }
   const canReadForms = can(orgContext.membershipPermissions, "forms.read") || can(orgContext.membershipPermissions, "forms.write");
 
   if (!canReadForms) {

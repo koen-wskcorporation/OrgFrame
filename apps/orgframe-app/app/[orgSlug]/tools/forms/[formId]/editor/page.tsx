@@ -8,10 +8,12 @@ import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { PageTabs } from "@orgframe/ui/primitives/page-tabs";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { FormEditorPanel } from "@/src/features/forms/components/FormEditorPanel";
 import { FormPublishToggleButton } from "@/src/features/forms/components/FormPublishToggleButton";
 import { getFormById } from "@/src/features/forms/db/queries";
 import { listProgramNodes, listProgramsForManage } from "@/src/features/programs/db/queries";
+import { ToolUnavailablePanel } from "../../../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
   title: "Form Builder"
@@ -24,6 +26,14 @@ export default async function OrgManageFormEditorPage({
 }) {
   const { orgSlug, formId } = await params;
   const orgContext = await getOrgAuthContext(orgSlug);
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "forms")) {
+    return (
+      <PageStack>
+        <PageHeader description="Build fields visually, preview output, and publish immutable versions." showBorder={false} title="Form Builder" />
+        <ToolUnavailablePanel title="Forms" />
+      </PageStack>
+    );
+  }
   const canReadForms = can(orgContext.membershipPermissions, "forms.read") || can(orgContext.membershipPermissions, "forms.write");
 
   if (!canReadForms) {

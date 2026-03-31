@@ -10,10 +10,12 @@ import { ProgramPublishToggleButton } from "@/src/features/programs/components/P
 import { ProgramTeamsPanel } from "@/src/features/programs/teams/components/ProgramTeamsPanel";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { listFormsForManage } from "@/src/features/forms/db/queries";
 import { getProgramDetailsById } from "@/src/features/programs/db/queries";
 import { listProgramScheduleReadModelV2, listProgramScheduleTimelineWithFallback } from "@/src/features/programs/schedule/db/queries";
 import { listProgramTeamsSummary } from "@/src/features/programs/teams/db/queries";
+import { ToolUnavailablePanel } from "../../ToolUnavailablePanel";
 
 export async function ProgramManageDetailPage({
   orgSlug,
@@ -25,6 +27,14 @@ export async function ProgramManageDetailPage({
   activeSection: "structure" | "schedule" | "registration" | "settings" | "teams";
 }) {
   const orgContext = await getOrgAuthContext(orgSlug);
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "programs")) {
+    return (
+      <PageStack>
+        <PageHeader description="Edit hierarchy, schedule rules, and registration setup for this program." showBorder={false} title="Program unavailable" />
+        <ToolUnavailablePanel title="Programs" />
+      </PageStack>
+    );
+  }
   const canReadPrograms = can(orgContext.membershipPermissions, "programs.read") || can(orgContext.membershipPermissions, "programs.write");
 
   if (!canReadPrograms) {

@@ -2,6 +2,7 @@ import { cache } from "react";
 import { notFound } from "next/navigation";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { getGoverningBodyLogoUrl } from "@/src/shared/branding/getGoverningBodyLogoUrl";
+import { resolveOrgToolAvailability } from "@/src/shared/org/features";
 import { isReservedOrgSlug } from "@/src/shared/org/reservedSlugs";
 import type { OrgBranding, OrgGoverningBody, OrgPublicContext } from "@/src/shared/org/types";
 
@@ -56,7 +57,7 @@ export const getOrgPublicContext = cache(async (orgSlug: string): Promise<OrgPub
   const supabase = await createSupabaseServer();
   const { data: org, error: orgError } = await supabase
     .schema("orgs").from("orgs")
-    .select("id, slug, name, logo_path, icon_path, brand_primary, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
+    .select("id, slug, name, logo_path, icon_path, brand_primary, features_json, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
     .eq("slug", orgSlug)
     .maybeSingle();
 
@@ -73,6 +74,7 @@ export const getOrgPublicContext = cache(async (orgSlug: string): Promise<OrgPub
     orgSlug: org.slug,
     orgName: org.name,
     branding: mapBranding(org),
-    governingBody: mapGoverningBody(org.governing_body)
+    governingBody: mapGoverningBody(org.governing_body),
+    toolAvailability: resolveOrgToolAvailability(org.features_json)
   };
 });

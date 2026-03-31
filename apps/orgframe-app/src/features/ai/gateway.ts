@@ -1,8 +1,8 @@
 import { getAiConfig } from "@/src/features/ai/config";
-import type { AiConversationMessage, AiMode, AiProposal, AiResolvedContext } from "@/src/features/ai/types";
-import { aiToolDefinitions, runAiTool } from "@/src/features/ai/tools";
+import type { AiConversationMessage, AiMode, AiProposal, AiResolvedContext, AiUiContext } from "@/src/features/ai/types";
+import { aiAskToolDefinitions, aiPlanningToolDefinitions, runAiTool, type AiToolName } from "@/src/features/ai/tools";
 
-type PlanningToolName = "resolve_entities" | "propose_changes";
+const knownToolNames = new Set<AiToolName>(["resolve_entities", "propose_changes", "query_org_data", "execute_changes"]);
 
 type GatewayTelemetry = {
   phase: "ask" | "act";
@@ -96,6 +96,8 @@ function buildSystemInstructions(input: {
   scopeModule: AiResolvedContext["scope"]["currentModule"];
   activePlayerId: string | null;
   playerSummaries: string[];
+  uiContext?: AiUiContext;
+  userAccountSummary: string;
 }) {
   const orgInstruction = input.orgSlug
     ? `Current org context is \`${input.orgSlug}\`. Keep any org action scoped to this org.`
@@ -106,15 +108,20 @@ function buildSystemInstructions(input: {
       ? `Players on this account: ${input.playerSummaries.join("; ")}.`
       : "No players are currently linked to this account.";
   const activePlayerInstruction = input.activePlayerId ? `Active player id in context: \`${input.activePlayerId}\`.` : "No active player is selected.";
+  const uiContextInstruction = buildUiContextInstruction(input.uiContext);
+  const userAccountInstruction = input.userAccountSummary;
 
   return [
     "You are OrgFrame AI Assistant for all authenticated users.",
     "Never mutate data directly from this planning interaction.",
     "For action requests: first resolve entities, then propose a structured dry-run plan.",
+    "For data questions, call read-only tools to answer from org data instead of guessing.",
     "Only use provided tools for grounded actions and avoid hallucinated entities.",
     "If the request is ambiguous, ask for specific selection and provide candidates.",
     orgInstruction,
+    userAccountInstruction,
     scopeInstruction,
+    uiContextInstruction,
     playerInstruction,
     activePlayerInstruction,
     input.mode === "ask" || !input.canExecute
@@ -122,6 +129,63 @@ function buildSystemInstructions(input: {
       : "This is act planning mode. You must return a confirmable proposal and changeset before execution.",
     "Keep responses concise and operational."
   ].join("\n");
+}
+
+function buildUiContextInstruction(uiContext?: AiUiContext) {
+  if (!uiContext) {
+    return "Client UI context was not provided; infer with caution and ask before acting on page-specific assumptions.";
+  }
+
+  const route = uiContext.route;
+  const page = uiContext.page;
+  const queryParamSummary = route.queryParams ? Object.entries(route.queryParams).slice(0, 10).map(([key, value]) => `${key}=${value}`).join(", ") : "";
+  const selectionText = uiContext.selection?.text ? uiContext.selection.text.slice(0, 220) : "";
+
+  return [
+    "Client UI context (source of truth for current page) follows.",
+    `Source: ${uiContext.source}.`,
+    `Route: pathname=\`${route.pathname}\`${route.search ? ` search=\`${route.search}\`` : ""}${route.hash ? ` hash=\`${route.hash}\`` : ""}.`,
+    route.title ? `Document title: ${route.title}.` : null,
+    route.referrerPath ? `Referrer path: \`${route.referrerPath}\`.` : null,
+    queryParamSummary ? `Query params: ${queryParamSummary}.` : null,
+    `Page scope: module=\`${page.currentModule ?? "unknown"}\`${page.tool ? ` tool=\`${page.tool}\`` : ""}${page.entityType ? ` entityType=\`${page.entityType}\`` : ""}${page.entityId ? ` entityId=\`${page.entityId}\`` : ""}.`,
+    page.orgSlugFromPath ? `Org slug from page path: \`${page.orgSlugFromPath}\`.` : null,
+    selectionText ? `User-selected text: "${selectionText}".` : null,
+    uiContext.selection?.activeElement
+      ? `Active element: ${uiContext.selection.activeElement.tagName}${uiContext.selection.activeElement.role ? ` role=${uiContext.selection.activeElement.role}` : ""}${uiContext.selection.activeElement.id ? ` id=${uiContext.selection.activeElement.id}` : ""}${uiContext.selection.activeElement.name ? ` name=${uiContext.selection.activeElement.name}` : ""}${uiContext.selection.activeElement.ariaLabel ? ` aria-label=${uiContext.selection.activeElement.ariaLabel}` : ""}.`
+      : null,
+    uiContext.viewport ? `Viewport: ${uiContext.viewport.width}x${uiContext.viewport.height}, mobile=${String(uiContext.viewport.isMobile)}.` : null,
+    uiContext.runtime
+      ? `Runtime: timezone=${uiContext.runtime.timezone ?? "unknown"}, language=${uiContext.runtime.language ?? "unknown"}, online=${String(uiContext.runtime.online ?? "unknown")}, visibility=${uiContext.runtime.visibilityState ?? "unknown"}.`
+      : null
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildUserAccountSummary(context: AiResolvedContext) {
+  const account = context.userAccount;
+  const lines: string[] = [];
+  lines.push("Current authenticated account profile context:");
+  lines.push(`- userId: \`${context.userId}\``);
+  lines.push(`- email: ${context.email ?? "none"}`);
+  lines.push(`- fullName: ${account.fullName ?? "none"}`);
+  lines.push(`- firstName: ${account.firstName ?? "none"}`);
+  lines.push(`- lastName: ${account.lastName ?? "none"}`);
+  lines.push(`- phone: ${account.phone ?? "none"}`);
+  lines.push(`- emailVerified: ${String(account.emailVerified)}`);
+  lines.push(`- lastSignInAt: ${account.lastSignInAt ?? "unknown"}`);
+  lines.push(`- avatarPath: ${account.avatarPath ?? "none"}`);
+  lines.push(`- avatarUrl: ${account.avatarUrl ?? "none"}`);
+
+  const metadataEntries = Object.entries(account.metadata ?? {}).slice(0, 20);
+  if (metadataEntries.length > 0) {
+    lines.push(`- metadata: ${metadataEntries.map(([key, value]) => `${key}=${String(value)}`).join(", ")}`);
+  } else {
+    lines.push("- metadata: none");
+  }
+
+  return lines.join("\n");
 }
 
 function toGatewayMessages(input: { conversation: AiConversationMessage[]; userMessage: string }) {
@@ -140,6 +204,19 @@ function toGatewayMessages(input: { conversation: AiConversationMessage[]; userM
   });
 
   return [...conversationItems, { role: "user", content: [{ type: "input_text", text: input.userMessage }] }];
+}
+
+function toGatewayFollowupInput(input: {
+  userMessage: string;
+  outputs: Array<{ type: "function_call_output"; call_id: string; output: string }>;
+}) {
+  return [
+    {
+      role: "user" as const,
+      content: [{ type: "input_text" as const, text: input.userMessage }]
+    },
+    ...input.outputs
+  ];
 }
 
 function extractResponseText(response: GatewayResponse): string {
@@ -167,13 +244,19 @@ function extractResponseText(response: GatewayResponse): string {
   return texts.join("\n").trim();
 }
 
-function extractFunctionCalls(response: GatewayResponse): Array<{ name: PlanningToolName; callId: string; argumentsJson: string }> {
+function extractFunctionCalls(response: GatewayResponse): Array<{ name: AiToolName; callId: string; argumentsJson: string }> {
   const output = Array.isArray(response.output) ? response.output : [];
 
   return output
-    .filter((item) => item?.type === "function_call" && typeof item?.name === "string" && typeof item?.call_id === "string")
+    .filter(
+      (item) =>
+        item?.type === "function_call" &&
+        typeof item?.name === "string" &&
+        knownToolNames.has(item.name as AiToolName) &&
+        typeof item?.call_id === "string"
+    )
     .map((item) => ({
-      name: item.name as PlanningToolName,
+      name: item.name as AiToolName,
       callId: item.call_id as string,
       argumentsJson: typeof item.arguments === "string" ? item.arguments : "{}"
     }));
@@ -231,6 +314,10 @@ function safeJsonParse(value: string) {
   } catch {
     return {};
   }
+}
+
+function cleanText(value: string) {
+  return value.trim();
 }
 
 async function postGatewayResponse(input: {
@@ -346,10 +433,14 @@ export async function runAskConversation(input: {
 }): Promise<AiPlanningResult> {
   const { model, fallbackModels, maxOutputTokens } = getGatewayConnection();
   const playerSummaries = input.context.account.players.slice(0, 10).map((player) => `${player.label}${player.subtitle ? ` (${player.subtitle})` : ""}`);
+  const userAccountSummary = buildUserAccountSummary(input.context);
+  const modelCandidates = [model, ...fallbackModels];
+  const askTools = input.context.org ? aiAskToolDefinitions : [];
+  let assistantText = "";
 
-  const response = await createGatewayResponseWithRetry({
+  let response = await createGatewayResponseWithRetry({
     phase: "ask",
-    modelCandidates: [model, ...fallbackModels],
+    modelCandidates,
     request: {
       instructions: buildSystemInstructions({
         mode: input.mode,
@@ -357,18 +448,99 @@ export async function runAskConversation(input: {
         orgSlug: input.context.org?.orgSlug ?? null,
         scopeModule: input.context.scope.currentModule,
         activePlayerId: input.context.account.activePlayerId,
-        playerSummaries
+        playerSummaries,
+        uiContext: input.context.uiContext,
+        userAccountSummary
       }),
       input: toGatewayMessages({
         conversation: input.conversation,
         userMessage: input.userMessage
       }) as unknown,
+      ...(askTools.length > 0 ? { tools: askTools as unknown } : {}),
       max_output_tokens: maxOutputTokens
     }
   });
 
-  const assistantText = extractResponseText(response) || "I can help answer questions and prepare a safe action plan when you provide org context.";
-  emitTextInChunks(assistantText, input.callbacks.onAssistantDelta);
+  for (let iteration = 0; iteration < 6; iteration += 1) {
+    const responseText = extractResponseText(response);
+    if (responseText) {
+      assistantText = `${assistantText}\n${responseText}`.trim();
+      emitTextInChunks(responseText, input.callbacks.onAssistantDelta);
+    }
+
+    if (askTools.length === 0) {
+      break;
+    }
+
+    const calls = extractFunctionCalls(response);
+    if (calls.length === 0) {
+      break;
+    }
+
+    const outputs: Array<{ type: "function_call_output"; call_id: string; output: string }> = [];
+
+    for (const call of calls) {
+      const rawArgs = safeJsonParse(call.argumentsJson) as Record<string, unknown>;
+      const args: Record<string, unknown> = {
+        ...rawArgs,
+        orgSlug: (typeof rawArgs.orgSlug === "string" && rawArgs.orgSlug.trim()) || input.context.org?.orgSlug || ""
+      };
+
+      if (call.name === "resolve_entities") {
+        args.freeText = (typeof rawArgs.freeText === "string" && rawArgs.freeText.trim()) || input.userMessage;
+      }
+
+      if (call.name === "query_org_data") {
+        const hasFormHint = ["formId", "formSlug", "formName", "question"].some((key) => typeof rawArgs[key] === "string" && cleanText(String(rawArgs[key])));
+        if (!hasFormHint) {
+          args.question = input.userMessage;
+        }
+      }
+
+      input.callbacks.onToolCall(call.name, args);
+      const result = await runAiTool(
+        call.name,
+        {
+          requestContext: input.context,
+          mode: input.mode
+        },
+        args
+      );
+      input.callbacks.onToolResult(call.name, result);
+      outputs.push({
+        type: "function_call_output",
+        call_id: call.callId,
+        output: JSON.stringify(result)
+      });
+    }
+
+    response = await createGatewayResponseWithRetry({
+      phase: "ask",
+      modelCandidates,
+      request: {
+        instructions: buildSystemInstructions({
+          mode: input.mode,
+          canExecute: false,
+          orgSlug: input.context.org?.orgSlug ?? null,
+          scopeModule: input.context.scope.currentModule,
+          activePlayerId: input.context.account.activePlayerId,
+          playerSummaries,
+          uiContext: input.context.uiContext,
+          userAccountSummary
+        }),
+        previous_response_id: response.id,
+        input: toGatewayFollowupInput({ userMessage: input.userMessage, outputs }) as unknown,
+        tools: askTools as unknown,
+        max_output_tokens: maxOutputTokens
+      }
+    });
+  }
+
+  if (!assistantText) {
+    const fallback = "I can help answer questions using org data when org context and read permissions are available.";
+    emitTextInChunks(fallback, input.callbacks.onAssistantDelta);
+    assistantText = fallback;
+  }
 
   return {
     assistantText,
@@ -388,6 +560,7 @@ export async function runActPlanningConversation(input: {
   const { model, fallbackModels, maxOutputTokens } = getGatewayConnection();
   const modelCandidates = [model, ...fallbackModels];
   const playerSummaries = input.context.account.players.slice(0, 10).map((player) => `${player.label}${player.subtitle ? ` (${player.subtitle})` : ""}`);
+  const userAccountSummary = buildUserAccountSummary(input.context);
 
   let proposal: AiProposal | null = null;
   let assistantText = "";
@@ -402,13 +575,15 @@ export async function runActPlanningConversation(input: {
         orgSlug: input.orgSlug,
         scopeModule: input.context.scope.currentModule,
         activePlayerId: input.context.account.activePlayerId,
-        playerSummaries
+        playerSummaries,
+        uiContext: input.context.uiContext,
+        userAccountSummary
       }),
       input: toGatewayMessages({
         conversation: input.conversation,
         userMessage: input.userMessage
       }) as unknown,
-      tools: aiToolDefinitions as unknown,
+      tools: aiPlanningToolDefinitions as unknown,
       max_output_tokens: maxOutputTokens
     }
   });
@@ -486,11 +661,13 @@ export async function runActPlanningConversation(input: {
           orgSlug: input.orgSlug,
           scopeModule: input.context.scope.currentModule,
           activePlayerId: input.context.account.activePlayerId,
-          playerSummaries
+          playerSummaries,
+          uiContext: input.context.uiContext,
+          userAccountSummary
         }),
         previous_response_id: response.id,
-        input: outputs as unknown,
-        tools: aiToolDefinitions as unknown,
+        input: toGatewayFollowupInput({ userMessage: input.userMessage, outputs }) as unknown,
+        tools: aiPlanningToolDefinitions as unknown,
         max_output_tokens: maxOutputTokens
       }
     });

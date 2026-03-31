@@ -4,6 +4,15 @@ export type AIContext = {
     id: string;
     email: string;
     name?: string;
+    firstName: string | null;
+    lastName: string | null;
+    fullName: string | null;
+    phone: string | null;
+    avatarPath: string | null;
+    avatarUrl: string | null;
+    emailVerified: boolean;
+    lastSignInAt: string | null;
+    metadata: Record<string, unknown>;
   };
   org: {
     id: string;

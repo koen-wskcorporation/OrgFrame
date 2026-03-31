@@ -15,7 +15,8 @@ const getOrgRequestContextCached = cache(async (orgSlug: string): Promise<OrgReq
   const org = await getOrgPublicContext(orgSlug);
   const sessionUser = await getSessionUser();
   const membership = await getOptionalOrgMembershipAccess(org.orgId, {
-    sessionUser
+    sessionUser,
+    toolAvailability: org.toolAvailability
   });
 
   return {

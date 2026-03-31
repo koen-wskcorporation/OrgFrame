@@ -5,6 +5,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { z } from "zod";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
+import { requireOrgToolEnabled } from "@/src/shared/org/requireOrgToolEnabled";
 import { requirePermission } from "@/src/shared/permissions/requirePermission";
 import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 import {
@@ -14,6 +15,7 @@ import {
   type OrgRole,
   type Permission
 } from "@/src/features/core/access";
+import type { OrgToolAvailability } from "@/src/shared/org/features";
 
 const roleKeySchema = z.string().trim().min(2).max(32);
 
@@ -98,6 +100,7 @@ export type AccountsAccessPageData = {
   roles: AccessRoleDefinition[];
   serviceRoleConfigured: boolean;
   loadError: string | null;
+  toolAvailability: OrgToolAvailability;
 };
 
 type MembershipRow = z.infer<typeof membershipRowSchema>;
@@ -152,13 +155,14 @@ function listAssignableRoles(): AccessRoleDefinition[] {
 
 async function requireAccessContext(orgSlug: string) {
   const orgContext = await getOrgAuthContext(orgSlug);
+  requireOrgToolEnabled(orgContext.toolAvailability, "access");
   requirePermission(orgContext.membershipPermissions, "org.manage.read");
   return orgContext;
 }
 
 async function listOrgMembershipRows(supabase: SupabaseClient<any>, orgId: string): Promise<MembershipRow[]> {
   const { data, error } = await supabase
-    .schema("orgs").from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("id, user_id, role, created_at")
     .eq("org_id", orgId)
     .order("created_at", { ascending: true });
@@ -175,7 +179,7 @@ async function listOrgMembershipRows(supabase: SupabaseClient<any>, orgId: strin
 
 async function findMembershipById(supabase: SupabaseClient<any>, orgId: string, membershipId: string): Promise<MembershipRow | null> {
   const { data, error } = await supabase
-    .schema("orgs").from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("id, user_id, role, created_at")
     .eq("org_id", orgId)
     .eq("id", membershipId)
@@ -191,7 +195,7 @@ async function findMembershipById(supabase: SupabaseClient<any>, orgId: string, 
 
 async function membershipExists(supabase: SupabaseClient<any>, orgId: string, userId: string) {
   const { data, error } = await supabase
-    .schema("orgs").from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("id")
     .eq("org_id", orgId)
     .eq("user_id", userId)
@@ -206,7 +210,7 @@ async function membershipExists(supabase: SupabaseClient<any>, orgId: string, us
 
 async function countAdmins(supabase: SupabaseClient<any>, orgId: string) {
   const { count, error } = await supabase
-    .schema("orgs").from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId)
     .in("role", ["owner", "admin", "manager"]);
@@ -346,7 +350,8 @@ export async function getAccountsAccessPageData(orgSlug: string): Promise<Accoun
       members: [],
       roles: defaultRoles,
       serviceRoleConfigured: false,
-      loadError: "Service role key is not configured. Set SUPABASE_SERVICE_ROLE_KEY on the server."
+      loadError: "Service role key is not configured. Set SUPABASE_SERVICE_ROLE_KEY on the server.",
+      toolAvailability: orgContext.toolAvailability
     };
   }
 
@@ -369,7 +374,8 @@ export async function getAccountsAccessPageData(orgSlug: string): Promise<Accoun
       members,
       roles,
       serviceRoleConfigured: true,
-      loadError: null
+      loadError: null,
+      toolAvailability: orgContext.toolAvailability
     };
   } catch {
     return {
@@ -381,7 +387,8 @@ export async function getAccountsAccessPageData(orgSlug: string): Promise<Accoun
       members: [],
       roles: defaultRoles,
       serviceRoleConfigured: true,
-      loadError: "Unable to load org memberships right now."
+      loadError: "Unable to load org memberships right now.",
+      toolAvailability: orgContext.toolAvailability
     };
   }
 }
@@ -448,7 +455,7 @@ export async function inviteUserToOrgAction(input: {
       return asFailure("already_member", "That user already has access to this organization.");
     }
 
-    const { error: insertError } = await supabase.schema("orgs").from("org_memberships").insert({
+    const { error: insertError } = await supabase.schema("orgs").from("memberships").insert({
       org_id: orgContext.orgId,
       user_id: userId,
       role
@@ -547,7 +554,7 @@ export async function updateMembershipRoleAction(input: {
     }
 
     const { error: updateError } = await supabase
-      .schema("orgs").from("org_memberships")
+      .schema("orgs").from("memberships")
       .update({
         role
       })
@@ -619,7 +626,7 @@ export async function removeMembershipAction(input: {
     }
 
     const { error: deleteError } = await supabase
-      .schema("orgs").from("org_memberships")
+      .schema("orgs").from("memberships")
       .delete()
       .eq("org_id", orgContext.orgId)
       .eq("id", membershipId);

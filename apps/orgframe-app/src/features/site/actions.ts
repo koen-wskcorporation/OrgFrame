@@ -8,12 +8,9 @@ import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermiss
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { defaultPageTitleFromSlug, isReservedPageSlug, sanitizePageSlug } from "@/src/features/site/blocks/helpers";
 import {
-  createOrgSiteStructureNode,
   createOrgNavItem,
-  deleteOrgSiteStructureNodeById,
   deleteOrgNavItemById,
   deleteOrgPageById,
-  getOrgSiteStructureNodeById,
   getOrgNavItemById,
   duplicateOrgPageWithBlocks,
   ensureOrgPageExists,
@@ -23,13 +20,9 @@ import {
   listOrgNavItemsForManage,
   listOrgPagesForManage,
   listOrgPagesForLinkPicker,
-  listOrgSiteStructureNodesForManage,
-  reorderOrgSiteStructureNodes,
   reorderOrgPages,
-  resolveOrgSiteStructureForHeader,
   saveOrgNavItemsTree,
   saveOrgPageAndBlocks,
-  updateOrgSiteStructureNodeById,
   updateOrgNavItemById,
   updateOrgPageSettingsById
 } from "@/src/features/site/db/queries";
@@ -39,9 +32,7 @@ import type {
   OrgManagePage,
   OrgNavItem,
   OrgPageBlock,
-  OrgSitePage,
-  OrgSiteStructureItem,
-  ResolvedOrgSiteStructureItemNode
+  OrgSitePage
 } from "@/src/features/site/types";
 
 export type LoadOrgPageInput = {
@@ -65,7 +56,7 @@ export async function loadOrgPageAction(input: LoadOrgPageInput): Promise<LoadOr
   try {
     const pageSlug = sanitizePageSlug(input.pageSlug);
     const org = await getOrgPublicContext(input.orgSlug);
-    const membershipAccess = await getOptionalOrgMembershipAccess(org.orgId);
+    const membershipAccess = await getOptionalOrgMembershipAccess(org.orgId, { toolAvailability: org.toolAvailability });
     const capabilities = membershipAccess ? getOrgCapabilities(membershipAccess.permissions) : null;
     const canReadEditorData = capabilities?.pages.canAccess ?? false;
     const canEdit = capabilities?.pages.canWrite ?? false;
@@ -178,7 +169,7 @@ type ListOrgPagesForLinkPickerResult =
 export async function listOrgPagesForLinkPickerAction(input: { orgSlug: string }): Promise<ListOrgPagesForLinkPickerResult> {
   try {
     const org = await getOrgPublicContext(input.orgSlug);
-    const membershipAccess = await getOptionalOrgMembershipAccess(org.orgId);
+    const membershipAccess = await getOptionalOrgMembershipAccess(org.orgId, { toolAvailability: org.toolAvailability });
     const capabilities = membershipAccess ? getOrgCapabilities(membershipAccess.permissions) : null;
     const canReadPages = capabilities?.pages.canAccess ?? false;
 
@@ -1666,453 +1657,6 @@ export async function deleteOrgPagesBySlugsAction(input: { orgSlug: string; page
     return {
       ok: false,
       error: "Unable to delete pages right now."
-    };
-  }
-}
-
-type LoadOrgSiteStructureActionResult =
-  | {
-      ok: true;
-      pages: OrgManagePage[];
-      nodes: OrgSiteStructureItem[];
-      resolved: ResolvedOrgSiteStructureItemNode[];
-    }
-  | {
-      ok: false;
-      error: string;
-    };
-
-export async function loadOrgSiteStructureAction(input: { orgSlug: string }): Promise<LoadOrgSiteStructureActionResult> {
-  try {
-    const org = await requireOrgPermission(input.orgSlug, "org.pages.write");
-    const [pages, nodes, resolved] = await Promise.all([
-      listOrgPagesForManage(org.orgId),
-      listOrgSiteStructureNodesForManage(org.orgId),
-      resolveOrgSiteStructureForHeader({
-        orgId: org.orgId,
-        orgSlug: org.orgSlug,
-        includeUnpublished: true
-      })
-    ]);
-
-    return {
-      ok: true,
-      pages,
-      nodes,
-      resolved
-    };
-  } catch (error) {
-    rethrowIfNavigationError(error);
-    return {
-      ok: false,
-      error: "Unable to load site structure right now."
-    };
-  }
-}
-
-const saveOrgSiteStructureActionSchema = z.object({
-  orgSlug: z.string().trim().min(1),
-  action: z.discriminatedUnion("type", [
-    z.object({
-      type: z.literal("create-item"),
-      parentId: z.string().trim().uuid().nullable().optional(),
-      itemType: z.enum(["page", "placeholder", "dynamic"]),
-      title: z.string().trim().min(1).max(120),
-      slug: z.string().trim().min(1).max(120),
-      urlPath: z.string().trim().min(1).max(500),
-      description: z.string().trim().max(2000).nullable().optional(),
-      icon: z.string().trim().max(64).nullable().optional(),
-      showInMenu: z.boolean().optional(),
-      isPublished: z.boolean().optional(),
-      openInNewTab: z.boolean().optional(),
-      dynamicConfigJson: z.record(z.string(), z.unknown()).optional(),
-      linkTargetJson: z.record(z.string(), z.unknown()).optional(),
-      flagsJson: z.record(z.string(), z.unknown()).optional()
-    }),
-    z.object({
-      type: z.literal("update-item"),
-      itemId: z.string().trim().uuid(),
-      title: z.string().trim().min(1).max(120).optional(),
-      itemType: z.enum(["page", "placeholder", "dynamic"]).optional(),
-      slug: z.string().trim().min(1).max(120).optional(),
-      urlPath: z.string().trim().min(1).max(500).optional(),
-      description: z.string().trim().max(2000).nullable().optional(),
-      icon: z.string().trim().max(64).nullable().optional(),
-      showInMenu: z.boolean().optional(),
-      isPublished: z.boolean().optional(),
-      openInNewTab: z.boolean().optional(),
-      dynamicConfigJson: z.record(z.string(), z.unknown()).optional(),
-      linkTargetJson: z.record(z.string(), z.unknown()).optional(),
-      flagsJson: z.record(z.string(), z.unknown()).optional(),
-      parentId: z.string().trim().uuid().nullable().optional()
-    }),
-    z.object({
-      type: z.literal("delete-item"),
-      itemId: z.string().trim().uuid()
-    }),
-    z.object({
-      type: z.literal("move-item"),
-      dragId: z.string().trim().uuid(),
-      targetId: z.string().trim().uuid().nullable(),
-      position: z.enum(["before", "after", "inside"])
-    }),
-    z.object({
-      type: z.literal("batch-delete"),
-      itemIds: z.array(z.string().trim().uuid()).min(1)
-    }),
-    z.object({
-      type: z.literal("batch-set-menu"),
-      itemIds: z.array(z.string().trim().uuid()).min(1),
-      showInMenu: z.boolean()
-    }),
-    z.object({
-      type: z.literal("update-page-lifecycle"),
-      pageId: z.string().trim().uuid(),
-      pageLifecycle: z.enum(["permanent", "temporary"]),
-      temporaryWindowStartUtc: z.string().datetime().nullable().optional(),
-      temporaryWindowEndUtc: z.string().datetime().nullable().optional()
-    })
-  ])
-});
-
-type SaveOrgSiteStructureActionResult =
-  | {
-      ok: true;
-      pages: OrgManagePage[];
-      nodes: OrgSiteStructureItem[];
-      resolved: ResolvedOrgSiteStructureItemNode[];
-    }
-  | {
-      ok: false;
-      error: string;
-    };
-
-async function loadSiteStructureResponse(orgId: string, orgSlug: string): Promise<SaveOrgSiteStructureActionResult> {
-  const [pages, nodes, resolved] = await Promise.all([
-    listOrgPagesForManage(orgId),
-    listOrgSiteStructureNodesForManage(orgId),
-    resolveOrgSiteStructureForHeader({
-      orgId,
-      orgSlug,
-      includeUnpublished: true
-    })
-  ]);
-
-  return {
-    ok: true,
-    pages,
-    nodes,
-    resolved
-  };
-}
-
-function isLockedDynamicItem(item: OrgSiteStructureItem | null | undefined) {
-  return Boolean(item?.type === "dynamic" && (item.flagsJson.locked === true || item.flagsJson.systemGenerated === true));
-}
-
-function hasLockedDynamicAncestor(nodeId: string | null, byId: Map<string, OrgSiteStructureItem>) {
-  let currentId = nodeId;
-  const visited = new Set<string>();
-
-  while (currentId) {
-    if (visited.has(currentId)) {
-      return true;
-    }
-    visited.add(currentId);
-
-    const current = byId.get(currentId);
-    if (!current) {
-      return false;
-    }
-
-    if (isLockedDynamicItem(current)) {
-      return true;
-    }
-
-    currentId = current.parentId;
-  }
-
-  return false;
-}
-
-export async function saveOrgSiteStructureAction(
-  input: z.infer<typeof saveOrgSiteStructureActionSchema>
-): Promise<SaveOrgSiteStructureActionResult> {
-  const parsed = saveOrgSiteStructureActionSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: "Invalid site structure update."
-    };
-  }
-
-  try {
-    const payload = parsed.data;
-    const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
-    const action = payload.action;
-
-    if (action.type === "create-item") {
-      if (action.parentId) {
-        const currentNodes = await listOrgSiteStructureNodesForManage(org.orgId);
-        const byId = new Map(currentNodes.map((node) => [node.id, node]));
-        if (hasLockedDynamicAncestor(action.parentId, byId)) {
-          return {
-            ok: false,
-            error: "Children under locked dynamic hierarchies are system-generated and cannot be manually added."
-          };
-        }
-      }
-
-      if (action.itemType === "dynamic") {
-        const sourceType = action.dynamicConfigJson?.sourceType;
-        if (typeof sourceType !== "string") {
-          return { ok: false, error: "Dynamic items require a source type." };
-        }
-      }
-
-      await createOrgSiteStructureNode({
-        orgId: org.orgId,
-        parentId: action.parentId ?? null,
-        type: action.itemType,
-        title: action.title,
-        slug: action.slug,
-        urlPath: action.urlPath,
-        description: action.description ?? null,
-        icon: action.icon ?? null,
-        showInMenu: action.showInMenu ?? true,
-        isPublished: action.isPublished ?? true,
-        openInNewTab: action.openInNewTab ?? false,
-        dynamicConfigJson: action.dynamicConfigJson ?? {},
-        linkTargetJson: action.linkTargetJson ?? {},
-        flagsJson: action.flagsJson ?? {}
-      });
-
-      return loadSiteStructureResponse(org.orgId, org.orgSlug);
-    }
-
-    if (action.type === "update-item") {
-      const [existing, currentNodes] = await Promise.all([getOrgSiteStructureNodeById(org.orgId, action.itemId), listOrgSiteStructureNodesForManage(org.orgId)]);
-      if (!existing) {
-        return {
-          ok: false,
-          error: "This item no longer exists."
-        };
-      }
-
-      if (!isLockedDynamicItem(existing) && existing.flagsJson.systemGenerated === true) {
-        return {
-          ok: false,
-          error: "System-generated nodes cannot be edited."
-        };
-      }
-
-      const byId = new Map(currentNodes.map((node) => [node.id, node]));
-      const nextParentId = action.parentId === undefined ? existing.parentId : action.parentId;
-      if (nextParentId && hasLockedDynamicAncestor(nextParentId, byId)) {
-        return {
-          ok: false,
-          error: "Children under locked dynamic hierarchies are system-generated and cannot be manually moved there."
-        };
-      }
-
-      await updateOrgSiteStructureNodeById({
-        orgId: org.orgId,
-        nodeId: action.itemId,
-        title: action.title,
-        type: action.itemType,
-        slug: action.slug,
-        urlPath: action.urlPath,
-        description: action.description,
-        icon: action.icon,
-        showInMenu: action.showInMenu,
-        isPublished: action.isPublished,
-        openInNewTab: action.openInNewTab,
-        dynamicConfigJson: action.dynamicConfigJson,
-        linkTargetJson: action.linkTargetJson,
-        flagsJson: action.flagsJson,
-        parentId: action.parentId
-      });
-
-      return loadSiteStructureResponse(org.orgId, org.orgSlug);
-    }
-
-    if (action.type === "delete-item") {
-      const existing = await getOrgSiteStructureNodeById(org.orgId, action.itemId);
-      if (!existing) {
-        return {
-          ok: false,
-          error: "This item no longer exists."
-        };
-      }
-
-      if (existing.flagsJson.systemGenerated === true) {
-        return {
-          ok: false,
-          error: "System-generated nodes cannot be deleted."
-        };
-      }
-
-      await deleteOrgSiteStructureNodeById(org.orgId, action.itemId);
-      return loadSiteStructureResponse(org.orgId, org.orgSlug);
-    }
-
-    if (action.type === "move-item") {
-      const currentNodes = await listOrgSiteStructureNodesForManage(org.orgId);
-      const currentEditable = currentNodes.filter((node) => node.flagsJson.systemGenerated !== true);
-      const dragNode = currentEditable.find((node) => node.id === action.dragId);
-      if (!dragNode) {
-        return {
-          ok: false,
-          error: "Dragged item no longer exists."
-        };
-      }
-
-      if (action.targetId && action.targetId === action.dragId) {
-        return {
-          ok: false,
-          error: "Cannot move an item onto itself."
-        };
-      }
-
-      const byId = new Map(currentEditable.map((node) => [node.id, node]));
-      const targetNode = action.targetId ? byId.get(action.targetId) ?? null : null;
-      const targetParentId =
-        action.position === "inside" ? (targetNode?.id ?? null) : (targetNode?.parentId ?? null);
-
-      if (targetParentId && hasLockedDynamicAncestor(targetParentId, byId)) {
-        return {
-          ok: false,
-          error: "Locked dynamic hierarchies only allow system-generated descendants."
-        };
-      }
-
-      if (targetParentId) {
-        const descendants = new Set<string>();
-        const queue = [dragNode.id];
-        while (queue.length > 0) {
-          const next = queue.pop();
-          if (!next || descendants.has(next)) {
-            continue;
-          }
-          descendants.add(next);
-          for (const node of currentEditable) {
-            if (node.parentId === next) {
-              queue.push(node.id);
-            }
-          }
-        }
-        if (descendants.has(targetParentId)) {
-          return {
-            ok: false,
-            error: "Cannot move an item into its own descendants."
-          };
-        }
-      }
-
-      const siblingsByParent = new Map<string | null, OrgSiteStructureItem[]>();
-      for (const node of currentEditable) {
-        const key = node.parentId ?? null;
-        const list = siblingsByParent.get(key) ?? [];
-        list.push(node);
-        siblingsByParent.set(key, list);
-      }
-      for (const list of siblingsByParent.values()) {
-        list.sort((a, b) => a.orderIndex - b.orderIndex || a.title.localeCompare(b.title));
-      }
-
-      const sourceSiblings = [...(siblingsByParent.get(dragNode.parentId ?? null) ?? [])].filter((entry) => entry.id !== dragNode.id);
-      siblingsByParent.set(dragNode.parentId ?? null, sourceSiblings);
-
-      const nextParent = targetParentId ?? null;
-      const targetSiblings = [...(siblingsByParent.get(nextParent) ?? [])];
-      let insertIndex = targetSiblings.length;
-      if (targetNode && action.position !== "inside") {
-        const targetIndex = targetSiblings.findIndex((entry) => entry.id === targetNode.id);
-        if (targetIndex >= 0) {
-          insertIndex = action.position === "before" ? targetIndex : targetIndex + 1;
-        }
-      }
-      targetSiblings.splice(insertIndex, 0, { ...dragNode, parentId: nextParent });
-      siblingsByParent.set(nextParent, targetSiblings);
-
-      const reordered: Array<{ id: string; parentId: string | null; sortIndex: number }> = [];
-      for (const [parentId, siblings] of siblingsByParent.entries()) {
-        for (const [sortIndex, sibling] of siblings.entries()) {
-          reordered.push({
-            id: sibling.id,
-            parentId,
-            sortIndex
-          });
-        }
-      }
-
-      await reorderOrgSiteStructureNodes(org.orgId, reordered);
-      return loadSiteStructureResponse(org.orgId, org.orgSlug);
-    }
-
-    if (action.type === "batch-delete") {
-      const currentNodes = await listOrgSiteStructureNodesForManage(org.orgId);
-      const byId = new Map(currentNodes.map((node) => [node.id, node]));
-      const targets = action.itemIds.map((id) => byId.get(id)).filter((entry): entry is OrgSiteStructureItem => Boolean(entry));
-      if (targets.length === 0) {
-        return loadSiteStructureResponse(org.orgId, org.orgSlug);
-      }
-      for (const target of targets) {
-        if (target.flagsJson.systemGenerated === true) {
-          return {
-            ok: false,
-            error: "Generated descendants cannot be manually deleted."
-          };
-        }
-      }
-      for (const target of targets) {
-        await deleteOrgSiteStructureNodeById(org.orgId, target.id);
-      }
-      return loadSiteStructureResponse(org.orgId, org.orgSlug);
-    }
-
-    if (action.type === "batch-set-menu") {
-      const currentNodes = await listOrgSiteStructureNodesForManage(org.orgId);
-      const byId = new Map(currentNodes.map((node) => [node.id, node]));
-      for (const id of action.itemIds) {
-        const existing = byId.get(id);
-        if (!existing) {
-          continue;
-        }
-        await updateOrgSiteStructureNodeById({
-          orgId: org.orgId,
-          nodeId: existing.id,
-          showInMenu: action.showInMenu
-        });
-      }
-      return loadSiteStructureResponse(org.orgId, org.orgSlug);
-    }
-
-    const page = await getOrgPageById(org.orgId, action.pageId);
-    if (!page) {
-      return {
-        ok: false,
-        error: "This page no longer exists."
-      };
-    }
-
-    await updateOrgPageSettingsById({
-      orgId: org.orgId,
-      pageId: page.id,
-      title: page.title,
-      slug: page.slug,
-      isPublished: page.isPublished,
-      pageLifecycle: action.pageLifecycle,
-      temporaryWindowStartUtc: action.temporaryWindowStartUtc ?? null,
-      temporaryWindowEndUtc: action.temporaryWindowEndUtc ?? null
-    });
-
-    return loadSiteStructureResponse(org.orgId, org.orgSlug);
-  } catch (error) {
-    rethrowIfNavigationError(error);
-    return {
-      ok: false,
-      error: "Unable to save site structure right now."
     };
   }
 }

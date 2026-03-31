@@ -556,57 +556,8 @@ export async function rejectSuggestion(input: {
   actorUserId: string;
   client?: SupabaseClient<any>;
 }) {
-  const suggestion = await setSuggestionStatus({
-    orgId: input.orgId,
-    suggestionId: input.suggestionId,
-    status: "rejected",
-    decidedByUserId: input.actorUserId,
-    client: input.client
-  });
-
-  if (suggestion.conversationId !== input.conversationId) {
-    throw new Error("SUGGESTION_CONVERSATION_MISMATCH");
-  }
-
-  const [conversation, suggestions] = await Promise.all([
-    findConversationById(input.orgId, input.conversationId, input.client),
-    getConversationSuggestions(input.orgId, input.conversationId, input.client)
-  ]);
-
-  const pendingCount = suggestions.filter((item) => item.suggestion.status === "pending").length;
-  if (conversation && !conversation.contactId && pendingCount === 0) {
-    await updateConversation({
-      orgId: input.orgId,
-      conversationId: input.conversationId,
-      resolutionStatus: "unresolved",
-      client: input.client
-    });
-  }
-
-  await createResolutionEvent({
-    orgId: input.orgId,
-    conversationId: input.conversationId,
-    channelIdentityId: conversation?.channelIdentityId ?? null,
-    actorUserId: input.actorUserId,
-    eventType: "suggestion_rejected",
-    eventDetailJson: {
-      suggestionId: input.suggestionId,
-      suggestedContactId: suggestion.suggestedContactId
-    },
-    client: input.client
-  });
-
-  await createCommAuditLog({
-    orgId: input.orgId,
-    actorUserId: input.actorUserId,
-    action: "communications.suggestion_rejected",
-    entityType: "org_comm_match_suggestion",
-    entityId: input.suggestionId,
-    detailJson: {
-      conversationId: input.conversationId
-    },
-    client: input.client
-  });
+  void input;
+  throw new Error("SUGGESTIONS_DISABLED");
 }
 
 export async function rerunConversationSuggestions(input: {

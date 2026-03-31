@@ -4,9 +4,13 @@ import { useMemo } from "react";
 import { Building2, CalendarDays, CreditCard, FileText, Globe, Inbox, LayoutDashboard, MapPinned, Palette, Settings, Users, Wrench, type LucideIcon } from "lucide-react";
 import { OrgAreaSidebarNav, OrgAreaSidebarNavMobile, type OrgAreaSidebarConfig } from "@/src/features/core/navigation/components/OrgAreaSidebarNav";
 import { getOrgAdminNavItems, type OrgAdminNavIcon } from "@/src/features/core/navigation/config/adminNav";
+import type { OrgCapabilities } from "@/src/shared/permissions/orgCapabilities";
+import type { OrgToolAvailability } from "@/src/shared/org/features";
 
 type ManageSidebarProps = {
   orgSlug: string;
+  capabilities: OrgCapabilities | null;
+  toolAvailability: OrgToolAvailability;
   mobile?: boolean;
   showHeader?: boolean;
 };
@@ -26,8 +30,8 @@ const iconMap: Record<OrgAdminNavIcon, LucideIcon> = {
   inbox: Inbox
 };
 
-function navConfig(orgSlug: string): OrgAreaSidebarConfig {
-  const items = getOrgAdminNavItems(orgSlug);
+function navConfig(orgSlug: string, capabilities: OrgCapabilities | null, toolAvailability: OrgToolAvailability): OrgAreaSidebarConfig {
+  const items = getOrgAdminNavItems(orgSlug, { capabilities, toolAvailability });
 
   const topLevel = items.filter((item) => !item.parentKey);
   const manageItem = topLevel.find((item) => item.key === "manage");
@@ -85,17 +89,19 @@ function navConfig(orgSlug: string): OrgAreaSidebarConfig {
   };
 }
 
-export function ManageSidebar({ orgSlug, mobile = false, showHeader = true }: ManageSidebarProps) {
-  const config = useMemo(() => navConfig(orgSlug), [orgSlug]);
+export function ManageSidebar({ orgSlug, capabilities, toolAvailability, mobile = false, showHeader = true }: ManageSidebarProps) {
+  const config = useMemo(() => navConfig(orgSlug, capabilities, toolAvailability), [capabilities, orgSlug, toolAvailability]);
   return <OrgAreaSidebarNav config={config} mobile={mobile} showHeader={showHeader} />;
 }
 
 type ManageSidebarMobileProps = {
   orgSlug: string;
+  capabilities: OrgCapabilities | null;
+  toolAvailability: OrgToolAvailability;
 };
 
-export function ManageSidebarMobile({ orgSlug }: ManageSidebarMobileProps) {
-  const config = useMemo(() => navConfig(orgSlug), [orgSlug]);
+export function ManageSidebarMobile({ orgSlug, capabilities, toolAvailability }: ManageSidebarMobileProps) {
+  const config = useMemo(() => navConfig(orgSlug, capabilities, toolAvailability), [capabilities, orgSlug, toolAvailability]);
   return <OrgAreaSidebarNavMobile config={config} />;
 }
 

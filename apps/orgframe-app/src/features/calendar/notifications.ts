@@ -18,7 +18,7 @@ async function listTeamStaffRecipients(teamId: string): Promise<string[]> {
 async function listOrgAdminRecipients(orgId: string): Promise<string[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("orgs").from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("user_id")
     .eq("org_id", orgId)
     .eq("role", "admin");

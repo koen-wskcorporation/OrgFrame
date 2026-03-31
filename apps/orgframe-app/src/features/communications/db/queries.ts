@@ -9,6 +9,7 @@ import type {
   CommDirection,
   ContactMatchReasonCode,
   CommMatchStatus,
+  CommMatchSuggestion,
   CommMessage,
   CommResolutionEvent,
   CommResolutionStatus,
@@ -1091,44 +1092,9 @@ export async function replaceConversationSuggestions(input: {
     confidenceReasonCodes: ContactMatchReasonCode[];
   }>;
   client?: SupabaseClient<any>;
-}) {
-  const supabase = await getSupabase(input.client);
-
-  const { error: deleteError } = await supabase
-    .schema("people").from("match_suggestions")
-    .delete()
-    .eq("org_id", input.orgId)
-    .eq("conversation_id", input.conversationId)
-    .eq("status", "pending");
-
-  if (deleteError) {
-    throw new Error(`Failed to clear pending suggestions: ${deleteError.message}`);
-  }
-
-  if (input.suggestions.length === 0) {
-    return [];
-  }
-
-  const { data, error } = await supabase
-    .schema("people").from("match_suggestions")
-    .insert(
-      input.suggestions.map((suggestion) => ({
-        org_id: input.orgId,
-        conversation_id: input.conversationId,
-        channel_identity_id: input.channelIdentityId,
-        suggested_contact_id: suggestion.suggestedContactId,
-        confidence_score: suggestion.confidenceScore,
-        confidence_reason_codes: suggestion.confidenceReasonCodes,
-        status: "pending" as const
-      }))
-    )
-    .select(suggestionSelect);
-
-  if (error) {
-    throw new Error(`Failed to create suggestions: ${error.message}`);
-  }
-
-  return (data ?? []).map((row) => mapSuggestion(row as SuggestionRow));
+}): Promise<CommMatchSuggestion[]> {
+  void input;
+  return [];
 }
 
 export async function setSuggestionStatus(input: {
@@ -1137,73 +1103,16 @@ export async function setSuggestionStatus(input: {
   status: CommMatchStatus;
   decidedByUserId?: string | null;
   client?: SupabaseClient<any>;
-}) {
-  const supabase = await getSupabase(input.client);
-  const { data, error } = await supabase
-    .schema("people").from("match_suggestions")
-    .update({
-      status: input.status,
-      decided_at: new Date().toISOString(),
-      decided_by_user_id: input.decidedByUserId ?? null
-    })
-    .eq("org_id", input.orgId)
-    .eq("id", input.suggestionId)
-    .select(suggestionSelect)
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to update suggestion: ${error.message}`);
-  }
-
-  return mapSuggestion(data as SuggestionRow);
+}): Promise<CommMatchSuggestion> {
+  void input;
+  throw new Error("SUGGESTIONS_DISABLED");
 }
 
-export async function getConversationSuggestions(orgId: string, conversationId: string, client?: SupabaseClient<any>) {
-  const supabase = await getSupabase(client);
-  const { data: suggestionsData, error: suggestionsError } = await supabase
-    .schema("people").from("match_suggestions")
-    .select(suggestionSelect)
-    .eq("org_id", orgId)
-    .eq("conversation_id", conversationId)
-    .in("status", ["pending", "accepted", "rejected", "deferred"])
-    .order("confidence_score", { ascending: false });
-
-  if (suggestionsError) {
-    throw new Error(`Failed to list suggestions: ${suggestionsError.message}`);
-  }
-
-  const suggestions = (suggestionsData ?? []).map((row) => mapSuggestion(row as SuggestionRow));
-  if (suggestions.length === 0) {
-    return [];
-  }
-
-  const contactIds = [...new Set(suggestions.map((item) => item.suggestedContactId))];
-  const { data: contactRows, error: contactsError } = await supabase
-    .schema("people").from("contacts")
-    .select(contactSelect)
-    .eq("org_id", orgId)
-    .in("id", contactIds);
-
-  if (contactsError) {
-    throw new Error(`Failed to load suggestion contacts: ${contactsError.message}`);
-  }
-
-  const contactsById = new Map((contactRows ?? []).map((row) => [row.id as string, mapContact(row as ContactRow)]));
-
-  const response: CommSuggestionWithContact[] = [];
-  for (const suggestion of suggestions) {
-    const contact = contactsById.get(suggestion.suggestedContactId);
-    if (!contact) {
-      continue;
-    }
-
-    response.push({
-      suggestion,
-      contact
-    });
-  }
-
-  return response;
+export async function getConversationSuggestions(orgId: string, conversationId: string, client?: SupabaseClient<any>): Promise<CommSuggestionWithContact[]> {
+  void orgId;
+  void conversationId;
+  void client;
+  return [];
 }
 
 export async function createResolutionEvent(input: {
@@ -1301,19 +1210,13 @@ export async function listInboxConversations(orgId: string, limit = 100, client?
   const contactIds = [...new Set(conversations.map((item) => item.contactId).filter(Boolean) as string[])];
   const conversationIds = conversations.map((item) => item.id);
 
-  const [identityRows, contactRows, suggestionRows] = await Promise.all([
+  const [identityRows, contactRows] = await Promise.all([
     identityIds.length > 0
       ? supabase.schema("communications").from("channel_identities").select(identitySelect).eq("org_id", orgId).in("id", identityIds)
       : Promise.resolve({ data: [], error: null }),
     contactIds.length > 0
       ? supabase.schema("people").from("contacts").select(contactSelect).eq("org_id", orgId).in("id", contactIds)
-      : Promise.resolve({ data: [], error: null }),
-    supabase
-      .schema("people").from("match_suggestions")
-      .select("conversation_id, id")
-      .eq("org_id", orgId)
-      .in("conversation_id", conversationIds)
-      .eq("status", "pending")
+      : Promise.resolve({ data: [], error: null })
   ]);
 
   if (identityRows.error) {
@@ -1322,24 +1225,15 @@ export async function listInboxConversations(orgId: string, limit = 100, client?
   if (contactRows.error) {
     throw new Error(`Failed to load conversation contacts: ${contactRows.error.message}`);
   }
-  if (suggestionRows.error) {
-    throw new Error(`Failed to load pending suggestion counts: ${suggestionRows.error.message}`);
-  }
-
   const identitiesById = new Map((identityRows.data ?? []).map((row) => [row.id as string, mapIdentity(row as IdentityRow)]));
   const contactsById = new Map((contactRows.data ?? []).map((row) => [row.id as string, mapContact(row as ContactRow)]));
-  const suggestionCountByConversation = new Map<string, number>();
-
-  for (const row of suggestionRows.data ?? []) {
-    const conversationId = String(row.conversation_id ?? "");
-    suggestionCountByConversation.set(conversationId, (suggestionCountByConversation.get(conversationId) ?? 0) + 1);
-  }
+  void conversationIds;
 
   return conversations.map((conversation) => ({
     conversation,
     identity: conversation.channelIdentityId ? identitiesById.get(conversation.channelIdentityId) ?? null : null,
     contact: conversation.contactId ? contactsById.get(conversation.contactId) ?? null : null,
-    pendingSuggestionCount: suggestionCountByConversation.get(conversation.id) ?? 0
+    pendingSuggestionCount: 0
   }));
 }
 
@@ -1432,21 +1326,7 @@ export async function expirePendingSuggestionsForConversation(input: {
   decidedByUserId?: string | null;
   client?: SupabaseClient<any>;
 }) {
-  const supabase = await getSupabase(input.client);
-  const { error } = await supabase
-    .schema("people").from("match_suggestions")
-    .update({
-      status: "expired",
-      decided_at: new Date().toISOString(),
-      decided_by_user_id: input.decidedByUserId ?? null
-    })
-    .eq("org_id", input.orgId)
-    .eq("conversation_id", input.conversationId)
-    .eq("status", "pending");
-
-  if (error) {
-    throw new Error(`Failed to expire suggestions: ${error.message}`);
-  }
+  void input;
 }
 
 export async function rejectAllOtherPendingSuggestions(input: {
@@ -1456,22 +1336,7 @@ export async function rejectAllOtherPendingSuggestions(input: {
   decidedByUserId?: string | null;
   client?: SupabaseClient<any>;
 }) {
-  const supabase = await getSupabase(input.client);
-  const { error } = await supabase
-    .schema("people").from("match_suggestions")
-    .update({
-      status: "rejected",
-      decided_at: new Date().toISOString(),
-      decided_by_user_id: input.decidedByUserId ?? null
-    })
-    .eq("org_id", input.orgId)
-    .eq("conversation_id", input.conversationId)
-    .eq("status", "pending")
-    .neq("suggested_contact_id", input.acceptedContactId);
-
-  if (error) {
-    throw new Error(`Failed to reject other suggestions: ${error.message}`);
-  }
+  void input;
 }
 
 export async function acceptPendingSuggestionsForConversationContact(input: {
@@ -1481,22 +1346,7 @@ export async function acceptPendingSuggestionsForConversationContact(input: {
   decidedByUserId?: string | null;
   client?: SupabaseClient<any>;
 }) {
-  const supabase = await getSupabase(input.client);
-  const { error } = await supabase
-    .schema("people").from("match_suggestions")
-    .update({
-      status: "accepted",
-      decided_at: new Date().toISOString(),
-      decided_by_user_id: input.decidedByUserId ?? null
-    })
-    .eq("org_id", input.orgId)
-    .eq("conversation_id", input.conversationId)
-    .eq("status", "pending")
-    .eq("suggested_contact_id", input.contactId);
-
-  if (error) {
-    throw new Error(`Failed to accept matching suggestion: ${error.message}`);
-  }
+  void input;
 }
 
 export async function getIdentityByConversation(orgId: string, conversationId: string, client?: SupabaseClient<any>) {

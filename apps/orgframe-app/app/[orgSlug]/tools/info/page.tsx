@@ -9,9 +9,11 @@ import { SubmitButton } from "@orgframe/ui/primitives/submit-button";
 import { listGoverningBodies } from "@/src/shared/org/listGoverningBodies";
 import { can } from "@/src/shared/permissions/can";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
+import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { getRoleLabel } from "@/src/features/core/access";
 import { OrgInfoPageToasts } from "./OrgInfoPageToasts";
 import { saveOrgGoverningBodyAction } from "./actions";
+import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
   title: "Org Info"
@@ -52,6 +54,14 @@ export default async function OrgInfoPage({
     listGoverningBodies(),
     searchParams
   ]);
+  if (!isOrgToolEnabled(orgContext.toolAvailability, "info")) {
+    return (
+      <PageStack>
+        <PageHeader description="View and manage organization identity details used across public and staff routes." showBorder={false} title="Org Info" />
+        <ToolUnavailablePanel title="Org Info" />
+      </PageStack>
+    );
+  }
 
   const canSave = can(orgContext.membershipPermissions, "org.branding.write");
   const successMessage = query.saved ? successMessageByCode[query.saved] : null;

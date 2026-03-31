@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     avatar_path: avatarPath
   };
 
-  const { error } = await supabase.schema("people").from("user_profiles").upsert(updates, {
+  const { error } = await supabase.schema("people").from("users").upsert(updates, {
     onConflict: "user_id"
   });
 

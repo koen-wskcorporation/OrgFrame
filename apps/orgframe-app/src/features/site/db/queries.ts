@@ -182,7 +182,7 @@ function mapSiteStructureItem(row: SiteStructureItemRow): OrgSiteStructureItem {
 async function getNextPageSortIndex(orgId: string) {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("site").from("site_pages")
+    .schema("site").from("pages")
     .select("sort_index")
     .eq("org_id", orgId)
     .order("sort_index", { ascending: false })
@@ -202,7 +202,13 @@ async function getNextPageSortIndex(orgId: string) {
 
 async function getNextNavSortIndex(orgId: string, parentId: string | null) {
   const supabase = await createSupabaseServer();
-  let query = supabase.schema("site").from("org_site_structure_items").select("order_index").eq("org_id", orgId).order("order_index", { ascending: false }).limit(1);
+  let query = supabase
+    .schema("site").from("blocks")
+    .select("order_index")
+    .eq("row_kind", "structure_item")
+    .eq("org_id", orgId)
+    .order("order_index", { ascending: false })
+    .limit(1);
 
   if (parentId) {
     query = query.eq("parent_id", parentId);
@@ -282,7 +288,12 @@ async function ensureOrgNavItemsSeeded(orgId: string, pages?: OrgManagePage[]) {
 
 async function loadBlocks(orgPageId: string, context: BlockContext) {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.schema("site").from("site_page_blocks").select(blockSelect).eq("org_page_id", orgPageId).order("sort_index", { ascending: true });
+  const { data, error } = await supabase
+    .schema("site").from("blocks")
+    .select(blockSelect)
+    .eq("row_kind", "page_block")
+    .eq("org_page_id", orgPageId)
+    .order("sort_index", { ascending: true });
 
   if (error) {
     throw new Error(`Failed to load org page blocks: ${error.message}`);
@@ -293,7 +304,7 @@ async function loadBlocks(orgPageId: string, context: BlockContext) {
 
 async function loadPageBySlug(orgId: string, pageSlug: string, includeUnpublished: boolean) {
   const supabase = await createSupabaseServer();
-  let query = supabase.schema("site").from("site_pages").select(pageSelect).eq("org_id", orgId).eq("slug", pageSlug);
+  let query = supabase.schema("site").from("pages").select(pageSelect).eq("org_id", orgId).eq("slug", pageSlug);
 
   if (!includeUnpublished) {
     query = query.eq("is_published", true);
@@ -326,7 +337,7 @@ async function loadPageBySlug(orgId: string, pageSlug: string, includeUnpublishe
 
 export async function getOrgPageById(orgId: string, pageId: string): Promise<OrgSitePage | null> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.schema("site").from("site_pages").select(pageSelect).eq("org_id", orgId).eq("id", pageId).maybeSingle();
+  const { data, error } = await supabase.schema("site").from("pages").select(pageSelect).eq("org_id", orgId).eq("id", pageId).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to load org page: ${error.message}`);
@@ -429,7 +440,7 @@ export async function ensureOrgPageExists({
   const nextTitle = asText(title, defaultPageTitleFromSlug(normalizedSlug), 120);
   const nextSortIndex = await getNextPageSortIndex(orgId);
   const { data, error } = await supabase
-    .schema("site").from("site_pages")
+    .schema("site").from("pages")
     .insert({
       org_id: orgId,
       slug: normalizedSlug,
@@ -457,8 +468,9 @@ export async function ensureOrgPageExists({
     pageSlug: normalizedSlug
   });
 
-  const { error: insertBlocksError } = await supabase.schema("site").from("site_page_blocks").insert(
+  const { error: insertBlocksError } = await supabase.schema("site").from("blocks").insert(
     defaultBlocks.map((block, index) => ({
+      row_kind: "page_block",
       org_page_id: page.id,
       type: block.type,
       sort_index: index,
@@ -515,7 +527,7 @@ export async function saveOrgPageAndBlocks({
   const supabase = await createSupabaseServer();
   const nextTitle = asText(title, existing.page.title, 120);
   const { data: updatedPage, error: updateError } = await supabase
-    .schema("site").from("site_pages")
+    .schema("site").from("pages")
     .update({
       title: nextTitle,
       is_published: isPublished
@@ -528,14 +540,19 @@ export async function saveOrgPageAndBlocks({
     throw new Error(`Failed to update org page: ${updateError.message}`);
   }
 
-  const { error: deleteError } = await supabase.schema("site").from("site_page_blocks").delete().eq("org_page_id", existing.page.id);
+  const { error: deleteError } = await supabase
+    .schema("site").from("blocks")
+    .delete()
+    .eq("row_kind", "page_block")
+    .eq("org_page_id", existing.page.id);
 
   if (deleteError) {
     throw new Error(`Failed to replace org page blocks: ${deleteError.message}`);
   }
 
-  const { error: insertError } = await supabase.schema("site").from("site_page_blocks").insert(
+  const { error: insertError } = await supabase.schema("site").from("blocks").insert(
     normalizedBlocks.map((block, index) => ({
+      row_kind: "page_block",
       org_page_id: existing.page.id,
       type: block.type,
       sort_index: index,
@@ -571,8 +588,9 @@ async function ensureInternalNavItemForPage({
 }) {
   const supabase = await createSupabaseServer();
   const { data: existing, error: existingError } = await supabase
-    .schema("site").from("org_site_structure_items")
+    .schema("site").from("blocks")
     .select("id")
+    .eq("row_kind", "structure_item")
     .eq("org_id", orgId)
     .contains("link_target_json", { kind: "page", pageSlug })
     .limit(1)
@@ -771,8 +789,9 @@ export async function deleteOrgNavItemById(orgId: string, itemId: string): Promi
 export async function deleteOrgNavItemsByPageSlug(orgId: string, pageSlug: string) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .schema("site").from("org_site_structure_items")
+    .schema("site").from("blocks")
     .delete()
+    .eq("row_kind", "structure_item")
     .eq("org_id", orgId)
     .contains("link_target_json", { kind: "page", pageSlug });
 
@@ -794,13 +813,14 @@ export async function syncOrgNavItemsForPageSettings({
 }) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .schema("site").from("org_site_structure_items")
+    .schema("site").from("blocks")
     .update({
       title: nextTitle,
       slug: nextSlug,
       url_path: nextSlug === "home" ? "/" : `/${nextSlug}`,
       link_target_json: { kind: "page", pageSlug: nextSlug }
     })
+    .eq("row_kind", "structure_item")
     .eq("org_id", orgId)
     .contains("link_target_json", { kind: "page", pageSlug: previousSlug });
 
@@ -832,7 +852,7 @@ function slugifyNavLabel(label: string) {
 export async function listOrgPagesForManage(orgId: string): Promise<OrgManagePage[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("site").from("site_pages")
+    .schema("site").from("pages")
     .select(pageSelect)
     .eq("org_id", orgId)
     .order("sort_index", { ascending: true })
@@ -854,7 +874,7 @@ export async function listOrgPagesForHeader({
 }): Promise<OrgManagePage[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .schema("site").from("site_pages")
+    .schema("site").from("pages")
     .select(pageSelect)
     .eq("org_id", orgId)
     .order("sort_index", { ascending: true })
@@ -894,7 +914,7 @@ export async function updateOrgPageSettingsById({
 }): Promise<OrgManagePage | null> {
   const supabase = await createSupabaseServer();
   const { data: existing, error: existingError } = await supabase
-    .schema("site").from("site_pages")
+    .schema("site").from("pages")
     .select(pageSelect)
     .eq("org_id", orgId)
     .eq("id", pageId)
@@ -910,7 +930,7 @@ export async function updateOrgPageSettingsById({
 
   const previousPage = mapManagePage(existing as PageRow);
   const { data, error } = await supabase
-    .schema("site").from("site_pages")
+    .schema("site").from("pages")
     .update({
       title,
       slug,
@@ -956,7 +976,7 @@ export async function duplicateOrgPageWithBlocks({
 }): Promise<OrgManagePage | null> {
   const supabase = await createSupabaseServer();
   const { data: sourcePage, error: sourcePageError } = await supabase
-    .schema("site").from("site_pages")
+    .schema("site").from("pages")
     .select(pageSelect)
     .eq("org_id", orgId)
     .eq("id", sourcePageId)
@@ -973,7 +993,7 @@ export async function duplicateOrgPageWithBlocks({
   const nextSortIndex = await getNextPageSortIndex(orgId);
   const source = sourcePage as PageRow;
   const { data: duplicatedPage, error: duplicatedPageError } = await supabase
-    .schema("site").from("site_pages")
+    .schema("site").from("pages")
     .insert({
       org_id: orgId,
       slug,
@@ -989,8 +1009,9 @@ export async function duplicateOrgPageWithBlocks({
   }
 
   const { data: sourceBlocks, error: sourceBlocksError } = await supabase
-    .schema("site").from("site_page_blocks")
+    .schema("site").from("blocks")
     .select(blockSelect)
+    .eq("row_kind", "page_block")
     .eq("org_page_id", source.id)
     .order("sort_index", { ascending: true });
 
@@ -1001,8 +1022,9 @@ export async function duplicateOrgPageWithBlocks({
   const blockRows = (sourceBlocks ?? []) as PageBlockRow[];
 
   if (blockRows.length > 0) {
-    const { error: insertBlocksError } = await supabase.schema("site").from("site_page_blocks").insert(
+    const { error: insertBlocksError } = await supabase.schema("site").from("blocks").insert(
       blockRows.map((blockRow, index) => ({
+        row_kind: "page_block",
         org_page_id: String((duplicatedPage as PageRow).id),
         type: blockRow.type,
         sort_index: index,
@@ -1029,7 +1051,7 @@ export async function duplicateOrgPageWithBlocks({
 export async function deleteOrgPageById(orgId: string, pageId: string): Promise<boolean> {
   const supabase = await createSupabaseServer();
   const { data: existing, error: existingError } = await supabase
-    .schema("site").from("site_pages")
+    .schema("site").from("pages")
     .select("id, slug")
     .eq("org_id", orgId)
     .eq("id", pageId)
@@ -1043,7 +1065,7 @@ export async function deleteOrgPageById(orgId: string, pageId: string): Promise<
     return false;
   }
 
-  const { data, error } = await supabase.schema("site").from("site_pages").delete().eq("org_id", orgId).eq("id", pageId).select("id").maybeSingle();
+  const { data, error } = await supabase.schema("site").from("pages").delete().eq("org_id", orgId).eq("id", pageId).select("id").maybeSingle();
 
   if (error) {
     throw new Error(`Failed to delete page: ${error.message}`);
@@ -1061,7 +1083,7 @@ export async function reorderOrgPages(orgId: string, orderedPageIds: string[]): 
   const offset = orderedPageIds.length + 1000;
 
   for (const [index, pageId] of orderedPageIds.entries()) {
-    const { error } = await supabase.schema("site").from("site_pages").update({ sort_index: index + offset }).eq("org_id", orgId).eq("id", pageId);
+    const { error } = await supabase.schema("site").from("pages").update({ sort_index: index + offset }).eq("org_id", orgId).eq("id", pageId);
 
     if (error) {
       throw new Error(`Failed to stage page order: ${error.message}`);
@@ -1069,7 +1091,7 @@ export async function reorderOrgPages(orgId: string, orderedPageIds: string[]): 
   }
 
   for (const [index, pageId] of orderedPageIds.entries()) {
-    const { error } = await supabase.schema("site").from("site_pages").update({ sort_index: index }).eq("org_id", orgId).eq("id", pageId);
+    const { error } = await supabase.schema("site").from("pages").update({ sort_index: index }).eq("org_id", orgId).eq("id", pageId);
 
     if (error) {
       throw new Error(`Failed to save page order: ${error.message}`);
@@ -1083,7 +1105,7 @@ export async function listOrgPagesForLinkPicker(orgId: string): Promise<LinkPick
   const supabase = await createSupabaseServer();
 
   const { data, error } = await supabase
-    .schema("site").from("site_pages")
+    .schema("site").from("pages")
     .select("slug, title, is_published, sort_index, created_at")
     .eq("org_id", orgId)
     .order("sort_index", { ascending: true })
@@ -1118,8 +1140,9 @@ export async function listOrgPagesForLinkPicker(orgId: string): Promise<LinkPick
 export async function listOrgSiteStructureNodesForManage(orgId: string): Promise<OrgSiteStructureItem[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("site").from("org_site_structure_items")
+    .schema("site").from("blocks")
     .select(siteStructureItemSelect)
+    .eq("row_kind", "structure_item")
     .eq("org_id", orgId)
     .order("parent_id", { ascending: true, nullsFirst: true })
     .order("order_index", { ascending: true })
@@ -1135,8 +1158,9 @@ export async function listOrgSiteStructureNodesForManage(orgId: string): Promise
 export async function getOrgSiteStructureNodeById(orgId: string, nodeId: string): Promise<OrgSiteStructureItem | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("site").from("org_site_structure_items")
+    .schema("site").from("blocks")
     .select(siteStructureItemSelect)
+    .eq("row_kind", "structure_item")
     .eq("org_id", orgId)
     .eq("id", nodeId)
     .maybeSingle();
@@ -1167,8 +1191,9 @@ export async function createOrgSiteStructureNode(input: {
   const supabase = await createSupabaseServer();
   const sortIndex = await getNextOrgSiteStructureOrderIndex(input.orgId, input.parentId);
   const { data, error } = await supabase
-    .schema("site").from("org_site_structure_items")
+    .schema("site").from("blocks")
     .insert({
+      row_kind: "structure_item",
       org_id: input.orgId,
       parent_id: input.parentId,
       type: input.type,
@@ -1229,8 +1254,9 @@ export async function updateOrgSiteStructureNodeById(input: {
   if (input.flagsJson !== undefined) updates.flags_json = input.flagsJson;
 
   const { data, error } = await supabase
-    .schema("site").from("org_site_structure_items")
+    .schema("site").from("blocks")
     .update(updates)
+    .eq("row_kind", "structure_item")
     .eq("org_id", input.orgId)
     .eq("id", input.nodeId)
     .select(siteStructureItemSelect)
@@ -1246,8 +1272,9 @@ export async function updateOrgSiteStructureNodeById(input: {
 export async function deleteOrgSiteStructureNodeById(orgId: string, nodeId: string): Promise<boolean> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("site").from("org_site_structure_items")
+    .schema("site").from("blocks")
     .delete()
+    .eq("row_kind", "structure_item")
     .eq("org_id", orgId)
     .eq("id", nodeId)
     .select("id")
@@ -1262,7 +1289,13 @@ export async function deleteOrgSiteStructureNodeById(orgId: string, nodeId: stri
 
 async function getNextOrgSiteStructureOrderIndex(orgId: string, parentId: string | null) {
   const supabase = await createSupabaseServer();
-  let query = supabase.schema("site").from("org_site_structure_items").select("order_index").eq("org_id", orgId).order("order_index", { ascending: false }).limit(1);
+  let query = supabase
+    .schema("site").from("blocks")
+    .select("order_index")
+    .eq("row_kind", "structure_item")
+    .eq("org_id", orgId)
+    .order("order_index", { ascending: false })
+    .limit(1);
   if (parentId) {
     query = query.eq("parent_id", parentId);
   } else {
@@ -1287,11 +1320,12 @@ export async function reorderOrgSiteStructureNodes(
 
   for (const [index, item] of items.entries()) {
     const { error } = await supabase
-      .schema("site").from("org_site_structure_items")
+      .schema("site").from("blocks")
       .update({
         parent_id: item.parentId,
         order_index: offset + index
       })
+      .eq("row_kind", "structure_item")
       .eq("org_id", orgId)
       .eq("id", item.id);
 
@@ -1302,11 +1336,12 @@ export async function reorderOrgSiteStructureNodes(
 
   for (const item of items) {
     const { error } = await supabase
-      .schema("site").from("org_site_structure_items")
+      .schema("site").from("blocks")
       .update({
         parent_id: item.parentId,
         order_index: item.sortIndex
       })
+      .eq("row_kind", "structure_item")
       .eq("org_id", orgId)
       .eq("id", item.id);
 

@@ -1052,7 +1052,7 @@ export async function getFormSubmissionViewsDataAction(
       listFormSubmissionViews(org.orgId, form.id),
       createSupabaseServer().then((supabase) =>
         supabase
-          .schema("orgs").from("org_memberships")
+          .schema("orgs").from("memberships")
           .select("user_id, role")
           .eq("org_id", org.orgId)
       )
@@ -1089,7 +1089,7 @@ export async function getFormSubmissionViewsDataAction(
 
     const supabase = await createSupabaseServer();
     const { data: profileRows, error: profileError } = await supabase
-      .schema("people").from("user_profiles")
+      .schema("people").from("users")
       .select("user_id, first_name, last_name")
       .in("user_id", adminUserIds);
 
@@ -1179,7 +1179,7 @@ export async function createFormSubmissionViewAction(
     if (payload.visibilityScope === "specific_admin" && payload.targetUserId) {
       const supabase = await createSupabaseServer();
       const { data: membershipRow, error: membershipError } = await supabase
-        .schema("orgs").from("org_memberships")
+        .schema("orgs").from("memberships")
         .select("role")
         .eq("org_id", org.orgId)
         .eq("user_id", payload.targetUserId)
@@ -1314,7 +1314,7 @@ export async function updateFormSubmissionViewSettingsAction(
     if (payload.visibilityScope === "specific_admin" && payload.targetUserId) {
       const supabase = await createSupabaseServer();
       const { data: membershipRow, error: membershipError } = await supabase
-        .schema("orgs").from("org_memberships")
+        .schema("orgs").from("memberships")
         .select("role")
         .eq("org_id", org.orgId)
         .eq("user_id", payload.targetUserId)
@@ -1672,7 +1672,7 @@ export async function getFormSharingDataAction(input: z.input<typeof formSharing
 
     const supabase = await createSupabaseServer();
     const { data: pagesData, error: pagesError } = await supabase
-      .schema("site").from("site_pages")
+      .schema("site").from("pages")
       .select("id, slug, title, is_published, sort_index, created_at")
       .eq("org_id", org.orgId)
       .order("sort_index", { ascending: true })
@@ -1703,8 +1703,9 @@ export async function getFormSharingDataAction(input: z.input<typeof formSharing
     const pageIds = pageRows.map((page) => page.id);
     const includeCountByPageId = new Map<string, number>();
     const { data: blocksData, error: blocksError } = await supabase
-      .schema("site").from("site_page_blocks")
+      .schema("site").from("blocks")
       .select("org_page_id, config")
+      .eq("row_kind", "page_block")
       .eq("type", "form_embed")
       .in("org_page_id", pageIds);
 
@@ -1758,7 +1759,7 @@ export async function addFormToPageAction(input: z.input<typeof addFormToPageSch
 
     const supabase = await createSupabaseServer();
     const { data: pageData, error: pageError } = await supabase
-      .schema("site").from("site_pages")
+      .schema("site").from("pages")
       .select("id, slug")
       .eq("org_id", org.orgId)
       .eq("id", payload.pageId)
@@ -1773,8 +1774,9 @@ export async function addFormToPageAction(input: z.input<typeof addFormToPageSch
     }
 
     const { data: existingBlocks, error: existingBlocksError } = await supabase
-      .schema("site").from("site_page_blocks")
+      .schema("site").from("blocks")
       .select("id, config")
+      .eq("row_kind", "page_block")
       .eq("org_page_id", payload.pageId)
       .eq("type", "form_embed");
 
@@ -1797,8 +1799,9 @@ export async function addFormToPageAction(input: z.input<typeof addFormToPageSch
     }
 
     const { data: lastBlock, error: lastBlockError } = await supabase
-      .schema("site").from("site_page_blocks")
+      .schema("site").from("blocks")
       .select("sort_index")
+      .eq("row_kind", "page_block")
       .eq("org_page_id", payload.pageId)
       .order("sort_index", { ascending: false })
       .limit(1)
@@ -1809,7 +1812,8 @@ export async function addFormToPageAction(input: z.input<typeof addFormToPageSch
     }
 
     const nextSortIndex = typeof lastBlock?.sort_index === "number" ? lastBlock.sort_index + 1 : 0;
-    const { error: insertError } = await supabase.schema("site").from("site_page_blocks").insert({
+    const { error: insertError } = await supabase.schema("site").from("blocks").insert({
+      row_kind: "page_block",
       org_page_id: payload.pageId,
       type: "form_embed",
       sort_index: nextSortIndex,

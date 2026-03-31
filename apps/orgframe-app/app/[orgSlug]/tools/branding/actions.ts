@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { isValidHexColor } from "@/src/shared/branding/applyBrandingVars";
+import { requireOrgToolEnabled } from "@/src/shared/org/requireOrgToolEnabled";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 
@@ -19,6 +20,7 @@ function getOptionalPath(formData: FormData, key: string) {
 export async function saveOrgBrandingAction(orgSlug: string, formData: FormData) {
   try {
     const orgContext = await requireOrgPermission(orgSlug, "org.branding.write");
+    requireOrgToolEnabled(orgContext.toolAvailability, "branding");
 
     const accent = getField(formData, "accent");
 

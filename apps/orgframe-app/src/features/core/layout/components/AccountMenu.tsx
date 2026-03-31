@@ -179,6 +179,16 @@ function buildOrgSwitchHref(
   return `/${targetOrgSlug}${pathSuffix}`;
 }
 
+function toTenantBaseHref(pathname: string, tenantBaseOrigin?: string | null) {
+  if (!tenantBaseOrigin) {
+    return pathname;
+  }
+
+  const base = tenantBaseOrigin.replace(/\/+$/, "");
+  const path = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return `${base}${path}`;
+}
+
 export function AccountMenu({
   email,
   firstName,
@@ -249,13 +259,13 @@ export function AccountMenu({
         active: pathname === "/" && homeHref === "/"
       },
       {
-        href: "/account",
+        href: toTenantBaseHref("/account", tenantBaseOrigin),
         label: "Account settings",
         icon: Settings2,
         active: pathname === "/account" || pathname.startsWith("/account/")
       }
     ],
-    [homeHref, pathname]
+    [homeHref, pathname, tenantBaseOrigin]
   );
   const { mode, resolvedMode, setMode } = useThemeMode();
   const themeOptions: { mode: ThemeMode; icon: typeof Sun; label: string }[] = [

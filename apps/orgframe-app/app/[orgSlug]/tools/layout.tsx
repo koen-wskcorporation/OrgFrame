@@ -26,8 +26,8 @@ export default async function OrgManageLayout({
 
   return (
     <UniversalAppShell
-      mobileSidebar={<ManageSidebarMobile orgSlug={orgContext.orgSlug} />}
-      sidebar={<ManageSidebar orgSlug={orgContext.orgSlug} />}
+      mobileSidebar={<ManageSidebarMobile capabilities={capabilities} orgSlug={orgContext.orgSlug} toolAvailability={orgContext.toolAvailability} />}
+      sidebar={<ManageSidebar capabilities={capabilities} orgSlug={orgContext.orgSlug} toolAvailability={orgContext.toolAvailability} />}
     >
       {children}
     </UniversalAppShell>
