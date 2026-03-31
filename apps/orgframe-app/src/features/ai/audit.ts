@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { aiActAuditDetailSchema } from "@/src/features/ai/schemas";
 import type { AiActAuditDetail, AiResolvedOrg } from "@/src/features/ai/types";
 
@@ -36,7 +36,7 @@ export async function createActAuditLog(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("audit_logs")
+    .schema("ai").from("audit_logs")
     .insert({
       org_id: input.org.orgId,
       actor_user_id: input.actorUserId,
@@ -70,7 +70,7 @@ export async function createActAuditLog(input: {
 export async function getActAuditLogForActor(proposalId: string, actorUserId: string) {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("audit_logs")
+    .schema("ai").from("audit_logs")
     .select(auditSelect)
     .eq("id", proposalId)
     .eq("actor_user_id", actorUserId)
@@ -109,7 +109,7 @@ export async function updateActAuditLog(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("audit_logs")
+    .schema("ai").from("audit_logs")
     .update({
       action: input.action,
       entity_type: input.entityType,

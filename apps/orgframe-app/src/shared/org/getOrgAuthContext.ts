@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createDataApiServiceRoleClient, createSupabaseServer } from "@/src/shared/data-api/server";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
 import { getGoverningBodyLogoUrl } from "@/src/shared/branding/getGoverningBodyLogoUrl";
@@ -64,7 +64,7 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
 
   const supabase = await createSupabaseServer();
   const { data: org, error: orgError } = await supabase
-    .from("orgs")
+    .schema("orgs").from("orgs")
     .select("id, slug, name, logo_path, icon_path, brand_primary, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
     .eq("slug", orgSlug)
     .maybeSingle();
@@ -78,17 +78,33 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
   }
 
   const { data: membership, error: membershipError } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("org_memberships")
     .select("role")
     .eq("org_id", org.id)
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (membershipError || !membership) {
-    redirect("/forbidden");
+  let resolvedMembership = membership;
+
+  if (membershipError || !resolvedMembership) {
+    // Fallback path: if RLS policies drift, verify membership with service-role
+    // but still scoped to the authenticated user id from this request.
+    const serviceRole = createDataApiServiceRoleClient();
+    const { data: serviceRoleMembership, error: serviceRoleMembershipError } = await serviceRole
+      .schema("orgs").from("org_memberships")
+      .select("role")
+      .eq("org_id", org.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (serviceRoleMembershipError || !serviceRoleMembership) {
+      redirect("/forbidden");
+    }
+
+    resolvedMembership = serviceRoleMembership;
   }
 
-  const membershipRole = membership.role as OrgRole;
+  const membershipRole = resolvedMembership.role as OrgRole;
   const membershipPermissions = await resolveOrgRolePermissions(supabase, org.id, membershipRole);
 
   return {

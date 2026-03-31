@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
-import { createSupabaseServerForRequest } from "@/src/shared/supabase/server";
+import { createSupabaseServerForRequest } from "@/src/shared/data-api/server";
 
 function normalizeNextPath(nextPath: string | null, fallbackPath: string) {
   const candidate = nextPath?.trim();

@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { listProgramScheduleBlocks } from "@/src/features/programs/db/queries";
 import type {
   ProgramOccurrence,
@@ -147,7 +147,7 @@ function mapException(row: ExceptionRow): ProgramScheduleException {
 export async function listProgramScheduleRulesV2(programId: string): Promise<ProgramScheduleRule[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_schedule_rules")
+    .schema("programs").from("program_schedule_rules")
     .select(scheduleRuleSelect)
     .eq("program_id", programId)
     .order("sort_index", { ascending: true })
@@ -163,7 +163,7 @@ export async function listProgramScheduleRulesV2(programId: string): Promise<Pro
 export async function getProgramScheduleRuleByIdV2(programId: string, ruleId: string): Promise<ProgramScheduleRule | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_schedule_rules")
+    .schema("programs").from("program_schedule_rules")
     .select(scheduleRuleSelect)
     .eq("program_id", programId)
     .eq("id", ruleId)
@@ -183,7 +183,7 @@ export async function getProgramScheduleRuleByIdV2(programId: string, ruleId: st
 export async function listProgramOccurrencesV2(programId: string, options?: { includeCancelled?: boolean }): Promise<ProgramOccurrence[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("program_occurrences")
+    .schema("programs").from("program_occurrences")
     .select(occurrenceSelect)
     .eq("program_id", programId)
     .order("starts_at_utc", { ascending: true })
@@ -205,7 +205,7 @@ export async function listProgramOccurrencesV2(programId: string, options?: { in
 export async function getProgramOccurrenceByIdV2(programId: string, occurrenceId: string): Promise<ProgramOccurrence | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_occurrences")
+    .schema("programs").from("program_occurrences")
     .select(occurrenceSelect)
     .eq("program_id", programId)
     .eq("id", occurrenceId)
@@ -225,7 +225,7 @@ export async function getProgramOccurrenceByIdV2(programId: string, occurrenceId
 export async function listProgramScheduleExceptionsV2(programId: string, options?: { ruleId?: string }): Promise<ProgramScheduleException[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("program_schedule_exceptions")
+    .schema("programs").from("program_schedule_exceptions")
     .select(exceptionSelect)
     .eq("program_id", programId)
     .order("created_at", { ascending: true });
@@ -290,7 +290,7 @@ export async function upsertProgramScheduleRuleV2(input: {
     config_json: input.configJson,
     rule_hash: input.ruleHash
   };
-  const { data, error } = await supabase.from("program_schedule_rules").upsert(payload).select(scheduleRuleSelect).single();
+  const { data, error } = await supabase.schema("programs").from("program_schedule_rules").upsert(payload).select(scheduleRuleSelect).single();
 
   if (error) {
     throw new Error(`Failed to save schedule rule: ${error.message}`);
@@ -301,7 +301,7 @@ export async function upsertProgramScheduleRuleV2(input: {
 
 export async function deleteProgramScheduleRuleV2(programId: string, ruleId: string) {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("program_schedule_rules").delete().eq("program_id", programId).eq("id", ruleId);
+  const { error } = await supabase.schema("programs").from("program_schedule_rules").delete().eq("program_id", programId).eq("id", ruleId);
   if (error) {
     throw new Error(`Failed to delete schedule rule: ${error.message}`);
   }
@@ -311,7 +311,7 @@ export async function upsertRuleGeneratedOccurrencesV2(programId: string, ruleId
   const supabase = await createSupabaseServer();
   const sourceKeys = new Set(occurrences.map((item) => item.sourceKey));
   if (occurrences.length > 0) {
-    const { error: upsertError } = await supabase.from("program_occurrences").upsert(
+    const { error: upsertError } = await supabase.schema("programs").from("program_occurrences").upsert(
       occurrences.map((occurrence) => ({
         program_id: programId,
         program_node_id: occurrence.programNodeId,
@@ -339,7 +339,7 @@ export async function upsertRuleGeneratedOccurrencesV2(programId: string, ruleId
   }
 
   const { data: existingRows, error: existingError } = await supabase
-    .from("program_occurrences")
+    .schema("programs").from("program_occurrences")
     .select("id, source_key")
     .eq("program_id", programId)
     .eq("source_rule_id", ruleId)
@@ -355,7 +355,7 @@ export async function upsertRuleGeneratedOccurrencesV2(programId: string, ruleId
     .filter((value): value is string => typeof value === "string");
 
   if (staleIds.length > 0) {
-    const { error: staleError } = await supabase.from("program_occurrences").update({ status: "cancelled" }).in("id", staleIds);
+    const { error: staleError } = await supabase.schema("programs").from("program_occurrences").update({ status: "cancelled" }).in("id", staleIds);
     if (staleError) {
       throw new Error(`Failed to mark stale generated occurrences as cancelled: ${staleError.message}`);
     }
@@ -380,7 +380,7 @@ export async function insertProgramOccurrenceV2(input: {
 }): Promise<ProgramOccurrence> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_occurrences")
+    .schema("programs").from("program_occurrences")
     .insert({
       program_id: input.programId,
       program_node_id: input.programNodeId,
@@ -423,7 +423,7 @@ export async function updateProgramOccurrenceV2(input: {
 }): Promise<ProgramOccurrence> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_occurrences")
+    .schema("programs").from("program_occurrences")
     .update({
       title: input.title,
       program_node_id: input.programNodeId,
@@ -451,7 +451,7 @@ export async function updateProgramOccurrenceV2(input: {
 export async function setOccurrenceStatusBySourceKeyV2(programId: string, sourceKey: string, status: ProgramOccurrence["status"]) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .from("program_occurrences")
+    .schema("programs").from("program_occurrences")
     .update({
       status
     })
@@ -473,7 +473,7 @@ export async function upsertProgramScheduleExceptionV2(input: {
 }): Promise<ProgramScheduleException> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_schedule_exceptions")
+    .schema("programs").from("program_schedule_exceptions")
     .upsert({
       program_id: input.programId,
       rule_id: input.ruleId,
@@ -495,7 +495,7 @@ export async function upsertProgramScheduleExceptionV2(input: {
 export async function deleteProgramScheduleExceptionV2(input: { programId: string; ruleId: string; sourceKey: string; kind?: ProgramScheduleException["kind"] }) {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("program_schedule_exceptions")
+    .schema("programs").from("program_schedule_exceptions")
     .delete()
     .eq("program_id", input.programId)
     .eq("rule_id", input.ruleId)
@@ -575,7 +575,7 @@ export async function listProgramScheduleTimelineWithFallback(input: { programId
 export async function markProgramScheduleVersionV2(programId: string) {
   const supabase = await createSupabaseServer();
   const { data: existingRow, error: existingError } = await supabase
-    .from("programs")
+    .schema("programs").from("programs")
     .select("settings_json")
     .eq("id", programId)
     .maybeSingle();
@@ -586,7 +586,7 @@ export async function markProgramScheduleVersionV2(programId: string) {
 
   const existingSettings = asObject(existingRow?.settings_json);
   const { error } = await supabase
-    .from("programs")
+    .schema("programs").from("programs")
     .update({
       settings_json: {
         ...existingSettings,

@@ -5,9 +5,9 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { PublishStatusIcon } from "@orgframe/ui/primitives/publish-status-icon";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
 import { publishFormVersionAction, saveFormDraftAction } from "@/src/features/forms/actions";
 import { FormCreatePanel } from "@/src/features/forms/components/FormCreatePanel";
 import type { OrgForm } from "@/src/features/forms/types";
@@ -94,50 +94,46 @@ export function FormsManagePanel({ orgSlug, forms, programs, canWrite = true }: 
 
   return (
     <div className="ui-stack-page">
-      <Card>
-        <CardHeader>
-          <div className="ui-card-header-row">
-            <div className="ui-card-header-copy">
-              <CardTitle>Forms</CardTitle>
-              <CardDescription>Open forms to edit schema, versions, and submissions.</CardDescription>
+      <WorkspaceCardShell
+        actions={
+          <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
+            <Plus className="h-4 w-4" />
+            Create form
+          </Button>
+        }
+        contentClassName="ui-list-stack"
+        description="Open forms to edit schema, versions, and submissions."
+        title="Forms"
+      >
+        {sortedForms.length === 0 ? <Alert variant="info">No forms yet.</Alert> : null}
+        {sortedForms.map((form) => (
+          <div className="ui-list-row ui-list-row-hover" key={form.id}>
+            <div className="ui-list-row-content">
+              <div className="flex items-center gap-1.5">
+                <PublishStatusIcon
+                  disabled={!canWrite}
+                  isLoading={isTogglingStatus && statusFormId === form.id}
+                  isPublished={form.status === "published"}
+                  onToggle={() => toggleFormStatus(form)}
+                  statusLabel={form.status === "published" ? `Published status for ${form.name}` : `Unpublished status for ${form.name}`}
+                />
+                <Link className="ui-list-row-title hover:underline" href={`/tools/forms/${form.id}/editor`}>
+                  {form.name}
+                </Link>
+              </div>
+              <p className="ui-list-row-meta">
+                {form.formKind === "program_registration" ? "Program registration" : "Generic"} · {form.status}
+              </p>
+              <p className="text-sm text-text-muted">/register/{form.slug}</p>
             </div>
-            <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
-              <Plus className="h-4 w-4" />
-              Create form
-            </Button>
+            <div className="ui-list-row-actions">
+              <Button href={`/tools/forms/${form.id}/editor`} size="sm" variant="secondary">
+                Open
+              </Button>
+            </div>
           </div>
-        </CardHeader>
-        <CardContent className="ui-list-stack">
-          {sortedForms.length === 0 ? <Alert variant="info">No forms yet.</Alert> : null}
-          {sortedForms.map((form) => (
-            <div className="ui-list-row ui-list-row-hover" key={form.id}>
-              <div className="ui-list-row-content">
-                <div className="flex items-center gap-1.5">
-                  <PublishStatusIcon
-                    disabled={!canWrite}
-                    isLoading={isTogglingStatus && statusFormId === form.id}
-                    isPublished={form.status === "published"}
-                    onToggle={() => toggleFormStatus(form)}
-                    statusLabel={form.status === "published" ? `Published status for ${form.name}` : `Unpublished status for ${form.name}`}
-                  />
-                  <Link className="ui-list-row-title hover:underline" href={`/tools/forms/${form.id}/editor`}>
-                    {form.name}
-                  </Link>
-                </div>
-                <p className="ui-list-row-meta">
-                  {form.formKind === "program_registration" ? "Program registration" : "Generic"} · {form.status}
-                </p>
-                <p className="text-sm text-text-muted">/register/{form.slug}</p>
-              </div>
-              <div className="ui-list-row-actions">
-                <Button href={`/tools/forms/${form.id}/editor`} size="sm" variant="secondary">
-                  Open
-                </Button>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+        ))}
+      </WorkspaceCardShell>
 
       <FormCreatePanel canWrite={canWrite} onClose={() => setIsCreateOpen(false)} open={isCreateOpen} orgSlug={orgSlug} programs={programs} />
     </div>

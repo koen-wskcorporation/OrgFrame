@@ -21,7 +21,7 @@ export default async function OrgManageLayout({
   const capabilities = getOrgCapabilities(orgContext.membershipPermissions);
 
   if (!capabilities.manage.canAccessArea) {
-    redirect("/forbidden");
+    redirect("/forbidden?reason=tools-layout-access");
   }
 
   return (

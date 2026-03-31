@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type { Program, ProgramCatalogItem, ProgramNode, ProgramScheduleBlock, ProgramWithDetails } from "@/src/features/programs/types";
 import { isProgramNodePublished } from "@/src/features/programs/utils";
 
@@ -131,7 +131,7 @@ function mapSchedule(row: ScheduleRow): ProgramScheduleBlock {
 export async function listProgramsForManage(orgId: string): Promise<Program[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("programs")
+    .schema("programs").from("programs")
     .select(programSelect)
     .eq("org_id", orgId)
     .order("updated_at", { ascending: false });
@@ -146,7 +146,7 @@ export async function listProgramsForManage(orgId: string): Promise<Program[]> {
 export async function listPublishedProgramsForCatalog(orgId: string, options?: { limit?: number }): Promise<ProgramCatalogItem[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("programs")
+    .schema("programs").from("programs")
     .select(programSelect)
     .eq("org_id", orgId)
     .eq("status", "published")
@@ -186,7 +186,7 @@ export async function listPublishedProgramsForCatalog(orgId: string, options?: {
 export async function getProgramById(orgId: string, programId: string): Promise<Program | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("programs")
+    .schema("programs").from("programs")
     .select(programSelect)
     .eq("org_id", orgId)
     .eq("id", programId)
@@ -205,7 +205,7 @@ export async function getProgramById(orgId: string, programId: string): Promise<
 
 export async function getProgramBySlug(orgId: string, programSlug: string, options?: { includeDraft?: boolean }): Promise<Program | null> {
   const supabase = await createSupabaseServer();
-  let query = supabase.from("programs").select(programSelect).eq("org_id", orgId).eq("slug", programSlug).limit(1);
+  let query = supabase.schema("programs").from("programs").select(programSelect).eq("org_id", orgId).eq("slug", programSlug).limit(1);
 
   if (!options?.includeDraft) {
     query = query.eq("status", "published");
@@ -299,7 +299,7 @@ export async function getProgramDetailsBySlug(
 export async function listProgramNodes(programId: string, options?: { publishedOnly?: boolean }): Promise<ProgramNode[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_nodes")
+    .schema("programs").from("program_structure_nodes")
     .select(nodeSelect)
     .eq("program_id", programId)
     .order("sort_index", { ascending: true })
@@ -350,7 +350,7 @@ export async function listProgramNodes(programId: string, options?: { publishedO
 export async function listProgramScheduleBlocks(programId: string): Promise<ProgramScheduleBlock[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_schedule_blocks")
+    .schema("programs").from("program_schedule_blocks")
     .select(scheduleSelect)
     .eq("program_id", programId)
     .order("sort_index", { ascending: true })
@@ -380,7 +380,7 @@ export async function createProgramRecord(input: {
 }): Promise<Program> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("programs")
+    .schema("programs").from("programs")
     .insert({
       org_id: input.orgId,
       slug: input.slug,
@@ -424,7 +424,7 @@ export async function updateProgramRecord(input: {
 }): Promise<Program> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("programs")
+    .schema("programs").from("programs")
     .update({
       slug: input.slug,
       name: input.name,
@@ -468,7 +468,7 @@ export async function createProgramNodeRecord(input: {
       ? input.sortIndex
       : await (async () => {
           const { data: latest } = await supabase
-            .from("program_nodes")
+            .schema("programs").from("program_structure_nodes")
             .select("sort_index")
             .eq("program_id", input.programId)
             .eq("parent_id", input.parentId)
@@ -484,7 +484,7 @@ export async function createProgramNodeRecord(input: {
         })();
 
   const { data, error } = await supabase
-    .from("program_nodes")
+    .schema("programs").from("program_structure_nodes")
     .insert({
       program_id: input.programId,
       parent_id: input.parentId,
@@ -508,7 +508,7 @@ export async function createProgramNodeRecord(input: {
 
 export async function deleteProgramNodeRecord(programId: string, nodeId: string) {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("program_nodes").delete().eq("program_id", programId).eq("id", nodeId);
+  const { error } = await supabase.schema("programs").from("program_structure_nodes").delete().eq("program_id", programId).eq("id", nodeId);
 
   if (error) {
     throw new Error(`Failed to delete program node: ${error.message}`);
@@ -524,7 +524,7 @@ export async function updateProgramNodeHierarchyRecord(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .from("program_nodes")
+    .schema("programs").from("program_structure_nodes")
     .update({
       parent_id: input.parentId,
       node_kind: input.nodeKind,
@@ -545,7 +545,7 @@ export async function updateProgramNodeSettingsRecord(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .from("program_nodes")
+    .schema("programs").from("program_structure_nodes")
     .update({
       settings_json: input.settingsJson
     })
@@ -568,7 +568,7 @@ export async function updateProgramNodeRecord(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .from("program_nodes")
+    .schema("programs").from("program_structure_nodes")
     .update({
       name: input.name,
       slug: input.slug,
@@ -605,7 +605,7 @@ export async function createProgramScheduleBlockRecord(input: {
       ? input.sortIndex
       : await (async () => {
           const { data: latest } = await supabase
-            .from("program_schedule_blocks")
+            .schema("programs").from("program_schedule_blocks")
             .select("sort_index")
             .eq("program_id", input.programId)
             .order("sort_index", { ascending: false })
@@ -620,7 +620,7 @@ export async function createProgramScheduleBlockRecord(input: {
         })();
 
   const { data, error } = await supabase
-    .from("program_schedule_blocks")
+    .schema("programs").from("program_schedule_blocks")
     .insert({
       program_id: input.programId,
       program_node_id: input.programNodeId,
@@ -648,7 +648,7 @@ export async function createProgramScheduleBlockRecord(input: {
 
 export async function deleteProgramScheduleBlockRecord(programId: string, blockId: string) {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("program_schedule_blocks").delete().eq("program_id", programId).eq("id", blockId);
+  const { error } = await supabase.schema("programs").from("program_schedule_blocks").delete().eq("program_id", programId).eq("id", blockId);
 
   if (error) {
     throw new Error(`Failed to delete schedule block: ${error.message}`);

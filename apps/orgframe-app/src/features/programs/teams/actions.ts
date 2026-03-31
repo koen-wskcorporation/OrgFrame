@@ -6,7 +6,7 @@ import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import {
   getProgramTeamDetail,
   getTeamAssociationCountsByNode,
@@ -57,7 +57,7 @@ async function requireProgramsReadOrWrite(orgSlug: string) {
 async function getTeamCore(teamId: string): Promise<{ id: string; orgId: string; programId: string; programNodeId: string } | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_teams")
+    .schema("programs").from("program_teams")
     .select("id, org_id, program_id, program_node_id")
     .eq("id", teamId)
     .maybeSingle();
@@ -351,7 +351,7 @@ export async function removeTeamMemberAction(input: {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "programs.write");
     const supabase = await createSupabaseServer();
-    const { data } = await supabase.from("program_team_members").select("program_id").eq("id", payload.memberId).maybeSingle();
+    const { data } = await supabase.schema("programs").from("program_team_members").select("program_id").eq("id", payload.memberId).maybeSingle();
     await removeTeamMember(payload.memberId);
 
     if (data?.program_id) {
@@ -449,7 +449,7 @@ export async function removeTeamStaffAction(input: {
     const payload = parsed.data;
     const org = await requireOrgPermission(payload.orgSlug, "programs.write");
     const supabase = await createSupabaseServer();
-    const { data } = await supabase.from("program_team_staff").select("program_id").eq("id", payload.staffId).maybeSingle();
+    const { data } = await supabase.schema("programs").from("program_team_staff").select("program_id").eq("id", payload.staffId).maybeSingle();
     await removeTeamStaff(payload.staffId);
 
     if (data?.program_id) {

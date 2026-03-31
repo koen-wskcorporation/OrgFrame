@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type { Permission } from "@/src/features/core/access";
 import type { AiChangesetV1, AiExecutionResult, AiProposal, AiResolvedContext } from "@/src/features/ai/types";
 
@@ -110,7 +110,7 @@ function parseRequestedSubmissionStatus(value: string): SubmissionStatus | null 
 
 async function getOrgBySlug(orgSlug: string): Promise<OrgRow | null> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("orgs").select("id, slug, name").eq("slug", orgSlug).maybeSingle();
+  const { data, error } = await supabase.schema("orgs").from("orgs").select("id, slug, name").eq("slug", orgSlug).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to load org context: ${error.message}`);
@@ -121,7 +121,7 @@ async function getOrgBySlug(orgSlug: string): Promise<OrgRow | null> {
 
 async function listRecentForms(orgId: string, limit = 25): Promise<FormRow[]> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("org_forms").select("id, org_id, slug, name, description, form_kind, status, target_mode, updated_at").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(limit);
+  const { data, error } = await supabase.schema("forms").from("org_forms").select("id, org_id, slug, name, description, form_kind, status, target_mode, updated_at").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(limit);
 
   if (error) {
     throw new Error(`Failed to list forms: ${error.message}`);
@@ -132,7 +132,7 @@ async function listRecentForms(orgId: string, limit = 25): Promise<FormRow[]> {
 
 async function findFormById(orgId: string, formId: string): Promise<FormRow | null> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("org_forms").select("id, org_id, slug, name, description, form_kind, status, target_mode, updated_at").eq("org_id", orgId).eq("id", formId).maybeSingle();
+  const { data, error } = await supabase.schema("forms").from("org_forms").select("id, org_id, slug, name, description, form_kind, status, target_mode, updated_at").eq("org_id", orgId).eq("id", formId).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to resolve form: ${error.message}`);
@@ -143,7 +143,7 @@ async function findFormById(orgId: string, formId: string): Promise<FormRow | nu
 
 async function findSubmissionById(orgId: string, submissionId: string): Promise<SubmissionRow | null> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("org_form_submissions").select("id, org_id, form_id, status, created_at, updated_at").eq("org_id", orgId).eq("id", submissionId).maybeSingle();
+  const { data, error } = await supabase.schema("forms").from("org_form_submissions").select("id, org_id, form_id, status, created_at, updated_at").eq("org_id", orgId).eq("id", submissionId).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to resolve submission: ${error.message}`);
@@ -155,7 +155,7 @@ async function findSubmissionById(orgId: string, submissionId: string): Promise<
 async function listRecentSubmissions(orgId: string, limit = 20): Promise<SubmissionLookupRow[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_submissions")
+    .schema("forms").from("org_form_submissions")
     .select("id, org_id, form_id, status, created_at, updated_at, form:org_forms!inner(id, name, slug, org_id)")
     .eq("form.org_id", orgId)
     .order("created_at", { ascending: false })
@@ -718,13 +718,13 @@ async function executeCreateFormChangeset(input: {
   }
 
   const supabase = await createSupabaseServer();
-  const { data: existing } = await supabase.from("org_forms").select("id").eq("org_id", input.changeset.orgId).eq("slug", slug).maybeSingle();
+  const { data: existing } = await supabase.schema("forms").from("org_forms").select("id").eq("org_id", input.changeset.orgId).eq("slug", slug).maybeSingle();
 
   if (existing) {
     throw new Error("This form slug is no longer available. Please request a fresh proposal.");
   }
 
-  const { error } = await supabase.from("org_forms").insert({
+  const { error } = await supabase.schema("forms").from("org_forms").insert({
     org_id: input.changeset.orgId,
     created_by: input.context.userId,
     slug,
@@ -776,7 +776,7 @@ async function executeUpdateFormBuilderChangeset(input: {
   const supabase = await createSupabaseServer();
 
   const { data: current, error: currentError } = await supabase
-    .from("org_forms")
+    .schema("forms").from("org_forms")
     .select("id, updated_at")
     .eq("org_id", input.changeset.orgId)
     .eq("id", formId)
@@ -802,7 +802,7 @@ async function executeUpdateFormBuilderChangeset(input: {
     patch.status = operation.set.status;
   }
 
-  const { error } = await supabase.from("org_forms").update(patch).eq("org_id", input.changeset.orgId).eq("id", formId);
+  const { error } = await supabase.schema("forms").from("org_forms").update(patch).eq("org_id", input.changeset.orgId).eq("id", formId);
 
   if (error) {
     throw new Error(`Failed to update form: ${error.message}`);
@@ -842,7 +842,7 @@ async function executeResponseStatusChangeset(input: {
 
   const supabase = await createSupabaseServer();
   const { data: current, error: loadError } = await supabase
-    .from("org_form_submissions")
+    .schema("forms").from("org_form_submissions")
     .select("id, status")
     .eq("org_id", input.changeset.orgId)
     .eq("id", submissionId)
@@ -857,14 +857,14 @@ async function executeResponseStatusChangeset(input: {
     throw new Error("This response status changed since proposal. Please request a fresh plan.");
   }
 
-  const { error } = await supabase.from("org_form_submissions").update({ status: nextStatus }).eq("org_id", input.changeset.orgId).eq("id", submissionId);
+  const { error } = await supabase.schema("forms").from("org_form_submissions").update({ status: nextStatus }).eq("org_id", input.changeset.orgId).eq("id", submissionId);
 
   if (error) {
     throw new Error(`Failed to update response status: ${error.message}`);
   }
 
   const { error: registrationSyncError } = await supabase
-    .from("program_registrations")
+    .schema("programs").from("program_registrations")
     .update({ status: nextStatus })
     .eq("org_id", input.changeset.orgId)
     .eq("submission_id", submissionId);

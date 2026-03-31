@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { requireAuth } from "@/src/features/core/auth/server/requireAuth";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 import {
   createPlayerRecord,
   getPlayerById,

@@ -1,13 +1,34 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
 import { can } from "@/src/shared/permissions/can";
 import type { OrgRole, Permission } from "@/src/features/core/access";
 import type { AiResolvedContext, AiResolvedOrg } from "@/src/features/ai/types";
 
+function buildDefaultContext(input: { userId: string; email: string | null; org: AiResolvedOrg | null; permissions: Permission[] }): AiResolvedContext {
+  const { userId, email, org, permissions } = input;
+  return {
+    userId,
+    email,
+    org,
+    account: {
+      activePlayerId: null,
+      players: []
+    },
+    scope: {
+      currentModule: "unknown"
+    },
+    permissionEnvelope: {
+      permissions,
+      canExecuteOrgActions: Boolean(org) && (can(permissions, "org.branding.write") || can(permissions, "forms.write")),
+      canReadOrg: Boolean(org) && can(permissions, ["org.dashboard.read"])
+    }
+  };
+}
+
 async function resolveOrgBySlug(orgSlug: string): Promise<AiResolvedOrg | null> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("orgs").select("id, slug, name").eq("slug", orgSlug).maybeSingle();
+  const { data, error } = await supabase.schema("orgs").from("orgs").select("id, slug, name").eq("slug", orgSlug).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to resolve organization: ${error.message}`);
@@ -27,7 +48,7 @@ async function resolveOrgBySlug(orgSlug: string): Promise<AiResolvedOrg | null> 
 async function resolveOrgPermissions(orgId: string, userId: string): Promise<Permission[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("org_memberships")
     .select("role")
     .eq("org_id", orgId)
     .eq("user_id", userId)
@@ -48,43 +69,31 @@ export async function resolveAiContext(orgSlug?: string): Promise<AiResolvedCont
   }
 
   if (!orgSlug) {
-    return {
+    return buildDefaultContext({
       userId: sessionUser.id,
       email: sessionUser.email,
       org: null,
-      permissionEnvelope: {
-        permissions: [],
-        canExecuteOrgActions: false,
-        canReadOrg: false
-      }
-    };
+      permissions: []
+    });
   }
 
   const org = await resolveOrgBySlug(orgSlug);
 
   if (!org) {
-    return {
+    return buildDefaultContext({
       userId: sessionUser.id,
       email: sessionUser.email,
       org: null,
-      permissionEnvelope: {
-        permissions: [],
-        canExecuteOrgActions: false,
-        canReadOrg: false
-      }
-    };
+      permissions: []
+    });
   }
 
   const permissions = await resolveOrgPermissions(org.orgId, sessionUser.id);
 
-  return {
+  return buildDefaultContext({
     userId: sessionUser.id,
     email: sessionUser.email,
     org,
-    permissionEnvelope: {
-      permissions,
-      canExecuteOrgActions: can(permissions, "org.branding.write") || can(permissions, "forms.write"),
-      canReadOrg: can(permissions, ["org.dashboard.read"])
-    }
-  };
+    permissions
+  });
 }

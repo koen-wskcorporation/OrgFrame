@@ -8,7 +8,7 @@ import { verifyCustomDomainDns } from "@/src/shared/domains/verification";
 import { attachDomainToVercelProject } from "@/src/shared/domains/vercelProjectDomains";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 
 const domainSchema = z.object({
   domain: z.string().trim().min(1).max(253)
@@ -106,7 +106,7 @@ export async function saveOrgCustomDomainAction(orgSlug: string, formData: FormD
     const supabase = await createSupabaseServer();
 
     const { data: existing, error: existingError } = await supabase
-      .from("org_custom_domains")
+      .schema("site").from("org_custom_domains")
       .select("domain, status, verification_token")
       .eq("org_id", orgContext.orgId)
       .maybeSingle();
@@ -131,7 +131,7 @@ export async function saveOrgCustomDomainAction(orgSlug: string, formData: FormD
       }
     }
 
-    const { error } = await supabase.from("org_custom_domains").upsert(
+    const { error } = await supabase.schema("site").from("org_custom_domains").upsert(
       {
         org_id: orgContext.orgId,
         domain,
@@ -179,7 +179,7 @@ export async function verifyOrgCustomDomainAction(orgSlug: string, formData?: Fo
     const supabase = await createSupabaseServer();
 
     const { data: existing, error: existingError } = await supabase
-      .from("org_custom_domains")
+      .schema("site").from("org_custom_domains")
       .select("domain, verification_token")
       .eq("org_id", orgContext.orgId)
       .maybeSingle();
@@ -202,7 +202,7 @@ export async function verifyOrgCustomDomainAction(orgSlug: string, formData?: Fo
     const result = await verifyCustomDomainDns(existing.domain, existing.verification_token);
 
     const { error: updateError } = await supabase
-      .from("org_custom_domains")
+      .schema("site").from("org_custom_domains")
       .update({
         status: result.status,
         verified_at: result.verified ? new Date().toISOString() : null,
@@ -250,7 +250,7 @@ export async function removeOrgCustomDomainAction(orgSlug: string) {
     const orgContext = await requireOrgPermission(orgSlug, "org.manage.read");
     const supabase = await createSupabaseServer();
 
-    const { error } = await supabase.from("org_custom_domains").delete().eq("org_id", orgContext.orgId);
+    const { error } = await supabase.schema("site").from("org_custom_domains").delete().eq("org_id", orgContext.orgId);
 
     if (error) {
       throw new Error(error.message);

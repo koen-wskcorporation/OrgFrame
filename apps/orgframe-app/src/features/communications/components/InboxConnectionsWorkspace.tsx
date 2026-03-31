@@ -3,8 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
 import { connectFacebookPageAction, disconnectInboxIntegrationAction, getInboxConnectionsDataAction } from "@/src/features/communications/actions";
 import type { CommChannelIntegration } from "@/src/features/communications/types";
 
@@ -212,14 +212,11 @@ export function InboxConnectionsWorkspace({ orgSlug, canWrite, initialIntegratio
     <div className="ui-stack-page">
       {isMutating ? <Alert variant="info">Updating connections...</Alert> : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Facebook Messenger Connection</CardTitle>
-          <CardDescription>
-            Connect one or more Facebook Pages for this organization. Webhook events route to this org by connected Page ID.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="app-section-stack">
+      <WorkspaceCardShell
+        contentClassName="app-section-stack"
+        description="Connect one or more Facebook Pages for this organization. Webhook events route to this org by connected Page ID."
+        title="Facebook Messenger Connection"
+      >
           {!canWrite ? <Alert variant="info">You have read-only access for inbox connections.</Alert> : null}
 
           <div className="ui-muted-block space-y-2 text-sm text-text-muted">
@@ -256,15 +253,13 @@ export function InboxConnectionsWorkspace({ orgSlug, canWrite, initialIntegratio
               ))}
             </div>
           ) : null}
-        </CardContent>
-      </Card>
+      </WorkspaceCardShell>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Connected Pages</CardTitle>
-          <CardDescription>Per-org page connections used for routing Messenger webhooks.</CardDescription>
-        </CardHeader>
-        <CardContent className="ui-list-stack">
+      <WorkspaceCardShell
+        contentClassName="ui-list-stack"
+        description="Per-org page connections used for routing Messenger webhooks."
+        title="Connected Pages"
+      >
           {integrations.length === 0 ? <Alert variant="info">No connected pages yet.</Alert> : null}
           {integrations.map((integration) => (
             <div className="ui-list-row" key={integration.id}>
@@ -289,8 +284,7 @@ export function InboxConnectionsWorkspace({ orgSlug, canWrite, initialIntegratio
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
+      </WorkspaceCardShell>
     </div>
   );
 }

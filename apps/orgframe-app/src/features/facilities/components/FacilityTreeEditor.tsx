@@ -4,12 +4,12 @@ import { useMemo, useState } from "react";
 import { Archive, Plus, Save } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { ContextPanel, CreateModal } from "@orgframe/ui/primitives/interaction-containers";
 import { Select } from "@orgframe/ui/primitives/select";
+import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
 import { buildFacilitySpaceStatusOptions, formatFacilitySpaceStatusLabel, resolveFacilitySpaceStatusLabels } from "@/src/features/facilities/status";
 import type { FacilitySpace } from "@/src/features/facilities/types";
 import { FacilityStatusBadge } from "@/src/features/facilities/components/FacilityStatusBadge";
@@ -335,20 +335,17 @@ export function FacilityTreeEditor({
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="ui-card-header-row">
-          <div className="ui-card-header-copy">
-            <CardTitle>Facility Spaces</CardTitle>
-            <CardDescription>Build a deep hierarchy across buildings, floors, rooms, fields, courts, and custom spaces.</CardDescription>
-          </div>
-          <Button disabled={!canWrite} onClick={openCreatePanel} type="button">
-            <Plus className="h-4 w-4" />
-            Add space
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="ui-list-stack">
+    <WorkspaceCardShell
+      actions={
+        <Button disabled={!canWrite} onClick={openCreatePanel} type="button">
+          <Plus className="h-4 w-4" />
+          Add space
+        </Button>
+      }
+      contentClassName="ui-list-stack"
+      description="Build a deep hierarchy across buildings, floors, rooms, fields, courts, and custom spaces."
+      title="Facility Spaces"
+    >
         {allSpaces.length === 0 ? <Alert variant="info">No spaces yet.</Alert> : null}
         {renderTree(
           orgSlug,
@@ -361,7 +358,7 @@ export function FacilityTreeEditor({
           (space, status) => onSetStatus(space.id, status),
           canWrite
         )}
-      </CardContent>
+      
 
       <CreateModal
         footer={editorFooter}
@@ -382,6 +379,6 @@ export function FacilityTreeEditor({
       >
         {editorBody}
       </ContextPanel>
-    </Card>
+    </WorkspaceCardShell>
   );
 }

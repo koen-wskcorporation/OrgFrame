@@ -1,6 +1,8 @@
-import { redirect } from "next/navigation";
+import { redirectLegacyRoute } from "../../../legacy-route-utils";
 
 export default async function OrgToolsManageDomainsLegacyPage({ params }: { params: Promise<{ orgSlug: string }> }) {
-  const { orgSlug } = await params;
-  redirect(`/tools/domains`);
+  await redirectLegacyRoute({
+    params,
+    pathname: "/tools/domains"
+  });
 }

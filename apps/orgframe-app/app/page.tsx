@@ -9,6 +9,7 @@ import { signOutAction } from "@/app/auth/actions";
 import { getDashboardContext } from "@/src/features/core/dashboard/getDashboardContext";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { getPlatformHost, getTenantBaseHosts, normalizeHost, resolveOrgSubdomain } from "@/src/shared/domains/customDomains";
+import { parseHostWithPort } from "@/src/shared/domains/hostHeaders";
 import { OrganizationsRepeater } from "@/app/OrganizationsRepeater";
 
 export const metadata: Metadata = {
@@ -46,11 +47,17 @@ export default async function HomePage() {
 
   const { organizations } = await getDashboardContext();
   const headerStore = await headers();
-  const forwardedHost = headerStore.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = normalizeHost(forwardedHost || headerStore.get("host"));
+  const parsedHost = parseHostWithPort(headerStore.get("x-forwarded-host") || headerStore.get("host"));
+  const host = parsedHost.host;
   const tenantBaseHosts = getTenantBaseHosts();
   const orgSubdomain = resolveOrgSubdomain(host, tenantBaseHosts);
-  const tenantBaseHost = orgSubdomain?.baseHost ?? (tenantBaseHosts.has(host) ? host : getPlatformHost());
+  const tenantBaseAuthority = orgSubdomain
+    ? parsedHost.port
+      ? `${orgSubdomain.baseHost}:${parsedHost.port}`
+      : orgSubdomain.baseHost
+    : tenantBaseHosts.has(host)
+      ? parsedHost.hostWithPort || host
+      : getPlatformHost();
   const forwardedProto = headerStore.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
   const protocol =
     forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : process.env.NODE_ENV === "production" ? "https" : "http";
@@ -78,7 +85,7 @@ export default async function HomePage() {
         ) : (
           <OrganizationsRepeater
             organizations={organizations.map((organization) => ({
-              href: `${protocol}://${organization.orgSlug}.${tenantBaseHost}/`,
+              href: `${protocol}://${organization.orgSlug}.${tenantBaseAuthority}/`,
               iconUrl: organization.iconUrl,
               orgId: organization.orgId,
               orgName: organization.orgName,

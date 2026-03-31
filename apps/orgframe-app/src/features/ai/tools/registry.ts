@@ -13,7 +13,7 @@ export const aiTools = {
 
 export type AiToolName = keyof typeof aiTools;
 
-export const openAiToolDefinitions = [
+export const aiToolDefinitions = [
   {
     type: "function" as const,
     name: "resolve_entities",

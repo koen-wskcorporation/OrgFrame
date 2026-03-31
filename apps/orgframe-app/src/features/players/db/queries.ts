@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type { PlayerGuardian, PlayerPickerItem, PlayerProfile } from "@/src/features/players/types";
 
 const playerSelect =
@@ -68,7 +68,7 @@ function mapGuardian(row: GuardianRow): PlayerGuardian {
 export async function listPlayersForGuardian(userId: string): Promise<PlayerProfile[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("players")
+    .schema("people").from("players")
     .select(`${playerSelect}, player_guardians!inner(guardian_user_id)`)
     .eq("player_guardians.guardian_user_id", userId)
     .order("last_name", { ascending: true })
@@ -93,7 +93,7 @@ export async function listPlayersForPicker(userId: string): Promise<PlayerPicker
 
 export async function getPlayerById(playerId: string): Promise<PlayerProfile | null> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("players").select(playerSelect).eq("id", playerId).maybeSingle();
+  const { data, error } = await supabase.schema("people").from("players").select(playerSelect).eq("id", playerId).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to load player: ${error.message}`);
@@ -119,7 +119,7 @@ export async function createPlayerRecord(input: {
 }): Promise<PlayerProfile> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("players")
+    .schema("people").from("players")
     .insert({
       owner_user_id: input.ownerUserId,
       first_name: input.firstName,
@@ -140,7 +140,7 @@ export async function createPlayerRecord(input: {
 
   const player = mapPlayer(data as PlayerRow);
 
-  await supabase.from("player_guardians").upsert(
+  await supabase.schema("people").from("player_guardians").upsert(
     {
       player_id: player.id,
       guardian_user_id: input.ownerUserId,
@@ -182,7 +182,7 @@ export async function updatePlayerRecord(input: {
   }
 
   const { data, error } = await supabase
-    .from("players")
+    .schema("people").from("players")
     .update(updatePayload)
     .eq("id", input.playerId)
     .select(playerSelect)
@@ -198,7 +198,7 @@ export async function updatePlayerRecord(input: {
 export async function listPlayerGuardians(playerId: string): Promise<PlayerGuardian[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("player_guardians")
+    .schema("people").from("player_guardians")
     .select(guardianSelect)
     .eq("player_id", playerId)
     .order("created_at", { ascending: true });
@@ -217,7 +217,7 @@ export async function linkPlayerGuardianRecord(input: {
 }): Promise<PlayerGuardian> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("player_guardians")
+    .schema("people").from("player_guardians")
     .upsert(
       {
         player_id: input.playerId,

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { requirePermission } from "@/src/shared/permissions/requirePermission";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 import {
   getDefaultRoleLabel,
   getDefaultRolePermissions,
@@ -158,7 +158,7 @@ async function requireAccessContext(orgSlug: string) {
 
 async function listOrgMembershipRows(supabase: SupabaseClient<any>, orgId: string): Promise<MembershipRow[]> {
   const { data, error } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("org_memberships")
     .select("id, user_id, role, created_at")
     .eq("org_id", orgId)
     .order("created_at", { ascending: true });
@@ -175,7 +175,7 @@ async function listOrgMembershipRows(supabase: SupabaseClient<any>, orgId: strin
 
 async function findMembershipById(supabase: SupabaseClient<any>, orgId: string, membershipId: string): Promise<MembershipRow | null> {
   const { data, error } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("org_memberships")
     .select("id, user_id, role, created_at")
     .eq("org_id", orgId)
     .eq("id", membershipId)
@@ -191,7 +191,7 @@ async function findMembershipById(supabase: SupabaseClient<any>, orgId: string, 
 
 async function membershipExists(supabase: SupabaseClient<any>, orgId: string, userId: string) {
   const { data, error } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("org_memberships")
     .select("id")
     .eq("org_id", orgId)
     .eq("user_id", userId)
@@ -206,7 +206,7 @@ async function membershipExists(supabase: SupabaseClient<any>, orgId: string, us
 
 async function countAdmins(supabase: SupabaseClient<any>, orgId: string) {
   const { count, error } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("org_memberships")
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId)
     .in("role", ["owner", "admin", "manager"]);
@@ -448,7 +448,7 @@ export async function inviteUserToOrgAction(input: {
       return asFailure("already_member", "That user already has access to this organization.");
     }
 
-    const { error: insertError } = await supabase.from("org_memberships").insert({
+    const { error: insertError } = await supabase.schema("orgs").from("org_memberships").insert({
       org_id: orgContext.orgId,
       user_id: userId,
       role
@@ -547,7 +547,7 @@ export async function updateMembershipRoleAction(input: {
     }
 
     const { error: updateError } = await supabase
-      .from("org_memberships")
+      .schema("orgs").from("org_memberships")
       .update({
         role
       })
@@ -619,7 +619,7 @@ export async function removeMembershipAction(input: {
     }
 
     const { error: deleteError } = await supabase
-      .from("org_memberships")
+      .schema("orgs").from("org_memberships")
       .delete()
       .eq("org_id", orgContext.orgId)
       .eq("id", membershipId);

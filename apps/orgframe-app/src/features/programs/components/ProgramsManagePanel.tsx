@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { Copy, Plus } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { CalendarPicker } from "@orgframe/ui/primitives/calendar-picker";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
@@ -16,6 +15,7 @@ import { Select } from "@orgframe/ui/primitives/select";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { AssetTile } from "@orgframe/ui/primitives/asset-tile";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
 import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
 import { createProgramAction, duplicateProgramAction, updateProgramAction } from "@/src/features/programs/actions";
 import type { Program } from "@/src/features/programs/types";
@@ -212,61 +212,57 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
 
   return (
     <div className="ui-stack-page">
-      <Card>
-        <CardHeader>
-          <div className="ui-card-header-row">
-            <div className="ui-card-header-copy">
-              <CardTitle>Programs</CardTitle>
-              <CardDescription>Manage program structure, schedules, and linked forms.</CardDescription>
+      <WorkspaceCardShell
+        actions={
+          <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
+            <Plus className="h-4 w-4" />
+            Create program
+          </Button>
+        }
+        contentClassName="ui-list-stack"
+        description="Manage program structure, schedules, and linked forms."
+        title="Programs"
+      >
+        {sortedPrograms.length === 0 ? <Alert variant="info">No programs yet.</Alert> : null}
+        {sortedPrograms.map((program) => (
+          <div className="ui-list-row ui-list-row-hover" key={program.id}>
+            <div className="ui-list-row-content">
+              <div className="flex items-center gap-1.5">
+                <PublishStatusIcon
+                  disabled={!canWrite}
+                  isLoading={isTogglingStatus && statusProgramId === program.id}
+                  isPublished={program.status === "published"}
+                  onToggle={() => toggleProgramStatus(program)}
+                  statusLabel={program.status === "published" ? `Published status for ${program.name}` : `Unpublished status for ${program.name}`}
+                />
+                <Link className="ui-list-row-title hover:underline" href={`/tools/programs/${program.id}`}>
+                  {program.name}
+                </Link>
+              </div>
+              <p className="ui-list-row-meta">
+                {program.programType === "custom" ? program.customTypeLabel ?? "Custom" : program.programType} · {program.status}
+              </p>
+              <p className="text-sm text-text-muted">/{orgSlug}/programs/{program.slug}</p>
             </div>
-            <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
-              <Plus className="h-4 w-4" />
-              Create program
-            </Button>
+            <div className="ui-list-row-actions">
+              <Button href={`/tools/programs/${program.id}`} size="sm" variant="secondary">
+                Open
+              </Button>
+              <Button
+                disabled={!canWrite || (isDuplicating && duplicateProgramId !== program.id)}
+                loading={isDuplicating && duplicateProgramId === program.id}
+                onClick={() => handleDuplicate(program)}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Duplicate
+              </Button>
+            </div>
           </div>
-        </CardHeader>
-        <CardContent className="ui-list-stack">
-          {sortedPrograms.length === 0 ? <Alert variant="info">No programs yet.</Alert> : null}
-          {sortedPrograms.map((program) => (
-            <div className="ui-list-row ui-list-row-hover" key={program.id}>
-              <div className="ui-list-row-content">
-                <div className="flex items-center gap-1.5">
-                  <PublishStatusIcon
-                    disabled={!canWrite}
-                    isLoading={isTogglingStatus && statusProgramId === program.id}
-                    isPublished={program.status === "published"}
-                    onToggle={() => toggleProgramStatus(program)}
-                    statusLabel={program.status === "published" ? `Published status for ${program.name}` : `Unpublished status for ${program.name}`}
-                  />
-                  <Link className="ui-list-row-title hover:underline" href={`/tools/programs/${program.id}`}>
-                    {program.name}
-                  </Link>
-                </div>
-                <p className="ui-list-row-meta">
-                  {program.programType === "custom" ? program.customTypeLabel ?? "Custom" : program.programType} · {program.status}
-                </p>
-                <p className="text-sm text-text-muted">/{orgSlug}/programs/{program.slug}</p>
-              </div>
-              <div className="ui-list-row-actions">
-                <Button href={`/tools/programs/${program.id}`} size="sm" variant="secondary">
-                  Open
-                </Button>
-                <Button
-                  disabled={!canWrite || (isDuplicating && duplicateProgramId !== program.id)}
-                  loading={isDuplicating && duplicateProgramId === program.id}
-                  onClick={() => handleDuplicate(program)}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  Duplicate
-                </Button>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+        ))}
+      </WorkspaceCardShell>
 
       <Popup
         footer={

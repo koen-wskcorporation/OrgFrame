@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 import {
   acceptPendingSuggestionsForConversationContact,
   createCommAuditLog,
@@ -760,7 +760,13 @@ export async function connectFacebookPageIntegration(input: {
       client: input.client
     });
   } catch (error) {
-    if (error instanceof Error && error.message.includes("org_comm_channel_integrations_channel_type_provider_account_id_key")) {
+    if (
+      error instanceof Error &&
+      (
+        error.message.includes("org_comm_channel_integrations_channel_type_provider_account_id_key")
+        || error.message.includes("channel_integrations_org_channel_provider_idx")
+      )
+    ) {
       throw new Error("FACEBOOK_PAGE_ALREADY_CONNECTED_TO_ANOTHER_ORG");
     }
     throw error;

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { IconButton } from "@orgframe/ui/primitives/icon-button";
+import { SurfaceBody, SurfaceCloseButton, SurfaceFooter, SurfaceHeader } from "@orgframe/ui/primitives/surface";
 import { cn } from "./utils";
 
 const POPUP_COUNT_ATTRIBUTE = "data-popup-count";
@@ -337,22 +337,9 @@ export function Popup({
         ref={popupRef}
         style={popupStyle}
       >
-        <div className="relative shrink-0 border-b px-5 py-4 pr-16 md:px-6">
-          <h2 className="text-lg font-semibold leading-tight text-text" id={titleId}>
-            {title}
-          </h2>
-          {subtitle ? <p className="mt-1 text-sm leading-relaxed text-text-muted">{subtitle}</p> : null}
-        </div>
-
-        <IconButton className="absolute right-3 top-3 z-[1202]" icon={<span className="text-lg leading-none">×</span>} label="Close popup" onClick={requestClose} />
-
-        <div
-          className={cn(
-            "min-h-0 flex-1 overflow-y-auto [overflow-wrap:anywhere]",
-            isFull ? null : "px-5 py-4 md:px-6",
-            contentClassName
-          )}
-        >
+        <SurfaceHeader title={title} subtitle={subtitle} titleId={titleId} />
+        <SurfaceCloseButton className="z-[1202]" label="Close popup" onClick={requestClose} />
+        <SurfaceBody className={contentClassName} padded={!isFull}>
           <div
             className={cn(
               "transition-all duration-200 ease-out motion-reduce:transition-none",
@@ -367,13 +354,9 @@ export function Popup({
           >
             {displayChildren}
           </div>
-        </div>
+        </SurfaceBody>
 
-        {footer ? (
-          <div className="shrink-0 border-t bg-surface px-5 py-4 md:px-6 flex flex-wrap items-center justify-end gap-2" ref={footerRef}>
-            {footer}
-          </div>
-        ) : null}
+        {footer ? <SurfaceFooter footerRef={footerRef}>{footer}</SurfaceFooter> : null}
       </section>
     </div>,
     document.body

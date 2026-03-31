@@ -198,7 +198,7 @@ UX:
 - Audit log persistence in `audit_logs` for proposals/execution.
 
 ### 10.4 Tooling Architecture
-- OpenAI Responses API loop (`modules/ai/openai.ts`).
+- AI Gateway responses loop (`modules/ai/gateway.ts`).
 - Tool registry (`modules/ai/tools/registry.ts`):
   - `resolve_entities`
   - `propose_changes`
@@ -213,8 +213,8 @@ UX:
 - Stubs exist for additional intent namespaces.
 
 ### 10.6 Config
-- `OPENAI_API_KEY` required.
-- `OPENAI_MODEL` optional, defaults to `gpt-4.1-mini`.
+- `AI_GATEWAY_API_KEY` required.
+- `AI_MODEL` optional, defaults to `gpt-4.1-mini`.
 
 ## 11) Domain Module Deep Dive
 
@@ -354,7 +354,7 @@ Primary API routes in `apps/orgframe-app/app/api`:
 
 High-signal families:
 - Core tenancy: `orgs`, `org_memberships`, `org_tool_settings`
-- Content: `org_pages`, `org_page_blocks`, `org_site_structure_nodes`
+- Content: `site_pages`, `site_page_blocks`, `org_site_structure_nodes`
 - Programs/players/forms
 - Calendar/facilities (unified scheduling + allocations)
 - Communications inbox entities
@@ -377,7 +377,7 @@ Most used variables by category:
 - Auth/cookies:
   - `AUTH_COOKIE_DOMAIN`
 - AI:
-  - `OPENAI_API_KEY`, `OPENAI_MODEL`
+  - `AI_GATEWAY_API_KEY`, `AI_MODEL`
 - Inbox/webhooks:
   - `INBOX_INGEST_BEARER_TOKEN`, `INBOX_INGEST_HMAC_SECRET`
   - `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`
@@ -669,19 +669,19 @@ packages/ui/src/ui/address-autocomplete-input.tsx:52:  apiKey = process.env.NEXT
 
 ## Appendix C: DB Tables (By Migration)
 ```text
-202602110001_platform_foundation.sql:public.org_events
+202602110001_platform_foundation.sql:public.calendar_items
 202602110001_platform_foundation.sql:public.org_memberships
 202602110001_platform_foundation.sql:public.org_tool_settings
 202602110001_platform_foundation.sql:public.orgs
 202602110001_platform_foundation.sql:public.sponsor_submissions
-202602150001_org_pages_builder.sql:public.org_page_blocks
-202602150001_org_pages_builder.sql:public.org_pages
+202602150001_org_pages_builder.sql:public.site_page_blocks
+202602150001_org_pages_builder.sql:public.site_pages
 202602160001_custom_roles_permissions.sql:public.org_custom_roles
-202602170003_org_nav_items.sql:public.org_nav_items
+202602170003_org_nav_items.sql:public.site_structure_nodes
 202602170005_governing_bodies.sql:public.governing_bodies
 202602220002_players_v1.sql:public.player_guardians
 202602220002_players_v1.sql:public.players
-202602220003_programs_v1.sql:public.program_nodes
+202602220003_programs_v1.sql:public.program_structure_nodes
 202602220003_programs_v1.sql:public.program_schedule_blocks
 202602220003_programs_v1.sql:public.programs
 202602220004_forms_v1.sql:public.org_form_submission_entries
@@ -692,7 +692,7 @@ packages/ui/src/ui/address-autocomplete-input.tsx:52:  apiKey = process.env.NEXT
 202602260001_program_schedule_v2.sql:public.program_occurrences
 202602260001_program_schedule_v2.sql:public.program_schedule_exceptions
 202602260001_program_schedule_v2.sql:public.program_schedule_rules
-202602280001_events_tool.sql:public.org_events
+202602280001_events_tool.sql:public.calendar_items
 202602280003_form_submission_views.sql:public.org_form_submission_views
 202603010001_ai_admin_actions.sql:public.ai_rate_limit_windows
 202603010001_ai_admin_actions.sql:public.audit_logs
@@ -707,24 +707,24 @@ packages/ui/src/ui/address-autocomplete-input.tsx:52:  apiKey = process.env.NEXT
 202603030001_program_teams.sql:public.program_team_members
 202603030001_program_teams.sql:public.program_team_staff
 202603030001_program_teams.sql:public.program_teams
-202603030004_unified_calendar_system.sql:public.calendar_entries
-202603030004_unified_calendar_system.sql:public.calendar_occurrence_facility_allocations
-202603030004_unified_calendar_system.sql:public.calendar_occurrence_teams
-202603030004_unified_calendar_system.sql:public.calendar_occurrences
-202603030004_unified_calendar_system.sql:public.calendar_rule_exceptions
-202603030004_unified_calendar_system.sql:public.calendar_rules
+202603030004_unified_calendar_system.sql:public.calendar_items
+202603030004_unified_calendar_system.sql:public.calendar_item_space_allocations
+202603030004_unified_calendar_system.sql:public.calendar_item_participants
+202603030004_unified_calendar_system.sql:public.calendar_item_occurrences
+202603030004_unified_calendar_system.sql:public.calendar_item_rule_exceptions
+202603030004_unified_calendar_system.sql:public.calendar_item_rules
 202603030004_unified_calendar_system.sql:public.facility_space_configurations
-202603030004_unified_calendar_system.sql:public.org_user_inbox_items
-202603070001_spaces_platform.sql:public.calendar_occurrence_facility_allocations
+202603030004_unified_calendar_system.sql:public.user_notifications
+202603070001_spaces_platform.sql:public.calendar_item_space_allocations
 202603070001_spaces_platform.sql:public.facility_reservation_exceptions
 202603070001_spaces_platform.sql:public.facility_reservation_rules
 202603070001_spaces_platform.sql:public.facility_reservations
 202603070001_spaces_platform.sql:public.facility_space_configurations
 202603070001_spaces_platform.sql:public.facility_spaces
 202603070001_spaces_platform.sql:public.org_space_types
-202603080001_facilities_visual_reset.sql:public.calendar_occurrence_facility_allocations
+202603080001_facilities_visual_reset.sql:public.calendar_item_space_allocations
 202603080001_facilities_visual_reset.sql:public.facilities
-202603080001_facilities_visual_reset.sql:public.facility_nodes
+202603080001_facilities_visual_reset.sql:public.facility_layout_nodes
 202603100001_communications_inbox.sql:public.org_comm_channel_identities
 202603100001_communications_inbox.sql:public.org_comm_contact_merge_audit
 202603100001_communications_inbox.sql:public.org_comm_contacts
@@ -741,27 +741,27 @@ packages/ui/src/ui/address-autocomplete-input.tsx:52:  apiKey = process.env.NEXT
 202603100003_communications_inbox_repair.sql:public.org_comm_resolution_events
 202603110001_inbox_channel_integrations.sql:public.org_comm_channel_integration_secrets
 202603110001_inbox_channel_integrations.sql:public.org_comm_channel_integrations
-202603120001_facilities_calendar_schema_repair.sql:public.calendar_entries
-202603120001_facilities_calendar_schema_repair.sql:public.calendar_occurrence_facility_allocations
-202603120001_facilities_calendar_schema_repair.sql:public.calendar_occurrence_teams
-202603120001_facilities_calendar_schema_repair.sql:public.calendar_occurrences
-202603120001_facilities_calendar_schema_repair.sql:public.calendar_rule_exceptions
-202603120001_facilities_calendar_schema_repair.sql:public.calendar_rules
+202603120001_facilities_calendar_schema_repair.sql:public.calendar_items
+202603120001_facilities_calendar_schema_repair.sql:public.calendar_item_space_allocations
+202603120001_facilities_calendar_schema_repair.sql:public.calendar_item_participants
+202603120001_facilities_calendar_schema_repair.sql:public.calendar_item_occurrences
+202603120001_facilities_calendar_schema_repair.sql:public.calendar_item_rule_exceptions
+202603120001_facilities_calendar_schema_repair.sql:public.calendar_item_rules
 202603120001_facilities_calendar_schema_repair.sql:public.facility_reservation_exceptions
 202603120001_facilities_calendar_schema_repair.sql:public.facility_reservation_rules
 202603120001_facilities_calendar_schema_repair.sql:public.facility_reservations
 202603120001_facilities_calendar_schema_repair.sql:public.facility_space_configurations
 202603120001_facilities_calendar_schema_repair.sql:public.facility_spaces
-202603120001_facilities_calendar_schema_repair.sql:public.org_user_inbox_items
+202603120001_facilities_calendar_schema_repair.sql:public.user_notifications
 202603140001_sportsconnect_import.sql:public.org_order_items
 202603140001_sportsconnect_import.sql:public.org_order_payments
 202603140001_sportsconnect_import.sql:public.org_orders
 202603140001_sportsconnect_import.sql:public.sportsconnect_import_applied_rows
 202603140001_sportsconnect_import.sql:public.sportsconnect_import_rows
 202603140001_sportsconnect_import.sql:public.sportsconnect_import_runs
-202603150001_calendar_facility_allocations_multi.sql:public.calendar_rule_facility_allocations
-202603160001_calendar_lens_sources_and_saved_views.sql:public.calendar_lens_saved_views
-202603160001_calendar_lens_sources_and_saved_views.sql:public.calendar_sources
+202603150001_calendar_facility_allocations_multi.sql:public.calendar_item_space_allocations
+202603160001_calendar_lens_sources_and_saved_views.sql:public.calendar_saved_views
+202603160001_calendar_lens_sources_and_saved_views.sql:public.calendar_item_sources
 202603170001_site_structure_canvas.sql:public.org_site_structure_nodes
 202603220001_file_manager.sql:public.app_file_folders
 202603220001_file_manager.sql:public.app_files
@@ -845,8 +845,8 @@ supabase/migrations/202602110001_platform_foundation.sql:152:create policy orgs_
 supabase/migrations/202602110001_platform_foundation.sql:157:create policy org_memberships_read_self_or_admin on public.org_memberships
 supabase/migrations/202602110001_platform_foundation.sql:162:create policy org_tool_settings_member_read on public.org_tool_settings
 supabase/migrations/202602110001_platform_foundation.sql:167:create policy org_tool_settings_admin_write on public.org_tool_settings
-supabase/migrations/202602110001_platform_foundation.sql:173:create policy org_events_member_read on public.org_events
-supabase/migrations/202602110001_platform_foundation.sql:178:create policy org_events_member_insert on public.org_events
+supabase/migrations/202602110001_platform_foundation.sql:173:create policy org_events_member_read on public.calendar_items
+supabase/migrations/202602110001_platform_foundation.sql:178:create policy org_events_member_insert on public.calendar_items
 supabase/migrations/202602110001_platform_foundation.sql:183:create policy sponsor_submissions_member_read on public.sponsor_submissions
 supabase/migrations/202602110001_platform_foundation.sql:188:create policy sponsor_submissions_member_insert on public.sponsor_submissions
 supabase/migrations/202602110001_platform_foundation.sql:193:create policy sponsor_submissions_manager_update on public.sponsor_submissions
@@ -859,17 +859,17 @@ supabase/migrations/202602110010_org_branding.sql:41:create policy org_assets_me
 supabase/migrations/202602110010_org_branding.sql:52:create policy org_assets_admin_insert on storage.objects
 supabase/migrations/202602110010_org_branding.sql:63:create policy org_assets_admin_update on storage.objects
 supabase/migrations/202602110010_org_branding.sql:81:create policy org_assets_admin_delete on storage.objects
-supabase/migrations/202602150001_org_pages_builder.sql:105:create policy org_page_blocks_manager_delete on public.org_page_blocks
+supabase/migrations/202602150001_org_pages_builder.sql:105:create policy org_page_blocks_manager_delete on public.site_page_blocks
 supabase/migrations/202602150001_org_pages_builder.sql:127:create policy org_site_assets_manager_insert on storage.objects
 supabase/migrations/202602150001_org_pages_builder.sql:136:create policy org_site_assets_manager_update on storage.objects
 supabase/migrations/202602150001_org_pages_builder.sql:150:create policy org_site_assets_manager_delete on storage.objects
-supabase/migrations/202602150001_org_pages_builder.sql:37:create policy org_pages_public_or_manager_read on public.org_pages
-supabase/migrations/202602150001_org_pages_builder.sql:42:create policy org_pages_manager_insert on public.org_pages
-supabase/migrations/202602150001_org_pages_builder.sql:47:create policy org_pages_manager_update on public.org_pages
-supabase/migrations/202602150001_org_pages_builder.sql:53:create policy org_pages_manager_delete on public.org_pages
-supabase/migrations/202602150001_org_pages_builder.sql:58:create policy org_page_blocks_public_or_manager_read on public.org_page_blocks
-supabase/migrations/202602150001_org_pages_builder.sql:73:create policy org_page_blocks_manager_insert on public.org_page_blocks
-supabase/migrations/202602150001_org_pages_builder.sql:85:create policy org_page_blocks_manager_update on public.org_page_blocks
+supabase/migrations/202602150001_org_pages_builder.sql:37:create policy org_pages_public_or_manager_read on public.site_pages
+supabase/migrations/202602150001_org_pages_builder.sql:42:create policy org_pages_manager_insert on public.site_pages
+supabase/migrations/202602150001_org_pages_builder.sql:47:create policy org_pages_manager_update on public.site_pages
+supabase/migrations/202602150001_org_pages_builder.sql:53:create policy org_pages_manager_delete on public.site_pages
+supabase/migrations/202602150001_org_pages_builder.sql:58:create policy org_page_blocks_public_or_manager_read on public.site_page_blocks
+supabase/migrations/202602150001_org_pages_builder.sql:73:create policy org_page_blocks_manager_insert on public.site_page_blocks
+supabase/migrations/202602150001_org_pages_builder.sql:85:create policy org_page_blocks_manager_update on public.site_page_blocks
 supabase/migrations/202602160001_custom_roles_permissions.sql:136:create policy org_custom_roles_member_read on public.org_custom_roles
 supabase/migrations/202602160001_custom_roles_permissions.sql:141:create policy org_custom_roles_manage_write on public.org_custom_roles
 supabase/migrations/202602160001_custom_roles_permissions.sql:147:create policy org_memberships_read_self_or_admin on public.org_memberships
@@ -880,14 +880,14 @@ supabase/migrations/202602160001_custom_roles_permissions.sql:178:create policy 
 supabase/migrations/202602160001_custom_roles_permissions.sql:184:create policy org_assets_admin_insert on storage.objects
 supabase/migrations/202602160001_custom_roles_permissions.sql:195:create policy org_assets_admin_update on storage.objects
 supabase/migrations/202602160001_custom_roles_permissions.sql:213:create policy org_assets_admin_delete on storage.objects
-supabase/migrations/202602160001_custom_roles_permissions.sql:224:create policy org_pages_public_or_manager_read on public.org_pages
-supabase/migrations/202602160001_custom_roles_permissions.sql:229:create policy org_pages_manager_insert on public.org_pages
-supabase/migrations/202602160001_custom_roles_permissions.sql:234:create policy org_pages_manager_update on public.org_pages
-supabase/migrations/202602160001_custom_roles_permissions.sql:240:create policy org_pages_manager_delete on public.org_pages
-supabase/migrations/202602160001_custom_roles_permissions.sql:245:create policy org_page_blocks_public_or_manager_read on public.org_page_blocks
-supabase/migrations/202602160001_custom_roles_permissions.sql:260:create policy org_page_blocks_manager_insert on public.org_page_blocks
-supabase/migrations/202602160001_custom_roles_permissions.sql:272:create policy org_page_blocks_manager_update on public.org_page_blocks
-supabase/migrations/202602160001_custom_roles_permissions.sql:292:create policy org_page_blocks_manager_delete on public.org_page_blocks
+supabase/migrations/202602160001_custom_roles_permissions.sql:224:create policy org_pages_public_or_manager_read on public.site_pages
+supabase/migrations/202602160001_custom_roles_permissions.sql:229:create policy org_pages_manager_insert on public.site_pages
+supabase/migrations/202602160001_custom_roles_permissions.sql:234:create policy org_pages_manager_update on public.site_pages
+supabase/migrations/202602160001_custom_roles_permissions.sql:240:create policy org_pages_manager_delete on public.site_pages
+supabase/migrations/202602160001_custom_roles_permissions.sql:245:create policy org_page_blocks_public_or_manager_read on public.site_page_blocks
+supabase/migrations/202602160001_custom_roles_permissions.sql:260:create policy org_page_blocks_manager_insert on public.site_page_blocks
+supabase/migrations/202602160001_custom_roles_permissions.sql:272:create policy org_page_blocks_manager_update on public.site_page_blocks
+supabase/migrations/202602160001_custom_roles_permissions.sql:292:create policy org_page_blocks_manager_delete on public.site_page_blocks
 supabase/migrations/202602160001_custom_roles_permissions.sql:304:create policy org_site_assets_manager_insert on storage.objects
 supabase/migrations/202602160001_custom_roles_permissions.sql:313:create policy org_site_assets_manager_update on storage.objects
 supabase/migrations/202602160001_custom_roles_permissions.sql:327:create policy org_site_assets_manager_delete on storage.objects
@@ -895,10 +895,10 @@ supabase/migrations/202602160001_custom_roles_permissions.sql:336:create policy 
 supabase/migrations/202602160001_custom_roles_permissions.sql:344:create policy org_announcements_manager_insert on public.org_announcements
 supabase/migrations/202602160001_custom_roles_permissions.sql:349:create policy org_announcements_manager_update on public.org_announcements
 supabase/migrations/202602160001_custom_roles_permissions.sql:355:create policy org_announcements_manager_delete on public.org_announcements
-supabase/migrations/202602170003_org_nav_items.sql:33:create policy org_nav_items_public_read on public.org_nav_items
-supabase/migrations/202602170003_org_nav_items.sql:38:create policy org_nav_items_pages_write_insert on public.org_nav_items
-supabase/migrations/202602170003_org_nav_items.sql:43:create policy org_nav_items_pages_write_update on public.org_nav_items
-supabase/migrations/202602170003_org_nav_items.sql:49:create policy org_nav_items_pages_write_delete on public.org_nav_items
+supabase/migrations/202602170003_org_nav_items.sql:33:create policy org_nav_items_public_read on public.site_structure_nodes
+supabase/migrations/202602170003_org_nav_items.sql:38:create policy org_nav_items_pages_write_insert on public.site_structure_nodes
+supabase/migrations/202602170003_org_nav_items.sql:43:create policy org_nav_items_pages_write_update on public.site_structure_nodes
+supabase/migrations/202602170003_org_nav_items.sql:49:create policy org_nav_items_pages_write_delete on public.site_structure_nodes
 supabase/migrations/202602170005_governing_bodies.sql:16:create policy governing_bodies_public_read on public.governing_bodies
 supabase/migrations/202602170006_governing_body_assets_bucket.sql:16:create policy governing_body_assets_public_read on storage.objects
 supabase/migrations/202602170008_org_assets_public_read.sql:6:create policy org_assets_public_read on storage.objects
@@ -912,8 +912,8 @@ supabase/migrations/202602220002_players_v1.sql:85:create policy players_guardia
 supabase/migrations/202602220002_players_v1.sql:90:create policy player_guardians_read on public.player_guardians
 supabase/migrations/202602220003_programs_v1.sql:123:create policy programs_public_or_read on public.programs
 supabase/migrations/202602220003_programs_v1.sql:131:create policy programs_write on public.programs
-supabase/migrations/202602220003_programs_v1.sql:137:create policy program_nodes_public_or_read on public.program_nodes
-supabase/migrations/202602220003_programs_v1.sql:152:create policy program_nodes_write on public.program_nodes
+supabase/migrations/202602220003_programs_v1.sql:137:create policy program_nodes_public_or_read on public.program_structure_nodes
+supabase/migrations/202602220003_programs_v1.sql:152:create policy program_nodes_write on public.program_structure_nodes
 supabase/migrations/202602220003_programs_v1.sql:172:create policy program_schedule_public_or_read on public.program_schedule_blocks
 supabase/migrations/202602220003_programs_v1.sql:187:create policy program_schedule_write on public.program_schedule_blocks
 supabase/migrations/202602220004_forms_v1.sql:112:create policy org_forms_public_or_read on public.org_forms
@@ -939,8 +939,8 @@ supabase/migrations/202602260001_program_schedule_v2.sql:138:create policy progr
 supabase/migrations/202602260001_program_schedule_v2.sql:158:create policy program_schedule_exceptions_public_or_read on public.program_schedule_exceptions
 supabase/migrations/202602260001_program_schedule_v2.sql:173:create policy program_schedule_exceptions_write on public.program_schedule_exceptions
 supabase/migrations/202602260001_program_schedule_v2.sql:88:create policy program_schedule_rules_public_or_read on public.program_schedule_rules
-supabase/migrations/202602280001_events_tool.sql:136:create policy org_events_public_or_read on public.org_events
-supabase/migrations/202602280001_events_tool.sql:145:create policy org_events_write on public.org_events
+supabase/migrations/202602280001_events_tool.sql:136:create policy org_events_public_or_read on public.calendar_items
+supabase/migrations/202602280001_events_tool.sql:145:create policy org_events_write on public.calendar_items
 supabase/migrations/202602280003_form_submission_views.sql:35:create policy org_form_submission_views_read on public.org_form_submission_views
 supabase/migrations/202602280003_form_submission_views.sql:50:create policy org_form_submission_views_insert on public.org_form_submission_views
 supabase/migrations/202602280003_form_submission_views.sql:61:create policy org_form_submission_views_update on public.org_form_submission_views
@@ -975,23 +975,23 @@ supabase/migrations/202603030001_program_teams.sql:185:create policy program_tea
 supabase/migrations/202603030001_program_teams.sql:191:create policy program_team_staff_read on public.program_team_staff
 supabase/migrations/202603030001_program_teams.sql:199:create policy program_team_staff_write on public.program_team_staff
 supabase/migrations/202603030003_player_team_read_policy.sql:4:create policy players_guardian_read on public.players
-supabase/migrations/202603030004_unified_calendar_system.sql:459:create policy calendar_entries_select on public.calendar_entries
-supabase/migrations/202603030004_unified_calendar_system.sql:469:create policy calendar_entries_write on public.calendar_entries
-supabase/migrations/202603030004_unified_calendar_system.sql:481:create policy calendar_rules_select on public.calendar_rules
-supabase/migrations/202603030004_unified_calendar_system.sql:490:create policy calendar_rules_write on public.calendar_rules
-supabase/migrations/202603030004_unified_calendar_system.sql:496:create policy calendar_occurrences_select on public.calendar_occurrences
-supabase/migrations/202603030004_unified_calendar_system.sql:513:create policy calendar_occurrences_write on public.calendar_occurrences
-supabase/migrations/202603030004_unified_calendar_system.sql:519:create policy calendar_rule_exceptions_select on public.calendar_rule_exceptions
-supabase/migrations/202603030004_unified_calendar_system.sql:533:create policy calendar_rule_exceptions_write on public.calendar_rule_exceptions
+supabase/migrations/202603030004_unified_calendar_system.sql:459:create policy calendar_entries_select on public.calendar_items
+supabase/migrations/202603030004_unified_calendar_system.sql:469:create policy calendar_entries_write on public.calendar_items
+supabase/migrations/202603030004_unified_calendar_system.sql:481:create policy calendar_rules_select on public.calendar_item_rules
+supabase/migrations/202603030004_unified_calendar_system.sql:490:create policy calendar_rules_write on public.calendar_item_rules
+supabase/migrations/202603030004_unified_calendar_system.sql:496:create policy calendar_occurrences_select on public.calendar_item_occurrences
+supabase/migrations/202603030004_unified_calendar_system.sql:513:create policy calendar_occurrences_write on public.calendar_item_occurrences
+supabase/migrations/202603030004_unified_calendar_system.sql:519:create policy calendar_rule_exceptions_select on public.calendar_item_rule_exceptions
+supabase/migrations/202603030004_unified_calendar_system.sql:533:create policy calendar_rule_exceptions_write on public.calendar_item_rule_exceptions
 supabase/migrations/202603030004_unified_calendar_system.sql:553:create policy facility_space_configurations_select on public.facility_space_configurations
 supabase/migrations/202603030004_unified_calendar_system.sql:563:create policy facility_space_configurations_write on public.facility_space_configurations
-supabase/migrations/202603030004_unified_calendar_system.sql:575:create policy calendar_occurrence_facility_allocations_select on public.calendar_occurrence_facility_allocations
-supabase/migrations/202603030004_unified_calendar_system.sql:598:create policy calendar_occurrence_facility_allocations_write on public.calendar_occurrence_facility_allocations
-supabase/migrations/202603030004_unified_calendar_system.sql:618:create policy calendar_occurrence_teams_select on public.calendar_occurrence_teams
-supabase/migrations/202603030004_unified_calendar_system.sql:633:create policy calendar_occurrence_teams_write on public.calendar_occurrence_teams
-supabase/migrations/202603030004_unified_calendar_system.sql:655:create policy org_user_inbox_items_select on public.org_user_inbox_items
-supabase/migrations/202603030004_unified_calendar_system.sql:664:create policy org_user_inbox_items_insert on public.org_user_inbox_items
-supabase/migrations/202603030004_unified_calendar_system.sql:680:create policy org_user_inbox_items_update on public.org_user_inbox_items
+supabase/migrations/202603030004_unified_calendar_system.sql:575:create policy calendar_occurrence_facility_allocations_select on public.calendar_item_space_allocations
+supabase/migrations/202603030004_unified_calendar_system.sql:598:create policy calendar_occurrence_facility_allocations_write on public.calendar_item_space_allocations
+supabase/migrations/202603030004_unified_calendar_system.sql:618:create policy calendar_occurrence_teams_select on public.calendar_item_participants
+supabase/migrations/202603030004_unified_calendar_system.sql:633:create policy calendar_occurrence_teams_write on public.calendar_item_participants
+supabase/migrations/202603030004_unified_calendar_system.sql:655:create policy org_user_inbox_items_select on public.user_notifications
+supabase/migrations/202603030004_unified_calendar_system.sql:664:create policy org_user_inbox_items_insert on public.user_notifications
+supabase/migrations/202603030004_unified_calendar_system.sql:680:create policy org_user_inbox_items_update on public.user_notifications
 supabase/migrations/202603070001_spaces_platform.sql:478:create policy facility_spaces_select on public.facility_spaces
 supabase/migrations/202603070001_spaces_platform.sql:490:create policy facility_spaces_write on public.facility_spaces
 supabase/migrations/202603070001_spaces_platform.sql:496:create policy facility_reservation_rules_select on public.facility_reservation_rules
@@ -1006,10 +1006,10 @@ supabase/migrations/202603070001_spaces_platform.sql:652:create policy org_space
 supabase/migrations/202603070001_spaces_platform.sql:660:create policy org_space_types_write on public.org_space_types
 supabase/migrations/202603080001_facilities_visual_reset.sql:273:create policy facilities_select on public.facilities
 supabase/migrations/202603080001_facilities_visual_reset.sql:282:create policy facilities_write on public.facilities
-supabase/migrations/202603080001_facilities_visual_reset.sql:288:create policy facility_nodes_select on public.facility_nodes
-supabase/migrations/202603080001_facilities_visual_reset.sql:297:create policy facility_nodes_write on public.facility_nodes
-supabase/migrations/202603080001_facilities_visual_reset.sql:303:create policy calendar_occurrence_facility_allocations_select on public.calendar_occurrence_facility_allocations
-supabase/migrations/202603080001_facilities_visual_reset.sql:326:create policy calendar_occurrence_facility_allocations_write on public.calendar_occurrence_facility_allocations
+supabase/migrations/202603080001_facilities_visual_reset.sql:288:create policy facility_nodes_select on public.facility_layout_nodes
+supabase/migrations/202603080001_facilities_visual_reset.sql:297:create policy facility_nodes_write on public.facility_layout_nodes
+supabase/migrations/202603080001_facilities_visual_reset.sql:303:create policy calendar_occurrence_facility_allocations_select on public.calendar_item_space_allocations
+supabase/migrations/202603080001_facilities_visual_reset.sql:326:create policy calendar_occurrence_facility_allocations_write on public.calendar_item_space_allocations
 supabase/migrations/202603100001_communications_inbox.sql:330:create policy org_comm_contacts_select on public.org_comm_contacts
 supabase/migrations/202603100001_communications_inbox.sql:338:create policy org_comm_contacts_write on public.org_comm_contacts
 supabase/migrations/202603100001_communications_inbox.sql:344:create policy org_comm_channel_identities_select on public.org_comm_channel_identities
@@ -1048,23 +1048,23 @@ supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:684:creat
 supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:702:create policy facility_reservations_write on public.facility_reservations
 supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:708:create policy facility_reservation_exceptions_select on public.facility_reservation_exceptions
 supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:716:create policy facility_reservation_exceptions_write on public.facility_reservation_exceptions
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:722:create policy calendar_entries_select on public.calendar_entries
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:732:create policy calendar_entries_write on public.calendar_entries
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:744:create policy calendar_rules_select on public.calendar_rules
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:753:create policy calendar_rules_write on public.calendar_rules
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:759:create policy calendar_occurrences_select on public.calendar_occurrences
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:776:create policy calendar_occurrences_write on public.calendar_occurrences
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:782:create policy calendar_rule_exceptions_select on public.calendar_rule_exceptions
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:796:create policy calendar_rule_exceptions_write on public.calendar_rule_exceptions
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:722:create policy calendar_entries_select on public.calendar_items
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:732:create policy calendar_entries_write on public.calendar_items
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:744:create policy calendar_rules_select on public.calendar_item_rules
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:753:create policy calendar_rules_write on public.calendar_item_rules
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:759:create policy calendar_occurrences_select on public.calendar_item_occurrences
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:776:create policy calendar_occurrences_write on public.calendar_item_occurrences
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:782:create policy calendar_rule_exceptions_select on public.calendar_item_rule_exceptions
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:796:create policy calendar_rule_exceptions_write on public.calendar_item_rule_exceptions
 supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:816:create policy facility_space_configurations_select on public.facility_space_configurations
 supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:826:create policy facility_space_configurations_write on public.facility_space_configurations
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:838:create policy calendar_occurrence_facility_allocations_select on public.calendar_occurrence_facility_allocations
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:861:create policy calendar_occurrence_facility_allocations_write on public.calendar_occurrence_facility_allocations
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:881:create policy calendar_occurrence_teams_select on public.calendar_occurrence_teams
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:896:create policy calendar_occurrence_teams_write on public.calendar_occurrence_teams
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:918:create policy org_user_inbox_items_select on public.org_user_inbox_items
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:927:create policy org_user_inbox_items_insert on public.org_user_inbox_items
-supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:943:create policy org_user_inbox_items_update on public.org_user_inbox_items
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:838:create policy calendar_occurrence_facility_allocations_select on public.calendar_item_space_allocations
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:861:create policy calendar_occurrence_facility_allocations_write on public.calendar_item_space_allocations
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:881:create policy calendar_occurrence_teams_select on public.calendar_item_participants
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:896:create policy calendar_occurrence_teams_write on public.calendar_item_participants
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:918:create policy org_user_inbox_items_select on public.user_notifications
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:927:create policy org_user_inbox_items_insert on public.user_notifications
+supabase/migrations/202603120001_facilities_calendar_schema_repair.sql:943:create policy org_user_inbox_items_update on public.user_notifications
 supabase/migrations/202603140001_sportsconnect_import.sql:193:create policy org_orders_read on public.org_orders
 supabase/migrations/202603140001_sportsconnect_import.sql:202:create policy org_orders_write on public.org_orders
 supabase/migrations/202603140001_sportsconnect_import.sql:208:create policy org_order_items_read on public.org_order_items
@@ -1077,12 +1077,12 @@ supabase/migrations/202603140001_sportsconnect_import.sql:249:create policy spor
 supabase/migrations/202603140001_sportsconnect_import.sql:254:create policy sportsconnect_import_rows_write on public.sportsconnect_import_rows
 supabase/migrations/202603140001_sportsconnect_import.sql:260:create policy sportsconnect_import_applied_rows_read on public.sportsconnect_import_applied_rows
 supabase/migrations/202603140001_sportsconnect_import.sql:265:create policy sportsconnect_import_applied_rows_write on public.sportsconnect_import_applied_rows
-supabase/migrations/202603150001_calendar_facility_allocations_multi.sql:111:create policy calendar_rule_facility_allocations_write on public.calendar_rule_facility_allocations
-supabase/migrations/202603150001_calendar_facility_allocations_multi.sql:97:create policy calendar_rule_facility_allocations_select on public.calendar_rule_facility_allocations
-supabase/migrations/202603160001_calendar_lens_sources_and_saved_views.sql:405:create policy calendar_sources_select on public.calendar_sources
-supabase/migrations/202603160001_calendar_lens_sources_and_saved_views.sql:419:create policy calendar_sources_write on public.calendar_sources
-supabase/migrations/202603160001_calendar_lens_sources_and_saved_views.sql:425:create policy calendar_lens_saved_views_select on public.calendar_lens_saved_views
-supabase/migrations/202603160001_calendar_lens_sources_and_saved_views.sql:442:create policy calendar_lens_saved_views_write on public.calendar_lens_saved_views
+supabase/migrations/202603150001_calendar_facility_allocations_multi.sql:111:create policy calendar_rule_facility_allocations_write on public.calendar_item_space_allocations
+supabase/migrations/202603150001_calendar_facility_allocations_multi.sql:97:create policy calendar_rule_facility_allocations_select on public.calendar_item_space_allocations
+supabase/migrations/202603160001_calendar_lens_sources_and_saved_views.sql:405:create policy calendar_sources_select on public.calendar_item_sources
+supabase/migrations/202603160001_calendar_lens_sources_and_saved_views.sql:419:create policy calendar_sources_write on public.calendar_item_sources
+supabase/migrations/202603160001_calendar_lens_sources_and_saved_views.sql:425:create policy calendar_lens_saved_views_select on public.calendar_saved_views
+supabase/migrations/202603160001_calendar_lens_sources_and_saved_views.sql:442:create policy calendar_lens_saved_views_write on public.calendar_saved_views
 supabase/migrations/202603170001_site_structure_canvas.sql:80:create policy org_site_structure_nodes_public_or_manager_read on public.org_site_structure_nodes
 supabase/migrations/202603170001_site_structure_canvas.sql:85:create policy org_site_structure_nodes_manager_insert on public.org_site_structure_nodes
 supabase/migrations/202603170001_site_structure_canvas.sql:90:create policy org_site_structure_nodes_manager_update on public.org_site_structure_nodes
@@ -1104,8 +1104,8 @@ supabase/migrations/202603220001_file_manager.sql:1297:create policy account_ass
 apps/orgframe-app/modules/ai/config.ts:1:export class MissingOpenAiKeyError extends Error {
 apps/orgframe-app/modules/ai/config.ts:20:export function getAiConfig(): AiConfig {
 apps/orgframe-app/modules/ai/config.ts:8:export type AiConfig = {
-apps/orgframe-app/modules/ai/openai.ts:14:export type AiPlanningResult = {
-apps/orgframe-app/modules/ai/openai.ts:8:export type AiPlanningCallbacks = {
+apps/orgframe-app/modules/ai/gateway.ts:14:export type AiPlanningResult = {
+apps/orgframe-app/modules/ai/gateway.ts:8:export type AiPlanningCallbacks = {
 apps/orgframe-app/modules/ai/rate-limit.ts:3:export type AiRateLimitResult = {
 apps/orgframe-app/modules/ai/schemas.ts:108:export const resolveEntitiesInputSchema = z.object({
 apps/orgframe-app/modules/ai/schemas.ts:10:export const aiRequestSchema = z.object({
@@ -1122,13 +1122,13 @@ apps/orgframe-app/modules/ai/tools/base.ts:19:export function hasRequiredPermiss
 apps/orgframe-app/modules/ai/tools/base.ts:5:export type AiToolExecutionContext = {
 apps/orgframe-app/modules/ai/tools/execute-changes.ts:12:export const executeChangesTool: AiToolDefinition<typeof executeChangesInputSchema, ExecuteChangesResult> = {
 apps/orgframe-app/modules/ai/tools/execute-changes.ts:7:export type ExecuteChangesResult = {
-apps/orgframe-app/modules/ai/tools/index.ts:1:export { aiTools, openAiToolDefinitions, runAiTool } from "@/modules/ai/tools/registry";
+apps/orgframe-app/modules/ai/tools/index.ts:1:export { aiTools, aiToolDefinitions, runAiTool } from "@/modules/ai/tools/registry";
 apps/orgframe-app/modules/ai/tools/index.ts:2:export type { AiToolName } from "@/modules/ai/tools/registry";
 apps/orgframe-app/modules/ai/tools/intents/stub-intents.ts:10:export function proposeStubIntent(intentType: string): AiProposal {
 apps/orgframe-app/modules/ai/tools/propose-changes.ts:12:export type ProposeChangesResult = {
 apps/orgframe-app/modules/ai/tools/propose-changes.ts:66:export const proposeChangesTool: AiToolDefinition<typeof proposeChangesInputSchema, ProposeChangesResult> = {
 apps/orgframe-app/modules/ai/tools/registry.ts:14:export type AiToolName = keyof typeof aiTools;
-apps/orgframe-app/modules/ai/tools/registry.ts:16:export const openAiToolDefinitions = [
+apps/orgframe-app/modules/ai/tools/registry.ts:16:export const aiToolDefinitions = [
 apps/orgframe-app/modules/ai/tools/registry.ts:62:export function canUseTool(grantedPermissions: Permission[], requiredPermissions: Permission[]) {
 apps/orgframe-app/modules/ai/tools/registry.ts:8:export const aiTools = {
 apps/orgframe-app/modules/ai/tools/resolve-entities.ts:135:export const resolveEntitiesTool: AiToolDefinition<typeof resolveEntitiesInputSchema, ResolveEntitiesResult> = {

@@ -6,8 +6,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 import { zonedLocalToUtc } from "@/src/features/calendar/rule-engine";
 import { createDefaultFormSchema } from "@/src/features/forms/schema";
 import { parseSportsConnectCsv, parseSportsConnectDateTime } from "@/src/features/sportsconnect/parser";
@@ -323,7 +323,7 @@ function parseRowTimestampIso(row: SportsConnectNormalizedRow, timezone: string)
 
 async function listExistingProgramsAndNodes(supabase: ServiceSupabase, orgId: string) {
   const { data: programsData, error: programsError } = await supabase
-    .from("programs")
+    .schema("programs").from("programs")
     .select("id, name, slug")
     .eq("org_id", orgId)
     .order("created_at", { ascending: true });
@@ -338,7 +338,7 @@ async function listExistingProgramsAndNodes(supabase: ServiceSupabase, orgId: st
   const nodes: ExistingProgramNode[] = [];
   if (programIds.length > 0) {
     const { data: nodesData, error: nodesError } = await supabase
-      .from("program_nodes")
+      .schema("programs").from("program_structure_nodes")
       .select("id, program_id, parent_id, name, node_kind")
       .in("program_id", programIds)
       .order("created_at", { ascending: true });
@@ -549,7 +549,7 @@ async function insertRunRows(input: {
       warnings_json: row.warnings
     }));
 
-    const { error } = await input.supabase.from("sportsconnect_import_rows").insert(payload);
+    const { error } = await input.supabase.schema("imports").from("sportsconnect_import_rows").insert(payload);
     if (error) {
       throw new Error(`Failed to persist import rows: ${error.message}`);
     }
@@ -578,7 +578,7 @@ async function loadRunWithRows(input: {
   orgId: string;
 }) {
   const { data: runData, error: runError } = await input.supabase
-    .from("sportsconnect_import_runs")
+    .schema("imports").from("sportsconnect_import_runs")
     .select("id, org_id, status, summary_json, mapping_json, source_filename, source_timezone")
     .eq("id", input.runId)
     .eq("org_id", input.orgId)
@@ -593,7 +593,7 @@ async function loadRunWithRows(input: {
   }
 
   const { data: rowsData, error: rowsError } = await input.supabase
-    .from("sportsconnect_import_rows")
+    .schema("imports").from("sportsconnect_import_rows")
     .select("id, row_number, row_hash, raw_row_json, normalized_row_json, issues_json, warnings_json")
     .eq("run_id", input.runId)
     .eq("org_id", input.orgId)
@@ -715,7 +715,7 @@ async function createImportedAuthUser(supabase: ServiceSupabase, email: string) 
 }
 
 async function upsertOrgMembership(supabase: ServiceSupabase, orgId: string, userId: string) {
-  const { error } = await supabase.from("org_memberships").upsert(
+  const { error } = await supabase.schema("orgs").from("org_memberships").upsert(
     {
       org_id: orgId,
       user_id: userId,
@@ -759,7 +759,7 @@ async function fillUserProfileBlanks(input: {
   postalCode: string | null;
 }) {
   const { data: existing, error: existingError } = await input.supabase
-    .from("user_profiles")
+    .schema("people").from("user_profiles")
     .select("user_id, first_name, last_name, phone_primary, phone_secondary, phone_other, street_1, street_2, city, state, postal_code")
     .eq("user_id", input.userId)
     .maybeSingle();
@@ -769,7 +769,7 @@ async function fillUserProfileBlanks(input: {
   }
 
   if (!existing) {
-    const { error: insertError } = await input.supabase.from("user_profiles").insert({
+    const { error: insertError } = await input.supabase.schema("people").from("user_profiles").insert({
       user_id: input.userId,
       first_name: input.firstName,
       last_name: input.lastName,
@@ -816,7 +816,7 @@ async function fillUserProfileBlanks(input: {
     return;
   }
 
-  const { error: updateError } = await input.supabase.from("user_profiles").update(updates).eq("user_id", input.userId);
+  const { error: updateError } = await input.supabase.schema("people").from("user_profiles").update(updates).eq("user_id", input.userId);
   if (updateError) {
     throw new Error(`Failed to update user profile: ${updateError.message}`);
   }
@@ -828,7 +828,7 @@ async function getNextSortIndex(input: {
   parentId: string | null;
 }) {
   const query = input.supabase
-    .from("program_nodes")
+    .schema("programs").from("program_structure_nodes")
     .select("sort_index")
     .eq("program_id", input.programId)
     .order("sort_index", { ascending: false })
@@ -881,7 +881,7 @@ async function ensureProgram(input: {
 
   const slug = buildStableSlug(input.programName, input.programKey);
   const { data, error } = await input.supabase
-    .from("programs")
+    .schema("programs").from("programs")
     .insert({
       org_id: input.orgId,
       slug,
@@ -900,7 +900,7 @@ async function ensureProgram(input: {
 
   if (error) {
     const { data: existing, error: existingError } = await input.supabase
-      .from("programs")
+      .schema("programs").from("programs")
       .select("id")
       .eq("org_id", input.orgId)
       .eq("slug", slug)
@@ -960,7 +960,7 @@ async function ensureDivision(input: {
 
   const slug = buildStableSlug(input.divisionName, input.divisionKey);
   const { data, error } = await input.supabase
-    .from("program_nodes")
+    .schema("programs").from("program_structure_nodes")
     .insert({
       program_id: input.programId,
       parent_id: null,
@@ -979,7 +979,7 @@ async function ensureDivision(input: {
 
   if (error) {
     const { data: existing, error: existingError } = await input.supabase
-      .from("program_nodes")
+      .schema("programs").from("program_structure_nodes")
       .select("id")
       .eq("program_id", input.programId)
       .eq("node_kind", "division")
@@ -1049,7 +1049,7 @@ async function ensureTeam(input: {
 
   const slug = buildStableSlug(input.teamName, input.teamKey);
   const { data, error } = await input.supabase
-    .from("program_nodes")
+    .schema("programs").from("program_structure_nodes")
     .insert({
       program_id: input.programId,
       parent_id: input.divisionNodeId,
@@ -1068,7 +1068,7 @@ async function ensureTeam(input: {
 
   if (error) {
     const { data: existing, error: existingError } = await input.supabase
-      .from("program_nodes")
+      .schema("programs").from("program_structure_nodes")
       .select("id")
       .eq("program_id", input.programId)
       .eq("node_kind", "team")
@@ -1108,7 +1108,7 @@ async function findPlayerByLegacyId(input: {
 
   for (const contains of lookups) {
     const { data, error } = await input.supabase
-      .from("players")
+      .schema("people").from("players")
       .select("id, owner_user_id, first_name, last_name, date_of_birth, metadata_json")
       .contains("metadata_json", contains)
       .limit(1)
@@ -1134,7 +1134,7 @@ async function findPlayerByExactFallback(input: {
   dateOfBirth: string | null;
 }) {
   let query = input.supabase
-    .from("players")
+    .schema("people").from("players")
     .select("id, owner_user_id, first_name, last_name, date_of_birth, metadata_json, program_registrations!inner(org_id)")
     .eq("program_registrations.org_id", input.orgId)
     .eq("first_name", input.firstName)
@@ -1194,7 +1194,7 @@ async function ensurePlayer(input: {
   } else {
     const metadataJson = buildPlayerLegacyMetadata(input.row);
     const { data: inserted, error: insertError } = await input.supabase
-      .from("players")
+      .schema("people").from("players")
       .insert({
         owner_user_id: input.guardianUserId,
         first_name: input.row.playerFirstName,
@@ -1223,7 +1223,7 @@ async function ensurePlayer(input: {
 
   if (!input.firstGuardianByPlayerId.has(playerId)) {
     const { error: ownerError } = await input.supabase
-      .from("players")
+      .schema("people").from("players")
       .update({
         owner_user_id: input.guardianUserId
       })
@@ -1236,7 +1236,7 @@ async function ensurePlayer(input: {
     input.firstGuardianByPlayerId.add(playerId);
   }
 
-  const { error: guardianError } = await input.supabase.from("player_guardians").upsert(
+  const { error: guardianError } = await input.supabase.schema("people").from("player_guardians").upsert(
     {
       player_id: playerId,
       guardian_user_id: input.guardianUserId,
@@ -1270,7 +1270,7 @@ async function ensureImportForm(input: {
   }
 
   const { data: existingForm, error: existingFormError } = await input.supabase
-    .from("org_forms")
+    .schema("forms").from("org_forms")
     .select("id")
     .eq("org_id", input.orgId)
     .eq("program_id", input.programId)
@@ -1291,7 +1291,7 @@ async function ensureImportForm(input: {
         const slug = `sportsconnect-import-${input.programId.slice(0, 8)}`;
         const schema = createDefaultFormSchema(`SportsConnect Import (${input.programName})`, "program_registration");
         const { data: createdForm, error: createdFormError } = await input.supabase
-          .from("org_forms")
+          .schema("forms").from("org_forms")
           .insert({
             org_id: input.orgId,
             slug,
@@ -1316,7 +1316,7 @@ async function ensureImportForm(input: {
 
         if (createdFormError || !createdForm?.id) {
           const { data: fallbackForm, error: fallbackError } = await input.supabase
-            .from("org_forms")
+            .schema("forms").from("org_forms")
             .select("id")
             .eq("org_id", input.orgId)
             .eq("slug", slug)
@@ -1334,7 +1334,7 @@ async function ensureImportForm(input: {
     );
 
   const { data: latestVersion, error: latestVersionError } = await input.supabase
-    .from("org_form_versions")
+    .schema("forms").from("org_form_versions")
     .select("id, version_number")
     .eq("form_id", formId)
     .order("version_number", { ascending: false })
@@ -1349,7 +1349,7 @@ async function ensureImportForm(input: {
   if (!versionId) {
     const schema = createDefaultFormSchema(`SportsConnect Import (${input.programName})`, "program_registration");
     const { data: createdVersion, error: createdVersionError } = await input.supabase
-      .from("org_form_versions")
+      .schema("forms").from("org_form_versions")
       .insert({
         org_id: input.orgId,
         form_id: formId,
@@ -1393,7 +1393,7 @@ async function ensureOrder(input: {
   const sourcePaymentKey = buildPaymentSourceKey(input.row, input.rowHash);
 
   const { data: existingOrder, error: existingOrderError } = await input.supabase
-    .from("org_orders")
+    .schema("commerce").from("orders")
     .select("id")
     .eq("org_id", input.orgId)
     .eq("source_system", "sportsconnect")
@@ -1431,11 +1431,11 @@ async function ensureOrder(input: {
   };
 
   const { data: orderData, error: orderError } = await input.supabase
-    .from("org_orders")
+    .schema("commerce").from("orders")
     .upsert(orderPayload, {
       onConflict: "org_id,source_system,source_order_id"
     })
-    .select("id")
+    .select("id, items_json")
     .single();
 
   if (orderError || !orderData?.id) {
@@ -1444,22 +1444,16 @@ async function ensureOrder(input: {
 
   const orderId = orderData.id;
 
-  const { data: existingItem, error: existingItemError } = await input.supabase
-    .from("org_order_items")
-    .select("id")
-    .eq("order_id", orderId)
-    .eq("source_line_key", sourceLineKey)
-    .maybeSingle();
-
-  if (existingItemError) {
-    throw new Error(`Failed to check existing order item: ${existingItemError.message}`);
-  }
-
-  const itemWasExisting = Boolean(existingItem?.id);
+  const existingItems = Array.isArray(orderData.items_json) ? [...orderData.items_json] : [];
+  const existingIndex = existingItems.findIndex((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return false;
+    }
+    return (value as { source_line_key?: unknown }).source_line_key === sourceLineKey;
+  });
 
   const itemPayload = {
-    org_id: input.orgId,
-    order_id: orderId,
+    id: sourceLineKey,
     source_line_key: sourceLineKey,
     description: input.row.orderDetailDescription,
     source_program_name: input.row.orderDetailProgramName ?? input.row.programName,
@@ -1479,12 +1473,20 @@ async function ensureOrder(input: {
     }
   };
 
-  const { error: itemError } = await input.supabase.from("org_order_items").upsert(itemPayload, {
-    onConflict: "order_id,source_line_key"
-  });
+  if (existingIndex >= 0) {
+    existingItems[existingIndex] = itemPayload;
+  } else {
+    existingItems.push(itemPayload);
+  }
+
+  const { error: itemError } = await input.supabase
+    .schema("commerce").from("orders")
+    .update({ items_json: existingItems })
+    .eq("org_id", input.orgId)
+    .eq("id", orderId);
 
   if (itemError) {
-    throw new Error(`Failed to upsert order item ledger row: ${itemError.message}`);
+    throw new Error(`Failed to update order items payload: ${itemError.message}`);
   }
 
   const hasPaymentSignal =
@@ -1498,7 +1500,7 @@ async function ensureOrder(input: {
   let paymentCreated = false;
   if (hasPaymentSignal) {
     const { data: existingPayment, error: existingPaymentError } = await input.supabase
-      .from("org_order_payments")
+      .schema("commerce").from("payments")
       .select("id")
       .eq("order_id", orderId)
       .eq("source_payment_key", sourcePaymentKey)
@@ -1524,7 +1526,7 @@ async function ensureOrder(input: {
       }
     };
 
-    const { error: paymentError } = await input.supabase.from("org_order_payments").upsert(paymentPayload, {
+    const { error: paymentError } = await input.supabase.schema("commerce").from("payments").upsert(paymentPayload, {
       onConflict: "order_id,source_payment_key"
     });
 
@@ -1541,7 +1543,7 @@ async function ensureOrder(input: {
     sourceOrderNo: input.row.sourceOrderNo,
     sourcePaymentStatus: input.row.sourcePaymentStatus,
     orderCreated: !orderWasExisting,
-    itemCreated: !itemWasExisting,
+    itemCreated: existingIndex < 0,
     paymentCreated
   };
 }
@@ -1559,7 +1561,7 @@ async function ensureTeamIdForNode(input: {
   }
 
   const { data: existing, error: existingError } = await input.supabase
-    .from("program_teams")
+    .schema("programs").from("program_teams")
     .select("id")
     .eq("program_node_id", input.teamNodeId)
     .maybeSingle();
@@ -1574,7 +1576,7 @@ async function ensureTeamIdForNode(input: {
   }
 
   const { data: inserted, error: insertError } = await input.supabase
-    .from("program_teams")
+    .schema("programs").from("program_teams")
     .insert({
       org_id: input.orgId,
       program_id: input.programId,
@@ -1661,7 +1663,7 @@ export async function createDryRun(input: z.input<typeof createDryRunSchema>): P
   const sourceTimezone = isValidTimezone(payload.sourceTimezone) ? payload.sourceTimezone : "America/Detroit";
 
   const { data: createdRun, error: createRunError } = await serviceSupabase
-    .from("sportsconnect_import_runs")
+    .schema("imports").from("sportsconnect_import_runs")
     .insert({
       org_id: org.orgId,
       created_by_user_id: org.userId,
@@ -1754,7 +1756,7 @@ export async function resolveMappings(input: z.input<typeof resolveMappingsSchem
   const status = unresolvedMappings === 0 ? "ready" : "dry_run";
 
   const { error: updateError } = await serviceSupabase
-    .from("sportsconnect_import_runs")
+    .schema("imports").from("sportsconnect_import_runs")
     .update({
       status,
       mapping_json: {
@@ -1833,7 +1835,7 @@ export async function commitRun(input: z.input<typeof commitRunSchema>): Promise
 
   const loadAppliedHashesChunk = async (chunk: string[]): Promise<string[]> => {
     const { data, error } = await serviceSupabase
-      .from("sportsconnect_import_applied_rows")
+      .schema("imports").from("sportsconnect_import_applied_rows")
       .select("row_hash")
       .eq("org_id", org.orgId)
       .in("row_hash", chunk);
@@ -1989,7 +1991,7 @@ export async function commitRun(input: z.input<typeof commitRunSchema>): Promise
       });
 
       const { data: submissionRow, error: submissionError } = await serviceSupabase
-        .from("org_form_submissions")
+        .schema("forms").from("org_form_submissions")
         .insert({
           org_id: org.orgId,
           form_id: importForm.formId,
@@ -2040,7 +2042,7 @@ export async function commitRun(input: z.input<typeof commitRunSchema>): Promise
       }
 
       const registrationLookupBase = serviceSupabase
-        .from("program_registrations")
+        .schema("programs").from("program_registrations")
         .select("id")
         .eq("org_id", org.orgId)
         .eq("program_id", programContext.programId)
@@ -2059,7 +2061,7 @@ export async function commitRun(input: z.input<typeof commitRunSchema>): Promise
 
       if (!registrationId) {
         const { data: createdRegistration, error: registrationError } = await serviceSupabase
-          .from("program_registrations")
+          .schema("programs").from("program_registrations")
           .insert({
             org_id: org.orgId,
             program_id: programContext.programId,
@@ -2095,7 +2097,7 @@ export async function commitRun(input: z.input<typeof commitRunSchema>): Promise
         });
 
         const { data: existingTeamMember, error: existingTeamMemberError } = await serviceSupabase
-          .from("program_team_members")
+          .schema("programs").from("program_team_members")
           .select("id")
           .eq("program_id", programContext.programId)
           .eq("player_id", playerId)
@@ -2107,7 +2109,7 @@ export async function commitRun(input: z.input<typeof commitRunSchema>): Promise
         }
 
         if (!existingTeamMember?.id) {
-          const { error: teamMemberError } = await serviceSupabase.from("program_team_members").insert({
+          const { error: teamMemberError } = await serviceSupabase.schema("programs").from("program_team_members").insert({
             team_id: teamId,
             org_id: org.orgId,
             program_id: programContext.programId,
@@ -2144,7 +2146,7 @@ export async function commitRun(input: z.input<typeof commitRunSchema>): Promise
       };
 
       const { error: appliedRowError } = await serviceSupabase
-        .from("sportsconnect_import_applied_rows")
+        .schema("imports").from("sportsconnect_import_applied_rows")
         .insert({
           org_id: org.orgId,
           run_id: payload.runId,
@@ -2166,7 +2168,7 @@ export async function commitRun(input: z.input<typeof commitRunSchema>): Promise
       }
 
       const { error: markAppliedError } = await serviceSupabase
-        .from("sportsconnect_import_rows")
+        .schema("imports").from("sportsconnect_import_rows")
         .update({
           applied: true,
           applied_at: new Date().toISOString(),
@@ -2211,7 +2213,7 @@ export async function commitRun(input: z.input<typeof commitRunSchema>): Promise
   const orderRefs = Array.from(importedOrders.values()).slice(0, 25);
 
   const { error: updateRunError } = await serviceSupabase
-    .from("sportsconnect_import_runs")
+    .schema("imports").from("sportsconnect_import_runs")
     .update({
       status: finalStatus,
       committed_at: new Date().toISOString(),
@@ -2571,7 +2573,7 @@ export async function listRunHistory(input: z.input<typeof runHistorySchema>): P
   }
 
   const { data, error } = await serviceSupabase
-    .from("sportsconnect_import_runs")
+    .schema("imports").from("sportsconnect_import_runs")
     .select("id, status, source_filename, row_count, summary_json, created_at, committed_at, error_text")
     .eq("org_id", org.orgId)
     .order("created_at", { ascending: false })

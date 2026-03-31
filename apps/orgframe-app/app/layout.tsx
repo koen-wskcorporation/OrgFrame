@@ -7,11 +7,14 @@ import { ConfirmDialogProvider } from "@orgframe/ui/primitives/confirm-dialog";
 import { ThemeModeProvider } from "@orgframe/ui/primitives/theme-mode";
 import { ToastProvider } from "@orgframe/ui/primitives/toast";
 import { shouldShowBranchHeaders } from "@/src/shared/env/branchVisibility";
-import { getTenantBaseHosts, normalizeHost, resolveOrgSubdomain } from "@/src/shared/domains/customDomains";
+import { getTenantBaseHosts, resolveOrgSubdomain } from "@/src/shared/domains/customDomains";
+import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
+import { listUserOrgs } from "@/src/shared/org/listUserOrgs";
 import { FileManagerProvider } from "@/src/features/files/manager";
 import { UploadProvider } from "@/src/features/files/uploads";
 import { OrderPanelProvider } from "@/src/features/orders";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { parseHostWithPort } from "@/src/shared/domains/hostHeaders";
 
 export const metadata: Metadata = {
   title: {
@@ -21,42 +24,11 @@ export const metadata: Metadata = {
   description: "Multi-tenant sports operations suite"
 };
 
-function parseHeaderHostWithPort(value: string | null | undefined) {
-  const raw = value?.split(",")[0]?.trim() ?? "";
-  if (!raw) {
-    return {
-      host: "",
-      hostWithPort: "",
-      port: ""
-    };
-  }
-
-  try {
-    const parsed = new URL(`http://${raw}`);
-    const host = normalizeHost(parsed.hostname);
-    const port = parsed.port.trim();
-    return {
-      host,
-      hostWithPort: port ? `${host}:${port}` : host,
-      port
-    };
-  } catch {
-    const host = normalizeHost(raw);
-    const portMatch = raw.match(/:(\d+)$/);
-    const port = portMatch?.[1]?.trim() ?? "";
-    return {
-      host,
-      hostWithPort: port ? `${host}:${port}` : host,
-      port
-    };
-  }
-}
-
 async function getHeaderRoutingContext() {
   const headerStore = await headers();
   const forwardedHost = headerStore.get("x-forwarded-host");
   const hostHeader = forwardedHost || headerStore.get("host");
-  const parsedHost = parseHeaderHostWithPort(hostHeader);
+  const parsedHost = parseHostWithPort(hostHeader);
   const host = parsedHost.host;
   const hostWithPort = parsedHost.hostWithPort || host;
   const tenantBaseHosts = getTenantBaseHosts();
@@ -98,6 +70,18 @@ export default async function RootLayout({
 }>) {
   const showHeaders = shouldShowBranchHeaders();
   const headerRouting = showHeaders ? await getHeaderRoutingContext() : { currentOrgSlug: null, homeHref: "/", tenantBaseOrigin: null };
+  const orgOptions = showHeaders
+    ? await listUserOrgs()
+        .then((memberships) =>
+          memberships.map((membership) => ({
+            orgSlug: membership.orgSlug,
+            orgName: membership.orgName,
+            orgLogoUrl: getOrgAssetPublicUrl(membership.logoPath),
+            orgIconUrl: getOrgAssetPublicUrl(membership.iconPath)
+          }))
+        )
+        .catch(() => [])
+    : [];
   return (
     <html lang="en">
       <body className="bg-canvas text-text antialiased">
@@ -110,7 +94,12 @@ export default async function RootLayout({
                     <div className="app-frame">
                       <div className="app-root flex min-h-screen min-w-0 flex-col">
                         {showHeaders ? (
-                          <PrimaryHeader currentOrgSlug={headerRouting.currentOrgSlug} homeHref={headerRouting.homeHref} tenantBaseOrigin={headerRouting.tenantBaseOrigin} />
+                          <PrimaryHeader
+                            currentOrgSlug={headerRouting.currentOrgSlug}
+                            homeHref={headerRouting.homeHref}
+                            orgOptions={orgOptions}
+                            tenantBaseOrigin={headerRouting.tenantBaseOrigin}
+                          />
                         ) : null}
                         <div className={showHeaders ? "flex-1 min-w-0 pt-[var(--layout-gap)]" : "flex-1 min-w-0"}>{children}</div>
                       </div>

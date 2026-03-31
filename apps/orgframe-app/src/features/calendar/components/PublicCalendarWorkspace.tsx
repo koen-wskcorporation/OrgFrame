@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Calendar } from "@/src/features/calendar/components/Calendar";
+import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
 import type { CalendarPublicCatalogItem } from "@/src/features/calendar/types";
 
 type PublicCalendarWorkspaceProps = {
@@ -24,28 +24,23 @@ export function PublicCalendarWorkspace({ orgSlug: _orgSlug, items, title = "Cal
   }));
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <Calendar canEdit={false} items={calendarItems} onSelectItem={() => {}} />
-        <div className="space-y-2">
-          {items.slice(0, 20).map((item) => (
-            <article className="rounded-control border bg-surface px-3 py-2" key={item.occurrenceId}>
-              <p className="font-semibold text-text">
-                <Link className="hover:underline" href={`/calendar/${item.occurrenceId}`}>
-                  {item.title}
-                </Link>
-              </p>
-              <p className="text-xs text-text-muted">
-                {new Date(item.startsAtUtc).toLocaleString()} - {new Date(item.endsAtUtc).toLocaleString()}
-              </p>
-              {item.location ? <p className="text-xs text-text-muted">{item.location}</p> : null}
-            </article>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <WorkspaceCardShell contentClassName="space-y-3" title={title}>
+      <Calendar canEdit={false} items={calendarItems} onSelectItem={() => {}} />
+      <div className="space-y-2">
+        {items.slice(0, 20).map((item) => (
+          <article className="rounded-control border bg-surface px-3 py-2" key={item.occurrenceId}>
+            <p className="font-semibold text-text">
+              <Link className="hover:underline" href={`/calendar/${item.occurrenceId}`}>
+                {item.title}
+              </Link>
+            </p>
+            <p className="text-xs text-text-muted">
+              {new Date(item.startsAtUtc).toLocaleString()} - {new Date(item.endsAtUtc).toLocaleString()}
+            </p>
+            {item.location ? <p className="text-xs text-text-muted">{item.location}</p> : null}
+          </article>
+        ))}
+      </div>
+    </WorkspaceCardShell>
   );
 }

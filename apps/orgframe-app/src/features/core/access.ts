@@ -170,7 +170,17 @@ export const permissionDefinitions: PermissionDefinition[] = [
 
 const defaultRolePermissions: Record<DefaultOrgRole, Permission[]> = {
   admin: allPermissions,
-  member: ["org.dashboard.read", "org.branding.read", "org.pages.read"]
+  member: [
+    "org.dashboard.read",
+    "org.branding.read",
+    "org.pages.read",
+    "programs.read",
+    "forms.read",
+    "events.read",
+    "calendar.read",
+    "facilities.read",
+    "communications.read"
+  ]
 };
 
 const defaultRoleLabels: Record<DefaultOrgRole, string> = {
@@ -209,11 +219,12 @@ export function normalizeRoleKey(value: string) {
 }
 
 export function getDefaultRolePermissions(role: string): Permission[] | null {
-  if (!isDefaultOrgRole(role)) {
+  const normalizedRole = role === "user" ? "member" : role;
+  if (!isDefaultOrgRole(normalizedRole)) {
     return null;
   }
 
-  return defaultRolePermissions[role];
+  return defaultRolePermissions[normalizedRole];
 }
 
 export function getDefaultRoleLabel(role: DefaultOrgRole) {
@@ -225,7 +236,7 @@ export function getRoleLabel(roleKey: string) {
     return "Admin";
   }
 
-  if (roleKey === "member") {
+  if (roleKey === "member" || roleKey === "user") {
     return "Member";
   }
 

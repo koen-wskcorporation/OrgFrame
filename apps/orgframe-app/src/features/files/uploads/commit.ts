@@ -2,8 +2,8 @@ import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavig
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { getOrgPublicContext } from "@/src/shared/org/getOrgPublicContext";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 import { uploadPurposeConfigByPurpose } from "@/src/features/files/uploads/config";
 import {
   buildOrgStoragePath,

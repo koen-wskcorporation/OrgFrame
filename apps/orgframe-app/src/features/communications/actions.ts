@@ -5,7 +5,7 @@ import { z } from "zod";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 import { getInboxConversationDetail, listChannelIntegrations, listInboxConversations, searchCommContacts } from "@/src/features/communications/db/queries";
 import {
   connectFacebookPageIntegration,

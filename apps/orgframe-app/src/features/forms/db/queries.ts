@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { createDefaultFormSchema, parseFormSchema } from "@/src/features/forms/schema";
 import type {
   FormSubmission,
@@ -257,7 +257,7 @@ function mapGoogleSheetSyncRun(row: GoogleSheetSyncRunRow): OrgFormGoogleSheetSy
 export async function listFormsForManage(orgId: string): Promise<OrgForm[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_forms")
+    .schema("forms").from("org_forms")
     .select(formSelect)
     .eq("org_id", orgId)
     .order("updated_at", { ascending: false });
@@ -272,7 +272,7 @@ export async function listFormsForManage(orgId: string): Promise<OrgForm[]> {
 export async function getFormById(orgId: string, formId: string): Promise<OrgForm | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_forms")
+    .schema("forms").from("org_forms")
     .select(formSelect)
     .eq("org_id", orgId)
     .eq("id", formId)
@@ -291,7 +291,7 @@ export async function getFormById(orgId: string, formId: string): Promise<OrgFor
 
 export async function getFormBySlug(orgId: string, formSlug: string, options?: { includeDraft?: boolean }): Promise<OrgForm | null> {
   const supabase = await createSupabaseServer();
-  let query = supabase.from("org_forms").select(formSelect).eq("org_id", orgId).eq("slug", formSlug).limit(1);
+  let query = supabase.schema("forms").from("org_forms").select(formSelect).eq("org_id", orgId).eq("slug", formSlug).limit(1);
 
   if (!options?.includeDraft) {
     query = query.eq("status", "published");
@@ -326,7 +326,7 @@ export async function createFormRecord(input: {
   const supabase = await createSupabaseServer();
   const schema = createDefaultFormSchema(input.name, input.formKind);
   const { data, error } = await supabase
-    .from("org_forms")
+    .schema("forms").from("org_forms")
     .insert({
       org_id: input.orgId,
       created_by: input.createdByUserId,
@@ -368,7 +368,7 @@ export async function updateFormRecord(input: {
 }): Promise<OrgForm> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_forms")
+    .schema("forms").from("org_forms")
     .update({
       slug: input.slug,
       name: input.name,
@@ -396,7 +396,7 @@ export async function updateFormRecord(input: {
 export async function getLatestFormVersion(formId: string): Promise<OrgFormVersion | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_versions")
+    .schema("forms").from("org_form_versions")
     .select(versionSelect)
     .eq("form_id", formId)
     .order("version_number", { ascending: false })
@@ -425,7 +425,7 @@ export async function publishFormVersionRecord(input: {
 
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_versions")
+    .schema("forms").from("org_form_versions")
     .insert({
       org_id: input.orgId,
       form_id: input.formId,
@@ -446,7 +446,7 @@ export async function publishFormVersionRecord(input: {
 export async function listFormSubmissions(orgId: string, formId: string): Promise<FormSubmission[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_submissions")
+    .schema("forms").from("org_form_submissions")
     .select(submissionSelect)
     .eq("org_id", orgId)
     .eq("form_id", formId)
@@ -515,7 +515,7 @@ export async function listSubmissionEntries(submissionId: string): Promise<FormS
 export async function setFormSubmissionStatus(input: { orgId: string; submissionId: string; status: SubmissionStatus }) {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_submissions")
+    .schema("forms").from("org_form_submissions")
     .update({ status: input.status })
     .eq("org_id", input.orgId)
     .eq("id", input.submissionId)
@@ -527,13 +527,13 @@ export async function setFormSubmissionStatus(input: { orgId: string; submission
   }
 
   await supabase
-    .from("program_registrations")
+    .schema("programs").from("program_registrations")
     .update({ status: input.status })
     .eq("org_id", input.orgId)
     .eq("submission_id", input.submissionId);
 
   const { data: registrations, error: registrationError } = await supabase
-    .from("program_registrations")
+    .schema("programs").from("program_registrations")
     .select("id")
     .eq("org_id", input.orgId)
     .eq("submission_id", input.submissionId);
@@ -550,7 +550,7 @@ export async function setFormSubmissionStatus(input: { orgId: string; submission
               ? "pending"
               : "removed";
 
-      await supabase.from("program_team_members").update({ status: teamStatus }).in("registration_id", registrationIds);
+      await supabase.schema("programs").from("program_team_members").update({ status: teamStatus }).in("registration_id", registrationIds);
     }
   }
 
@@ -560,7 +560,7 @@ export async function setFormSubmissionStatus(input: { orgId: string; submission
 export async function deleteFormSubmissionRecord(input: { orgId: string; formId: string; submissionId: string }) {
   const supabase = await createSupabaseServer();
   const { error, count } = await supabase
-    .from("org_form_submissions")
+    .schema("forms").from("org_form_submissions")
     .delete({ count: "exact" })
     .eq("org_id", input.orgId)
     .eq("form_id", input.formId)
@@ -580,7 +580,7 @@ export async function updateFormSubmissionAnswersJson(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_submissions")
+    .schema("forms").from("org_form_submissions")
     .update({ answers_json: input.answersJson })
     .eq("org_id", input.orgId)
     .eq("id", input.submissionId)
@@ -601,7 +601,7 @@ export async function updateFormSubmissionAdminNotes(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_submissions")
+    .schema("forms").from("org_form_submissions")
     .update({ admin_notes: input.adminNotes })
     .eq("org_id", input.orgId)
     .eq("id", input.submissionId)
@@ -637,7 +637,7 @@ export async function updateFormSubmissionEntryAnswersJson(input: {
 export async function listPublishedFormsForProgram(orgId: string, programId: string): Promise<OrgForm[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_forms")
+    .schema("forms").from("org_forms")
     .select(formSelect)
     .eq("org_id", orgId)
     .eq("program_id", programId)
@@ -654,7 +654,7 @@ export async function listPublishedFormsForProgram(orgId: string, programId: str
 export async function listPublishedFormsForOrg(orgId: string): Promise<OrgForm[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_forms")
+    .schema("forms").from("org_forms")
     .select(formSelect)
     .eq("org_id", orgId)
     .eq("status", "published")
@@ -670,7 +670,7 @@ export async function listPublishedFormsForOrg(orgId: string): Promise<OrgForm[]
 export async function listFormSubmissionViews(orgId: string, formId: string): Promise<OrgFormSubmissionView[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_submission_views")
+    .schema("forms").from("org_form_submission_views")
     .select(submissionViewSelect)
     .eq("org_id", orgId)
     .eq("form_id", formId)
@@ -696,7 +696,7 @@ export async function createFormSubmissionViewRecord(input: {
 }): Promise<OrgFormSubmissionView> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_submission_views")
+    .schema("forms").from("org_form_submission_views")
     .insert({
       org_id: input.orgId,
       form_id: input.formId,
@@ -725,7 +725,7 @@ export async function updateFormSubmissionViewConfigRecord(input: {
 }): Promise<OrgFormSubmissionView> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_submission_views")
+    .schema("forms").from("org_form_submission_views")
     .update({
       config_json: input.configJson
     })
@@ -753,7 +753,7 @@ export async function updateFormSubmissionViewRecord(input: {
 }): Promise<OrgFormSubmissionView> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_submission_views")
+    .schema("forms").from("org_form_submission_views")
     .update({
       name: input.name,
       sort_index: typeof input.sortIndex === "number" ? input.sortIndex : undefined,
@@ -776,7 +776,7 @@ export async function updateFormSubmissionViewRecord(input: {
 export async function deleteFormSubmissionViewRecord(input: { orgId: string; formId: string; viewId: string }): Promise<void> {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .from("org_form_submission_views")
+    .schema("forms").from("org_form_submission_views")
     .delete()
     .eq("org_id", input.orgId)
     .eq("form_id", input.formId)
@@ -796,7 +796,7 @@ export async function updateFormSubmissionViewsOrderRecord(input: {
 
   for (const [index, viewId] of input.viewOrder.entries()) {
     const { error } = await supabase
-      .from("org_form_submission_views")
+      .schema("forms").from("org_form_submission_views")
       .update({ sort_index: index })
       .eq("org_id", input.orgId)
       .eq("form_id", input.formId)
@@ -811,7 +811,7 @@ export async function updateFormSubmissionViewsOrderRecord(input: {
 export async function getFormGoogleSheetIntegration(orgId: string, formId: string): Promise<OrgFormGoogleSheetIntegration | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_google_sheet_integrations")
+    .schema("forms").from("org_form_google_sheet_integrations")
     .select(googleSheetIntegrationSelect)
     .eq("org_id", orgId)
     .eq("form_id", formId)
@@ -840,7 +840,7 @@ export async function upsertFormGoogleSheetIntegrationRecord(input: {
 }): Promise<OrgFormGoogleSheetIntegration> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_google_sheet_integrations")
+    .schema("forms").from("org_form_google_sheet_integrations")
     .upsert(
       {
         org_id: input.orgId,
@@ -894,7 +894,7 @@ export async function updateFormGoogleSheetIntegrationRecord(input: {
 
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_google_sheet_integrations")
+    .schema("forms").from("org_form_google_sheet_integrations")
     .update(payload)
     .eq("org_id", input.orgId)
     .eq("form_id", input.formId)
@@ -919,7 +919,7 @@ export async function listRecentFormGoogleSheetSyncRuns(
 ): Promise<OrgFormGoogleSheetSyncRun[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_form_google_sheet_sync_runs")
+    .schema("forms").from("org_form_google_sheet_sync_runs")
     .select(googleSheetSyncRunSelect)
     .eq("org_id", orgId)
     .eq("form_id", formId)

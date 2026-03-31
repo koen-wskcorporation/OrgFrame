@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { formControlDisabledClass, formControlFocusClass, formControlInlineClass, formControlShellClass } from "./form-control";
 import { cn } from "./utils";
 
 type SlugValidationKind = "org" | "page" | "program" | "form";
@@ -33,13 +34,10 @@ type SlugAvailabilityResponse = {
 };
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const inputShellClass =
-  "flex h-10 w-full items-center rounded-control border border-border bg-surface text-sm text-text shadow-[inset_0_1px_0_hsl(var(--canvas)/0.35)]";
-const inputFocusClass =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas";
-const inputDisabledClass = "disabled:cursor-not-allowed disabled:opacity-55";
-const inlineInputClass =
-  "h-auto rounded-none border-0 border-b border-dotted border-border/80 bg-transparent px-0 py-0 text-inherit shadow-none focus-visible:border-accent focus-visible:ring-0 focus-visible:ring-offset-0";
+const inputShellClass = `flex h-10 w-full items-center rounded-control text-sm ${formControlShellClass}`;
+const inputFocusClass = formControlFocusClass;
+const inputDisabledClass = formControlDisabledClass;
+const inlineInputClass = `h-auto ${formControlInlineClass} px-0 py-0 text-inherit`;
 
 function normalizeSlug(value: string) {
   return value

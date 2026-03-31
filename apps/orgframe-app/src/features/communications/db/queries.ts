@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type {
   CommChannelIntegration,
   CommChannelIdentity,
@@ -29,7 +29,7 @@ const suggestionSelect =
   "id, org_id, conversation_id, channel_identity_id, suggested_contact_id, confidence_score, confidence_reason_codes, status, created_at, decided_at, decided_by_user_id";
 const eventSelect = "id, org_id, conversation_id, channel_identity_id, contact_id, actor_user_id, event_type, event_detail_json, created_at";
 const integrationSelect =
-  "id, org_id, channel_type, provider, provider_account_id, provider_account_name, status, connected_by_user_id, connected_at, disconnected_at, last_sync_at, last_error, config_json, created_at, updated_at";
+  "id, org_id, channel_type, provider, provider_account_id, provider_account_name, status, connected_by_user_id, connected_at, disconnected_at, last_sync_at, last_error, config_json, encrypted_access_token, token_hint, created_at, updated_at";
 
 type ContactRow = {
   id: string;
@@ -145,6 +145,8 @@ type IntegrationRow = {
   last_sync_at: string | null;
   last_error: string | null;
   config_json: unknown;
+  encrypted_access_token?: string | null;
+  token_hint?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -316,7 +318,7 @@ async function getSupabase(client?: SupabaseClient<any>) {
 
 export async function resolveOrgIdFromSlug(orgSlug: string, client?: SupabaseClient<any>) {
   const supabase = await getSupabase(client);
-  const { data, error } = await supabase.from("orgs").select("id").eq("slug", orgSlug).maybeSingle();
+  const { data, error } = await supabase.schema("orgs").from("orgs").select("id").eq("slug", orgSlug).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to resolve org slug: ${error.message}`);
@@ -332,7 +334,7 @@ export async function listChannelIntegrations(
 ): Promise<CommChannelIntegration[]> {
   const supabase = await getSupabase(client);
 
-  let request = supabase.from("org_comm_channel_integrations").select(integrationSelect).eq("org_id", orgId).order("updated_at", { ascending: false });
+  let request = supabase.schema("communications").from("channel_integrations").select(integrationSelect).eq("org_id", orgId).order("updated_at", { ascending: false });
   if (channelType) {
     request = request.eq("channel_type", channelType);
   }
@@ -341,29 +343,7 @@ export async function listChannelIntegrations(
   if (error) {
     throw new Error(`Failed to list channel integrations: ${error.message}`);
   }
-
-  const integrations = (data ?? []).map((row) => mapIntegration(row as IntegrationRow));
-  if (integrations.length === 0) {
-    return [];
-  }
-
-  const integrationIds = integrations.map((item) => item.id);
-  const { data: secretsData, error: secretsError } = await supabase
-    .from("org_comm_channel_integration_secrets")
-    .select("integration_id, token_hint")
-    .eq("org_id", orgId)
-    .in("integration_id", integrationIds);
-
-  if (secretsError) {
-    return integrations;
-  }
-
-  const hintsByIntegrationId = new Map((secretsData ?? []).map((row) => [String(row.integration_id), (row.token_hint as string | null) ?? null]));
-
-  return integrations.map((integration) => ({
-    ...integration,
-    tokenHint: hintsByIntegrationId.get(integration.id) ?? null
-  }));
+  return (data ?? []).map((row) => mapIntegration(row as IntegrationRow));
 }
 
 export async function findActiveChannelIntegrationByProviderAccount(input: {
@@ -373,7 +353,7 @@ export async function findActiveChannelIntegrationByProviderAccount(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { data, error } = await supabase
-    .from("org_comm_channel_integrations")
+    .schema("communications").from("channel_integrations")
     .select(integrationSelect)
     .eq("channel_type", input.channelType)
     .eq("provider_account_id", input.providerAccountId)
@@ -404,7 +384,7 @@ export async function upsertChannelIntegration(input: {
   const supabase = await getSupabase(input.client);
 
   const { data, error } = await supabase
-    .from("org_comm_channel_integrations")
+    .schema("communications").from("channel_integrations")
     .upsert(
       {
         org_id: input.orgId,
@@ -442,7 +422,7 @@ export async function markChannelIntegrationDisconnected(input: {
   const supabase = await getSupabase(input.client);
   const now = new Date().toISOString();
   const { data, error } = await supabase
-    .from("org_comm_channel_integrations")
+    .schema("communications").from("channel_integrations")
     .update({
       status: "disconnected",
       disconnected_at: now
@@ -474,7 +454,7 @@ export async function updateChannelIntegrationSyncState(input: {
   if (input.status !== undefined) payload.status = input.status;
 
   const { data, error } = await supabase
-    .from("org_comm_channel_integrations")
+    .schema("communications").from("channel_integrations")
     .update(payload)
     .eq("org_id", input.orgId)
     .eq("id", input.integrationId)
@@ -496,15 +476,14 @@ export async function upsertChannelIntegrationSecret(input: {
   client?: SupabaseClient<any>;
 }) {
   const supabase = await getSupabase(input.client);
-  const { error } = await supabase.from("org_comm_channel_integration_secrets").upsert(
-    {
-      org_id: input.orgId,
-      integration_id: input.integrationId,
+  const { error } = await supabase
+    .schema("communications").from("channel_integrations")
+    .update({
       encrypted_access_token: input.encryptedAccessToken,
       token_hint: input.tokenHint ?? null
-    },
-    { onConflict: "integration_id" }
-  );
+    })
+    .eq("org_id", input.orgId)
+    .eq("id", input.integrationId);
 
   if (error) {
     throw new Error(`Failed to upsert channel integration secret: ${error.message}`);
@@ -514,10 +493,10 @@ export async function upsertChannelIntegrationSecret(input: {
 export async function getChannelIntegrationSecret(input: { orgId: string; integrationId: string; client?: SupabaseClient<any> }) {
   const supabase = await getSupabase(input.client);
   const { data, error } = await supabase
-    .from("org_comm_channel_integration_secrets")
-    .select("integration_id, org_id, encrypted_access_token, token_hint")
+    .schema("communications").from("channel_integrations")
+    .select("id, org_id, encrypted_access_token, token_hint")
     .eq("org_id", input.orgId)
-    .eq("integration_id", input.integrationId)
+    .eq("id", input.integrationId)
     .maybeSingle();
 
   if (error) {
@@ -528,8 +507,12 @@ export async function getChannelIntegrationSecret(input: { orgId: string; integr
     return null;
   }
 
+  if (!data.encrypted_access_token) {
+    return null;
+  }
+
   return {
-    integrationId: String(data.integration_id),
+    integrationId: String(data.id),
     orgId: String(data.org_id),
     encryptedAccessToken: String(data.encrypted_access_token),
     tokenHint: (data.token_hint as string | null) ?? null
@@ -539,10 +522,13 @@ export async function getChannelIntegrationSecret(input: { orgId: string; integr
 export async function deleteChannelIntegrationSecret(input: { orgId: string; integrationId: string; client?: SupabaseClient<any> }) {
   const supabase = await getSupabase(input.client);
   const { error } = await supabase
-    .from("org_comm_channel_integration_secrets")
-    .delete()
+    .schema("communications").from("channel_integrations")
+    .update({
+      encrypted_access_token: null,
+      token_hint: null
+    })
     .eq("org_id", input.orgId)
-    .eq("integration_id", input.integrationId);
+    .eq("id", input.integrationId);
 
   if (error) {
     throw new Error(`Failed to delete channel integration secret: ${error.message}`);
@@ -552,7 +538,7 @@ export async function deleteChannelIntegrationSecret(input: { orgId: string; int
 export async function findCommContactById(orgId: string, contactId: string, client?: SupabaseClient<any>): Promise<CommContact | null> {
   const supabase = await getSupabase(client);
   const { data, error } = await supabase
-    .from("org_comm_contacts")
+    .schema("people").from("contacts")
     .select(contactSelect)
     .eq("org_id", orgId)
     .eq("id", contactId)
@@ -569,7 +555,7 @@ export async function findCommContactById(orgId: string, contactId: string, clie
 export async function findCommContactByAuthUserId(orgId: string, authUserId: string, client?: SupabaseClient<any>) {
   const supabase = await getSupabase(client);
   const { data, error } = await supabase
-    .from("org_comm_contacts")
+    .schema("people").from("contacts")
     .select(contactSelect)
     .eq("org_id", orgId)
     .eq("auth_user_id", authUserId)
@@ -587,7 +573,7 @@ export async function searchCommContacts(orgId: string, query: string, limit = 2
   const supabase = await getSupabase(client);
   const trimmed = query.trim();
   let request = supabase
-    .from("org_comm_contacts")
+    .schema("people").from("contacts")
     .select(contactSelect)
     .eq("org_id", orgId)
     .is("deleted_at", null)
@@ -639,7 +625,7 @@ export async function listMatchingContacts(input: {
   if (input.authUserId) {
     await runAndCollect(
       supabase
-        .from("org_comm_contacts")
+        .schema("people").from("contacts")
         .select(contactSelect)
         .eq("org_id", input.orgId)
         .eq("auth_user_id", input.authUserId)
@@ -652,7 +638,7 @@ export async function listMatchingContacts(input: {
   if (input.normalizedEmail) {
     await runAndCollect(
       supabase
-        .from("org_comm_contacts")
+        .schema("people").from("contacts")
         .select(contactSelect)
         .eq("org_id", input.orgId)
         .ilike("primary_email", input.normalizedEmail)
@@ -665,7 +651,7 @@ export async function listMatchingContacts(input: {
   if (input.normalizedPhone) {
     await runAndCollect(
       supabase
-        .from("org_comm_contacts")
+        .schema("people").from("contacts")
         .select(contactSelect)
         .eq("org_id", input.orgId)
         .eq("primary_phone", input.normalizedPhone)
@@ -678,7 +664,7 @@ export async function listMatchingContacts(input: {
   if (input.displayName && input.displayName.trim().length > 0) {
     await runAndCollect(
       supabase
-        .from("org_comm_contacts")
+        .schema("people").from("contacts")
         .select(contactSelect)
         .eq("org_id", input.orgId)
         .ilike("display_name", `%${input.displayName.trim()}%`)
@@ -691,7 +677,7 @@ export async function listMatchingContacts(input: {
   if (contactsById.size < 10) {
     await runAndCollect(
       supabase
-        .from("org_comm_contacts")
+        .schema("people").from("contacts")
         .select(contactSelect)
         .eq("org_id", input.orgId)
         .is("deleted_at", null)
@@ -719,7 +705,7 @@ export async function createCommContact(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { data, error } = await supabase
-    .from("org_comm_contacts")
+    .schema("people").from("contacts")
     .insert({
       org_id: input.orgId,
       auth_user_id: input.authUserId ?? null,
@@ -764,7 +750,7 @@ export async function updateCommContact(input: {
   if (input.notes !== undefined) payload.notes = input.notes;
 
   const { data, error } = await supabase
-    .from("org_comm_contacts")
+    .schema("people").from("contacts")
     .update(payload)
     .eq("org_id", input.orgId)
     .eq("id", input.contactId)
@@ -786,7 +772,7 @@ export async function findIdentityByExternal(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { data, error } = await supabase
-    .from("org_comm_channel_identities")
+    .schema("communications").from("channel_identities")
     .select(identitySelect)
     .eq("org_id", input.orgId)
     .eq("channel_type", input.channelType)
@@ -803,7 +789,7 @@ export async function findIdentityByExternal(input: {
 export async function findIdentityById(orgId: string, identityId: string, client?: SupabaseClient<any>) {
   const supabase = await getSupabase(client);
   const { data, error } = await supabase
-    .from("org_comm_channel_identities")
+    .schema("communications").from("channel_identities")
     .select(identitySelect)
     .eq("org_id", orgId)
     .eq("id", identityId)
@@ -831,7 +817,7 @@ export async function upsertIdentity(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { data, error } = await supabase
-    .from("org_comm_channel_identities")
+    .schema("communications").from("channel_identities")
     .upsert(
       {
         org_id: input.orgId,
@@ -869,7 +855,7 @@ export async function linkIdentityToContact(input: {
   const supabase = await getSupabase(input.client);
   const timestamp = new Date().toISOString();
   const { data, error } = await supabase
-    .from("org_comm_channel_identities")
+    .schema("communications").from("channel_identities")
     .update({
       contact_id: input.contactId,
       linked_at: timestamp,
@@ -890,7 +876,7 @@ export async function linkIdentityToContact(input: {
 export async function unlinkIdentity(input: { orgId: string; identityId: string; client?: SupabaseClient<any> }) {
   const supabase = await getSupabase(input.client);
   const { data, error } = await supabase
-    .from("org_comm_channel_identities")
+    .schema("communications").from("channel_identities")
     .update({
       contact_id: null,
       linked_at: null
@@ -910,7 +896,7 @@ export async function unlinkIdentity(input: { orgId: string; identityId: string;
 export async function findConversationById(orgId: string, conversationId: string, client?: SupabaseClient<any>) {
   const supabase = await getSupabase(client);
   const { data, error } = await supabase
-    .from("org_comm_conversations")
+    .schema("communications").from("conversations")
     .select(conversationSelect)
     .eq("org_id", orgId)
     .eq("id", conversationId)
@@ -931,7 +917,7 @@ export async function findConversationByExternalThread(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { data, error } = await supabase
-    .from("org_comm_conversations")
+    .schema("communications").from("conversations")
     .select(conversationSelect)
     .eq("org_id", input.orgId)
     .eq("channel_type", input.channelType)
@@ -953,7 +939,7 @@ export async function findMostRecentConversationByIdentity(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { data, error } = await supabase
-    .from("org_comm_conversations")
+    .schema("communications").from("conversations")
     .select(conversationSelect)
     .eq("org_id", input.orgId)
     .eq("channel_type", input.channelType)
@@ -985,7 +971,7 @@ export async function createConversation(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { data, error } = await supabase
-    .from("org_comm_conversations")
+    .schema("communications").from("conversations")
     .insert({
       org_id: input.orgId,
       channel_type: input.channelType,
@@ -1032,7 +1018,7 @@ export async function updateConversation(input: {
   if (input.conversationMetadata !== undefined) payload.conversation_metadata = input.conversationMetadata;
 
   const { data, error } = await supabase
-    .from("org_comm_conversations")
+    .schema("communications").from("conversations")
     .update(payload)
     .eq("org_id", input.orgId)
     .eq("id", input.conversationId)
@@ -1064,7 +1050,7 @@ export async function upsertInboundMessage(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { data, error } = await supabase
-    .from("org_comm_messages")
+    .schema("communications").from("messages")
     .upsert(
       {
         org_id: input.orgId,
@@ -1109,7 +1095,7 @@ export async function replaceConversationSuggestions(input: {
   const supabase = await getSupabase(input.client);
 
   const { error: deleteError } = await supabase
-    .from("org_comm_match_suggestions")
+    .schema("people").from("match_suggestions")
     .delete()
     .eq("org_id", input.orgId)
     .eq("conversation_id", input.conversationId)
@@ -1124,7 +1110,7 @@ export async function replaceConversationSuggestions(input: {
   }
 
   const { data, error } = await supabase
-    .from("org_comm_match_suggestions")
+    .schema("people").from("match_suggestions")
     .insert(
       input.suggestions.map((suggestion) => ({
         org_id: input.orgId,
@@ -1154,7 +1140,7 @@ export async function setSuggestionStatus(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { data, error } = await supabase
-    .from("org_comm_match_suggestions")
+    .schema("people").from("match_suggestions")
     .update({
       status: input.status,
       decided_at: new Date().toISOString(),
@@ -1175,7 +1161,7 @@ export async function setSuggestionStatus(input: {
 export async function getConversationSuggestions(orgId: string, conversationId: string, client?: SupabaseClient<any>) {
   const supabase = await getSupabase(client);
   const { data: suggestionsData, error: suggestionsError } = await supabase
-    .from("org_comm_match_suggestions")
+    .schema("people").from("match_suggestions")
     .select(suggestionSelect)
     .eq("org_id", orgId)
     .eq("conversation_id", conversationId)
@@ -1193,7 +1179,7 @@ export async function getConversationSuggestions(orgId: string, conversationId: 
 
   const contactIds = [...new Set(suggestions.map((item) => item.suggestedContactId))];
   const { data: contactRows, error: contactsError } = await supabase
-    .from("org_comm_contacts")
+    .schema("people").from("contacts")
     .select(contactSelect)
     .eq("org_id", orgId)
     .in("id", contactIds);
@@ -1231,7 +1217,7 @@ export async function createResolutionEvent(input: {
   client?: SupabaseClient<any>;
 }) {
   const supabase = await getSupabase(input.client);
-  const { error } = await supabase.from("org_comm_resolution_events").insert({
+  const { error } = await supabase.schema("communications").from("resolution_events").insert({
     org_id: input.orgId,
     conversation_id: input.conversationId ?? null,
     channel_identity_id: input.channelIdentityId ?? null,
@@ -1256,7 +1242,7 @@ export async function createCommAuditLog(input: {
   client?: SupabaseClient<any>;
 }) {
   const supabase = await getSupabase(input.client);
-  const { error } = await supabase.from("audit_logs").insert({
+  const { error } = await supabase.schema("ai").from("audit_logs").insert({
     org_id: input.orgId,
     actor_user_id: input.actorUserId,
     action: input.action,
@@ -1295,7 +1281,7 @@ export async function mergeContactsViaRpc(input: {
 export async function listInboxConversations(orgId: string, limit = 100, client?: SupabaseClient<any>): Promise<InboxConversationListItem[]> {
   const supabase = await getSupabase(client);
   const { data, error } = await supabase
-    .from("org_comm_conversations")
+    .schema("communications").from("conversations")
     .select(conversationSelect)
     .eq("org_id", orgId)
     .is("archived_at", null)
@@ -1317,13 +1303,13 @@ export async function listInboxConversations(orgId: string, limit = 100, client?
 
   const [identityRows, contactRows, suggestionRows] = await Promise.all([
     identityIds.length > 0
-      ? supabase.from("org_comm_channel_identities").select(identitySelect).eq("org_id", orgId).in("id", identityIds)
+      ? supabase.schema("communications").from("channel_identities").select(identitySelect).eq("org_id", orgId).in("id", identityIds)
       : Promise.resolve({ data: [], error: null }),
     contactIds.length > 0
-      ? supabase.from("org_comm_contacts").select(contactSelect).eq("org_id", orgId).in("id", contactIds)
+      ? supabase.schema("people").from("contacts").select(contactSelect).eq("org_id", orgId).in("id", contactIds)
       : Promise.resolve({ data: [], error: null }),
     supabase
-      .from("org_comm_match_suggestions")
+      .schema("people").from("match_suggestions")
       .select("conversation_id, id")
       .eq("org_id", orgId)
       .in("conversation_id", conversationIds)
@@ -1369,14 +1355,14 @@ export async function getInboxConversationDetail(orgId: string, conversationId: 
     conversation.channelIdentityId ? findIdentityById(orgId, conversation.channelIdentityId, supabase) : Promise.resolve(null),
     conversation.contactId ? findCommContactById(orgId, conversation.contactId, supabase) : Promise.resolve(null),
     supabase
-      .from("org_comm_messages")
+      .schema("communications").from("messages")
       .select(messageSelect)
       .eq("org_id", orgId)
       .eq("conversation_id", conversationId)
       .order("sent_at", { ascending: true }),
     getConversationSuggestions(orgId, conversationId, supabase),
     supabase
-      .from("org_comm_resolution_events")
+      .schema("communications").from("resolution_events")
       .select(eventSelect)
       .eq("org_id", orgId)
       .eq("conversation_id", conversationId)
@@ -1405,7 +1391,7 @@ export async function getInboxConversationDetail(orgId: string, conversationId: 
 export async function listIdentityConversations(orgId: string, identityId: string, client?: SupabaseClient<any>) {
   const supabase = await getSupabase(client);
   const { data, error } = await supabase
-    .from("org_comm_conversations")
+    .schema("communications").from("conversations")
     .select(conversationSelect)
     .eq("org_id", orgId)
     .eq("channel_identity_id", identityId)
@@ -1427,7 +1413,7 @@ export async function updateConversationsForIdentity(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { error } = await supabase
-    .from("org_comm_conversations")
+    .schema("communications").from("conversations")
     .update({
       contact_id: input.contactId,
       resolution_status: input.resolutionStatus
@@ -1448,7 +1434,7 @@ export async function expirePendingSuggestionsForConversation(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { error } = await supabase
-    .from("org_comm_match_suggestions")
+    .schema("people").from("match_suggestions")
     .update({
       status: "expired",
       decided_at: new Date().toISOString(),
@@ -1472,7 +1458,7 @@ export async function rejectAllOtherPendingSuggestions(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { error } = await supabase
-    .from("org_comm_match_suggestions")
+    .schema("people").from("match_suggestions")
     .update({
       status: "rejected",
       decided_at: new Date().toISOString(),
@@ -1497,7 +1483,7 @@ export async function acceptPendingSuggestionsForConversationContact(input: {
 }) {
   const supabase = await getSupabase(input.client);
   const { error } = await supabase
-    .from("org_comm_match_suggestions")
+    .schema("people").from("match_suggestions")
     .update({
       status: "accepted",
       decided_at: new Date().toISOString(),
@@ -1525,7 +1511,7 @@ export async function getIdentityByConversation(orgId: string, conversationId: s
 export async function listResolutionEventsForConversation(orgId: string, conversationId: string, client?: SupabaseClient<any>) {
   const supabase = await getSupabase(client);
   const { data, error } = await supabase
-    .from("org_comm_resolution_events")
+    .schema("communications").from("resolution_events")
     .select(eventSelect)
     .eq("org_id", orgId)
     .eq("conversation_id", conversationId)

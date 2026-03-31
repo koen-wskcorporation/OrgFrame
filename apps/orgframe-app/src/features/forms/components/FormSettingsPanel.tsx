@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { Card, CardContent, CardHeader, CardHeaderRow } from "@orgframe/ui/primitives/card";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
@@ -117,15 +117,15 @@ export function FormSettingsPanel({ orgSlug, form, programs, programNodes, canWr
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle>Form settings</CardTitle>
-            <CardDescription>Configure metadata, registration linkage, and publishing behavior.</CardDescription>
-          </div>
-          <Button disabled={isSaving || !canWrite} form="form-settings-form" loading={isSaving} type="submit">
-            {isSaving ? "Saving..." : "Save settings"}
-          </Button>
-        </div>
+        <CardHeaderRow
+          actions={
+            <Button disabled={isSaving || !canWrite} form="form-settings-form" loading={isSaving} type="submit">
+              {isSaving ? "Saving..." : "Save settings"}
+            </Button>
+          }
+          description="Configure metadata, registration linkage, and publishing behavior."
+          title="Form settings"
+        />
       </CardHeader>
       <CardContent>
         <form className="grid gap-4 md:grid-cols-2" id="form-settings-form" onSubmit={handleSubmit}>

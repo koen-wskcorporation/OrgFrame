@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { createSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
+import { createSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 import {
   batchUpdateSpreadsheet,
   clearSheetRange,
@@ -289,7 +289,7 @@ async function insertSyncRun(input: {
 }): Promise<number> {
   const supabase = createSupabaseServiceRoleClient();
   const { data, error } = await supabase
-    .from("org_form_google_sheet_sync_runs")
+    .schema("forms").from("org_form_google_sheet_sync_runs")
     .insert({
       org_id: input.orgId,
       form_id: input.formId,
@@ -316,7 +316,7 @@ async function finishSyncRun(
   const supabase = createSupabaseServiceRoleClient();
 
   await supabase
-    .from("org_form_google_sheet_sync_runs")
+    .schema("forms").from("org_form_google_sheet_sync_runs")
     .update({
       status,
       inbound_updates_count: stats.inboundUpdatesCount,
@@ -333,7 +333,7 @@ async function finishSyncRun(
 async function loadForm(orgId: string, formId: string): Promise<FormRow | null> {
   const supabase = createSupabaseServiceRoleClient();
   const { data, error } = await supabase
-    .from("org_forms")
+    .schema("forms").from("org_forms")
     .select("id, org_id, name, form_kind, schema_json")
     .eq("org_id", orgId)
     .eq("id", formId)
@@ -348,7 +348,7 @@ async function loadForm(orgId: string, formId: string): Promise<FormRow | null> 
 
 async function loadOrgSheetBranding(orgId: string): Promise<OrgSheetBranding | null> {
   const supabase = createSupabaseServiceRoleClient();
-  const { data, error } = await supabase.from("orgs").select("slug, brand_primary").eq("id", orgId).maybeSingle();
+  const { data, error } = await supabase.schema("orgs").from("orgs").select("slug, brand_primary").eq("id", orgId).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to load org branding for Sheets sync: ${error.message}`);
@@ -369,7 +369,7 @@ async function loadOrgSheetBranding(orgId: string): Promise<OrgSheetBranding | n
 async function loadIntegration(orgId: string, formId: string): Promise<IntegrationRow | null> {
   const supabase = createSupabaseServiceRoleClient();
   const { data, error } = await supabase
-    .from("org_form_google_sheet_integrations")
+    .schema("forms").from("org_form_google_sheet_integrations")
     .select("id, org_id, form_id, spreadsheet_id, spreadsheet_url, status, last_synced_at, last_error")
     .eq("org_id", orgId)
     .eq("form_id", formId)
@@ -402,7 +402,7 @@ async function updateIntegrationState(input: {
 
   const supabase = createSupabaseServiceRoleClient();
   const { error } = await supabase
-    .from("org_form_google_sheet_integrations")
+    .schema("forms").from("org_form_google_sheet_integrations")
     .update(payload)
     .eq("org_id", input.orgId)
     .eq("form_id", input.formId);
@@ -869,7 +869,7 @@ async function loadSubmissionsWithEntries(orgId: string, formId: string): Promis
   const supabase = createSupabaseServiceRoleClient();
 
   const { data: submissionRows, error: submissionError } = await supabase
-    .from("org_form_submissions")
+    .schema("forms").from("org_form_submissions")
     .select("id, org_id, form_id, version_id, status, admin_notes, sync_rev, answers_json, metadata_json, created_at, updated_at")
     .eq("org_id", orgId)
     .eq("form_id", formId)
@@ -910,7 +910,7 @@ async function loadSubmissionsWithEntries(orgId: string, formId: string): Promis
     );
     if (playerIds.length > 0) {
       const { data: playerRows, error: playerError } = await supabase
-        .from("players")
+        .schema("people").from("players")
         .select("id, first_name, last_name")
         .in("id", playerIds);
 
@@ -1578,7 +1578,7 @@ async function applyInboundSubmissions(input: {
 
   const supabase = createSupabaseServiceRoleClient();
   const { data: dbRows, error: dbError } = await supabase
-    .from("org_form_submissions")
+    .schema("forms").from("org_form_submissions")
     .select("id, sync_rev, status, admin_notes")
     .eq("org_id", input.form.org_id)
     .eq("form_id", input.form.id);
@@ -1598,7 +1598,7 @@ async function applyInboundSubmissions(input: {
   let latestVersionId: string | null = null;
   if (input.form.form_kind === "generic") {
     const { data: versionRows, error: versionError } = await supabase
-      .from("org_form_versions")
+      .schema("forms").from("org_form_versions")
       .select("id")
       .eq("form_id", input.form.id)
       .order("version_number", { ascending: false })
@@ -1646,7 +1646,7 @@ async function applyInboundSubmissions(input: {
       }
 
       const createStatus = status ?? "submitted";
-      const { error: insertError } = await supabase.from("org_form_submissions").insert({
+      const { error: insertError } = await supabase.schema("forms").from("org_form_submissions").insert({
         org_id: input.form.org_id,
         form_id: input.form.id,
         version_id: latestVersionId,
@@ -1694,7 +1694,7 @@ async function applyInboundSubmissions(input: {
     }
 
     const { data: updatedRows, error: updateError } = await supabase
-      .from("org_form_submissions")
+      .schema("forms").from("org_form_submissions")
       .update({
         status: nextStatus,
         admin_notes: nextNotes
@@ -1870,7 +1870,7 @@ export async function runGoogleSheetOutboxProcessor(options?: { batchSize?: numb
       const integration = await loadIntegration(group.orgId, group.formId);
       if (!integration || integration.status !== "active") {
         await supabase
-          .from("org_form_google_sheet_outbox")
+          .schema("forms").from("org_form_google_sheet_outbox")
           .update({
             processed_at: toIsoNow(),
             locked_at: null,
@@ -1889,7 +1889,7 @@ export async function runGoogleSheetOutboxProcessor(options?: { batchSize?: numb
       });
 
       await supabase
-        .from("org_form_google_sheet_outbox")
+        .schema("forms").from("org_form_google_sheet_outbox")
         .update({
           processed_at: toIsoNow(),
           locked_at: null,
@@ -1901,7 +1901,7 @@ export async function runGoogleSheetOutboxProcessor(options?: { batchSize?: numb
     } catch (error) {
       const message = error instanceof Error ? error.message : "Outbox sync failed.";
       await supabase
-        .from("org_form_google_sheet_outbox")
+        .schema("forms").from("org_form_google_sheet_outbox")
         .update({
           locked_at: null,
           last_error: message
@@ -1933,7 +1933,7 @@ export async function connectFormToGoogleSheet(input: {
   if (existing) {
     const supabase = createSupabaseServiceRoleClient();
     await supabase
-      .from("org_form_google_sheet_integrations")
+      .schema("forms").from("org_form_google_sheet_integrations")
       .update({
         status: "active",
         last_error: null
@@ -1998,7 +1998,7 @@ export async function connectFormToGoogleSheet(input: {
 
   const supabase = createSupabaseServiceRoleClient();
   const { error } = await supabase
-    .from("org_form_google_sheet_integrations")
+    .schema("forms").from("org_form_google_sheet_integrations")
     .insert({
       org_id: input.orgId,
       form_id: input.formId,
@@ -2021,7 +2021,7 @@ export async function connectFormToGoogleSheet(input: {
 export async function disableFormGoogleSheetIntegration(input: { orgId: string; formId: string }): Promise<void> {
   const supabase = createSupabaseServiceRoleClient();
   const { error } = await supabase
-    .from("org_form_google_sheet_integrations")
+    .schema("forms").from("org_form_google_sheet_integrations")
     .update({
       status: "disabled",
       last_error: null
@@ -2051,7 +2051,7 @@ export async function queueGoogleSheetSyncForForm(input: { orgId: string; formId
 export async function reconcileGoogleSheetBySpreadsheetId(spreadsheetId: string): Promise<number> {
   const supabase = createSupabaseServiceRoleClient();
   const { data, error } = await supabase
-    .from("org_form_google_sheet_integrations")
+    .schema("forms").from("org_form_google_sheet_integrations")
     .select("org_id, form_id, status")
     .eq("spreadsheet_id", spreadsheetId)
     .eq("status", "active");
@@ -2081,7 +2081,7 @@ export async function reconcileAllActiveGoogleSheets(limit = 100): Promise<numbe
 
   const supabase = createSupabaseServiceRoleClient();
   const { data, error } = await supabase
-    .from("org_form_google_sheet_integrations")
+    .schema("forms").from("org_form_google_sheet_integrations")
     .select("org_id, form_id")
     .eq("status", "active")
     .order("updated_at", { ascending: false })

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 
 export async function getSignedProfileAvatarUrl(path: string, expiresInSeconds = 60 * 10) {
   const supabase = await createSupabaseServer();

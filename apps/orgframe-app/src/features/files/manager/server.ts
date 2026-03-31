@@ -1,8 +1,8 @@
 import "server-only";
 
-import { createSupabaseServer } from "@/src/shared/supabase/server";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
-import { getSupabasePublicConfig } from "@/src/shared/supabase/config";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
+import { getDataApiPublicConfig } from "@/src/shared/data-api/config";
 import { resolveUploadedAssetUrl } from "@/src/features/files/uploads/server";
 import type {
   FileManagerAccessTag,
@@ -204,7 +204,7 @@ function encodePath(path: string) {
 async function resolveFileUrls(rows: Array<Record<string, unknown>>) {
   const service = createOptionalSupabaseServiceRoleClient();
   const signedByKey = new Map<string, string | null>();
-  const publicConfig = getSupabasePublicConfig();
+  const publicConfig = getDataApiPublicConfig();
 
   const privateRowsByBucket = new Map<string, string[]>();
 
@@ -277,7 +277,7 @@ export async function initializeScope(input: { scope: FileManagerScope; orgId?: 
 export async function listFolders(input: { scope: FileManagerScope; orgId?: string | null; userId: string }) {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("app_file_folders")
+    .schema("files").from("app_file_folders")
     .select("id, scope, org_id, owner_user_id, parent_id, name, slug, access_tag, is_system, entity_type, entity_id, metadata_json, created_at, updated_at")
     .eq("scope", input.scope)
     .order("is_system", { ascending: false })
@@ -308,7 +308,7 @@ export async function listFiles(input: {
 }) {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("app_files")
+    .schema("files").from("app_files")
     .select(
       "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, created_at, updated_at"
     )
@@ -384,7 +384,7 @@ export function resolveSystemFolderIds(folders: FileManagerFolder[]) {
 async function listSiblingFolderNames(input: { scope: FileManagerScope; orgId?: string | null; userId: string; parentId: string | null; excludeId?: string }) {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("app_file_folders")
+    .schema("files").from("app_file_folders")
     .select("id, name")
     .eq("scope", input.scope)
     .is("parent_id", input.parentId);
@@ -409,7 +409,7 @@ async function listSiblingFolderNames(input: { scope: FileManagerScope; orgId?: 
 
 async function listSiblingFileNames(input: { scope: FileManagerScope; orgId?: string | null; userId: string; folderId: string; excludeId?: string }) {
   const supabase = await createSupabaseServer();
-  let query = supabase.from("app_files").select("id, name").eq("scope", input.scope).eq("folder_id", input.folderId);
+  let query = supabase.schema("files").from("app_files").select("id, name").eq("scope", input.scope).eq("folder_id", input.folderId);
 
   if (input.scope === "organization") {
     query = query.eq("org_id", input.orgId ?? "");
@@ -432,7 +432,7 @@ async function listSiblingFileNames(input: { scope: FileManagerScope; orgId?: st
 export async function getFolderById(folderId: string) {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("app_file_folders")
+    .schema("files").from("app_file_folders")
     .select("id, scope, org_id, owner_user_id, parent_id, name, slug, access_tag, is_system, entity_type, entity_id, metadata_json, created_at, updated_at")
     .eq("id", folderId)
     .maybeSingle();
@@ -451,7 +451,7 @@ export async function getFolderById(folderId: string) {
 export async function getFileById(fileId: string) {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("app_files")
+    .schema("files").from("app_files")
     .select(
       "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, created_at, updated_at"
     )
@@ -493,7 +493,7 @@ export async function createFolderRecord(input: {
   const resolvedName = buildUniqueName(normalizeFileName(input.name), siblingNames);
 
   const { data, error } = await supabase
-    .from("app_file_folders")
+    .schema("files").from("app_file_folders")
     .insert({
       scope: input.scope,
       org_id: input.scope === "organization" ? input.orgId : null,
@@ -538,7 +538,7 @@ export async function renameFolderRecord(input: { folderId: string; name: string
 
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("app_file_folders")
+    .schema("files").from("app_file_folders")
     .update({
       name: resolvedName,
       slug: slugify(resolvedName)
@@ -593,7 +593,7 @@ export async function moveFolderRecord(input: { folderId: string; parentId: stri
 
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("app_file_folders")
+    .schema("files").from("app_file_folders")
     .update({ parent_id: input.parentId })
     .eq("id", folder.id)
     .select("id, scope, org_id, owner_user_id, parent_id, name, slug, access_tag, is_system, entity_type, entity_id, metadata_json, created_at, updated_at")
@@ -658,7 +658,7 @@ export async function deleteFolderRecord(input: { folderId: string }) {
   }
 
   const supabase = await createSupabaseServer();
-  let filesQuery = supabase.from("app_files").select("bucket, storage_path, folder_id").in("folder_id", Array.from(targetFolderIds));
+  let filesQuery = supabase.schema("files").from("app_files").select("bucket, storage_path, folder_id").in("folder_id", Array.from(targetFolderIds));
 
   if (folder.scope === "organization") {
     filesQuery = filesQuery.eq("org_id", folder.orgId ?? "");
@@ -678,7 +678,7 @@ export async function deleteFolderRecord(input: { folderId: string }) {
     }))
   );
 
-  const { error } = await supabase.from("app_file_folders").delete().eq("id", folder.id);
+  const { error } = await supabase.schema("files").from("app_file_folders").delete().eq("id", folder.id);
   if (error) {
     throw new Error(`Failed to delete folder: ${error.message}`);
   }
@@ -702,7 +702,7 @@ export async function renameFileRecord(input: { fileId: string; name: string }) 
 
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("app_files")
+    .schema("files").from("app_files")
     .update({
       name: resolvedName,
       extension: splitNameAndExtension(resolvedName).extension
@@ -740,7 +740,7 @@ export async function moveFileRecord(input: { fileId: string; folderId: string }
 
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("app_files")
+    .schema("files").from("app_files")
     .update({
       folder_id: targetFolder.id,
       scope: targetFolder.scope,
@@ -775,7 +775,7 @@ export async function deleteFileRecord(input: { fileId: string }) {
   await removeStorageObjects([{ bucket: file.bucket, path: file.path }]);
 
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("app_files").delete().eq("id", file.id);
+  const { error } = await supabase.schema("files").from("app_files").delete().eq("id", file.id);
 
   if (error) {
     throw new Error(`Failed to delete file: ${error.message}`);
@@ -864,7 +864,7 @@ export async function insertUploadedFileRecord(input: {
 
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("app_files")
+    .schema("files").from("app_files")
     .insert({
       scope: input.folder.scope,
       org_id: input.folder.orgId,

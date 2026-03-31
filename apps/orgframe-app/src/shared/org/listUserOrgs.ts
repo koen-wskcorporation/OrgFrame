@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import type { OrgRole } from "@/src/features/core/access";
 
@@ -20,7 +20,7 @@ export async function listUserOrgs(): Promise<UserOrgMembership[]> {
 
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("org_memberships")
     .select("role, org:orgs!inner(id, slug, name, logo_path, icon_path)")
     .eq("user_id", user.id)
     .order("created_at", { ascending: true });

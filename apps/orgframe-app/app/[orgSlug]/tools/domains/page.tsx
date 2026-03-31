@@ -9,7 +9,7 @@ import { buildGoDaddyQuickConnect, type GoDaddyQuickConnect } from "@/src/shared
 import { getVercelDomainDnsInstructions, type VercelDnsInstruction } from "@/src/shared/domains/vercelProjectDomains";
 import { can } from "@/src/shared/permissions/can";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { DomainSetupModal } from "./DomainSetupModal";
 import { removeOrgCustomDomainAction, saveOrgCustomDomainAction, verifyOrgCustomDomainAction } from "./actions";
 
@@ -73,7 +73,7 @@ export default async function OrgManageDomainsPage({
 
   const supabase = await createSupabaseServer();
   const { data: domainData, error: domainError } = await supabase
-    .from("org_custom_domains")
+    .schema("site").from("org_custom_domains")
     .select("domain, status, verification_token, verified_at, last_error")
     .eq("org_id", orgContext.orgId)
     .maybeSingle();

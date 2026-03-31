@@ -81,7 +81,7 @@ function mapCustomRole(row: OrgCustomRoleRow | null): OrgCustomRole | null {
 }
 
 export async function listOrgCustomRoles(supabase: SupabaseClient<any>, orgId: string): Promise<OrgCustomRole[]> {
-  const { data, error } = await supabase.from("org_custom_roles").select(customRoleSelect).eq("org_id", orgId).order("created_at", { ascending: true });
+  const { data, error } = await supabase.schema("orgs").from("org_custom_roles").select(customRoleSelect).eq("org_id", orgId).order("created_at", { ascending: true });
 
   if (error) {
     throw new Error(error.message);
@@ -95,7 +95,7 @@ export async function listOrgCustomRoles(supabase: SupabaseClient<any>, orgId: s
 
 export async function findOrgCustomRoleByKey(supabase: SupabaseClient<any>, orgId: string, roleKey: string): Promise<OrgCustomRole | null> {
   const { data, error } = await supabase
-    .from("org_custom_roles")
+    .schema("orgs").from("org_custom_roles")
     .select(customRoleSelect)
     .eq("org_id", orgId)
     .eq("role_key", roleKey)
@@ -109,23 +109,25 @@ export async function findOrgCustomRoleByKey(supabase: SupabaseClient<any>, orgI
 }
 
 export async function resolveOrgRolePermissions(supabase: SupabaseClient<any>, orgId: string, roleKey: OrgRole): Promise<Permission[]> {
-  const defaultPermissions = getDefaultRolePermissions(roleKey);
+  // Backward compatibility for legacy membership rows that still use `user`.
+  const normalizedRoleKey = roleKey === "user" ? "member" : roleKey;
+  const defaultPermissions = getDefaultRolePermissions(normalizedRoleKey);
 
   if (defaultPermissions) {
     return defaultPermissions;
   }
 
   // Backward compatibility while migrations are rolling out.
-  if (roleKey === "owner") {
+  if (normalizedRoleKey === "owner") {
     return getDefaultRolePermissions("admin") ?? [];
   }
 
-  if (roleKey === "manager") {
+  if (normalizedRoleKey === "manager") {
     return legacyManagerPermissions;
   }
 
   try {
-    const customRole = await findOrgCustomRoleByKey(supabase, orgId, roleKey);
+    const customRole = await findOrgCustomRoleByKey(supabase, orgId, normalizedRoleKey);
     return customRole?.permissions ?? [];
   } catch (error) {
     if (error instanceof Error && error.message.includes("org_custom_roles")) {

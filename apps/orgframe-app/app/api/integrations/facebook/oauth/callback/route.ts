@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
 import { can } from "@/src/shared/permissions/can";
-import { createSupabaseServerForRequest } from "@/src/shared/supabase/server";
+import { createSupabaseServerForRequest } from "@/src/shared/data-api/server";
 import {
   exchangeFacebookCodeForUserToken,
   getFacebookOauthConfig,
@@ -69,13 +69,13 @@ async function verifyUserCanWriteOrg(request: NextRequest, orgSlug: string, expe
     return false;
   }
 
-  const { data: org, error: orgError } = await supabase.from("orgs").select("id").eq("slug", orgSlug).maybeSingle();
+  const { data: org, error: orgError } = await supabase.schema("orgs").from("orgs").select("id").eq("slug", orgSlug).maybeSingle();
   if (orgError || !org) {
     return false;
   }
 
   const { data: membership, error: membershipError } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("org_memberships")
     .select("role")
     .eq("org_id", org.id)
     .eq("user_id", user.id)

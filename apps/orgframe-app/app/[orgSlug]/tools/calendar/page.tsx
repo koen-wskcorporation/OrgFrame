@@ -7,6 +7,8 @@ import { ManageCalendarSection } from "@/app/[orgSlug]/tools/calendar/ManageCale
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
 import { getCalendarWorkspaceDataAction } from "@/src/features/calendar/actions";
+import type { CalendarReadModel } from "@/src/features/calendar/types";
+import type { FacilityReservationReadModel } from "@/src/features/facilities/types";
 
 export const metadata: Metadata = {
   title: "Calendar"
@@ -30,19 +32,37 @@ export default async function ManageCalendarPage({
     can(orgContext.membershipPermissions, "org.manage.read");
 
   if (!canRead) {
-    redirect("/forbidden");
+    redirect("/forbidden?reason=calendar-read-guard");
   }
 
+  const emptyReadModel: CalendarReadModel = {
+    sources: [],
+    entries: [],
+    rules: [],
+    occurrences: [],
+    exceptions: [],
+    configurations: [],
+    allocations: [],
+    ruleAllocations: [],
+    invites: []
+  };
+  const emptyFacilityReadModel: FacilityReservationReadModel = {
+    spaces: [],
+    rules: [],
+    reservations: [],
+    exceptions: []
+  };
+
   const workspaceData = await getCalendarWorkspaceDataAction({ orgSlug: orgContext.orgSlug });
-  if (!workspaceData.ok) {
-    redirect("/forbidden");
-  }
-  const { readModel, activeTeams, facilityReadModel } = workspaceData.data;
+  const readModel = workspaceData.ok ? workspaceData.data.readModel : emptyReadModel;
+  const activeTeams = workspaceData.ok ? workspaceData.data.activeTeams : [];
+  const facilityReadModel = workspaceData.ok ? workspaceData.data.facilityReadModel : emptyFacilityReadModel;
 
   return (
     <PageStack className="app-page-stack--fill min-h-0 h-[calc(100dvh-var(--org-header-height,0px)-var(--layout-gap))]">
       <PageHeader description="Organization calendar for events, practices, games, and shared facility scheduling." showBorder={false} title="Calendar" />
       {!canWrite ? <Alert variant="info">You have read-only access to calendar data.</Alert> : null}
+      {!workspaceData.ok ? <Alert variant="warning">Some calendar data could not be loaded. Showing available data only.</Alert> : null}
       <section aria-label="Editable calendar" className="min-h-0 flex-1 overflow-hidden">
         <ManageCalendarSection
           activeTeams={activeTeams}

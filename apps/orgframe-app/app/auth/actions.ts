@@ -2,8 +2,8 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 
 function cleanValue(value: FormDataEntryValue | null) {
   if (typeof value !== "string") {
@@ -156,7 +156,7 @@ export async function lookupAuthAccountAction(formData: FormData): Promise<AuthA
   }
 
   const { data: profile } = await supabase
-    .from("user_profiles")
+    .schema("people").from("user_profiles")
     .select("first_name, last_name, avatar_path")
     .eq("user_id", user.id)
     .maybeSingle();

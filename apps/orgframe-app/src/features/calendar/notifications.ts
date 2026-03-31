@@ -1,10 +1,10 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { createInboxItems } from "@/src/features/calendar/db/queries";
 
 async function listTeamStaffRecipients(teamId: string): Promise<string[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_team_staff")
+    .schema("programs").from("program_team_staff")
     .select("user_id")
     .eq("team_id", teamId);
 
@@ -18,7 +18,7 @@ async function listTeamStaffRecipients(teamId: string): Promise<string[]> {
 async function listOrgAdminRecipients(orgId: string): Promise<string[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("org_memberships")
     .select("user_id")
     .eq("org_id", orgId)
     .eq("role", "admin");

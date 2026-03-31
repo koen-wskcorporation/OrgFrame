@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 import { parseFacebookMessengerWebhookPayload, verifyFacebookWebhookSignature } from "@/src/features/communications/integrations/facebook";
 import { normalizeDisplayName } from "@/src/features/communications/normalization";
 import { resolveDirection, resolveFacebookIdentityLabelForWebhook, resolveInboundIdentity } from "@/src/features/communications/service";

@@ -70,9 +70,49 @@ describe("legacy path redirect routing", () => {
     assert.equal(response.headers.get("location"), "https://baycitysoccer.orgframe.app/tools/calendar?view=month");
   });
 
-  it("sends org management routes on custom domains to the org subdomain host", () => {
+  it("sends platform-only routes on org subdomains to the app host", async () => {
+    const response = await proxy(
+      new NextRequest("https://localhost/auth/login?next=%2Ftools", {
+        headers: {
+          "x-forwarded-host": "baycitysoccer.orgframe.app",
+          "x-forwarded-proto": "https"
+        }
+      })
+    );
+
+    assert.equal(response.status, 307);
+    assert.equal(response.headers.get("location"), "https://orgframe.app/auth/login?next=%2Ftools");
+  });
+
+  it("sends account and api routes on org subdomains to the app host", async () => {
+    const accountResponse = await proxy(
+      new NextRequest("https://localhost/account", {
+        headers: {
+          "x-forwarded-host": "baycitysoccer.orgframe.app",
+          "x-forwarded-proto": "https"
+        }
+      })
+    );
+
+    assert.equal(accountResponse.status, 307);
+    assert.equal(accountResponse.headers.get("location"), "https://orgframe.app/account");
+
+    const apiResponse = await proxy(
+      new NextRequest("https://localhost/api/account/session", {
+        headers: {
+          "x-forwarded-host": "baycitysoccer.orgframe.app",
+          "x-forwarded-proto": "https"
+        }
+      })
+    );
+
+    assert.equal(apiResponse.status, 307);
+    assert.equal(apiResponse.headers.get("location"), "https://orgframe.app/api/account/session");
+  });
+
+  it("keeps org-scoped routes on custom domains", () => {
     const redirectHost = getCustomDomainRedirectHost("/tools/calendar", "baycitysoccer");
-    assert.equal(redirectHost, "baycitysoccer.orgframe.app");
+    assert.equal(redirectHost, null);
   });
 
   it("sends platform-only routes on custom domains to the app host", () => {
@@ -80,8 +120,8 @@ describe("legacy path redirect routing", () => {
     assert.equal(getCustomDomainRedirectHost("/account", "baycitysoccer"), "orgframe.app");
   });
 
-  it("sends explicit other-org paths on custom domains to the app host", () => {
+  it("keeps nested paths on custom domains within org scope", () => {
     const redirectHost = getCustomDomainRedirectHost("/riverdale/programs/spring", "baycitysoccer");
-    assert.equal(redirectHost, "orgframe.app");
+    assert.equal(redirectHost, null);
   });
 });

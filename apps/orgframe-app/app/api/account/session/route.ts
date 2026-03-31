@@ -3,7 +3,7 @@ import { getSignedProfileAvatarUrl } from "@/src/features/core/account/storage/g
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
 import { listUserOrgs } from "@/src/shared/org/listUserOrgs";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 
 export async function GET() {
   const sessionUser = await getSessionUser();
@@ -23,7 +23,7 @@ export async function GET() {
 
   const supabase = await createSupabaseServer();
   const { data: profile } = await supabase
-    .from("user_profiles")
+    .schema("people").from("user_profiles")
     .select("first_name, last_name, avatar_path")
     .eq("user_id", sessionUser.id)
     .maybeSingle();

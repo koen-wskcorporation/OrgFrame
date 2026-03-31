@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { Card, CardContent, CardDescription, CardHeader, CardHeaderRow, CardTitle } from "@orgframe/ui/primitives/card";
 import { Input } from "@orgframe/ui/primitives/input";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import {
@@ -119,34 +119,32 @@ export function FacilityManageDetailPanel({
       {activeSection === "overview" ? (
         <Card>
           <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <CardTitle>{currentSelectedSpace.name}</CardTitle>
-                <CardDescription>
-                  {currentSelectedSpace.spaceKind} · {currentSelectedSpace.timezone}
-                </CardDescription>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <FacilityStatusBadge
-                  disabled={!canWrite}
-                  label={formatFacilitySpaceStatusLabel(currentSelectedSpace.status, selectedSpaceStatusLabels)}
-                  onSelectSpaceStatus={(nextStatus) =>
-                    withToast(
-                      () =>
-                        toggleFacilitySpaceOpenClosedAction({
-                          orgSlug,
-                          spaceId: currentSelectedSpace.id,
-                          status: nextStatus
-                        }),
-                      "Space status updated"
-                    )
-                  }
-                  spaceStatusOptions={selectedSpaceStatusOptions}
-                  status={currentSelectedSpace.status}
-                />
-                <span className="text-xs text-text-muted">{currentSelectedSpace.isBookable ? "Bookable" : "Not bookable"}</span>
-              </div>
-            </div>
+            <CardHeaderRow
+              actions={
+                <div className="flex flex-wrap items-center gap-2">
+                  <FacilityStatusBadge
+                    disabled={!canWrite}
+                    label={formatFacilitySpaceStatusLabel(currentSelectedSpace.status, selectedSpaceStatusLabels)}
+                    onSelectSpaceStatus={(nextStatus) =>
+                      withToast(
+                        () =>
+                          toggleFacilitySpaceOpenClosedAction({
+                            orgSlug,
+                            spaceId: currentSelectedSpace.id,
+                            status: nextStatus
+                          }),
+                        "Space status updated"
+                      )
+                    }
+                    spaceStatusOptions={selectedSpaceStatusOptions}
+                    status={currentSelectedSpace.status}
+                  />
+                  <span className="text-xs text-text-muted">{currentSelectedSpace.isBookable ? "Bookable" : "Not bookable"}</span>
+                </div>
+              }
+              description={`${currentSelectedSpace.spaceKind} · ${currentSelectedSpace.timezone}`}
+              title={currentSelectedSpace.name}
+            />
           </CardHeader>
           <CardContent>
             <p className="text-sm text-text-muted">Use the tabs to manage structure and settings for this facility.</p>

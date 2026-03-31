@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type { Permission } from "@/src/features/core/access";
 import type { OrderPanelData, OrderPanelResult } from "@/src/features/orders/types";
 
@@ -65,9 +65,9 @@ export async function getOrderPanelDataAction(input: z.input<typeof lookupOrderP
     const supabase = await createSupabaseServer();
 
     const orderQuery = supabase
-      .from("org_orders")
+      .schema("commerce").from("orders")
       .select(
-        "id, source_order_id, source_order_no, source_payment_status, order_status, order_date, total_amount, total_paid_amount, balance_amount, billing_first_name, billing_last_name, billing_address, metadata_json"
+        "id, source_order_id, source_order_no, source_payment_status, order_status, order_date, total_amount, total_paid_amount, balance_amount, billing_first_name, billing_last_name, billing_address, items_json, metadata_json"
       )
       .eq("org_id", orgContext.orgId)
       .limit(1);
@@ -87,9 +87,9 @@ export async function getOrderPanelDataAction(input: z.input<typeof lookupOrderP
 
     if (!resolvedOrder && payload.sourceRef) {
       const { data: fallbackRow, error: fallbackError } = await supabase
-        .from("org_orders")
+        .schema("commerce").from("orders")
         .select(
-          "id, source_order_id, source_order_no, source_payment_status, order_status, order_date, total_amount, total_paid_amount, balance_amount, billing_first_name, billing_last_name, billing_address, metadata_json"
+          "id, source_order_id, source_order_no, source_payment_status, order_status, order_date, total_amount, total_paid_amount, balance_amount, billing_first_name, billing_last_name, billing_address, items_json, metadata_json"
         )
         .eq("org_id", orgContext.orgId)
         .eq("source_order_no", payload.sourceRef)
@@ -113,29 +113,21 @@ export async function getOrderPanelDataAction(input: z.input<typeof lookupOrderP
       };
     }
 
-    const [itemsResult, paymentsResult] = await Promise.all([
-      supabase
-        .from("org_order_items")
-        .select(
-          "id, source_line_key, description, source_program_name, source_division_name, source_team_name, amount, amount_paid, balance_amount, metadata_json"
-        )
-        .eq("org_id", orgContext.orgId)
-        .eq("order_id", resolvedOrder.id)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("org_order_payments")
-        .select("id, source_payment_key, payment_status, payment_date, payment_amount, paid_registration_fee, paid_cc_fee, metadata_json")
-        .eq("org_id", orgContext.orgId)
-        .eq("order_id", resolvedOrder.id)
-        .order("payment_date", { ascending: true })
-    ]);
+    const { data: paymentsRows, error: paymentsError } = await supabase
+      .schema("commerce").from("payments")
+      .select("id, source_payment_key, payment_status, payment_date, payment_amount, paid_registration_fee, paid_cc_fee, metadata_json")
+      .eq("org_id", orgContext.orgId)
+      .eq("order_id", resolvedOrder.id)
+      .order("payment_date", { ascending: true });
 
-    if (itemsResult.error || paymentsResult.error) {
+    if (paymentsError) {
       return {
         ok: false,
         error: "Unable to load order line items."
       };
     }
+
+    const rawItems = Array.isArray(resolvedOrder.items_json) ? resolvedOrder.items_json : [];
 
     const data: OrderPanelData = {
       order: {
@@ -153,19 +145,22 @@ export async function getOrderPanelDataAction(input: z.input<typeof lookupOrderP
         billingAddress: resolvedOrder.billing_address,
         metadataJson: asObject(resolvedOrder.metadata_json)
       },
-      items: (itemsResult.data ?? []).map((item) => ({
-        id: item.id,
-        sourceLineKey: item.source_line_key,
-        description: item.description,
-        sourceProgramName: item.source_program_name,
-        sourceDivisionName: item.source_division_name,
-        sourceTeamName: item.source_team_name,
-        amount: asMoney(item.amount),
-        amountPaid: asMoney(item.amount_paid),
-        balanceAmount: asMoney(item.balance_amount),
-        metadataJson: asObject(item.metadata_json)
-      })),
-      payments: (paymentsResult.data ?? []).map((payment) => ({
+      items: rawItems.map((item) => {
+        const row = asObject(item);
+        return {
+          id: typeof row.id === "string" ? row.id : "",
+          sourceLineKey: typeof row.source_line_key === "string" ? row.source_line_key : "",
+          description: typeof row.description === "string" ? row.description : null,
+          sourceProgramName: typeof row.source_program_name === "string" ? row.source_program_name : null,
+          sourceDivisionName: typeof row.source_division_name === "string" ? row.source_division_name : null,
+          sourceTeamName: typeof row.source_team_name === "string" ? row.source_team_name : null,
+          amount: asMoney(row.amount),
+          amountPaid: asMoney(row.amount_paid),
+          balanceAmount: asMoney(row.balance_amount),
+          metadataJson: asObject(row.metadata_json)
+        };
+      }),
+      payments: (paymentsRows ?? []).map((payment) => ({
         id: payment.id,
         sourcePaymentKey: payment.source_payment_key,
         paymentStatus: payment.payment_status,

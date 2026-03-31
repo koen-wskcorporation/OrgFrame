@@ -1,14 +1,18 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse, type NextRequest } from "next/server";
 import { createActAuditLog, getActAuditLogForActor, updateActAuditLog } from "@/src/features/ai/audit";
-import { MissingOpenAiKeyError } from "@/src/features/ai/config";
-import { resolveAiContext } from "@/src/features/ai/context";
-import { runActPlanningConversation, runAskConversation } from "@/src/features/ai/openai";
+import { MissingAiGatewayKeyError } from "@/src/features/ai/config";
+import { withAIContext } from "@/src/features/ai/context/withAIContext";
+import type { AIContext } from "@/src/features/ai/context/types";
+import { AIContextError } from "@/src/features/ai/context/errors";
+import { runActPlanningConversation, runAskConversation } from "@/src/features/ai/gateway";
 import { consumeAiRateLimit } from "@/src/features/ai/rate-limit";
 import { aiRequestSchema } from "@/src/features/ai/schemas";
 import { createSseResponse } from "@/src/features/ai/sse";
 import { runAiTool } from "@/src/features/ai/tools";
-import type { AiActAuditDetail, AiConversationMessage, AiMode } from "@/src/features/ai/types";
+import { can } from "@/src/shared/permissions/can";
+import { isPermission, type Permission } from "@/src/features/core/access";
+import type { AiActAuditDetail, AiConversationMessage, AiMode, AiResolvedContext } from "@/src/features/ai/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +50,86 @@ function createInitialAuditDetail(input: {
   };
 }
 
+const permissionAliasToLegacy: Record<string, Permission> = {
+  "calendar:create": "calendar.write",
+  "calendar:edit": "calendar.write",
+  "calendar:delete": "calendar.write",
+  "facilities:manage": "facilities.write",
+  "communications:send": "communications.write"
+};
+
+function toLegacyPermission(permission: string): Permission | null {
+  if (isPermission(permission)) {
+    return permission;
+  }
+
+  return permissionAliasToLegacy[permission] ?? null;
+}
+
+function toLegacyAiContext(context: AIContext): AiResolvedContext {
+  const membershipPermissions = context.membership?.permissions ?? [];
+  const permissions = Array.from(new Set(membershipPermissions.map(toLegacyPermission).filter((value): value is Permission => Boolean(value))));
+
+  return {
+    userId: context.user.id,
+    email: context.user.email,
+    org: context.org
+      ? {
+          orgId: context.org.id,
+          orgSlug: context.org.slug,
+          orgName: context.org.name
+        }
+      : null,
+    account: {
+      activePlayerId: context.account.activePlayerId,
+      players: context.account.players
+    },
+    scope: context.scope,
+    permissionEnvelope: {
+      permissions,
+      canExecuteOrgActions: Boolean(context.org) && (can(permissions, "org.branding.write") || can(permissions, "forms.write")),
+      canReadOrg: Boolean(context.org) && can(permissions, ["org.dashboard.read"])
+    }
+  };
+}
+
+function mapAIContextErrorCodeToSse(error: AIContextError) {
+  if (error.code === "UNAUTHENTICATED" || error.code === "INVALID_USER") {
+    return "unauthenticated";
+  }
+
+  if (error.code === "ORG_NOT_FOUND") {
+    return "org_not_found";
+  }
+
+  if (error.code === "MEMBERSHIP_NOT_FOUND") {
+    return "insufficient_permissions";
+  }
+
+  if (error.code === "ORG_SLUG_NOT_RESOLVED") {
+    return "missing_org_context";
+  }
+
+  if (error.code === "INVALID_PERMISSIONS") {
+    return "invalid_permissions";
+  }
+
+  return "ai_context_error";
+}
+
+function buildContextRequest(request: NextRequest, orgSlug?: string) {
+  const url = new URL(request.url);
+
+  if (orgSlug?.trim()) {
+    url.searchParams.set("orgSlug", orgSlug.trim());
+  }
+
+  return new Request(url.toString(), {
+    method: request.method,
+    headers: request.headers
+  });
+}
+
 export async function POST(request: NextRequest) {
   const rawBody = await request.json().catch(() => null);
   const parsed = aiRequestSchema.safeParse(rawBody);
@@ -66,14 +150,19 @@ export async function POST(request: NextRequest) {
   }
 
   const payload = parsed.data;
+  const contextRequest = buildContextRequest(request, payload.orgSlug);
 
   return createSseResponse(async (emit) => {
-    const context = await resolveAiContext(payload.orgSlug);
-
-    if (!context) {
+    let context: AiResolvedContext;
+    try {
+      const aiContext = await withAIContext(contextRequest, async (ctx) => ctx);
+      context = toLegacyAiContext(aiContext);
+    } catch (error) {
+      const aiContextError =
+        error instanceof AIContextError ? error : new AIContextError("INTERNAL", error instanceof Error ? error.message : "Failed to build AI context.", 500);
       emit("error", {
-        code: "unauthenticated",
-        message: "You must be signed in to use AI Assistant.",
+        code: mapAIContextErrorCodeToSse(aiContextError),
+        message: aiContextError.message,
         retryable: false
       });
       return;
@@ -88,15 +177,6 @@ export async function POST(request: NextRequest) {
         code: "rate_limited",
         message: `Rate limit exceeded. Try again after ${new Date(rateLimit.resetAt).toLocaleTimeString()}.`,
         retryable: true
-      });
-      return;
-    }
-
-    if (payload.orgSlug && !context.org) {
-      emit("error", {
-        code: "org_not_found",
-        message: "Organization context could not be resolved.",
-        retryable: false
       });
       return;
     }
@@ -149,7 +229,16 @@ export async function POST(request: NextRequest) {
         return;
       }
 
-      if (!auditLog.detail.changeset || !context.org || context.org.orgId !== auditLog.orgId) {
+      if (!context.org) {
+        emit("error", {
+          code: "missing_org_context",
+          message: "Execution requires organization context.",
+          retryable: false
+        });
+        return;
+      }
+
+      if (!auditLog.detail.changeset || context.org.orgId !== auditLog.orgId) {
         emit("error", {
           code: "invalid_changeset",
           message: "Stored proposal is missing a valid changeset.",
@@ -274,7 +363,7 @@ export async function POST(request: NextRequest) {
     }
 
     const conversation = trimmedConversation(payload.conversation);
-    const hasOrgContext = Boolean(context.org && payload.orgSlug);
+    const hasOrgContext = Boolean(context.org);
     const canExecuteInOrg = hasOrgContext && context.permissionEnvelope.canExecuteOrgActions;
 
     let planningMode = payload.mode;
@@ -299,7 +388,11 @@ export async function POST(request: NextRequest) {
     let planningResult;
 
     try {
-      if (planningMode === "act" && context.org) {
+      if (planningMode === "act") {
+        if (!context.org) {
+          throw new Error("Act planning requires organization context.");
+        }
+
         planningResult = await runActPlanningConversation({
           mode: planningMode,
           userMessage: payload.userMessage,
@@ -339,10 +432,10 @@ export async function POST(request: NextRequest) {
         });
       }
     } catch (error) {
-      if (error instanceof MissingOpenAiKeyError) {
+      if (error instanceof MissingAiGatewayKeyError) {
         emit("error", {
-          code: "missing_openai_api_key",
-          message: "OPENAI_API_KEY is not configured on the server.",
+          code: "missing_ai_gateway_key",
+          message: "AI_GATEWAY_API_KEY is not configured on the server.",
           retryable: false
         });
         return;
@@ -350,7 +443,7 @@ export async function POST(request: NextRequest) {
 
       const message = error instanceof Error ? error.message : "Unable to complete AI request.";
       emit("error", {
-        code: "openai_error",
+        code: "ai_gateway_error",
         message,
         retryable: true
       });
@@ -359,7 +452,7 @@ export async function POST(request: NextRequest) {
 
     let proposalId: string | null = null;
 
-    if (payload.mode === "act" && context.org) {
+    if (planningMode === "act" && context.org) {
       const auditDetail: AiActAuditDetail = {
         ...createInitialAuditDetail({
           prompt: payload.userMessage,

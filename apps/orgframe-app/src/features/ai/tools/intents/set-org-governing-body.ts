@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type { Permission } from "@/src/features/core/access";
 import type { AiChangesetV1, AiExecutionResult, AiProposal, AiResolvedContext } from "@/src/features/ai/types";
 
@@ -59,7 +59,7 @@ function scoreCandidate(candidate: GoverningBodyRow, freeText: string) {
 
 async function getOrgBySlug(orgSlug: string): Promise<OrgRow | null> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("orgs").select("id, slug, name, governing_body_id").eq("slug", orgSlug).maybeSingle();
+  const { data, error } = await supabase.schema("orgs").from("orgs").select("id, slug, name, governing_body_id").eq("slug", orgSlug).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to load org for intent: ${error.message}`);
@@ -74,7 +74,7 @@ async function getOrgBySlug(orgSlug: string): Promise<OrgRow | null> {
 
 async function listGoverningBodies(): Promise<GoverningBodyRow[]> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("governing_bodies").select("id, slug, name").order("name", { ascending: true });
+  const { data, error } = await supabase.schema("orgs").from("governing_bodies").select("id, slug, name").order("name", { ascending: true });
 
   if (error) {
     throw new Error(`Failed to load governing body options: ${error.message}`);
@@ -85,7 +85,7 @@ async function listGoverningBodies(): Promise<GoverningBodyRow[]> {
 
 async function findGoverningBodyById(id: string): Promise<GoverningBodyRow | null> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("governing_bodies").select("id, slug, name").eq("id", id).maybeSingle();
+  const { data, error } = await supabase.schema("orgs").from("governing_bodies").select("id, slug, name").eq("id", id).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to load governing body target: ${error.message}`);

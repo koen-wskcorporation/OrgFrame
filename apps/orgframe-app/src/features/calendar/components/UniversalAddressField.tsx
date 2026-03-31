@@ -1,6 +1,7 @@
 "use client";
 
 import { AddressAutocompleteInput } from "@orgframe/ui/primitives/address-autocomplete-input";
+import { FieldHint, FieldShell } from "@orgframe/ui/primitives/form-field";
 
 type UniversalAddressFieldProps = {
   value: string;
@@ -16,9 +17,9 @@ export function UniversalAddressField({
   placeholder = "Search address or enter custom location"
 }: UniversalAddressFieldProps) {
   return (
-    <div className="space-y-1">
+    <FieldShell className="space-y-1">
       <AddressAutocompleteInput disabled={disabled} onChange={onChange} placeholder={placeholder} value={value} />
-      <p className="text-[11px] text-text-muted">Autocomplete supports addresses and places. You can also type custom text.</p>
-    </div>
+      <FieldHint className="text-[11px]">Autocomplete supports addresses and places. You can also type custom text.</FieldHint>
+    </FieldShell>
   );
 }

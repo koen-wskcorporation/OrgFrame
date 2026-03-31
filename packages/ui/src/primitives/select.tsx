@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Check, ChevronDown } from "lucide-react";
+import { formControlDisabledClass, formControlFocusClass, formControlInlineClass, formControlShellClass } from "./form-control";
 import { cn } from "./utils";
 
 export type SelectOption = {
@@ -255,8 +256,9 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           aria-haspopup="listbox"
           className={cn(
             variant === "inline"
-              ? "flex h-auto w-full items-center justify-between gap-2 rounded-none border-0 border-b border-dotted border-border/80 bg-transparent px-0 py-0 text-left text-inherit shadow-none transition-colors duration-150 focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-55"
-              : "flex h-10 w-full items-center justify-between gap-2 rounded-control border border-border bg-surface px-3 py-2 text-left text-sm text-text shadow-[inset_0_1px_0_hsl(var(--canvas)/0.35)] transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-55",
+              ? `flex h-auto w-full items-center justify-between gap-2 ${formControlInlineClass} px-0 py-0 text-left text-inherit transition-colors duration-150 focus:outline-none focus:ring-0 focus:ring-offset-0`
+              : `flex h-10 w-full items-center justify-between gap-2 rounded-control px-3 py-2 text-left text-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-canvas ${formControlShellClass} ${formControlFocusClass}`,
+            formControlDisabledClass,
             !selectedOption ? "text-text-muted" : "",
             className
           )}

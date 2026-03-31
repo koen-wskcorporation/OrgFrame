@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { IconButton } from "@orgframe/ui/primitives/icon-button";
+import { SurfaceBody, SurfaceCloseButton, SurfaceFooter, SurfaceHeader } from "@orgframe/ui/primitives/surface";
 import { cn } from "./utils";
 
 const PANEL_WIDTH = 325;
 const PANEL_COUNT_ATTRIBUTE = "data-panel-count";
+const APP_PANEL_COUNT_ATTRIBUTE = "data-app-panel-count";
 const POPUP_PANEL_COUNT_ATTRIBUTE = "data-popup-panel-count";
 const PRIMARY_HEADER_ID = "app-primary-header";
 const POPUP_PANEL_DOCK_ID = "popup-panel-dock";
@@ -21,6 +22,8 @@ export type PanelProps = {
   panelClassName?: string;
   contentClassName?: string;
   panelStyle?: React.CSSProperties;
+  pushMode?: "content" | "app";
+  globalPanel?: boolean;
 };
 
 type PanelScreen = {
@@ -44,7 +47,9 @@ export function Panel({
   footer,
   panelClassName,
   contentClassName,
-  panelStyle
+  panelStyle,
+  pushMode = "content",
+  globalPanel = false
 }: PanelProps) {
   const panelRef = React.useRef<HTMLDivElement | null>(null);
   const footerRef = React.useRef<HTMLDivElement | null>(null);
@@ -170,6 +175,11 @@ export function Panel({
     const panelCount = Number(document.body.getAttribute(PANEL_COUNT_ATTRIBUTE) ?? "0");
 
     const syncPanelTop = () => {
+      if (globalPanel) {
+        panelRef.current?.style.setProperty("--panel-top", "0px");
+        return;
+      }
+
       const header = document.getElementById(PRIMARY_HEADER_ID);
       const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
       const rootStyles = window.getComputedStyle(document.documentElement);
@@ -181,25 +191,34 @@ export function Panel({
     const syncPanelWidth = () => {
       const rootStyles = window.getComputedStyle(document.documentElement);
       const layoutGap = Number.parseFloat(rootStyles.getPropertyValue("--layout-gap")) || 0;
-      const viewportAllowance = Math.max(0, window.innerWidth - layoutGap * 2);
-      const panelWidth = Math.min(viewportAllowance, PANEL_WIDTH);
-      document.body.style.setProperty("--panel-active-width", `${Math.round(panelWidth)}px`);
+      const viewportAllowance = globalPanel ? Math.max(0, window.innerWidth) : Math.max(0, window.innerWidth - layoutGap * 2);
+      const fallbackPanelWidth = Math.min(viewportAllowance, PANEL_WIDTH);
+      const measuredPanelWidth = panelRef.current ? Math.round(panelRef.current.getBoundingClientRect().width) : 0;
+      const panelWidth = measuredPanelWidth > 0 ? Math.min(window.innerWidth, measuredPanelWidth) : fallbackPanelWidth;
+      document.body.style.setProperty("--panel-active-width", `${panelWidth}px`);
     };
 
+    const appPanelCount = Number(document.body.getAttribute(APP_PANEL_COUNT_ATTRIBUTE) ?? "0");
     document.body.setAttribute(PANEL_COUNT_ATTRIBUTE, String(panelCount + 1));
-    document.body.classList.add("panel-open");
+    document.body.classList.add("panel-open-content");
+    if (pushMode === "app") {
+      document.body.setAttribute(APP_PANEL_COUNT_ATTRIBUTE, String(appPanelCount + 1));
+      document.body.classList.add("panel-open-app");
+    }
     syncPanelTop();
     syncPanelWidth();
     const headerResizeObserver =
       typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(() => {
             syncPanelTop();
+            syncPanelWidth();
           })
         : null;
     const panelResizeObserver =
       typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(() => {
             syncPanelTop();
+            syncPanelWidth();
           })
         : null;
     const header = document.getElementById(PRIMARY_HEADER_ID);
@@ -213,29 +232,41 @@ export function Panel({
     }
 
     const rafId = window.requestAnimationFrame(syncPanelTop);
+    const widthRafId = window.requestAnimationFrame(syncPanelWidth);
     window.addEventListener("resize", syncPanelTop);
     window.addEventListener("resize", syncPanelWidth);
     window.addEventListener("scroll", syncPanelTop, { passive: true });
 
     return () => {
       window.cancelAnimationFrame(rafId);
+      window.cancelAnimationFrame(widthRafId);
       window.removeEventListener("resize", syncPanelTop);
       window.removeEventListener("resize", syncPanelWidth);
       window.removeEventListener("scroll", syncPanelTop);
       headerResizeObserver?.disconnect();
       panelResizeObserver?.disconnect();
       const nextCount = Math.max(0, Number(document.body.getAttribute(PANEL_COUNT_ATTRIBUTE) ?? "1") - 1);
+      const nextAppCount = Math.max(
+        0,
+        Number(document.body.getAttribute(APP_PANEL_COUNT_ATTRIBUTE) ?? (pushMode === "app" ? "1" : "0")) - (pushMode === "app" ? 1 : 0)
+      );
       if (nextCount === 0) {
-        document.body.classList.remove("panel-open");
+        document.body.classList.remove("panel-open-content");
         document.body.removeAttribute(PANEL_COUNT_ATTRIBUTE);
         document.body.style.removeProperty("--panel-active-width");
       } else {
         document.body.setAttribute(PANEL_COUNT_ATTRIBUTE, String(nextCount));
         syncPanelWidth();
       }
+      if (nextAppCount === 0) {
+        document.body.classList.remove("panel-open-app");
+        document.body.removeAttribute(APP_PANEL_COUNT_ATTRIBUTE);
+      } else {
+        document.body.setAttribute(APP_PANEL_COUNT_ATTRIBUTE, String(nextAppCount));
+      }
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [isPopupContext, ready]);
+  }, [globalPanel, isPopupContext, pushMode, ready]);
 
   if (!mounted || !open || !portalTarget) {
     return null;
@@ -260,7 +291,15 @@ export function Panel({
               maxWidth: "100%",
               width: "100%"
             }
-          : {
+          : globalPanel
+            ? {
+                bottom: "0",
+                right: "0",
+                top: "0",
+                maxWidth: "100vw",
+                width: `min(100vw, ${PANEL_WIDTH}px)`
+              }
+            : {
               bottom: "var(--layout-gap)",
               right: "var(--layout-gap)",
               top: "var(--panel-top, 0px)",
@@ -269,20 +308,10 @@ export function Panel({
             })
       }}
     >
-      <div className="relative shrink-0 border-b px-5 py-4 pr-16 md:px-6">
-        <h2 className="text-lg font-semibold leading-tight text-text">{title}</h2>
-        {subtitle ? <p className="mt-1 text-sm leading-relaxed text-text-muted">{subtitle}</p> : null}
-      </div>
-
-      <IconButton className="absolute right-3 top-3 z-[101]" icon={<span className="text-lg leading-none">×</span>} label="Close panel" onClick={onClose} />
-
-      <div className={cn("min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 py-4 [overflow-wrap:anywhere] md:px-6", contentClassName)}>{children}</div>
-
-      {footer ? (
-        <div className="shrink-0 border-t bg-surface px-5 py-4 md:px-6 flex flex-wrap items-center justify-end gap-2" ref={footerRef}>
-          {footer}
-        </div>
-      ) : null}
+      <SurfaceHeader subtitle={subtitle} title={title} />
+      <SurfaceCloseButton className="z-[101]" label="Close panel" onClick={onClose} />
+      <SurfaceBody className={contentClassName}>{children}</SurfaceBody>
+      {footer ? <SurfaceFooter footerRef={footerRef}>{footer}</SurfaceFooter> : null}
     </aside>,
     portalTarget
   );

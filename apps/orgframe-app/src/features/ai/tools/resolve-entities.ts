@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { resolveEntitiesInputSchema } from "@/src/features/ai/schemas";
 import type { AiEntityResolution } from "@/src/features/ai/types";
 import type { AiToolDefinition } from "@/src/features/ai/tools/base";
@@ -82,7 +82,7 @@ function scoreMatch(label: string, freeText: string) {
 
 async function resolveOrgId(orgSlug: string) {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("orgs").select("id").eq("slug", orgSlug).maybeSingle();
+  const { data, error } = await supabase.schema("orgs").from("orgs").select("id").eq("slug", orgSlug).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to resolve org in entity lookup: ${error.message}`);
@@ -150,28 +150,28 @@ export const resolveEntitiesTool: AiToolDefinition<typeof resolveEntitiesInputSc
     }
 
     const [governingBodies, programs, programNodes, players, forms, submissions, calendarEntries] = await Promise.all([
-      supabase.from("governing_bodies").select("id, slug, name").order("name", { ascending: true }),
-      supabase.from("programs").select("id, slug, name").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(30),
+      supabase.schema("orgs").from("governing_bodies").select("id, slug, name").order("name", { ascending: true }),
+      supabase.schema("programs").from("programs").select("id, slug, name").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(30),
       supabase
-        .from("program_nodes")
+        .schema("programs").from("program_structure_nodes")
         .select("id, program_id, name, node_kind, programs!inner(org_id)")
         .eq("programs.org_id", orgId)
         .order("updated_at", { ascending: false })
         .limit(60),
       supabase
-        .from("players")
+        .schema("people").from("players")
         .select("id, first_name, last_name, program_registrations!inner(org_id)")
         .eq("program_registrations.org_id", orgId)
         .order("last_name", { ascending: true })
         .limit(40),
-      supabase.from("org_forms").select("id, slug, name").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(30),
+      supabase.schema("forms").from("org_forms").select("id, slug, name").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(30),
       supabase
-        .from("org_form_submissions")
+        .schema("forms").from("org_form_submissions")
         .select("id, status, form:org_forms!inner(id, name, slug, org_id)")
         .eq("form.org_id", orgId)
         .order("created_at", { ascending: false })
         .limit(40),
-      supabase.from("calendar_entries").select("id, title").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(30)
+      supabase.schema("calendar").from("calendar_items").select("id, title").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(30)
     ]);
 
     const resolutions: AiEntityResolution[] = [];

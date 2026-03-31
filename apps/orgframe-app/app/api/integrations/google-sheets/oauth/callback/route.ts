@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
 import { can } from "@/src/shared/permissions/can";
-import { createSupabaseServerForRequest } from "@/src/shared/supabase/server";
+import { createSupabaseServerForRequest } from "@/src/shared/data-api/server";
 import {
   exchangeGoogleSheetsCodeForUserToken,
   getGoogleSheetsOauthConfig,
@@ -79,13 +79,13 @@ async function resolveConnectContext(request: NextRequest, orgSlug: string, form
     return null;
   }
 
-  const { data: org, error: orgError } = await supabase.from("orgs").select("id, slug").eq("slug", orgSlug).maybeSingle();
+  const { data: org, error: orgError } = await supabase.schema("orgs").from("orgs").select("id, slug").eq("slug", orgSlug).maybeSingle();
   if (orgError || !org) {
     return null;
   }
 
   const { data: membership, error: membershipError } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("org_memberships")
     .select("role")
     .eq("org_id", org.id)
     .eq("user_id", user.id)
@@ -100,7 +100,7 @@ async function resolveConnectContext(request: NextRequest, orgSlug: string, form
   }
 
   const { data: form, error: formError } = await supabase
-    .from("org_forms")
+    .schema("forms").from("org_forms")
     .select("id, name, form_kind")
     .eq("org_id", org.id)
     .eq("id", formId)

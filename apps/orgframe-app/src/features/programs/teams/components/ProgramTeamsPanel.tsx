@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Chip } from "@orgframe/ui/primitives/chip";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Select } from "@orgframe/ui/primitives/select";
+import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
 import type { ProgramNode, ProgramTeamSummary } from "@/src/features/programs/types";
 import { TeamDetailPanel } from "@/src/features/programs/teams/components/TeamDetailPanel";
 
@@ -76,73 +76,69 @@ export function ProgramTeamsPanel({ orgSlug, programId, canWrite, nodes, teamSum
 
   return (
     <div className="ui-stack-page">
-      <Card>
-        <CardHeader>
-          <div className="ui-card-header-row">
-            <div className="ui-card-header-copy">
-              <CardTitle>Teams</CardTitle>
-              <CardDescription>Manage team rosters, staff assignments, and metadata.</CardDescription>
-            </div>
-            <Button href={`/tools/programs/${programId}/structure`} type="button" variant="secondary">
-              Open structure
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <Input onChange={(event) => setSearch(event.target.value)} placeholder="Search teams" value={search} />
-            <Select
-              onChange={(event) => setStatusFilter(event.target.value)}
-              options={[
-                { value: "all", label: "All statuses" },
-                { value: "active", label: "Active" },
-                { value: "archived", label: "Archived" }
-              ]}
-              value={statusFilter}
-            />
-            <Select
-              onChange={(event) => setDivisionFilter(event.target.value)}
-              options={[
-                { value: "", label: "All divisions" },
-                ...divisionOptions.map((division) => ({ value: division.id, label: division.name }))
-              ]}
-              value={divisionFilter}
-            />
-          </div>
+      <WorkspaceCardShell
+        actions={
+          <Button href={`/tools/programs/${programId}/structure`} type="button" variant="secondary">
+            Open structure
+          </Button>
+        }
+        contentClassName="space-y-4"
+        description="Manage team rosters, staff assignments, and metadata."
+        title="Teams"
+      >
+        <div className="grid gap-3 md:grid-cols-3">
+          <Input onChange={(event) => setSearch(event.target.value)} placeholder="Search teams" value={search} />
+          <Select
+            onChange={(event) => setStatusFilter(event.target.value)}
+            options={[
+              { value: "all", label: "All statuses" },
+              { value: "active", label: "Active" },
+              { value: "archived", label: "Archived" }
+            ]}
+            value={statusFilter}
+          />
+          <Select
+            onChange={(event) => setDivisionFilter(event.target.value)}
+            options={[
+              { value: "", label: "All divisions" },
+              ...divisionOptions.map((division) => ({ value: division.id, label: division.name }))
+            ]}
+            value={divisionFilter}
+          />
+        </div>
 
-          {filteredTeams.length === 0 ? <Alert variant="info">No teams match this view.</Alert> : null}
+        {filteredTeams.length === 0 ? <Alert variant="info">No teams match this view.</Alert> : null}
 
-          <div className="ui-list-stack">
-            {filteredTeams.map((summary) => {
-              const divisionName = summary.node.parentId ? nodeById.get(summary.node.parentId)?.name ?? "" : "";
-              return (
-                <div className="ui-list-row" key={summary.team.id}>
-                  <div className="ui-list-row-content">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="ui-list-row-title">{summary.node.name}</p>
-                      <Chip>{summary.team.status}</Chip>
-                    </div>
-                    <p className="ui-list-row-meta">
-                      {divisionName ? `Division: ${divisionName}` : "No division"}
-                      {summary.team.teamCode ? ` · Code ${summary.team.teamCode}` : ""}
-                      {summary.team.levelLabel ? ` · ${summary.team.levelLabel}` : ""}
-                    </p>
-                    <p className="ui-list-row-meta">Roster {summary.memberCount} · Staff {summary.staffCount}</p>
+        <div className="ui-list-stack">
+          {filteredTeams.map((summary) => {
+            const divisionName = summary.node.parentId ? nodeById.get(summary.node.parentId)?.name ?? "" : "";
+            return (
+              <div className="ui-list-row" key={summary.team.id}>
+                <div className="ui-list-row-content">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="ui-list-row-title">{summary.node.name}</p>
+                    <Chip>{summary.team.status}</Chip>
                   </div>
-                  <div className="ui-list-row-actions">
-                    <Button onClick={() => setActiveTeamId(summary.team.id)} size="sm" type="button" variant="secondary">
-                      Manage
-                    </Button>
-                    <Button href={`/tools/programs/${programId}/structure?teamId=${summary.team.id}`} size="sm" type="button" variant="ghost">
-                      Open in structure
-                    </Button>
-                  </div>
+                  <p className="ui-list-row-meta">
+                    {divisionName ? `Division: ${divisionName}` : "No division"}
+                    {summary.team.teamCode ? ` · Code ${summary.team.teamCode}` : ""}
+                    {summary.team.levelLabel ? ` · ${summary.team.levelLabel}` : ""}
+                  </p>
+                  <p className="ui-list-row-meta">Roster {summary.memberCount} · Staff {summary.staffCount}</p>
                 </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+                <div className="ui-list-row-actions">
+                  <Button onClick={() => setActiveTeamId(summary.team.id)} size="sm" type="button" variant="secondary">
+                    Manage
+                  </Button>
+                  <Button href={`/tools/programs/${programId}/structure?teamId=${summary.team.id}`} size="sm" type="button" variant="ghost">
+                    Open in structure
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </WorkspaceCardShell>
 
       <TeamDetailPanel
         canWrite={canWrite}

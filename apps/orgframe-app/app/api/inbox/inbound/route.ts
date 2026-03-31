@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 import { resolveOrgIdFromSlug } from "@/src/features/communications/db/queries";
 import { normalizeDisplayName, normalizeEmail, normalizePhone } from "@/src/features/communications/normalization";
 import { resolveDirection, resolveInboundIdentity } from "@/src/features/communications/service";

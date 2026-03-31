@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { SurfaceBody } from "@orgframe/ui/primitives/surface";
 import { cn } from "@orgframe/ui/primitives/utils";
 
 type ScrollableSheetBodyProps = {
@@ -9,5 +10,9 @@ type ScrollableSheetBodyProps = {
 };
 
 export function ScrollableSheetBody({ children, className }: ScrollableSheetBodyProps) {
-  return <div className={cn("min-h-0 max-h-[calc(100dvh-14rem)] overflow-y-auto", className)}>{children}</div>;
+  return (
+    <SurfaceBody className={cn("max-h-[calc(100dvh-14rem)]", className)} padded={false}>
+      {children}
+    </SurfaceBody>
+  );
 }

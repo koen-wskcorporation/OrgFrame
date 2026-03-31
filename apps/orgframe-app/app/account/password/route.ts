@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createSupabaseServerForRequest } from "@/src/shared/supabase/server";
+import { createSupabaseServerForRequest } from "@/src/shared/data-api/server";
 
 function cleanValue(value: FormDataEntryValue | null) {
   if (typeof value !== "string") {

@@ -1,8 +1,8 @@
 import "server-only";
 
-import { createSupabaseServer } from "@/src/shared/supabase/server";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
-import { getSupabasePublicConfig } from "@/src/shared/supabase/config";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
+import { getDataApiPublicConfig } from "@/src/shared/data-api/config";
 
 const extensionByMimeType: Record<string, string> = {
   "image/png": "png",
@@ -146,7 +146,7 @@ async function createSignedUrl(bucket: string, path: string) {
 
 export async function resolveUploadedAssetUrl(bucket: string, path: string) {
   if (bucket === "org-site-assets") {
-    const { supabaseUrl } = getSupabasePublicConfig();
+    const { supabaseUrl } = getDataApiPublicConfig();
     return `${supabaseUrl}/storage/v1/object/public/${bucket}/${encodePath(path)}`;
   }
 

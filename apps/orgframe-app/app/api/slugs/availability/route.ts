@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isReservedOrgSlug } from "@/src/shared/org/reservedSlugs";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { isReservedPageSlug } from "@/src/features/site/blocks/helpers";
 
 type SlugKind = "org" | "page" | "program" | "form";
@@ -96,7 +96,7 @@ function validateSlugFormat(kind: SlugKind, normalizedSlug: string) {
 
 async function orgSlugExists(slug: string) {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("orgs").select("id").eq("slug", slug).maybeSingle();
+  const { data, error } = await supabase.schema("orgs").from("orgs").select("id").eq("slug", slug).maybeSingle();
 
   if (error) {
     throw new Error(error.message);
@@ -107,7 +107,7 @@ async function orgSlugExists(slug: string) {
 
 async function resolveOrgIdBySlug(orgSlug: string) {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("orgs").select("id").eq("slug", orgSlug).maybeSingle();
+  const { data, error } = await supabase.schema("orgs").from("orgs").select("id").eq("slug", orgSlug).maybeSingle();
 
   if (error) {
     throw new Error(error.message);
@@ -118,7 +118,7 @@ async function resolveOrgIdBySlug(orgSlug: string) {
 
 async function pageSlugExists(orgId: string, slug: string) {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("org_pages").select("id").eq("org_id", orgId).eq("slug", slug).maybeSingle();
+  const { data, error } = await supabase.schema("site").from("site_pages").select("id").eq("org_id", orgId).eq("slug", slug).maybeSingle();
 
   if (error) {
     throw new Error(error.message);
@@ -129,7 +129,7 @@ async function pageSlugExists(orgId: string, slug: string) {
 
 async function programSlugExists(orgId: string, slug: string) {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("programs").select("id").eq("org_id", orgId).eq("slug", slug).maybeSingle();
+  const { data, error } = await supabase.schema("programs").from("programs").select("id").eq("org_id", orgId).eq("slug", slug).maybeSingle();
 
   if (error) {
     throw new Error(error.message);
@@ -140,7 +140,7 @@ async function programSlugExists(orgId: string, slug: string) {
 
 async function formSlugExists(orgId: string, slug: string) {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.from("org_forms").select("id").eq("org_id", orgId).eq("slug", slug).maybeSingle();
+  const { data, error } = await supabase.schema("forms").from("org_forms").select("id").eq("org_id", orgId).eq("slug", slug).maybeSingle();
 
   if (error) {
     throw new Error(error.message);

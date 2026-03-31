@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type {
   CalendarAudience,
   CalendarEntry,
@@ -25,21 +25,21 @@ import type {
 import type { GeneratedCalendarOccurrenceInput } from "@/src/features/calendar/rule-engine";
 
 const entrySelect =
-  "id, org_id, source_id, purpose, audience, entry_type, title, summary, visibility, status, host_team_id, default_timezone, settings_json, created_by, updated_by, created_at, updated_at";
+  "id, org_id, source_id, purpose, audience, entry_type:item_type, title, summary, visibility, status, host_team_id, default_timezone:timezone, settings_json:settings, created_by:created_by_user_id, updated_by:updated_by_user_id, created_at, updated_at";
 const sourceSelect =
-  "id, org_id, name, scope_type, scope_id, scope_label, parent_source_id, purpose_defaults, audience_defaults, is_custom_calendar, is_active, display_json, created_by, updated_by, created_at, updated_at";
+  "id, org_id, name, scope_type, scope_id, scope_label, parent_source_id, purpose_defaults, audience_defaults, is_custom_calendar, is_active, display_json:display, created_by:created_by_user_id, updated_by:updated_by_user_id, created_at, updated_at";
 const ruleSelect =
-  "id, org_id, entry_id, mode, timezone, start_date, end_date, start_time, end_time, interval_count, interval_unit, by_weekday, by_monthday, end_mode, until_date, max_occurrences, sort_index, is_active, config_json, rule_hash, created_by, updated_by, created_at, updated_at";
+  "id, org_id, entry_id:item_id, mode, timezone, start_date, end_date, start_time, end_time, interval_count, interval_unit, by_weekday, by_monthday, end_mode, until_date, max_occurrences, sort_index, is_active, config_json:config, rule_hash, created_by:created_by_user_id, updated_by:updated_by_user_id, created_at, updated_at";
 const occurrenceSelect =
-  "id, org_id, entry_id, source_rule_id, source_type, source_key, timezone, local_date, local_start_time, local_end_time, starts_at_utc, ends_at_utc, status, metadata_json, created_by, updated_by, created_at, updated_at";
+  "id, org_id, entry_id:item_id, source_rule_id, source_type, source_key, timezone, local_date, local_start_time, local_end_time, starts_at_utc, ends_at_utc, status, metadata_json:metadata, created_by:created_by_user_id, updated_by:updated_by_user_id, created_at, updated_at";
 const exceptionSelect =
-  "id, org_id, rule_id, source_key, kind, override_occurrence_id, payload_json, created_by, updated_by, created_at, updated_at";
+  "id, org_id, rule_id, source_key, kind, override_occurrence_id, payload_json:payload, created_by:created_by_user_id, updated_by:updated_by_user_id, created_at, updated_at";
 const configurationSelect =
-  "id, org_id, space_id, name, slug, capacity_teams, is_active, sort_index, metadata_json, created_by, updated_by, created_at, updated_at";
+  "id, org_id, name, slug, config_name, config_slug, config_capacity_teams, config_is_active, config_sort_index, config_metadata_json, config_created_by, config_updated_by, config_created_at, config_updated_at";
 const allocationSelect =
-  "id, org_id, occurrence_id, space_id, configuration_id, lock_mode, allow_shared, starts_at_utc, ends_at_utc, is_active, metadata_json, created_by, updated_by, created_at, updated_at";
+  "id, org_id, occurrence_id, space_id, configuration_id, lock_mode, allow_shared, starts_at_utc, ends_at_utc, is_active, metadata_json:metadata, created_by:created_by_user_id, updated_by:updated_by_user_id, created_at, updated_at";
 const ruleAllocationSelect =
-  "id, org_id, rule_id, space_id, configuration_id, lock_mode, allow_shared, is_active, metadata_json, created_by, updated_by, created_at, updated_at";
+  "id, org_id, rule_id, space_id, configuration_id, lock_mode, allow_shared, is_active, metadata_json:metadata, created_by:created_by_user_id, updated_by:updated_by_user_id, created_at, updated_at";
 const inviteSelect =
   "id, org_id, occurrence_id, team_id, role, invite_status, invited_by_user_id, invited_at, responded_by_user_id, responded_at, created_at, updated_at";
 const inboxSelect =
@@ -151,17 +151,18 @@ type ExceptionRow = {
 type ConfigurationRow = {
   id: string;
   org_id: string;
-  space_id: string;
   name: string;
   slug: string;
-  capacity_teams: number | null;
-  is_active: boolean;
-  sort_index: number;
-  metadata_json: unknown;
-  created_by: string | null;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
+  config_name: string;
+  config_slug: string;
+  config_capacity_teams: number | null;
+  config_is_active: boolean;
+  config_sort_index: number;
+  config_metadata_json: unknown;
+  config_created_by: string | null;
+  config_updated_by: string | null;
+  config_created_at: string;
+  config_updated_at: string;
 };
 
 type AllocationRow = {
@@ -364,17 +365,17 @@ function mapConfiguration(row: ConfigurationRow): FacilitySpaceConfiguration {
   return {
     id: row.id,
     orgId: row.org_id,
-    spaceId: row.space_id,
-    name: row.name,
-    slug: row.slug,
-    capacityTeams: row.capacity_teams,
-    isActive: row.is_active,
-    sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
-    metadataJson: asObject(row.metadata_json),
-    createdBy: row.created_by,
-    updatedBy: row.updated_by,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
+    spaceId: row.id,
+    name: row.config_name || "Default",
+    slug: row.config_slug || `${row.slug}-default`,
+    capacityTeams: row.config_capacity_teams,
+    isActive: row.config_is_active,
+    sortIndex: Number.isFinite(row.config_sort_index) ? row.config_sort_index : 0,
+    metadataJson: asObject(row.config_metadata_json),
+    createdBy: row.config_created_by,
+    updatedBy: row.config_updated_by,
+    createdAt: row.config_created_at,
+    updatedAt: row.config_updated_at
   };
 }
 
@@ -469,7 +470,7 @@ function mapSavedLensView(row: SavedLensViewRow): CalendarLensSavedView {
 export async function listCalendarEntries(orgId: string): Promise<CalendarEntry[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_entries")
+    .schema("calendar").from("calendar_items")
     .select(entrySelect)
     .eq("org_id", orgId)
     .order("updated_at", { ascending: false });
@@ -484,7 +485,7 @@ export async function listCalendarEntries(orgId: string): Promise<CalendarEntry[
 export async function getCalendarEntryById(orgId: string, entryId: string): Promise<CalendarEntry | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_entries")
+    .schema("calendar").from("calendar_items")
     .select(entrySelect)
     .eq("org_id", orgId)
     .eq("id", entryId)
@@ -514,22 +515,22 @@ export async function createCalendarEntryRecord(input: {
 }): Promise<CalendarEntry> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_entries")
+    .schema("calendar").from("calendar_items")
     .insert({
       org_id: input.orgId,
       source_id: input.sourceId ?? null,
       purpose: input.purpose ?? (input.entryType === "game" ? "games" : input.entryType === "practice" ? "practices" : "custom_other"),
       audience: input.audience ?? (input.visibility === "published" ? "public" : "private_internal"),
-      entry_type: input.entryType,
+      item_type: input.entryType,
       title: input.title,
       summary: input.summary,
       visibility: input.visibility,
       status: input.status,
       host_team_id: input.hostTeamId,
-      default_timezone: input.defaultTimezone,
-      settings_json: input.settingsJson ?? {},
-      created_by: input.createdBy,
-      updated_by: input.createdBy
+      timezone: input.defaultTimezone,
+      settings: input.settingsJson ?? {},
+      created_by_user_id: input.createdBy,
+      updated_by_user_id: input.createdBy
     })
     .select(entrySelect)
     .single();
@@ -559,20 +560,20 @@ export async function updateCalendarEntryRecord(input: {
 }): Promise<CalendarEntry> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_entries")
+    .schema("calendar").from("calendar_items")
     .update({
       source_id: input.sourceId ?? null,
       purpose: input.purpose ?? (input.entryType === "game" ? "games" : input.entryType === "practice" ? "practices" : "custom_other"),
       audience: input.audience ?? (input.visibility === "published" ? "public" : "private_internal"),
-      entry_type: input.entryType,
+      item_type: input.entryType,
       title: input.title,
       summary: input.summary,
       visibility: input.visibility,
       status: input.status,
       host_team_id: input.hostTeamId,
-      default_timezone: input.defaultTimezone,
-      settings_json: input.settingsJson ?? {},
-      updated_by: input.updatedBy
+      timezone: input.defaultTimezone,
+      settings: input.settingsJson ?? {},
+      updated_by_user_id: input.updatedBy
     })
     .eq("org_id", input.orgId)
     .eq("id", input.entryId)
@@ -588,7 +589,7 @@ export async function updateCalendarEntryRecord(input: {
 
 export async function deleteCalendarEntryRecord(orgId: string, entryId: string): Promise<void> {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("calendar_entries").delete().eq("org_id", orgId).eq("id", entryId);
+  const { error } = await supabase.schema("calendar").from("calendar_items").delete().eq("org_id", orgId).eq("id", entryId);
 
   if (error) {
     throw new Error(`Failed to delete calendar entry: ${error.message}`);
@@ -598,14 +599,14 @@ export async function deleteCalendarEntryRecord(orgId: string, entryId: string):
 export async function listCalendarRules(orgId: string, options?: { entryId?: string }): Promise<CalendarRule[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("calendar_rules")
+    .schema("calendar").from("calendar_item_rules")
     .select(ruleSelect)
     .eq("org_id", orgId)
     .order("sort_index", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (options?.entryId) {
-    query = query.eq("entry_id", options.entryId);
+    query = query.eq("item_id", options.entryId);
   }
 
   const { data, error } = await query;
@@ -620,7 +621,7 @@ export async function listCalendarRules(orgId: string, options?: { entryId?: str
 export async function getCalendarRuleById(orgId: string, ruleId: string): Promise<CalendarRule | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_rules")
+    .schema("calendar").from("calendar_item_rules")
     .select(ruleSelect)
     .eq("org_id", orgId)
     .eq("id", ruleId)
@@ -658,11 +659,11 @@ export async function upsertCalendarRuleRecord(input: {
 }): Promise<CalendarRule> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_rules")
+    .schema("calendar").from("calendar_item_rules")
     .upsert({
       id: input.ruleId,
       org_id: input.orgId,
-      entry_id: input.entryId,
+      item_id: input.entryId,
       mode: input.mode,
       timezone: input.timezone,
       start_date: input.startDate,
@@ -678,10 +679,10 @@ export async function upsertCalendarRuleRecord(input: {
       max_occurrences: input.maxOccurrences,
       sort_index: input.sortIndex,
       is_active: input.isActive,
-      config_json: input.configJson,
+      config: input.configJson,
       rule_hash: input.ruleHash,
-      created_by: input.actorUserId,
-      updated_by: input.actorUserId
+      created_by_user_id: input.actorUserId,
+      updated_by_user_id: input.actorUserId
     })
     .select(ruleSelect)
     .single();
@@ -695,7 +696,7 @@ export async function upsertCalendarRuleRecord(input: {
 
 export async function deleteCalendarRuleRecord(orgId: string, ruleId: string): Promise<void> {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("calendar_rules").delete().eq("org_id", orgId).eq("id", ruleId);
+  const { error } = await supabase.schema("calendar").from("calendar_item_rules").delete().eq("org_id", orgId).eq("id", ruleId);
 
   if (error) {
     throw new Error(`Failed to delete calendar rule: ${error.message}`);
@@ -713,7 +714,7 @@ export async function listCalendarOccurrences(
 ): Promise<CalendarOccurrence[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("calendar_occurrences")
+    .schema("calendar").from("calendar_item_occurrences")
     .select(occurrenceSelect)
     .eq("org_id", orgId)
     .order("starts_at_utc", { ascending: true })
@@ -724,7 +725,7 @@ export async function listCalendarOccurrences(
   }
 
   if (options?.entryId) {
-    query = query.eq("entry_id", options.entryId);
+    query = query.eq("item_id", options.entryId);
   }
 
   if (options?.fromUtc) {
@@ -753,7 +754,7 @@ export async function listCalendarOccurrencesByRule(
 ): Promise<CalendarOccurrence[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("calendar_occurrences")
+    .schema("calendar").from("calendar_item_occurrences")
     .select(occurrenceSelect)
     .eq("org_id", orgId)
     .eq("source_rule_id", ruleId)
@@ -776,7 +777,7 @@ export async function listCalendarOccurrencesByRule(
 export async function getCalendarOccurrenceById(orgId: string, occurrenceId: string): Promise<CalendarOccurrence | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_occurrences")
+    .schema("calendar").from("calendar_item_occurrences")
     .select(occurrenceSelect)
     .eq("org_id", orgId)
     .eq("id", occurrenceId)
@@ -807,10 +808,10 @@ export async function insertCalendarOccurrenceRecord(input: {
 }): Promise<CalendarOccurrence> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_occurrences")
+    .schema("calendar").from("calendar_item_occurrences")
     .insert({
       org_id: input.orgId,
-      entry_id: input.entryId,
+      item_id: input.entryId,
       source_rule_id: input.sourceRuleId,
       source_type: input.sourceType,
       source_key: input.sourceKey,
@@ -821,9 +822,9 @@ export async function insertCalendarOccurrenceRecord(input: {
       starts_at_utc: input.startsAtUtc,
       ends_at_utc: input.endsAtUtc,
       status: input.status ?? "scheduled",
-      metadata_json: input.metadataJson ?? {},
-      created_by: input.actorUserId,
-      updated_by: input.actorUserId
+      metadata: input.metadataJson ?? {},
+      created_by_user_id: input.actorUserId,
+      updated_by_user_id: input.actorUserId
     })
     .select(occurrenceSelect)
     .single();
@@ -850,7 +851,7 @@ export async function updateCalendarOccurrenceRecord(input: {
 }): Promise<CalendarOccurrence> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_occurrences")
+    .schema("calendar").from("calendar_item_occurrences")
     .update({
       timezone: input.timezone,
       local_date: input.localDate,
@@ -859,8 +860,8 @@ export async function updateCalendarOccurrenceRecord(input: {
       starts_at_utc: input.startsAtUtc,
       ends_at_utc: input.endsAtUtc,
       status: input.status,
-      metadata_json: input.metadataJson ?? {},
-      updated_by: input.actorUserId
+      metadata: input.metadataJson ?? {},
+      updated_by_user_id: input.actorUserId
     })
     .eq("org_id", input.orgId)
     .eq("id", input.occurrenceId)
@@ -882,10 +883,10 @@ export async function setCalendarOccurrenceStatus(input: {
 }): Promise<CalendarOccurrence> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_occurrences")
+    .schema("calendar").from("calendar_item_occurrences")
     .update({
       status: input.status,
-      updated_by: input.actorUserId
+      updated_by_user_id: input.actorUserId
     })
     .eq("org_id", input.orgId)
     .eq("id", input.occurrenceId)
@@ -905,7 +906,7 @@ export async function deleteCalendarOccurrenceRecord(input: {
 }): Promise<void> {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .from("calendar_occurrences")
+    .schema("calendar").from("calendar_item_occurrences")
     .delete()
     .eq("org_id", input.orgId)
     .eq("id", input.occurrenceId);
@@ -923,10 +924,10 @@ export async function setCalendarOccurrenceStatusBySourceKey(input: {
 }): Promise<void> {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .from("calendar_occurrences")
+    .schema("calendar").from("calendar_item_occurrences")
     .update({
       status: input.status,
-      updated_by: input.actorUserId
+      updated_by_user_id: input.actorUserId
     })
     .eq("org_id", input.orgId)
     .eq("source_key", input.sourceKey);
@@ -946,10 +947,10 @@ export async function upsertRuleGeneratedOccurrences(
   const sourceKeys = new Set(occurrences.map((item) => item.sourceKey));
 
   if (occurrences.length > 0) {
-    const { error: upsertError } = await supabase.from("calendar_occurrences").upsert(
+    const { error: upsertError } = await supabase.schema("calendar").from("calendar_item_occurrences").upsert(
       occurrences.map((occurrence) => ({
         org_id: orgId,
-        entry_id: occurrence.entryId,
+        item_id: occurrence.entryId,
         source_rule_id: occurrence.sourceRuleId,
         source_type: occurrence.sourceType,
         source_key: occurrence.sourceKey,
@@ -960,8 +961,8 @@ export async function upsertRuleGeneratedOccurrences(
         starts_at_utc: occurrence.startsAtUtc,
         ends_at_utc: occurrence.endsAtUtc,
         status: occurrence.status,
-        metadata_json: occurrence.metadataJson,
-        updated_by: actorUserId
+        metadata: occurrence.metadataJson,
+        updated_by_user_id: actorUserId
       })),
       {
         onConflict: "org_id,source_key"
@@ -974,7 +975,7 @@ export async function upsertRuleGeneratedOccurrences(
   }
 
   const { data: existingRows, error: existingError } = await supabase
-    .from("calendar_occurrences")
+    .schema("calendar").from("calendar_item_occurrences")
     .select("id, source_key")
     .eq("org_id", orgId)
     .eq("source_rule_id", ruleId)
@@ -991,8 +992,8 @@ export async function upsertRuleGeneratedOccurrences(
 
   if (staleIds.length > 0) {
     const { error: staleError } = await supabase
-      .from("calendar_occurrences")
-      .update({ status: "cancelled", updated_by: actorUserId })
+      .schema("calendar").from("calendar_item_occurrences")
+      .update({ status: "cancelled", updated_by_user_id: actorUserId })
       .in("id", staleIds);
 
     if (staleError) {
@@ -1004,7 +1005,7 @@ export async function upsertRuleGeneratedOccurrences(
 export async function listCalendarRuleExceptions(orgId: string, options?: { ruleId?: string }): Promise<CalendarRuleException[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("calendar_rule_exceptions")
+    .schema("calendar").from("calendar_item_rule_exceptions")
     .select(exceptionSelect)
     .eq("org_id", orgId)
     .order("created_at", { ascending: true });
@@ -1033,16 +1034,16 @@ export async function upsertCalendarRuleException(input: {
 }): Promise<CalendarRuleException> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_rule_exceptions")
+    .schema("calendar").from("calendar_item_rule_exceptions")
     .upsert({
       org_id: input.orgId,
       rule_id: input.ruleId,
       source_key: input.sourceKey,
       kind: input.kind,
       override_occurrence_id: input.overrideOccurrenceId,
-      payload_json: input.payloadJson ?? {},
-      created_by: input.actorUserId,
-      updated_by: input.actorUserId
+      payload: input.payloadJson ?? {},
+      created_by_user_id: input.actorUserId,
+      updated_by_user_id: input.actorUserId
     })
     .select(exceptionSelect)
     .single();
@@ -1057,7 +1058,7 @@ export async function upsertCalendarRuleException(input: {
 export async function deleteCalendarRuleException(input: { orgId: string; ruleId: string; sourceKey: string; kind?: CalendarRuleException["kind"] }) {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("calendar_rule_exceptions")
+    .schema("calendar").from("calendar_item_rule_exceptions")
     .delete()
     .eq("org_id", input.orgId)
     .eq("rule_id", input.ruleId)
@@ -1083,18 +1084,18 @@ export async function listFacilitySpaceConfigurations(
 ): Promise<FacilitySpaceConfiguration[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("facility_space_configurations")
+    .schema("facilities").from("spaces")
     .select(configurationSelect)
     .eq("org_id", orgId)
-    .order("sort_index", { ascending: true })
+    .order("config_sort_index", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (options?.spaceId) {
-    query = query.eq("space_id", options.spaceId);
+    query = query.eq("id", options.spaceId);
   }
 
   if (!options?.includeInactive) {
-    query = query.eq("is_active", true);
+    query = query.eq("config_is_active", true);
   }
 
   const { data, error } = await query;
@@ -1119,19 +1120,20 @@ export async function createFacilitySpaceConfiguration(input: {
 }): Promise<FacilitySpaceConfiguration> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_space_configurations")
-    .insert({
-      org_id: input.orgId,
-      space_id: input.spaceId,
-      name: input.name,
-      slug: input.slug,
-      capacity_teams: input.capacityTeams,
-      is_active: input.isActive ?? true,
-      sort_index: input.sortIndex ?? 0,
-      metadata_json: input.metadataJson ?? {},
-      created_by: input.actorUserId,
-      updated_by: input.actorUserId
+    .schema("facilities").from("spaces")
+    .update({
+      config_name: input.name,
+      config_slug: input.slug,
+      config_capacity_teams: input.capacityTeams,
+      config_is_active: input.isActive ?? true,
+      config_sort_index: input.sortIndex ?? 0,
+      config_metadata_json: input.metadataJson ?? {},
+      config_updated_by: input.actorUserId,
+      config_updated_at: new Date().toISOString(),
+      config_created_by: input.actorUserId
     })
+    .eq("org_id", input.orgId)
+    .eq("id", input.spaceId)
     .select(configurationSelect)
     .single();
 
@@ -1164,26 +1166,11 @@ export async function getOrCreateDefaultFacilitySpaceConfiguration(input: {
   if (existing[0]) {
     return existing[0];
   }
-
-  const supabase = await createSupabaseServer();
-  const { data: spaceRow, error: spaceError } = await supabase
-    .from("facility_spaces")
-    .select("name")
-    .eq("org_id", input.orgId)
-    .eq("id", input.spaceId)
-    .maybeSingle();
-
-  if (spaceError) {
-    throw new Error(`Failed to load facility space while creating default configuration: ${spaceError.message}`);
-  }
-
-  const spaceName = (spaceRow?.name as string | undefined) ?? "Configuration";
-
   return createFacilitySpaceConfiguration({
     orgId: input.orgId,
     spaceId: input.spaceId,
     name: "Default",
-    slug: toSlug(`${spaceName}-default`),
+    slug: toSlug("default"),
     capacityTeams: 1,
     actorUserId: input.actorUserId
   });
@@ -1197,7 +1184,7 @@ export async function listOccurrenceFacilityAllocations(
 ): Promise<FacilityAllocation[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("calendar_occurrence_facility_allocations")
+    .schema("calendar").from("calendar_item_space_allocations")
     .select(allocationSelect)
     .eq("org_id", orgId)
     .order("created_at", { ascending: true });
@@ -1227,7 +1214,7 @@ export async function upsertOccurrenceFacilityAllocation(input: {
 }): Promise<FacilityAllocation> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_occurrence_facility_allocations")
+    .schema("calendar").from("calendar_item_space_allocations")
     .upsert(
       {
         org_id: input.orgId,
@@ -1236,9 +1223,9 @@ export async function upsertOccurrenceFacilityAllocation(input: {
         configuration_id: input.configurationId,
         lock_mode: input.lockMode,
         allow_shared: input.allowShared,
-        metadata_json: input.metadataJson ?? {},
-        created_by: input.actorUserId,
-        updated_by: input.actorUserId
+        metadata: input.metadataJson ?? {},
+        created_by_user_id: input.actorUserId,
+        updated_by_user_id: input.actorUserId
       },
       {
         onConflict: "occurrence_id,space_id"
@@ -1274,13 +1261,13 @@ export async function replaceOccurrenceFacilityAllocations(input: {
     configuration_id: allocation.configurationId,
     lock_mode: allocation.lockMode,
     allow_shared: allocation.allowShared,
-    metadata_json: allocation.metadataJson ?? {},
-    created_by: input.actorUserId,
-    updated_by: input.actorUserId
+    metadata: allocation.metadataJson ?? {},
+    created_by_user_id: input.actorUserId,
+    updated_by_user_id: input.actorUserId
   }));
 
   const { data, error } = await supabase
-    .from("calendar_occurrence_facility_allocations")
+    .schema("calendar").from("calendar_item_space_allocations")
     .upsert(payload, { onConflict: "occurrence_id,space_id" })
     .select(allocationSelect);
 
@@ -1290,7 +1277,7 @@ export async function replaceOccurrenceFacilityAllocations(input: {
 
   const keepSpaceIds = input.allocations.map((allocation) => allocation.spaceId);
   const deleteQuery = supabase
-    .from("calendar_occurrence_facility_allocations")
+    .schema("calendar").from("calendar_item_space_allocations")
     .delete()
     .eq("org_id", input.orgId)
     .eq("occurrence_id", input.occurrenceId);
@@ -1315,7 +1302,7 @@ export async function listCalendarRuleFacilityAllocations(
 ): Promise<CalendarRuleFacilityAllocation[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("calendar_rule_facility_allocations")
+    .schema("calendar").from("calendar_item_space_allocations")
     .select(ruleAllocationSelect)
     .eq("org_id", orgId)
     .order("created_at", { ascending: true });
@@ -1353,13 +1340,13 @@ export async function replaceCalendarRuleFacilityAllocations(input: {
     configuration_id: allocation.configurationId,
     lock_mode: allocation.lockMode,
     allow_shared: allocation.allowShared,
-    metadata_json: allocation.metadataJson ?? {},
-    created_by: input.actorUserId,
-    updated_by: input.actorUserId
+    metadata: allocation.metadataJson ?? {},
+    created_by_user_id: input.actorUserId,
+    updated_by_user_id: input.actorUserId
   }));
 
   const { data, error } = await supabase
-    .from("calendar_rule_facility_allocations")
+    .schema("calendar").from("calendar_item_space_allocations")
     .upsert(payload, { onConflict: "rule_id,space_id" })
     .select(ruleAllocationSelect);
 
@@ -1369,7 +1356,7 @@ export async function replaceCalendarRuleFacilityAllocations(input: {
 
   const keepSpaceIds = input.allocations.map((allocation) => allocation.spaceId);
   const deleteQuery = supabase
-    .from("calendar_rule_facility_allocations")
+    .schema("calendar").from("calendar_item_space_allocations")
     .delete()
     .eq("org_id", input.orgId)
     .eq("rule_id", input.ruleId);
@@ -1396,7 +1383,7 @@ export async function listOccurrenceTeamInvites(
 ): Promise<OccurrenceTeamInvite[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("calendar_occurrence_teams")
+    .schema("calendar").from("calendar_item_participants")
     .select(inviteSelect)
     .eq("org_id", orgId)
     .order("created_at", { ascending: true });
@@ -1435,7 +1422,7 @@ export async function upsertOccurrenceTeamInvite(input: {
 }): Promise<OccurrenceTeamInvite> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_occurrence_teams")
+    .schema("calendar").from("calendar_item_participants")
     .upsert(
       {
         org_id: input.orgId,
@@ -1465,7 +1452,7 @@ export async function upsertOccurrenceTeamInvite(input: {
 export async function getOccurrenceTeamInvite(orgId: string, occurrenceId: string, teamId: string): Promise<OccurrenceTeamInvite | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_occurrence_teams")
+    .schema("calendar").from("calendar_item_participants")
     .select(inviteSelect)
     .eq("org_id", orgId)
     .eq("occurrence_id", occurrenceId)
@@ -1482,7 +1469,7 @@ export async function getOccurrenceTeamInvite(orgId: string, occurrenceId: strin
 export async function listInboxItemsForUser(orgId: string, userId: string): Promise<InboxItem[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_user_inbox_items")
+    .schema("notifications").from("user_notifications")
     .select(inboxSelect)
     .eq("org_id", orgId)
     .eq("recipient_user_id", userId)
@@ -1512,7 +1499,7 @@ export async function createInboxItems(
   }
 
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("org_user_inbox_items").insert(
+  const { error } = await supabase.schema("notifications").from("user_notifications").insert(
     items.map((item) => ({
       org_id: item.orgId,
       recipient_user_id: item.recipientUserId,
@@ -1533,7 +1520,7 @@ export async function createInboxItems(
 export async function listCalendarSources(orgId: string): Promise<CalendarSource[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_sources")
+    .schema("calendar").from("calendar_item_sources")
     .select(sourceSelect)
     .eq("org_id", orgId)
     .eq("is_active", true)
@@ -1563,7 +1550,7 @@ export async function upsertCalendarSource(input: {
 }): Promise<CalendarSource> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_sources")
+    .schema("calendar").from("calendar_item_sources")
     .upsert({
       id: input.sourceId,
       org_id: input.orgId,
@@ -1576,9 +1563,9 @@ export async function upsertCalendarSource(input: {
       audience_defaults: input.audienceDefaults,
       is_custom_calendar: input.isCustomCalendar,
       is_active: input.isActive,
-      display_json: input.displayJson ?? {},
-      created_by: input.actorUserId,
-      updated_by: input.actorUserId
+      display: input.displayJson ?? {},
+      created_by_user_id: input.actorUserId,
+      updated_by_user_id: input.actorUserId
     })
     .select(sourceSelect)
     .single();
@@ -1597,7 +1584,7 @@ export async function listCalendarLensSavedViews(input: {
 }): Promise<CalendarLensSavedView[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("calendar_lens_saved_views")
+    .schema("calendar").from("calendar_saved_views")
     .select(savedLensViewSelect)
     .eq("org_id", input.orgId)
     .eq("user_id", input.userId)
@@ -1626,7 +1613,7 @@ export async function saveCalendarLensView(input: {
 }): Promise<CalendarLensSavedView> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("calendar_lens_saved_views")
+    .schema("calendar").from("calendar_saved_views")
     .upsert({
       id: input.viewId,
       org_id: input.orgId,
@@ -1649,7 +1636,7 @@ export async function saveCalendarLensView(input: {
 export async function deleteCalendarLensView(input: { orgId: string; userId: string; viewId: string }): Promise<void> {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .from("calendar_lens_saved_views")
+    .schema("calendar").from("calendar_saved_views")
     .delete()
     .eq("org_id", input.orgId)
     .eq("user_id", input.userId)
@@ -1691,6 +1678,15 @@ const calendarColorPalette = [
   "#6D28D9"
 ] as const;
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string | null | undefined): value is string {
+  if (!value) {
+    return false;
+  }
+  return uuidPattern.test(value);
+}
+
 function hasSourceColor(displayJson: Record<string, unknown>) {
   const colorKeys = ["color", "accentColor", "calendarColor", "primaryColor", "colorPrimary", "orgColor", "brandColor"];
   return colorKeys.some((key) => typeof displayJson[key] === "string" && (displayJson[key] as string).trim().length > 0);
@@ -1722,12 +1718,12 @@ async function buildCalendarSourceHierarchy(orgId: string, sources: CalendarSour
 
   const teamIds = teamSources
     .map((source) => source.scopeId)
-    .filter((value): value is string => Boolean(value));
+    .filter((value): value is string => isUuid(value));
 
   const { data: teamRows, error: teamError } = teamIds.length
     ? await supabase
-        .from("program_teams")
-        .select("id, program_id, program_node_id, settings_json, program_nodes(id, name, parent_id, settings_json)")
+        .schema("programs").from("program_teams")
+        .select("id, program_id, program_node_id, settings_json, program_structure_nodes(id, name, parent_id, settings_json)")
         .eq("org_id", orgId)
         .in("id", teamIds)
     : { data: [], error: null };
@@ -1751,7 +1747,7 @@ async function buildCalendarSourceHierarchy(orgId: string, sources: CalendarSour
   const programIds = new Set<string>();
 
   for (const row of (teamRows ?? []) as any[]) {
-    const node = Array.isArray(row.program_nodes) ? row.program_nodes[0] : row.program_nodes;
+    const node = Array.isArray(row.program_structure_nodes) ? row.program_structure_nodes[0] : row.program_structure_nodes;
     const divisionId = typeof node?.parent_id === "string" ? node.parent_id : null;
     const teamSettings = asObject(row.settings_json);
     const divisionSettings = asObject(node?.settings_json);
@@ -1771,13 +1767,13 @@ async function buildCalendarSourceHierarchy(orgId: string, sources: CalendarSour
   }
 
   for (const source of divisionSources) {
-    if (source.scopeId) {
+    if (isUuid(source.scopeId)) {
       divisionIds.add(source.scopeId);
     }
   }
 
   const { data: divisionRows, error: divisionError } = divisionIds.size
-    ? await supabase.from("program_nodes").select("id, program_id, name, settings_json").in("id", Array.from(divisionIds))
+    ? await supabase.schema("programs").from("program_structure_nodes").select("id, program_id, name, settings_json").in("id", Array.from(divisionIds))
     : { data: [], error: null };
   if (divisionError) {
     throw new Error(`Failed to list division nodes for calendar hierarchy: ${divisionError.message}`);
@@ -1789,7 +1785,7 @@ async function buildCalendarSourceHierarchy(orgId: string, sources: CalendarSour
   );
 
   const { data: programRows, error: programError } = programIds.size
-    ? await supabase.from("programs").select("id, name, settings_json").in("id", Array.from(programIds))
+    ? await supabase.schema("programs").from("programs").select("id, name, settings_json").in("id", Array.from(programIds))
     : { data: [], error: null };
   if (programError) {
     throw new Error(`Failed to list program settings for calendar hierarchy: ${programError.message}`);
@@ -1978,18 +1974,34 @@ async function buildCalendarSourceHierarchy(orgId: string, sources: CalendarSour
 }
 
 export async function listCalendarReadModel(orgId: string): Promise<CalendarReadModel> {
-  const [sources, entries, rules, occurrences, exceptions, configurations, allocations, ruleAllocations, invites] = await Promise.all([
-    listCalendarSources(orgId).catch(() => []),
-    listCalendarEntries(orgId),
-    listCalendarRules(orgId),
-    listCalendarOccurrences(orgId, { includeCancelled: true }),
-    listCalendarRuleExceptions(orgId),
-    listFacilitySpaceConfigurations(orgId, { includeInactive: true }),
-    listOccurrenceFacilityAllocations(orgId),
-    listCalendarRuleFacilityAllocations(orgId),
-    listOccurrenceTeamInvites(orgId, { includeInactive: true })
-  ]);
-  const hierarchicalSources = await buildCalendarSourceHierarchy(orgId, sources);
+  const [sourcesResult, entriesResult, rulesResult, occurrencesResult, exceptionsResult, configurationsResult, allocationsResult, ruleAllocationsResult, invitesResult] =
+    await Promise.allSettled([
+      listCalendarSources(orgId),
+      listCalendarEntries(orgId),
+      listCalendarRules(orgId),
+      listCalendarOccurrences(orgId, { includeCancelled: true }),
+      listCalendarRuleExceptions(orgId),
+      listFacilitySpaceConfigurations(orgId, { includeInactive: true }),
+      listOccurrenceFacilityAllocations(orgId),
+      listCalendarRuleFacilityAllocations(orgId),
+      listOccurrenceTeamInvites(orgId, { includeInactive: true })
+    ]);
+
+  const sources = sourcesResult.status === "fulfilled" ? sourcesResult.value : [];
+  const entries = entriesResult.status === "fulfilled" ? entriesResult.value : [];
+  const rules = rulesResult.status === "fulfilled" ? rulesResult.value : [];
+  const occurrences = occurrencesResult.status === "fulfilled" ? occurrencesResult.value : [];
+  const exceptions = exceptionsResult.status === "fulfilled" ? exceptionsResult.value : [];
+  const configurations = configurationsResult.status === "fulfilled" ? configurationsResult.value : [];
+  const allocations = allocationsResult.status === "fulfilled" ? allocationsResult.value : [];
+  const ruleAllocations = ruleAllocationsResult.status === "fulfilled" ? ruleAllocationsResult.value : [];
+  const invites = invitesResult.status === "fulfilled" ? invitesResult.value : [];
+
+  if (entriesResult.status === "rejected" && occurrencesResult.status === "rejected") {
+    throw new Error("Failed to load calendar entries and occurrences.");
+  }
+
+  const hierarchicalSources = await buildCalendarSourceHierarchy(orgId, sources).catch(() => sources);
 
   return {
     sources: hierarchicalSources,
@@ -2038,15 +2050,15 @@ export async function listPublishedCalendarCatalog(
 ): Promise<CalendarPublicCatalogItem[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("calendar_occurrences")
+    .schema("calendar").from("calendar_item_occurrences")
     .select(
-      "id, entry_id, timezone, starts_at_utc, ends_at_utc, local_date, local_start_time, local_end_time, metadata_json, calendar_entries!inner(id, entry_type, title, summary, visibility, status, settings_json)"
+      "id, entry_id:item_id, timezone, starts_at_utc, ends_at_utc, local_date, local_start_time, local_end_time, metadata_json:metadata, calendar_items!inner(id, entry_type:item_type, title, summary, visibility, status, settings_json:settings)"
     )
     .eq("org_id", orgId)
     .eq("status", "scheduled")
-    .in("calendar_entries.entry_type", ["event", "game"])
-    .eq("calendar_entries.visibility", "published")
-    .eq("calendar_entries.status", "scheduled")
+    .in("calendar_items.item_type", ["event", "game"])
+    .eq("calendar_items.visibility", "published")
+    .eq("calendar_items.status", "scheduled")
     .order("starts_at_utc", { ascending: true });
 
   if (options?.fromUtc) {
@@ -2068,7 +2080,7 @@ export async function listPublishedCalendarCatalog(
   }
 
   return (data ?? []).flatMap((row: any) => {
-    const entry = Array.isArray(row.calendar_entries) ? row.calendar_entries[0] : row.calendar_entries;
+    const entry = Array.isArray(row.calendar_items) ? row.calendar_items[0] : row.calendar_items;
     if (!entry) {
       return [];
     }
@@ -2103,8 +2115,8 @@ export async function listPublishedCalendarCatalog(
 export async function listOrgActiveTeams(orgId: string): Promise<Array<{ id: string; label: string }>> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_teams")
-    .select("id, program_nodes(name)")
+    .schema("programs").from("program_teams")
+    .select("id, program_structure_nodes(name)")
     .eq("org_id", orgId)
     .eq("status", "active")
     .order("created_at", { ascending: true });
@@ -2114,7 +2126,7 @@ export async function listOrgActiveTeams(orgId: string): Promise<Array<{ id: str
   }
 
   return (data ?? []).flatMap((row: any) => {
-    const programNode = Array.isArray(row.program_nodes) ? row.program_nodes[0] : row.program_nodes;
+    const programNode = Array.isArray(row.program_structure_nodes) ? row.program_structure_nodes[0] : row.program_structure_nodes;
     if (!row.id || !programNode?.name) {
       return [];
     }

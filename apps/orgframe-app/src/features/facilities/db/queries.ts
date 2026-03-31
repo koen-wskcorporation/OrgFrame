@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type {
   FacilityPublicAvailabilitySnapshot,
   FacilityPublicReservation,
@@ -223,7 +223,7 @@ function mapException(row: ExceptionRow): FacilityReservationException {
 export async function listFacilitySpacesForManage(orgId: string): Promise<FacilitySpace[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_spaces")
+    .schema("facilities").from("spaces")
     .select(spaceSelect)
     .eq("org_id", orgId)
     .order("sort_index", { ascending: true })
@@ -239,7 +239,7 @@ export async function listFacilitySpacesForManage(orgId: string): Promise<Facili
 export async function getFacilitySpaceById(orgId: string, spaceId: string): Promise<FacilitySpace | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_spaces")
+    .schema("facilities").from("spaces")
     .select(spaceSelect)
     .eq("org_id", orgId)
     .eq("id", spaceId)
@@ -268,7 +268,7 @@ export async function createFacilitySpaceRecord(input: {
 }): Promise<FacilitySpace> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_spaces")
+    .schema("facilities").from("spaces")
     .insert({
       org_id: input.orgId,
       parent_space_id: input.parentSpaceId,
@@ -310,7 +310,7 @@ export async function updateFacilitySpaceRecord(input: {
 }): Promise<FacilitySpace> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_spaces")
+    .schema("facilities").from("spaces")
     .update({
       parent_space_id: input.parentSpaceId,
       name: input.name,
@@ -344,7 +344,7 @@ export async function updateFacilitySpaceHierarchyRecord(input: {
 }): Promise<void> {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .from("facility_spaces")
+    .schema("facilities").from("spaces")
     .update({
       parent_space_id: input.parentSpaceId,
       sort_index: input.sortIndex
@@ -359,7 +359,7 @@ export async function updateFacilitySpaceHierarchyRecord(input: {
 
 export async function deleteFacilitySpaceRecord(input: { orgId: string; spaceId: string }): Promise<void> {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("facility_spaces").delete().eq("org_id", input.orgId).eq("id", input.spaceId);
+  const { error } = await supabase.schema("facilities").from("spaces").delete().eq("org_id", input.orgId).eq("id", input.spaceId);
 
   if (error) {
     throw new Error(`Failed to delete facility space: ${error.message}`);
@@ -369,9 +369,10 @@ export async function deleteFacilitySpaceRecord(input: { orgId: string; spaceId:
 export async function listFacilityReservationRules(orgId: string, options?: { spaceId?: string }): Promise<FacilityReservationRule[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("facility_reservation_rules")
+    .schema("facilities").from("policies")
     .select(ruleSelect)
     .eq("org_id", orgId)
+    .eq("policy_kind", "rule")
     .order("sort_index", { ascending: true })
     .order("created_at", { ascending: true });
 
@@ -391,9 +392,10 @@ export async function listFacilityReservationRules(orgId: string, options?: { sp
 export async function getFacilityReservationRuleById(orgId: string, ruleId: string): Promise<FacilityReservationRule | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_reservation_rules")
+    .schema("facilities").from("policies")
     .select(ruleSelect)
     .eq("org_id", orgId)
+    .eq("policy_kind", "rule")
     .eq("id", ruleId)
     .maybeSingle();
 
@@ -436,10 +438,11 @@ export async function upsertFacilityReservationRule(input: {
 }): Promise<FacilityReservationRule> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_reservation_rules")
+    .schema("facilities").from("policies")
     .upsert({
       id: input.ruleId,
       org_id: input.orgId,
+      policy_kind: "rule",
       space_id: input.spaceId,
       mode: input.mode,
       reservation_kind: input.reservationKind,
@@ -479,7 +482,7 @@ export async function upsertFacilityReservationRule(input: {
 
 export async function deleteFacilityReservationRule(orgId: string, ruleId: string): Promise<void> {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("facility_reservation_rules").delete().eq("org_id", orgId).eq("id", ruleId);
+  const { error } = await supabase.schema("facilities").from("policies").delete().eq("org_id", orgId).eq("policy_kind", "rule").eq("id", ruleId);
   if (error) {
     throw new Error(`Failed to delete facility reservation rule: ${error.message}`);
   }
@@ -496,7 +499,7 @@ export async function listFacilityReservations(
 ): Promise<FacilityReservation[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("facility_reservations")
+    .schema("facilities").from("reservations")
     .select(reservationSelect)
     .eq("org_id", orgId)
     .order("starts_at_utc", { ascending: true })
@@ -529,7 +532,7 @@ export async function listFacilityReservations(
 export async function getFacilityReservationById(orgId: string, reservationId: string): Promise<FacilityReservation | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_reservations")
+    .schema("facilities").from("reservations")
     .select(reservationSelect)
     .eq("org_id", orgId)
     .eq("id", reservationId)
@@ -565,7 +568,7 @@ export async function createFacilityReservationRecord(input: {
 }): Promise<FacilityReservation> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_reservations")
+    .schema("facilities").from("reservations")
     .insert({
       org_id: input.orgId,
       space_id: input.spaceId,
@@ -622,7 +625,7 @@ export async function updateFacilityReservationRecord(input: {
 }): Promise<FacilityReservation> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_reservations")
+    .schema("facilities").from("reservations")
     .update({
       space_id: input.spaceId,
       reservation_kind: input.reservationKind,
@@ -685,7 +688,7 @@ export async function setFacilityReservationStatus(input: {
   }
 
   const { data, error } = await supabase
-    .from("facility_reservations")
+    .schema("facilities").from("reservations")
     .update(patch)
     .eq("org_id", input.orgId)
     .eq("id", input.reservationId)
@@ -705,9 +708,10 @@ export async function listFacilityReservationExceptions(
 ): Promise<FacilityReservationException[]> {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("facility_reservation_exceptions")
+    .schema("facilities").from("policies")
     .select(exceptionSelect)
     .eq("org_id", orgId)
+    .eq("policy_kind", "exception")
     .order("created_at", { ascending: true });
 
   if (options?.ruleId) {
@@ -733,9 +737,10 @@ export async function upsertFacilityReservationException(input: {
 }): Promise<FacilityReservationException> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_reservation_exceptions")
+    .schema("facilities").from("policies")
     .upsert({
       org_id: input.orgId,
+      policy_kind: "exception",
       rule_id: input.ruleId,
       source_key: input.sourceKey,
       kind: input.kind,
@@ -756,9 +761,10 @@ export async function upsertFacilityReservationException(input: {
 export async function deleteFacilityReservationException(input: { orgId: string; ruleId: string; sourceKey: string; kind?: FacilityReservationException["kind"] }) {
   const supabase = await createSupabaseServer();
   let query = supabase
-    .from("facility_reservation_exceptions")
+    .schema("facilities").from("policies")
     .delete()
     .eq("org_id", input.orgId)
+    .eq("policy_kind", "exception")
     .eq("rule_id", input.ruleId)
     .eq("source_key", input.sourceKey);
   if (input.kind) {
@@ -780,7 +786,7 @@ export async function upsertRuleGeneratedReservations(
   const sourceKeys = new Set(reservations.map((item) => item.sourceKey));
 
   if (reservations.length > 0) {
-    const { error: upsertError } = await supabase.from("facility_reservations").upsert(
+    const { error: upsertError } = await supabase.schema("facilities").from("reservations").upsert(
       reservations.map((reservation) => ({
         org_id: orgId,
         space_id: reservation.spaceId,
@@ -812,7 +818,7 @@ export async function upsertRuleGeneratedReservations(
   }
 
   const { data: existingRows, error: existingError } = await supabase
-    .from("facility_reservations")
+    .schema("facilities").from("reservations")
     .select("id, source_key")
     .eq("org_id", orgId)
     .eq("source_rule_id", ruleId);
@@ -827,7 +833,7 @@ export async function upsertRuleGeneratedReservations(
     .filter((value): value is string => typeof value === "string");
 
   if (staleIds.length > 0) {
-    const { error: staleError } = await supabase.from("facility_reservations").update({ status: "cancelled" }).in("id", staleIds);
+    const { error: staleError } = await supabase.schema("facilities").from("reservations").update({ status: "cancelled" }).in("id", staleIds);
     if (staleError) {
       throw new Error(`Failed to cancel stale generated facility reservations: ${staleError.message}`);
     }

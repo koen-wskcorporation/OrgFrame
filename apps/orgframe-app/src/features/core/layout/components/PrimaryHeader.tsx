@@ -1,15 +1,16 @@
 import Link from "next/link";
+import { OrgAiCommandCenter } from "@/src/features/ai/components/OrgAiCommandCenter";
 import { PrimaryAccountControls } from "@/src/features/core/layout/components/PrimaryAccountControls";
-import { PrimaryHeaderNav } from "@/src/features/core/layout/components/PrimaryHeaderNav";
 import { AdaptiveLogo } from "@orgframe/ui/primitives/adaptive-logo";
 
 type PrimaryHeaderProps = {
   homeHref?: string;
   currentOrgSlug?: string | null;
   tenantBaseOrigin?: string | null;
+  orgOptions?: { orgSlug: string; orgName: string; orgLogoUrl?: string | null; orgIconUrl?: string | null }[];
 };
 
-export function PrimaryHeader({ homeHref = "/", currentOrgSlug = null, tenantBaseOrigin = null }: PrimaryHeaderProps) {
+export function PrimaryHeader({ homeHref = "/", currentOrgSlug = null, tenantBaseOrigin = null, orgOptions = [] }: PrimaryHeaderProps) {
   return (
     <header className="relative z-[200] w-full border-b bg-surface/95 backdrop-blur" id="app-primary-header">
       <div className="app-container flex h-16 w-full items-center gap-4">
@@ -22,7 +23,9 @@ export function PrimaryHeader({ homeHref = "/", currentOrgSlug = null, tenantBas
           />
         </Link>
 
-        <PrimaryHeaderNav homeHref={homeHref} />
+        <div className="mx-auto flex min-w-0 flex-1 justify-center px-2">
+          <OrgAiCommandCenter initialOrgSlug={currentOrgSlug} orgOptions={orgOptions} />
+        </div>
         <div className="ml-auto shrink-0">
           <PrimaryAccountControls currentOrgSlug={currentOrgSlug} homeHref={homeHref} tenantBaseOrigin={tenantBaseOrigin} />
         </div>

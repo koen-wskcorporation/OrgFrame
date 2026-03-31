@@ -1,4 +1,4 @@
-@import '@orgframe/theme/styles.css';
+@import "@orgframe/theme/styles.css";
 
 @tailwind base;
 @tailwind components;
@@ -35,7 +35,7 @@ html {
 }
 
 body {
-  font-family: 'Avenir Next', 'Segoe UI', sans-serif;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
 }
 
 .landing-dramatic {

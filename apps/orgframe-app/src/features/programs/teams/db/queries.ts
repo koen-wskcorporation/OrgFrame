@@ -1,5 +1,5 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
-import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/supabase/service-role";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
 import type { PlayerPickerItem } from "@/src/features/players/types";
 import type {
   ProgramTeam,
@@ -168,8 +168,8 @@ async function listAuthUsersByIds(userIds: string[]): Promise<Map<string, { emai
 export async function listProgramTeamsSummary(programId: string): Promise<ProgramTeamSummary[]> {
   const supabase = await createSupabaseServer();
   const { data: teamRows, error } = await supabase
-    .from("program_teams")
-    .select(`${teamSelect}, program_nodes(id, name, slug, parent_id)`)
+    .schema("programs").from("program_teams")
+    .select(`${teamSelect}, program_structure_nodes(id, name, slug, parent_id)`)
     .eq("program_id", programId)
     .order("created_at", { ascending: true });
 
@@ -178,7 +178,7 @@ export async function listProgramTeamsSummary(programId: string): Promise<Progra
   }
 
   const { data: memberRows, error: memberError } = await supabase
-    .from("program_team_members")
+    .schema("programs").from("program_team_members")
     .select("team_id, status")
     .eq("program_id", programId);
 
@@ -187,7 +187,7 @@ export async function listProgramTeamsSummary(programId: string): Promise<Progra
   }
 
   const { data: staffRows, error: staffError } = await supabase
-    .from("program_team_staff")
+    .schema("programs").from("program_team_staff")
     .select("team_id")
     .eq("program_id", programId);
 
@@ -216,7 +216,7 @@ export async function listProgramTeamsSummary(programId: string): Promise<Progra
 
   return (teamRows ?? []).map((row: any) => {
     const team = mapTeam(row);
-    const node = asRelationObject(row.program_nodes);
+    const node = asRelationObject(row.program_structure_nodes);
     return {
       team,
       node: {
@@ -241,7 +241,7 @@ export async function listPublishedProgramTeamsForDirectory(
   const service = createOptionalSupabaseServiceRoleClient();
   const limit = typeof options?.limit === "number" && options.limit > 0 ? Math.min(options.limit, 200) : 200;
   const { data: rows, error } = await supabase
-    .from("program_nodes")
+    .schema("programs").from("program_structure_nodes")
     .select("id, program_id, parent_id, name, slug, node_kind, settings_json, programs!inner(id, org_id, slug, name, status)")
     .eq("programs.org_id", orgId)
     .eq("programs.status", "published")
@@ -276,7 +276,7 @@ export async function listPublishedProgramTeamsForDirectory(
 
   if (divisionIds.length > 0) {
     const { data: divisionRows, error: divisionError } = await supabase
-      .from("program_nodes")
+      .schema("programs").from("program_structure_nodes")
       .select("id, name, slug, settings_json")
       .in("id", divisionIds);
 
@@ -317,7 +317,7 @@ export async function listPublishedProgramTeamsForDirectory(
   if (service && visibleNodes.length > 0) {
     const programNodeIds = visibleNodes.map((entry) => entry.nodeId);
     const { data: teamRows, error: teamError } = await service
-      .from("program_teams")
+      .schema("programs").from("program_teams")
       .select("id, program_node_id, team_code, level_label, age_group, gender, status")
       .eq("org_id", orgId)
       .eq("status", "active")
@@ -355,7 +355,7 @@ export async function listPublishedProgramTeamsForDirectory(
   if (service && resolvedTeamIds.length > 0) {
     const realTeamIds = resolvedTeamIds.filter((id) => !id.startsWith("node:"));
     const { data: memberRows, error: memberError } = await service
-      .from("program_team_members")
+      .schema("programs").from("program_team_members")
       .select("team_id, status")
       .in("team_id", realTeamIds);
 
@@ -370,7 +370,7 @@ export async function listPublishedProgramTeamsForDirectory(
       memberCounts.set(row.team_id, (memberCounts.get(row.team_id) ?? 0) + 1);
     }
 
-    const { data: staffRows, error: staffError } = await service.from("program_team_staff").select("team_id").in("team_id", realTeamIds);
+    const { data: staffRows, error: staffError } = await service.schema("programs").from("program_team_staff").select("team_id").in("team_id", realTeamIds);
 
     if (staffError) {
       throw new Error(`Failed to load team staff counts: ${staffError.message}`);
@@ -427,8 +427,8 @@ export async function listPublishedProgramTeamsForDirectory(
 export async function getProgramTeamDetail(teamId: string): Promise<ProgramTeamDetail | null> {
   const supabase = await createSupabaseServer();
   const { data: teamRow, error } = await supabase
-    .from("program_teams")
-    .select(`${teamSelect}, program_nodes(id, name, slug, parent_id)`)
+    .schema("programs").from("program_teams")
+    .select(`${teamSelect}, program_structure_nodes(id, name, slug, parent_id)`)
     .eq("id", teamId)
     .maybeSingle();
 
@@ -441,7 +441,7 @@ export async function getProgramTeamDetail(teamId: string): Promise<ProgramTeamD
   }
 
   const { data: rosterRows, error: rosterError } = await supabase
-    .from("program_team_members")
+    .schema("programs").from("program_team_members")
     .select(`${memberSelect}, players(${playerSelect})`)
     .eq("team_id", teamId)
     .order("created_at", { ascending: true });
@@ -451,7 +451,7 @@ export async function getProgramTeamDetail(teamId: string): Promise<ProgramTeamD
   }
 
   const { data: staffRows, error: staffError } = await supabase
-    .from("program_team_staff")
+    .schema("programs").from("program_team_staff")
     .select(staffSelect)
     .eq("team_id", teamId)
     .order("created_at", { ascending: true });
@@ -464,16 +464,16 @@ export async function getProgramTeamDetail(teamId: string): Promise<ProgramTeamD
   const usersById = await listAuthUsersByIds(staffUserIds);
 
   const team = mapTeam(teamRow);
-  const node = asRelationObject(teamRow.program_nodes);
+  const node = asRelationObject(teamRow.program_structure_nodes);
   const teamSettings = asObject(team.settingsJson);
   const teamSetting = asTeamCalendarVisibility(teamSettings.calendarTeamVisibility);
 
   const divisionId = getOptionalString(node, "parent_id");
   const [divisionNode, programRow] = await Promise.all([
     divisionId
-      ? supabase.from("program_nodes").select("id, settings_json").eq("id", divisionId).maybeSingle()
+      ? supabase.schema("programs").from("program_structure_nodes").select("id, settings_json").eq("id", divisionId).maybeSingle()
       : Promise.resolve({ data: null as any, error: null as any }),
-    supabase.from("programs").select("id, settings_json").eq("id", team.programId).maybeSingle()
+    supabase.schema("programs").from("programs").select("id, settings_json").eq("id", team.programId).maybeSingle()
   ]);
 
   if (divisionNode.error) {
@@ -538,7 +538,7 @@ export async function getProgramTeamDetail(teamId: string): Promise<ProgramTeamD
 export async function getProgramTeamDetailByNodeId(teamNodeId: string): Promise<ProgramTeamDetail | null> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_teams")
+    .schema("programs").from("program_teams")
     .select("id")
     .eq("program_node_id", teamNodeId)
     .maybeSingle();
@@ -558,7 +558,7 @@ export async function listTeamRosterCandidates(programId: string): Promise<Progr
   const supabase = await createSupabaseServer();
 
   const { data: memberRows, error: memberError } = await supabase
-    .from("program_team_members")
+    .schema("programs").from("program_team_members")
     .select("player_id, status")
     .eq("program_id", programId);
 
@@ -578,7 +578,7 @@ export async function listTeamRosterCandidates(programId: string): Promise<Progr
   }
 
   const { data: registrations, error } = await supabase
-    .from("program_registrations")
+    .schema("programs").from("program_registrations")
     .select(`id, status, player_id, players(${playerSelect})`)
     .eq("program_id", programId)
     .in("status", ["submitted", "in_review", "approved", "waitlisted"])
@@ -616,7 +616,7 @@ export async function listTeamRosterCandidates(programId: string): Promise<Progr
 export async function listTeamStaffCandidates(orgId: string): Promise<ProgramTeamStaffCandidate[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("org_memberships")
     .select("user_id, role")
     .eq("org_id", orgId)
     .order("created_at", { ascending: true });
@@ -638,7 +638,7 @@ export async function listTeamStaffCandidates(orgId: string): Promise<ProgramTea
 export async function listTeamFacilityOptions(orgId: string): Promise<ProgramTeamFacilityOption[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("facility_spaces")
+    .schema("facilities").from("spaces")
     .select("id, name, status")
     .eq("org_id", orgId)
     .order("sort_index", { ascending: true })
@@ -669,7 +669,7 @@ export async function upsertTeamProfile(input: {
   calendarTeamVisibility?: TeamCalendarVisibility | null;
 }): Promise<ProgramTeam> {
   const supabase = await createSupabaseServer();
-  const { data: existing, error: existingError } = await supabase.from("program_teams").select("settings_json").eq("id", input.teamId).maybeSingle();
+  const { data: existing, error: existingError } = await supabase.schema("programs").from("program_teams").select("settings_json").eq("id", input.teamId).maybeSingle();
   if (existingError) {
     throw new Error(`Failed to load existing team settings: ${existingError.message}`);
   }
@@ -681,7 +681,7 @@ export async function upsertTeamProfile(input: {
   }
 
   const { data, error } = await supabase
-    .from("program_teams")
+    .schema("programs").from("program_teams")
     .update({
       status: input.status,
       team_code: input.teamCode,
@@ -720,7 +720,7 @@ export async function insertTeamMember(input: {
 }): Promise<ProgramTeamMember> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_team_members")
+    .schema("programs").from("program_team_members")
     .insert({
       team_id: input.teamId,
       org_id: input.orgId,
@@ -754,7 +754,7 @@ export async function updateTeamMember(input: {
 }): Promise<ProgramTeamMember> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_team_members")
+    .schema("programs").from("program_team_members")
     .update({
       status: input.status,
       role: input.role,
@@ -776,7 +776,7 @@ export async function updateTeamMember(input: {
 export async function removeTeamMember(memberId: string): Promise<void> {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .from("program_team_members")
+    .schema("programs").from("program_team_members")
     .update({ status: "removed" })
     .eq("id", memberId);
 
@@ -796,7 +796,7 @@ export async function upsertTeamStaff(input: {
 }): Promise<ProgramTeamStaff> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_team_staff")
+    .schema("programs").from("program_team_staff")
     .upsert(
       {
         team_id: input.teamId,
@@ -821,7 +821,7 @@ export async function upsertTeamStaff(input: {
 
 export async function removeTeamStaff(staffId: string): Promise<void> {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.from("program_team_staff").delete().eq("id", staffId);
+  const { error } = await supabase.schema("programs").from("program_team_staff").delete().eq("id", staffId);
 
   if (error) {
     throw new Error(`Failed to remove team staff: ${error.message}`);
@@ -831,7 +831,7 @@ export async function removeTeamStaff(staffId: string): Promise<void> {
 export async function getTeamAssociationCountsByNode(programNodeId: string): Promise<{ memberCount: number; staffCount: number }> {
   const supabase = await createSupabaseServer();
   const { data: team, error } = await supabase
-    .from("program_teams")
+    .schema("programs").from("program_teams")
     .select("id")
     .eq("program_node_id", programNodeId)
     .maybeSingle();
@@ -845,7 +845,7 @@ export async function getTeamAssociationCountsByNode(programNodeId: string): Pro
   }
 
   const { count: memberCount, error: memberError } = await supabase
-    .from("program_team_members")
+    .schema("programs").from("program_team_members")
     .select("id", { count: "exact", head: true })
     .eq("team_id", team.id)
     .neq("status", "removed");
@@ -855,7 +855,7 @@ export async function getTeamAssociationCountsByNode(programNodeId: string): Pro
   }
 
   const { count: staffCount, error: staffError } = await supabase
-    .from("program_team_staff")
+    .schema("programs").from("program_team_staff")
     .select("id", { count: "exact", head: true })
     .eq("team_id", team.id);
 

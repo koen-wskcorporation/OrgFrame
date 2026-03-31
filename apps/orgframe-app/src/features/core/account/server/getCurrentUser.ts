@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { getSessionUser, type SessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { getSignedProfileAvatarUrl } from "@/src/features/core/account/storage/getSignedProfileAvatarUrl";
 
@@ -24,7 +24,7 @@ export async function getCurrentUser(options?: GetCurrentUserOptions): Promise<C
 
     const supabase = await createSupabaseServer();
     const { data: profile } = await supabase
-      .from("user_profiles")
+      .schema("people").from("user_profiles")
       .select("first_name, last_name, avatar_path")
       .eq("user_id", sessionUser.id)
       .maybeSingle();

@@ -152,5 +152,18 @@ export type AiResolvedContext = {
   userId: string;
   email: string | null;
   org: AiResolvedOrg | null;
+  account: {
+    activePlayerId: string | null;
+    players: Array<{
+      id: string;
+      label: string;
+      subtitle: string | null;
+    }>;
+  };
+  scope: {
+    currentModule?: "calendar" | "facilities" | "programs" | "teams" | "communications" | "files" | "account" | "players" | "unknown";
+    entityId?: string;
+    entityType?: string;
+  };
   permissionEnvelope: AiPermissionEnvelope;
 };

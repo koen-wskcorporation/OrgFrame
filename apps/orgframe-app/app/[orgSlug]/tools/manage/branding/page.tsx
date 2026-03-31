@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { redirectLegacyRoute } from "../../../legacy-route-utils";
 
 type SearchParams = {
   saved?: string;
@@ -12,18 +12,10 @@ export default async function OrgToolsManageBrandingLegacyPage({
   params: Promise<{ orgSlug: string }>;
   searchParams: Promise<SearchParams>;
 }) {
-  const { orgSlug } = await params;
-  const query = await searchParams;
-  const nextQuery = new URLSearchParams();
-
-  if (query.saved) {
-    nextQuery.set("saved", query.saved);
-  }
-
-  if (query.error) {
-    nextQuery.set("error", query.error);
-  }
-
-  const suffix = nextQuery.toString();
-  redirect(`/tools/branding${suffix ? `?${suffix}` : ""}`);
+  await redirectLegacyRoute({
+    params,
+    pathname: "/tools/branding",
+    searchParams,
+    allowedSearchParams: ["saved", "error"]
+  });
 }

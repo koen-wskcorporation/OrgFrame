@@ -28,3 +28,35 @@ export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDi
 export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("mt-4 flex items-center justify-end gap-2 border-t px-5 py-4 md:px-6", className)} {...props} />;
 }
+
+type CardHeaderRowProps = {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+  className?: string;
+  copyClassName?: string;
+  actionsClassName?: string;
+  titleClassName?: string;
+  descriptionClassName?: string;
+};
+
+export function CardHeaderRow({
+  title,
+  description,
+  actions,
+  className,
+  copyClassName,
+  actionsClassName,
+  titleClassName,
+  descriptionClassName
+}: CardHeaderRowProps) {
+  return (
+    <div className={cn("ui-card-header-row", className)}>
+      <div className={cn("ui-card-header-copy", copyClassName)}>
+        <CardTitle className={titleClassName}>{title}</CardTitle>
+        {description ? <CardDescription className={descriptionClassName}>{description}</CardDescription> : null}
+      </div>
+      {actions ? <div className={cn("shrink-0", actionsClassName)}>{actions}</div> : null}
+    </div>
+  );
+}

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { can } from "@/src/shared/permissions/can";
-import { createSupabaseServer } from "@/src/shared/supabase/server";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import {
   createCalendarEntryRecord,
   deleteCalendarLensView,
@@ -362,7 +362,7 @@ async function applyRuleAllocationsToOccurrences(input: {
 async function isTeamStaffAdmin(orgId: string, userId: string, teamId: string): Promise<boolean> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_team_staff")
+    .schema("programs").from("program_team_staff")
     .select("id, role, program_teams!inner(org_id)")
     .eq("team_id", teamId)
     .eq("user_id", userId)
@@ -407,7 +407,7 @@ async function canManageEntry(orgId: string, userId: string, entry: CalendarEntr
 async function listActorTeamAccess(orgId: string, userId: string): Promise<{ teamIds: Set<string>; programIds: Set<string> }> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .from("program_team_staff")
+    .schema("programs").from("program_team_staff")
     .select("team_id, program_id")
     .eq("org_id", orgId)
     .eq("user_id", userId);
@@ -819,12 +819,45 @@ export async function getCalendarWorkspaceDataAction(input: {
       return asError("You do not have access to calendar data.");
     }
 
-    const [readModelRaw, activeTeams, facilityReadModel, actorAccess] = await Promise.all([
+    const [readModelResult, activeTeamsResult, facilityReadModelResult, actorAccessResult] = await Promise.allSettled([
       listCalendarReadModel(actor.orgId),
       listOrgActiveTeams(actor.orgId),
       listFacilityReservationReadModel(actor.orgId),
       listActorTeamAccess(actor.orgId, actor.userId)
     ]);
+
+    if (readModelResult.status === "rejected") {
+      throw readModelResult.reason;
+    }
+
+    const readModelRaw = readModelResult.value;
+    const activeTeams = activeTeamsResult.status === "fulfilled" ? activeTeamsResult.value : [];
+    const facilityReadModel =
+      facilityReadModelResult.status === "fulfilled"
+        ? facilityReadModelResult.value
+        : {
+            spaces: [],
+            rules: [],
+            reservations: [],
+            exceptions: []
+          };
+    const actorAccess =
+      actorAccessResult.status === "fulfilled"
+        ? actorAccessResult.value
+        : {
+            teamIds: new Set<string>(),
+            programIds: new Set<string>()
+          };
+
+    if (activeTeamsResult.status === "rejected" || facilityReadModelResult.status === "rejected" || actorAccessResult.status === "rejected") {
+      console.error("Calendar workspace partial load failure", {
+        orgId: actor.orgId,
+        activeTeamsError: activeTeamsResult.status === "rejected" ? String(activeTeamsResult.reason) : null,
+        facilityReadModelError: facilityReadModelResult.status === "rejected" ? String(facilityReadModelResult.reason) : null,
+        actorAccessError: actorAccessResult.status === "rejected" ? String(actorAccessResult.reason) : null
+      });
+    }
+
     const readModel = filterReadModelByActorVisibility({
       readModel: readModelRaw,
       hasOrgWrite: actor.hasCalendarWrite,
@@ -842,6 +875,9 @@ export async function getCalendarWorkspaceDataAction(input: {
     };
   } catch (error) {
     rethrowIfNavigationError(error);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("getCalendarWorkspaceDataAction failed", error);
+    }
     return asError("Unable to load calendar workspace.");
   }
 }
@@ -2298,7 +2334,7 @@ export async function deleteRecurringOccurrenceAction(
 
       const supabase = await createSupabaseServer();
       const { error: deleteError } = await supabase
-        .from("calendar_occurrences")
+        .schema("calendar").from("calendar_item_occurrences")
         .delete()
         .eq("org_id", actor.orgId)
         .eq("source_rule_id", rule.id)
