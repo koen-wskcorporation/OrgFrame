@@ -48,9 +48,21 @@ function isNavItemVisible(item: OrgAdminNavItem, visibility?: OrgAdminNavVisibil
       return isOrgToolEnabled(toolAvailability, "domains") && Boolean(capabilities?.manage.canRead);
     case "manage-branding":
       return isOrgToolEnabled(toolAvailability, "branding") && Boolean(capabilities?.manage.canRead);
-    case "manage-accounts":
-      return isOrgToolEnabled(toolAvailability, "access") && Boolean(capabilities?.manage.canRead);
+    case "people":
+      return isOrgToolEnabled(toolAvailability, "people") && Boolean(capabilities?.people.canAccess || capabilities?.manage.canRead);
+    case "people-overview":
+      return isOrgToolEnabled(toolAvailability, "people") && Boolean(capabilities?.people.canAccess || capabilities?.manage.canRead);
+    case "people-groups":
+      return isOrgToolEnabled(toolAvailability, "people") && Boolean(capabilities?.people.canAccess || capabilities?.manage.canRead);
     case "manage-billing":
+      return isOrgToolEnabled(toolAvailability, "billing") && Boolean(capabilities?.manage.canRead);
+    case "payments":
+      return isOrgToolEnabled(toolAvailability, "billing") && Boolean(capabilities?.manage.canRead);
+    case "payments-overview":
+      return isOrgToolEnabled(toolAvailability, "billing") && Boolean(capabilities?.manage.canRead);
+    case "payments-settings":
+      return isOrgToolEnabled(toolAvailability, "billing") && Boolean(capabilities?.manage.canRead);
+    case "payments-links":
       return isOrgToolEnabled(toolAvailability, "billing") && Boolean(capabilities?.manage.canRead);
     case "manage-imports":
       return isOrgToolEnabled(toolAvailability, "imports") && Boolean(capabilities?.manage.canRead);
@@ -101,30 +113,38 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
       showInHome: false
     },
     {
-      key: "manage-accounts",
-      label: "Accounts",
-      href: "/tools/access",
-      description: "Invite users and manage organization roles.",
-      icon: "users",
-      parentKey: "manage",
-      showInHome: false
-    },
-    {
-      key: "manage-billing",
-      label: "Billing",
-      href: "/tools/billing",
-      description: "Review subscription and billing controls.",
-      icon: "credit-card",
-      parentKey: "manage",
-      showInHome: false
-    },
-    {
       key: "manage-imports",
       label: "Smart Import",
       href: "/tools/imports",
       description: "Run staged imports for people, programs, and commerce data.",
       icon: "file-text",
       parentKey: "manage",
+      showInHome: false
+    },
+    {
+      key: "people",
+      label: "People",
+      href: "/tools/people",
+      description: "Manage accounts, linked player/staff profiles, and relationships.",
+      icon: "users",
+      showInHome: true
+    },
+    {
+      key: "people-overview",
+      label: "Overview",
+      href: "/tools/people",
+      description: "Accounts and linked profiles.",
+      icon: "users",
+      parentKey: "people",
+      showInHome: false
+    },
+    {
+      key: "people-groups",
+      label: "Groups",
+      href: "/tools/people/groups",
+      description: "Relationship groups and reusable sets.",
+      icon: "users",
+      parentKey: "people",
       showInHome: false
     },
     {
@@ -166,6 +186,41 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
       description: "Resolve and manage unified conversations across channels.",
       icon: "inbox",
       showInHome: true
+    },
+    {
+      key: "payments",
+      label: "Payments",
+      href: "/tools/payments",
+      description: "Review transactions and manage Stripe payment settings.",
+      icon: "credit-card",
+      showInHome: true
+    },
+    {
+      key: "payments-overview",
+      label: "Overview",
+      href: "/tools/payments",
+      description: "All payment transactions for this organization.",
+      icon: "credit-card",
+      parentKey: "payments",
+      showInHome: false
+    },
+    {
+      key: "payments-settings",
+      label: "Settings",
+      href: "/tools/payments/settings",
+      description: "Stripe Connect onboarding and tax compliance defaults.",
+      icon: "settings",
+      parentKey: "payments",
+      showInHome: false
+    },
+    {
+      key: "payments-links",
+      label: "Links",
+      href: "/tools/payments/links",
+      description: "Generate and manage ad hoc payment links.",
+      icon: "credit-card",
+      parentKey: "payments",
+      showInHome: false
     },
     {
       key: "manage",

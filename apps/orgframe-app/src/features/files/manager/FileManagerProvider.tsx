@@ -1,16 +1,21 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, FileIcon, FolderIcon, FolderOpenIcon, MoveRight, Plus, Search, Upload, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Building2, ChevronRight, FileIcon, FolderIcon, FolderOpenIcon, MoveRight, Plus, Search, Upload, User, X } from "lucide-react";
 import { Popup } from "@orgframe/ui/primitives/popup";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Input } from "@orgframe/ui/primitives/input";
 import { NavItem } from "@orgframe/ui/primitives/nav-item";
+import { PersonChip } from "@orgframe/ui/primitives/person-chip";
 import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { Select } from "@orgframe/ui/primitives/select";
+import { Tooltip } from "@orgframe/ui/primitives/tooltip";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { OrgAreaSidebarSection, OrgAreaSidebarShell } from "@/src/features/core/navigation/components/OrgAreaSidebarShell";
+import { ORG_HIERARCHY_ENTITY_CONFIG } from "@/src/features/core/navigation/config/iconRegistry";
 import { loadFileManagerSnapshotAction, mutateFileManagerAction } from "@/src/features/files/manager/actions";
 import { fileMatchesAccept, formatFileSize, isImageFile, readImageDimensions } from "@/src/features/files/uploads/client-utils";
 import type {
@@ -19,6 +24,7 @@ import type {
   FileManagerFile,
   FileManagerFolder,
   FileManagerLoadInput,
+  FileManagerPerson,
   FileManagerScope,
   FileManagerSort,
   OpenFileManagerOptions
@@ -55,6 +61,12 @@ type BrowserItem =
       file: FileManagerFile;
     };
 
+type FileContextCardState = {
+  fileId: string;
+  x: number;
+  y: number;
+};
+
 const FileManagerContext = createContext<FileManagerContextValue | null>(null);
 
 const sortOptions: Array<{ label: string; value: FileManagerSort }> = [
@@ -67,9 +79,22 @@ const sortOptions: Array<{ label: string; value: FileManagerSort }> = [
 ];
 
 const scopeOptions: Array<{ value: FileManagerScope; label: string }> = [
-  { value: "organization", label: "Organization Files" },
-  { value: "personal", label: "Personal Uploads" }
+  { value: "personal", label: "Personal" },
+  { value: "organization", label: "Organization" }
 ];
+
+function scopeIcon(scope: FileManagerScope, organizationScopeIconUrl: string | null, personalScopeAvatarUrl: string | null) {
+  if (scope === "organization") {
+    if (organizationScopeIconUrl) {
+      return <img alt="Organization icon" className="h-4 w-4 rounded-sm object-contain" src={organizationScopeIconUrl} />;
+    }
+    return <Building2 className="h-4 w-4" />;
+  }
+  if (personalScopeAvatarUrl) {
+    return <img alt="Personal profile" className="h-4 w-4 rounded-full object-cover" src={personalScopeAvatarUrl} />;
+  }
+  return <User className="h-4 w-4" />;
+}
 
 function purposeSystemDefaultKey(purpose: string | null | undefined): FileManagerDefaultFolder | undefined {
   switch (purpose) {
@@ -252,6 +277,76 @@ function extensionLabel(fileName: string) {
   return parts[parts.length - 1]!.slice(0, 6).toUpperCase();
 }
 
+function asMetadataUserId(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function asMetadataTimestamp(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function formatFileTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return "Unknown";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Unknown";
+  }
+
+  return parsed.toLocaleString();
+}
+
+function isVectorPreview(file: FileManagerFile) {
+  const normalizedMime = file.mime.toLowerCase();
+  if (normalizedMime === "image/svg+xml" || normalizedMime === "application/svg+xml" || normalizedMime.includes("svg")) {
+    return true;
+  }
+
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  return ext === "svg";
+}
+
+function isSpecialFolder(folder: FileManagerFolder) {
+  return folder.isSystem;
+}
+
+function folderEntityIcon(folder: FileManagerFolder, className: string) {
+  if (folder.entityType === "program" || folder.entityType === "division" || folder.entityType === "team") {
+    const Icon = ORG_HIERARCHY_ENTITY_CONFIG[folder.entityType].icon;
+    return <Icon className={className} />;
+  }
+  return null;
+}
+
+function folderIcon(folder: FileManagerFolder, className: string, options?: { open?: boolean }) {
+  const entityIcon = folderEntityIcon(folder, className);
+  if (entityIcon) {
+    return entityIcon;
+  }
+
+  const FallbackIcon = options?.open ? FolderOpenIcon : FolderIcon;
+  return <FallbackIcon className={className} />;
+}
+
+function FolderTitle({ folder, showDynamicTag = true }: { folder: FileManagerFolder; showDynamicTag?: boolean }) {
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <span className="min-w-0 break-all whitespace-normal">{folder.name}</span>
+      {showDynamicTag && isSpecialFolder(folder) ? (
+        <Tooltip content="Dynamic folder. This is system-managed and cannot be renamed or deleted.">
+          <Chip color="yellow" size="compact">
+            Dynamic
+          </Chip>
+        </Tooltip>
+      ) : null}
+    </span>
+  );
+}
+
 export function FileManagerProvider({ children }: { children: React.ReactNode }) {
   const [activeRequest, setActiveRequest] = useState<ActiveRequest | null>(null);
   const [activeScope, setActiveScope] = useState<FileManagerScope>("personal");
@@ -264,15 +359,23 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
   const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [sort, setSort] = useState<FileManagerSort>("newest");
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [uploads, setUploads] = useState<UploadTask[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [moveDraft, setMoveDraft] = useState<MoveDraft | null>(null);
   const [fileCache, setFileCache] = useState<Record<string, FileManagerFile>>({});
+  const [peopleByUserId, setPeopleByUserId] = useState<Record<string, FileManagerPerson>>({});
+  const [organizationScopeIconUrl, setOrganizationScopeIconUrl] = useState<string | null>(null);
+  const [personalScopeAvatarUrl, setPersonalScopeAvatarUrl] = useState<string | null>(null);
+  const [fileContextCard, setFileContextCard] = useState<FileContextCardState | null>(null);
+  const contextCardRef = useRef<HTMLDivElement | null>(null);
   const requestCounterRef = useRef(0);
+  const hasLoadedDataRef = useRef(false);
   const initializedFolderRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
@@ -344,7 +447,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     return childrenByParent.get(currentFolderId) ?? [];
   }, [childrenByParent, currentFolderId]);
 
-  const isSearching = search.trim().length > 0;
+  const isSearching = debouncedSearch.trim().length > 0;
 
   const visibleFiles = useMemo(() => {
     if (isSearching) {
@@ -365,6 +468,14 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     return selectedFileIds.map((id) => fileCache[id]).filter((value): value is FileManagerFile => Boolean(value));
   }, [fileCache, selectedFileIds]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearch(searchInput.trim());
+    }, 180);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInput]);
+
   const loadSnapshot = useCallback(async () => {
     if (!activeRequest) {
       return;
@@ -373,14 +484,19 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     const currentToken = requestCounterRef.current + 1;
     requestCounterRef.current = currentToken;
 
-    setLoading(true);
+    const hasRenderedData = hasLoadedDataRef.current;
+    if (hasRenderedData) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setErrorMessage(null);
 
     const input: FileManagerLoadInput = {
       scope: activeScope,
       orgSlug: activeRequest.options.orgSlug,
       folderId: isSearching ? null : currentFolderId,
-      search: search.trim() ? search.trim() : undefined,
+      search: debouncedSearch.trim() ? debouncedSearch.trim() : undefined,
       sort
     };
 
@@ -390,18 +506,26 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     }
 
     setLoading(false);
+    setRefreshing(false);
 
     if (!result.ok) {
       setErrorMessage(result.error);
       setFolders([]);
       setFiles([]);
       setSystemFolderIds({});
+      setPeopleByUserId({});
+      setOrganizationScopeIconUrl(null);
+      setPersonalScopeAvatarUrl(null);
       return;
     }
 
     setFolders(result.data.folders);
     setFiles(result.data.files);
     setSystemFolderIds(result.data.systemFolderIds);
+    setPeopleByUserId(result.data.peopleByUserId);
+    setOrganizationScopeIconUrl(result.data.organizationScopeIconUrl);
+    setPersonalScopeAvatarUrl(result.data.personalScopeAvatarUrl);
+    hasLoadedDataRef.current = true;
     setFileCache((current) => {
       const next = { ...current };
       for (const file of result.data.files) {
@@ -423,7 +547,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
       setHistory([targetFolderId]);
       setHistoryIndex(0);
     }
-  }, [activeRequest, activeScope, currentFolderId, isSearching, search, sort]);
+  }, [activeRequest, activeScope, currentFolderId, debouncedSearch, isSearching, sort]);
 
   useEffect(() => {
     if (!activeRequest) {
@@ -431,11 +555,12 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     }
 
     void loadSnapshot();
-  }, [activeRequest, activeScope, currentFolderId, search, sort, refreshTick, loadSnapshot]);
+  }, [activeRequest, activeScope, currentFolderId, debouncedSearch, sort, refreshTick, loadSnapshot]);
 
   const navigateFolder = useCallback((folderId: string | null, pushHistory = true) => {
     setCurrentFolderId(folderId);
     setSelectedFileIds([]);
+    setFileContextCard(null);
 
     if (!pushHistory) {
       return;
@@ -462,6 +587,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     const target = history[nextIndex] ?? null;
     setCurrentFolderId(target);
     setSelectedFileIds([]);
+    setFileContextCard(null);
   }, [history, historyIndex]);
 
   const goForward = useCallback(() => {
@@ -474,10 +600,12 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     const target = history[nextIndex] ?? null;
     setCurrentFolderId(target);
     setSelectedFileIds([]);
+    setFileContextCard(null);
   }, [history, historyIndex]);
 
   const resetStateForRequest = useCallback((request: ActiveRequest) => {
     initializedFolderRef.current = false;
+    hasLoadedDataRef.current = false;
     setActiveScope(resolveDefaultScope(request.options));
     setFolders([]);
     setFiles([]);
@@ -487,13 +615,20 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     setHistoryIndex(0);
     setExpandedFolderIds([]);
     setSelectedFileIds([]);
-    setSearch("");
+    setSearchInput("");
+    setDebouncedSearch("");
     setSort("newest");
+    setLoading(false);
+    setRefreshing(false);
     setErrorMessage(null);
     setUploads([]);
     setMoveDraft(null);
     setDragActive(false);
     setFileCache({});
+    setPeopleByUserId({});
+    setOrganizationScopeIconUrl(null);
+    setPersonalScopeAvatarUrl(null);
+    setFileContextCard(null);
   }, []);
 
   const closeRequest = useCallback((value: FileManagerFile[] | null) => {
@@ -865,14 +1000,103 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     closeRequest(chosen);
   }, [closeRequest, selectedFiles]);
 
+  const handleBrowserContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const fileNode = target.closest<HTMLElement>("[data-file-id]");
+    if (!fileNode) {
+      return;
+    }
+
+    const fileId = fileNode.dataset.fileId;
+    if (!fileId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setFileContextCard({
+      fileId,
+      x: event.clientX,
+      y: event.clientY
+    });
+  }, []);
+
   const contextValue = useMemo<FileManagerContextValue>(() => {
     return {
       openFileManager
     };
   }, [openFileManager]);
 
+  const sidebarTreeStartId = useMemo(() => {
+    if (activeScope === "organization") {
+      return systemFolderIds["organization-files"] ?? null;
+    }
+    return null;
+  }, [activeScope, systemFolderIds]);
+
   const title = activeRequest?.options.title ?? (activeRequest?.options.mode === "select" ? "Select Files" : "File Manager");
   const subtitle = activeRequest?.options.subtitle ?? "Browse organization and personal files, upload, and manage folders in one place.";
+  const contextCardFile = useMemo(() => {
+    if (!fileContextCard) {
+      return null;
+    }
+    return files.find((entry) => entry.id === fileContextCard.fileId) ?? null;
+  }, [fileContextCard, files]);
+  const contextCardPosition = useMemo(() => {
+    if (!fileContextCard || typeof window === "undefined") {
+      return null;
+    }
+
+    const cardWidth = 360;
+    const cardHeight = 420;
+    const margin = 12;
+
+    return {
+      left: Math.max(margin, Math.min(fileContextCard.x + 8, window.innerWidth - cardWidth - margin)),
+      top: Math.max(margin, Math.min(fileContextCard.y + 8, window.innerHeight - cardHeight - margin))
+    };
+  }, [fileContextCard]);
+
+  useEffect(() => {
+    if (!fileContextCard) {
+      return;
+    }
+
+    const close = () => setFileContextCard(null);
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      const cardNode = contextCardRef.current;
+      if (cardNode && cardNode.contains(target)) {
+        return;
+      }
+
+      close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [fileContextCard]);
 
   useEffect(() => {
     if (!currentFolderId) {
@@ -933,12 +1157,12 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
               active={isActive}
               className="rounded-full"
               contentClassName="text-left"
-              icon={isActive ? <FolderOpenIcon className="h-4 w-4" /> : <FolderIcon className="h-4 w-4" />}
+              icon={folderIcon(folder, "h-4 w-4", { open: isActive })}
               onClick={() => navigateFolder(folder.id, true)}
               type="button"
               variant="sidebar"
             >
-              <span className="truncate">{folder.name}</span>
+              <FolderTitle folder={folder} showDynamicTag={false} />
             </NavItem>
           </div>
           {isExpanded ? renderTree(folder.id, depth + 1) : null}
@@ -972,7 +1196,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
         }
         onClose={() => closeRequest(null)}
         open={Boolean(activeRequest)}
-        popupClassName="max-h-[90vh]"
+        popupClassName="max-h-[92vh] max-w-[92vw] xl:max-w-[96rem]"
         size="xl"
         subtitle={subtitle}
         title={title}
@@ -980,14 +1204,14 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
         {activeRequest ? (
           <div className="grid min-h-[68vh] min-w-0 grid-cols-[280px_minmax(0,1fr)] overflow-hidden">
             <OrgAreaSidebarShell className="flex h-full min-h-0 w-full flex-col rounded-none border-b-0 border-l-0 border-r border-t-0 shadow-none">
-              <OrgAreaSidebarSection title="Scope">
+              <OrgAreaSidebarSection className="flex min-h-0 flex-1 flex-col" title="Files">
                 <div className="space-y-1">
                   {scopeOptions
                     .filter((option) => allowedScopes.includes(option.value))
                     .map((option) => (
                       <NavItem
                         active={option.value === activeScope}
-                        icon={<FolderIcon className="h-4 w-4" />}
+                        icon={scopeIcon(option.value, organizationScopeIconUrl, personalScopeAvatarUrl)}
                         key={option.value}
                         onClick={() => {
                           setActiveScope(option.value);
@@ -996,6 +1220,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                           setHistory([null]);
                           setHistoryIndex(0);
                           setSelectedFileIds([]);
+                          setFileContextCard(null);
                         }}
                         type="button"
                         variant="sidebar"
@@ -1004,10 +1229,10 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                       </NavItem>
                     ))}
                 </div>
-              </OrgAreaSidebarSection>
 
-              <OrgAreaSidebarSection className="mt-4 flex min-h-0 flex-1 flex-col border-t pt-3" title="Folders">
-                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">{renderTree(null, 0)}</div>
+                {activeScope === "organization" ? (
+                  <div className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">{renderTree(sidebarTreeStartId, 0)}</div>
+                ) : null}
               </OrgAreaSidebarSection>
             </OrgAreaSidebarShell>
 
@@ -1067,9 +1292,9 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                   <Search className="h-4 w-4 text-text-muted" />
                   <Input
                     className="h-8 border-0 bg-transparent px-0"
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => setSearchInput(event.target.value)}
                     placeholder="Search files"
-                    value={search}
+                    value={searchInput}
                   />
                 </div>
 
@@ -1159,18 +1384,29 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                   </div>
                 ) : null}
 
-                {!loading ? (
-                  <Repeater
-                    className="space-y-3"
-                    disableSearch
-                    emptyMessage={isSearching ? "No files match your search." : "No files in this folder yet."}
-                    getItemKey={(item) => (item.kind === "folder" ? `folder-${item.folder.id}` : `file-${item.file.id}`)}
-                    getSearchValue={(item) => item.kind === "folder" ? item.folder.name : `${item.file.name} ${item.file.mime}`}
-                    gridClassName="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-                    initialView="grid"
-                    items={browserItems}
-                    listClassName="space-y-2"
-                    renderItem={({ item, view }) => {
+                {loading && browserItems.length === 0 ? (
+                  <div className="grid animate-pulse gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {Array.from({ length: 6 }).map((_, index) => (
+                      <div className="rounded-card border bg-surface p-3" key={`skeleton-${index}`}>
+                        <div className="mb-2 h-28 rounded border bg-surface-muted/50" />
+                        <div className="h-4 w-4/5 rounded bg-surface-muted/50" />
+                        <div className="mt-2 h-3 w-2/3 rounded bg-surface-muted/50" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="relative min-h-[340px]" onContextMenuCapture={handleBrowserContextMenu}>
+                    <Repeater
+                      className="space-y-3"
+                      disableSearch
+                      emptyMessage={isSearching ? "No files match your search." : "No files in this folder yet."}
+                      getItemKey={(item) => (item.kind === "folder" ? `folder-${item.folder.id}` : `file-${item.file.id}`)}
+                      getSearchValue={(item) => item.kind === "folder" ? item.folder.name : `${item.file.name} ${item.file.mime}`}
+                      gridClassName="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+                      initialView="grid"
+                      items={browserItems}
+                      listClassName="space-y-2"
+                      renderItem={({ item, view }) => {
                       if (item.kind === "folder") {
                         const folder = item.folder;
                         if (view === "grid") {
@@ -1178,9 +1414,11 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                             <div className="rounded-card border bg-surface p-3">
                               <button className="w-full text-left" onClick={() => navigateFolder(folder.id, true)} type="button">
                                 <div className="mb-2 flex h-28 items-center justify-center rounded border bg-surface-muted/40">
-                                  <FolderIcon className="h-8 w-8 text-text-muted" />
+                                  {folderIcon(folder, "h-8 w-8 text-text-muted")}
                                 </div>
-                                <p className="truncate text-sm font-semibold text-text">{folder.name}</p>
+                                <p className="text-sm font-semibold text-text">
+                                  <FolderTitle folder={folder} />
+                                </p>
                                 <p className="text-xs text-text-muted">Folder</p>
                               </button>
                               {canManage ? (
@@ -1199,8 +1437,10 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                         return (
                           <div className="flex items-center gap-2 rounded-control border px-2 py-1.5">
                             <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => navigateFolder(folder.id, true)} type="button">
-                              <FolderIcon className="h-4 w-4 shrink-0 text-text-muted" />
-                              <span className="truncate text-sm text-text">{folder.name}</span>
+                              {folderIcon(folder, "h-4 w-4 shrink-0 text-text-muted")}
+                              <span className="text-sm text-text">
+                                <FolderTitle folder={folder} />
+                              </span>
                             </button>
                             {canManage ? (
                               <div className="flex items-center gap-1">
@@ -1217,10 +1457,12 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
 
                       const file = item.file;
                       const selected = selectedFileIds.includes(file.id);
+                      const vectorPreview = isVectorPreview(file);
                       if (view === "grid") {
                         return (
                           <div
                             className={`rounded-card border bg-surface p-3 transition-colors ${selected ? "border-accent bg-accent/10" : "hover:bg-surface-muted"}`}
+                            data-file-id={file.id}
                             role="button"
                             tabIndex={0}
                             onClick={() => toggleFileSelection(file)}
@@ -1233,15 +1475,15 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                           >
                             <div className="mb-2 overflow-hidden rounded border bg-surface-muted/40">
                               {file.mime.startsWith("image/") && file.url ? (
-                                <img alt={file.name} className="h-28 w-full object-cover" loading="lazy" src={file.url} />
+                                <img alt={file.name} className={`h-28 w-full ${vectorPreview ? "object-contain p-2" : "object-cover"}`} loading="lazy" src={file.url} />
                               ) : (
                                 <div className="flex h-28 w-full items-center justify-center text-xs font-semibold tracking-wide text-text-muted">
                                   {extensionLabel(file.name)}
                                 </div>
                               )}
                             </div>
-                            <p className="truncate text-sm font-semibold text-text">{file.name}</p>
-                            <p className="truncate text-xs text-text-muted">
+                            <p className="break-all text-sm font-semibold text-text">{file.name}</p>
+                            <p className="break-all text-xs text-text-muted">
                               {file.mime || "Unknown"} • {formatFileSize(file.size)}
                             </p>
 
@@ -1291,6 +1533,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                           className={`flex w-full items-center gap-2 rounded-control border px-2 py-1.5 text-left transition-colors ${
                             selected ? "border-accent bg-accent/10" : "hover:bg-surface-muted"
                           }`}
+                          data-file-id={file.id}
                           role="button"
                           tabIndex={0}
                           onClick={() => toggleFileSelection(file)}
@@ -1303,8 +1546,8 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                         >
                           <FileIcon className="h-4 w-4 shrink-0 text-text-muted" />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-text">{file.name}</p>
-                            <p className="truncate text-xs text-text-muted">
+                            <p className="break-all text-sm font-medium text-text">{file.name}</p>
+                            <p className="break-all text-xs text-text-muted">
                               {file.mime || "Unknown"} • {formatFileSize(file.size)}
                             </p>
                           </div>
@@ -1349,15 +1592,86 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                         </div>
                       );
                     }}
-                  />
-                ) : (
-                  <p className="text-sm text-text-muted">Loading files...</p>
+                    />
+                    {refreshing ? (
+                      <div className="pointer-events-none absolute inset-0 flex items-start justify-end rounded-card bg-surface/35 p-2 backdrop-blur-[1px]">
+                        <Chip className="normal-case tracking-normal" color="neutral" size="compact">
+                          Refreshing...
+                        </Chip>
+                      </div>
+                    ) : null}
+                  </div>
                 )}
               </div>
+
             </section>
           </div>
         ) : null}
       </Popup>
+      {contextCardFile && contextCardPosition
+        ? createPortal(
+            <div
+              className="fixed z-[3000] w-[360px] max-w-[calc(100vw-24px)] rounded-card border bg-surface p-3 shadow-floating"
+              onClick={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.preventDefault()}
+              ref={contextCardRef}
+              style={{
+                left: contextCardPosition.left,
+                top: contextCardPosition.top
+              }}
+            >
+              <div className="border-b pb-2">
+                <p className="truncate text-sm font-semibold text-text">{contextCardFile.name}</p>
+                <p className="truncate text-xs text-text-muted">{contextCardFile.mime || "Unknown type"}</p>
+              </div>
+
+              <div className="mt-3 grid grid-cols-[120px_minmax(0,1fr)] gap-y-1 text-xs">
+                <p className="text-text-muted">Size</p>
+                <p className="truncate text-text">{formatFileSize(contextCardFile.size)}</p>
+                <p className="text-text-muted">Dimensions</p>
+                <p className="truncate text-text">
+                  {contextCardFile.width && contextCardFile.height ? `${contextCardFile.width} x ${contextCardFile.height}` : "Unknown"}
+                </p>
+                <p className="text-text-muted">Visibility</p>
+                <p className="truncate text-text">{contextCardFile.visibility}</p>
+                <p className="text-text-muted">Scope</p>
+                <p className="truncate text-text">{contextCardFile.scope}</p>
+                <p className="text-text-muted">Bucket</p>
+                <p className="truncate text-text">{contextCardFile.bucket}</p>
+                <p className="text-text-muted">Path</p>
+                <p className="truncate text-text" title={contextCardFile.path}>
+                  {contextCardFile.path}
+                </p>
+                <p className="text-text-muted">Created</p>
+                <p className="truncate text-text">{formatFileTimestamp(contextCardFile.createdAt)}</p>
+                <p className="text-text-muted">Edited</p>
+                <p className="truncate text-text">
+                  {formatFileTimestamp(asMetadataTimestamp(contextCardFile.metadataJson, "lastEditedAt") ?? contextCardFile.updatedAt)}
+                </p>
+              </div>
+
+              <div className="mt-3 border-t pt-3">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Created By</p>
+                {(() => {
+                  const createdByUserId = asMetadataUserId(contextCardFile.metadataJson, "createdByUserId") ?? contextCardFile.uploaderUserId;
+                  const createdBy = createdByUserId ? peopleByUserId[createdByUserId] : null;
+                  return createdBy ? <PersonChip avatarUrl={createdBy.avatarUrl} name={createdBy.name} /> : <p className="text-xs text-text-muted">Unknown</p>;
+                })()}
+              </div>
+
+              <div className="mt-3 border-t pt-3">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Edited By</p>
+                {(() => {
+                  const createdByUserId = asMetadataUserId(contextCardFile.metadataJson, "createdByUserId") ?? contextCardFile.uploaderUserId;
+                  const editedByUserId = asMetadataUserId(contextCardFile.metadataJson, "lastEditedByUserId") ?? createdByUserId;
+                  const editedBy = editedByUserId ? peopleByUserId[editedByUserId] : null;
+                  return editedBy ? <PersonChip avatarUrl={editedBy.avatarUrl} name={editedBy.name} /> : <p className="text-xs text-text-muted">Unknown</p>;
+                })()}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </FileManagerContext.Provider>
   );
 }

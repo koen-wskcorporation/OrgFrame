@@ -653,6 +653,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
 
     startCreatingPlayer(async () => {
       const result = await createPlayerAction({
+        orgSlug,
         firstName: newPlayerFirstName,
         lastName: newPlayerLastName,
         dateOfBirth: newPlayerDob,

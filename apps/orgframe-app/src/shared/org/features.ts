@@ -4,7 +4,7 @@ export const orgToolKeys = [
   "info",
   "domains",
   "branding",
-  "access",
+  "people",
   "billing",
   "site",
   "programs",
@@ -23,7 +23,7 @@ const defaultOrgToolAvailability: OrgToolAvailability = {
   info: true,
   domains: true,
   branding: true,
-  access: true,
+  people: true,
   billing: true,
   site: true,
   programs: true,
@@ -65,10 +65,13 @@ function normalizeToolKey(value: string): OrgToolKey | null {
     case "brand":
       return "branding";
     case "access":
+    case "people":
     case "accounts":
     case "user-accounts":
-      return "access";
+      return "people";
     case "billing":
+    case "payment":
+    case "payments":
       return "billing";
     case "site":
     case "pages":
@@ -150,6 +153,7 @@ export function isOrgToolEnabled(toolAvailability: OrgToolAvailability, tool: Or
 
 const permissionToolMap: Array<[OrgToolKey, Permission[]]> = [
   ["branding", ["org.branding.read", "org.branding.write"]],
+  ["people", ["people.read", "people.write"]],
   ["site", ["org.pages.read", "org.pages.write"]],
   ["programs", ["programs.read", "programs.write"]],
   ["forms", ["forms.read", "forms.write"]],

@@ -4,20 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Building2,
-  CalendarDays,
   ChevronDown,
-  CreditCard,
-  FileText,
-  Globe,
-  Inbox,
   LayoutDashboard,
   Plus,
-  MapPinned,
-  Palette,
   Pencil,
-  Settings,
-  Users,
   Wrench,
   type LucideIcon
 } from "lucide-react";
@@ -26,6 +16,7 @@ import { AdaptiveLogo } from "@orgframe/ui/primitives/adaptive-logo";
 import { Button } from "@orgframe/ui/primitives/button";
 import { NavItem } from "@orgframe/ui/primitives/nav-item";
 import { getOrgAdminNavItems, type OrgAdminNavIcon } from "@/src/features/core/navigation/config/adminNav";
+import { ORG_ADMIN_ICON_MAP } from "@/src/features/core/navigation/config/iconRegistry";
 import type { OrgCapabilities } from "@/src/shared/permissions/orgCapabilities";
 import type { OrgToolAvailability } from "@/src/shared/org/features";
 import { cn } from "@orgframe/ui/primitives/utils";
@@ -64,20 +55,7 @@ type HeaderMenuNode = {
   children: HeaderMenuNode[];
 };
 
-const toolsNavIconMap: Record<OrgAdminNavIcon, LucideIcon> = {
-  wrench: Wrench,
-  settings: Settings,
-  building: Building2,
-  globe: Globe,
-  palette: Palette,
-  users: Users,
-  "credit-card": CreditCard,
-  layout: LayoutDashboard,
-  calendar: CalendarDays,
-  "file-text": FileText,
-  map: MapPinned,
-  inbox: Inbox
-};
+const toolsNavIconMap: Record<OrgAdminNavIcon, LucideIcon> = ORG_ADMIN_ICON_MAP;
 
 function getOrgInitial(orgName: string) {
   return orgName.trim().charAt(0).toUpperCase() || "O";

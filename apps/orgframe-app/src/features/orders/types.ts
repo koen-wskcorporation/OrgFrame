@@ -8,6 +8,7 @@ export type OrderPanelOrder = {
   id: string;
   sourceOrderId: string;
   sourceOrderNo: string | null;
+  payerUserId: string | null;
   sourcePaymentStatus: string | null;
   orderStatus: string | null;
   orderDate: string | null;
@@ -36,6 +37,12 @@ export type OrderPanelItem = {
 export type OrderPanelPayment = {
   id: string;
   sourcePaymentKey: string;
+  sourceEventId: string | null;
+  sourceEventSequence: number | null;
+  sourceEventCount: number | null;
+  payerUserId: string | null;
+  playerId: string | null;
+  registrationId: string | null;
   paymentStatus: string | null;
   paymentDate: string | null;
   paymentAmount: number | null;

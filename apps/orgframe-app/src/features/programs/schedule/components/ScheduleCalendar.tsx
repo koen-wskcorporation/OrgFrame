@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { cn } from "@orgframe/ui/primitives/utils";
 import type { ProgramOccurrence } from "@/src/features/programs/types";
 
@@ -213,9 +214,9 @@ export function ScheduleCalendar({
             >
               <p className="text-xs font-semibold text-text">{cell.date.getDate()}</p>
               {badgeText ? (
-                <span className="mt-1 inline-block max-w-full truncate rounded-full border border-border bg-surface-muted px-1.5 py-0.5 text-[10px] text-text-muted">
+                <Chip className="mt-1 inline-flex max-w-full truncate normal-case tracking-normal" color="neutral" size="compact">
                   {badgeText}
-                </span>
+                </Chip>
               ) : null}
             </button>
           );

@@ -32,9 +32,11 @@ describe("tenant base host parsing", () => {
     const baseHosts = getTenantBaseHosts();
     const prod = resolveOrgSubdomain("baycitysoccer.orgframe.app", baseHosts);
     const staging = resolveOrgSubdomain("baycitysoccer.staging.orgframe.app", baseHosts);
+    const local = resolveOrgSubdomain("baycitysoccer.orgframe.test", baseHosts);
 
     assert.deepEqual(prod, { orgSlug: "baycitysoccer", baseHost: "orgframe.app" });
     assert.deepEqual(staging, { orgSlug: "baycitysoccer", baseHost: "staging.orgframe.app" });
+    assert.deepEqual(local, { orgSlug: "baycitysoccer", baseHost: "orgframe.test" });
   });
 
   it("does not resolve reserved subdomains or apex hosts as orgs", () => {

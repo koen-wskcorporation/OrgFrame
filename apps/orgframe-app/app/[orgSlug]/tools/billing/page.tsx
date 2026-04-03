@@ -1,41 +1,16 @@
-import { Alert } from "@orgframe/ui/primitives/alert";
-import type { Metadata } from "next";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
-import { PageStack } from "@orgframe/ui/primitives/layout";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
-import { isOrgToolEnabled } from "@/src/shared/org/features";
-import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
+import { redirectLegacyRoute } from "../../legacy-route-utils";
 
-export const metadata: Metadata = {
-  title: "Billing"
-};
-
-export default async function OrgBillingSettingsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
-  const { orgSlug } = await params;
-  const orgContext = await requireOrgPermission(orgSlug, "org.manage.read");
-  if (!isOrgToolEnabled(orgContext.toolAvailability, "billing")) {
-    return (
-      <PageStack>
-        <PageHeader description="Review plan, invoice, and payment settings for this organization." showBorder={false} title="Billing" />
-        <ToolUnavailablePanel title="Billing" />
-      </PageStack>
-    );
-  }
-
-  return (
-    <PageStack>
-      <PageHeader description="Review plan, invoice, and payment settings for this organization." showBorder={false} title="Billing" />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Billing Configuration</CardTitle>
-          <CardDescription>This section is intentionally minimal while core architecture is stabilized.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Alert variant="info">Billing UI is placeholder in this cleanup pass.</Alert>
-        </CardContent>
-      </Card>
-    </PageStack>
-  );
+export default async function OrgBillingLegacyPage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ orgSlug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  await redirectLegacyRoute({
+    params,
+    pathname: "/tools/payments/settings",
+    searchParams,
+    allowedSearchParams: ["connect"]
+  });
 }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Panel } from "@orgframe/ui/primitives/panel";
 import { cn } from "@orgframe/ui/primitives/utils";
@@ -961,28 +962,19 @@ export function Calendar({
                             ) : null}
                             <div className="flex items-center justify-between gap-1">
                               <p className="truncate font-semibold">{item.title}</p>
-                              <span
-                                className={cn(
-                                  "shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
-                                  item.entryType === "practice"
-                                    ? "border-emerald-200 bg-emerald-100 text-emerald-800"
-                                    : item.entryType === "game"
-                                      ? "border-sky-200 bg-sky-100 text-sky-800"
-                                      : "border-amber-200 bg-amber-100 text-amber-800"
-                                )}
+                              <Chip
+                                color={item.entryType === "practice" ? "green" : item.entryType === "game" ? "neutral" : "yellow"}
+                                size="compact"
                               >
                                 {item.entryType}
-                              </span>
+                              </Chip>
                             </div>
                             {item.teamChips && item.teamChips.length > 0 ? (
                               <div className="mt-1 flex flex-wrap items-center gap-1">
                                 {item.teamChips.map((teamChip, index) => (
-                                  <span
-                                    className="inline-flex max-w-full items-center rounded-full border border-border/70 bg-surface-muted/70 px-1.5 py-0.5 text-[9px] font-semibold text-text"
-                                    key={`${item.id}-team-chip-${index}-${teamChip}`}
-                                  >
+                                  <Chip className="max-w-full normal-case tracking-normal" color="neutral" key={`${item.id}-team-chip-${index}-${teamChip}`} size="compact">
                                     <span className="truncate">{teamChip}</span>
-                                  </span>
+                                  </Chip>
                                 ))}
                               </div>
                             ) : null}
@@ -1192,28 +1184,19 @@ export function Calendar({
                           ) : null}
                           <div className="flex items-center justify-between gap-1">
                             <p className="truncate font-semibold">{item.title}</p>
-                            <span
-                              className={cn(
-                                "shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
-                                item.entryType === "practice"
-                                  ? "border-emerald-200 bg-emerald-100 text-emerald-800"
-                                  : item.entryType === "game"
-                                    ? "border-sky-200 bg-sky-100 text-sky-800"
-                                    : "border-amber-200 bg-amber-100 text-amber-800"
-                              )}
+                            <Chip
+                              color={item.entryType === "practice" ? "green" : item.entryType === "game" ? "neutral" : "yellow"}
+                              size="compact"
                             >
                               {item.entryType}
-                            </span>
+                            </Chip>
                           </div>
                           {item.teamChips && item.teamChips.length > 0 ? (
                             <div className="mt-1 flex flex-wrap items-center gap-1">
                               {item.teamChips.map((teamChip, index) => (
-                                <span
-                                  className="inline-flex max-w-full items-center rounded-full border border-border/70 bg-surface-muted/70 px-1.5 py-0.5 text-[9px] font-semibold text-text"
-                                  key={`${item.id}-team-chip-day-grid-${index}-${teamChip}`}
-                                >
+                                <Chip className="max-w-full normal-case tracking-normal" color="neutral" key={`${item.id}-team-chip-day-grid-${index}-${teamChip}`} size="compact">
                                   <span className="truncate">{teamChip}</span>
-                                </span>
+                                </Chip>
                               ))}
                             </div>
                           ) : null}
@@ -1251,12 +1234,14 @@ export function Calendar({
       ) : null}
 
       {resizeSnap ? (
-        <div
-          className="pointer-events-none fixed z-50 inline-flex items-center justify-center rounded-full border border-border/70 bg-surface/95 px-2.5 py-1 text-[11px] font-semibold text-text shadow-sm"
+        <Chip
+          className="pointer-events-none fixed z-50 shadow-sm"
+          color="neutral"
+          size="compact"
           style={{ left: `${resizeSnap.x}px`, top: `${resizeSnap.y}px` }}
         >
           {resizeSnap.label}
-        </div>
+        </Chip>
       ) : null}
       <Panel
         footer={

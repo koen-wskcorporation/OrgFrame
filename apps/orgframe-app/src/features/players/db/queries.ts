@@ -1,33 +1,36 @@
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type { PlayerGuardian, PlayerPickerItem, PlayerProfile } from "@/src/features/players/types";
 
-const playerSelect =
-  "id, owner_user_id, first_name, last_name, preferred_name, date_of_birth, gender, jersey_size, medical_notes, metadata_json, created_at, updated_at";
-const guardianSelect = "id, player_id, guardian_user_id, relationship, can_manage, created_at";
-
-type PlayerRow = {
+type ProfileRow = {
   id: string;
-  owner_user_id: string;
-  first_name: string;
-  last_name: string;
-  preferred_name: string | null;
-  date_of_birth: string | null;
-  gender: string | null;
-  jersey_size: string | null;
-  medical_notes: string | null;
+  person_user_id: string | null;
+  org_id: string;
+  profile_type: "player" | "staff";
+  status: "draft" | "pending_claim" | "active" | "archived";
+  display_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  dob: string | null;
   metadata_json: unknown;
   created_at: string;
   updated_at: string;
 };
 
-type GuardianRow = {
+type LinkRow = {
   id: string;
-  player_id: string;
-  guardian_user_id: string;
-  relationship: string | null;
+  org_id: string;
+  account_user_id: string | null;
+  profile_id: string;
+  relationship_type: "self" | "guardian" | "delegated_manager";
   can_manage: boolean;
+  pending_invite_email: string | null;
+  invite_status: "none" | "pending" | "accepted" | "expired" | "cancelled";
   created_at: string;
 };
+
+const profileSelect =
+  "id, person_user_id, org_id, profile_type, status, display_name, first_name, last_name, dob, metadata_json, created_at, updated_at";
+const linkSelect = "id, org_id, account_user_id, profile_id, relationship_type, can_manage, pending_invite_email, invite_status, created_at";
 
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -37,29 +40,35 @@ function asObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function mapPlayer(row: PlayerRow): PlayerProfile {
+function readString(metadata: Record<string, unknown>, key: string): string | null {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function mapPlayer(row: ProfileRow): PlayerProfile {
+  const metadata = asObject(row.metadata_json);
   return {
     id: row.id,
-    ownerUserId: row.owner_user_id,
-    firstName: row.first_name,
-    lastName: row.last_name,
-    preferredName: row.preferred_name,
-    dateOfBirth: row.date_of_birth,
-    gender: row.gender,
-    jerseySize: row.jersey_size,
-    medicalNotes: row.medical_notes,
-    metadataJson: asObject(row.metadata_json),
+    ownerUserId: row.person_user_id ?? "",
+    firstName: row.first_name ?? row.display_name.split(" ")[0] ?? "",
+    lastName: row.last_name ?? row.display_name.split(" ").slice(1).join(" ") ?? "",
+    preferredName: readString(metadata, "preferredName"),
+    dateOfBirth: row.dob,
+    gender: readString(metadata, "gender"),
+    jerseySize: readString(metadata, "jerseySize"),
+    medicalNotes: readString(metadata, "medicalNotes"),
+    metadataJson: metadata,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
 }
 
-function mapGuardian(row: GuardianRow): PlayerGuardian {
+function mapGuardian(row: LinkRow): PlayerGuardian {
   return {
     id: row.id,
-    playerId: row.player_id,
-    guardianUserId: row.guardian_user_id,
-    relationship: row.relationship,
+    playerId: row.profile_id,
+    guardianUserId: row.account_user_id ?? "",
+    relationship: row.relationship_type,
     canManage: row.can_manage,
     createdAt: row.created_at
   };
@@ -67,10 +76,29 @@ function mapGuardian(row: GuardianRow): PlayerGuardian {
 
 export async function listPlayersForGuardian(userId: string): Promise<PlayerProfile[]> {
   const supabase = await createSupabaseServer();
+  const { data: links, error: linksError } = await supabase
+    .schema("people")
+    .from("profile_links")
+    .select(linkSelect)
+    .eq("account_user_id", userId)
+    .in("relationship_type", ["self", "guardian", "delegated_manager"])
+    .order("created_at", { ascending: true });
+
+  if (linksError) {
+    throw new Error(`Failed to list player links: ${linksError.message}`);
+  }
+
+  const profileIds = Array.from(new Set((links ?? []).map((row) => (row as LinkRow).profile_id)));
+  if (profileIds.length === 0) {
+    return [];
+  }
+
   const { data, error } = await supabase
-    .schema("people").from("players")
-    .select(`${playerSelect}, player_guardians!inner(guardian_user_id)`)
-    .eq("player_guardians.guardian_user_id", userId)
+    .schema("people")
+    .from("profiles")
+    .select(profileSelect)
+    .in("id", profileIds)
+    .eq("profile_type", "player")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
 
@@ -78,7 +106,7 @@ export async function listPlayersForGuardian(userId: string): Promise<PlayerProf
     throw new Error(`Failed to list players: ${error.message}`);
   }
 
-  return (data ?? []).map((row) => mapPlayer(row as PlayerRow));
+  return (data ?? []).map((row) => mapPlayer(row as ProfileRow));
 }
 
 export async function listPlayersForPicker(userId: string): Promise<PlayerPickerItem[]> {
@@ -86,28 +114,51 @@ export async function listPlayersForPicker(userId: string): Promise<PlayerPicker
 
   return players.map((player) => ({
     id: player.id,
-    label: `${player.firstName} ${player.lastName}`,
+    label: `${player.firstName} ${player.lastName}`.trim(),
     subtitle: player.dateOfBirth ? `DOB: ${player.dateOfBirth}` : null
   }));
 }
 
 export async function getPlayerById(playerId: string): Promise<PlayerProfile | null> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.schema("people").from("players").select(playerSelect).eq("id", playerId).maybeSingle();
+  const { data, error } = await supabase.schema("people").from("profiles").select(profileSelect).eq("id", playerId).maybeSingle();
 
   if (error) {
     throw new Error(`Failed to load player: ${error.message}`);
   }
 
-  if (!data) {
+  if (!data || (data as ProfileRow).profile_type !== "player") {
     return null;
   }
 
-  return mapPlayer(data as PlayerRow);
+  return mapPlayer(data as ProfileRow);
+}
+
+async function resolveDefaultOrgIdForUser(userId: string): Promise<string> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .schema("orgs")
+    .from("memberships")
+    .select("org_id, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to resolve organization context: ${error.message}`);
+  }
+
+  if (!data?.org_id) {
+    throw new Error("No organization membership found for this account.");
+  }
+
+  return data.org_id;
 }
 
 export async function createPlayerRecord(input: {
   ownerUserId: string;
+  orgId?: string | null;
   firstName: string;
   lastName: string;
   preferredName: string | null;
@@ -118,37 +169,52 @@ export async function createPlayerRecord(input: {
   metadataJson?: Record<string, unknown>;
 }): Promise<PlayerProfile> {
   const supabase = await createSupabaseServer();
+  const orgId = input.orgId ?? (await resolveDefaultOrgIdForUser(input.ownerUserId));
+
+  const metadata = {
+    ...(input.metadataJson ?? {}),
+    ...(input.preferredName ? { preferredName: input.preferredName } : {}),
+    ...(input.gender ? { gender: input.gender } : {}),
+    ...(input.jerseySize ? { jerseySize: input.jerseySize } : {}),
+    ...(input.medicalNotes ? { medicalNotes: input.medicalNotes } : {})
+  };
+
+  const displayName = `${input.firstName} ${input.lastName}`.trim();
+
   const { data, error } = await supabase
-    .schema("people").from("players")
+    .schema("people")
+    .from("profiles")
     .insert({
-      owner_user_id: input.ownerUserId,
+      person_user_id: input.ownerUserId,
+      org_id: orgId,
+      profile_type: "player",
+      status: "active",
+      display_name: displayName,
       first_name: input.firstName,
       last_name: input.lastName,
-      preferred_name: input.preferredName,
-      date_of_birth: input.dateOfBirth,
-      gender: input.gender,
-      jersey_size: input.jerseySize,
-      medical_notes: input.medicalNotes,
-      metadata_json: input.metadataJson ?? {}
+      dob: input.dateOfBirth,
+      metadata_json: metadata
     })
-    .select(playerSelect)
+    .select(profileSelect)
     .single();
 
   if (error) {
     throw new Error(`Failed to create player: ${error.message}`);
   }
 
-  const player = mapPlayer(data as PlayerRow);
+  const player = mapPlayer(data as ProfileRow);
 
-  await supabase.schema("people").from("player_guardians").upsert(
+  await supabase.schema("people").from("profile_links").upsert(
     {
-      player_id: player.id,
-      guardian_user_id: input.ownerUserId,
-      relationship: "owner",
-      can_manage: true
+      org_id: orgId,
+      account_user_id: input.ownerUserId,
+      profile_id: player.id,
+      relationship_type: "self",
+      can_manage: true,
+      invite_status: "accepted"
     },
     {
-      onConflict: "player_id,guardian_user_id"
+      onConflict: "org_id,account_user_id,profile_id,relationship_type"
     }
   );
 
@@ -167,47 +233,57 @@ export async function updatePlayerRecord(input: {
   metadataJson?: Record<string, unknown>;
 }): Promise<PlayerProfile> {
   const supabase = await createSupabaseServer();
-  const updatePayload: Record<string, unknown> = {
-    first_name: input.firstName,
-    last_name: input.lastName,
-    preferred_name: input.preferredName,
-    date_of_birth: input.dateOfBirth,
-    gender: input.gender,
-    jersey_size: input.jerseySize,
-    medical_notes: input.medicalNotes
-  };
-
-  if (input.metadataJson !== undefined) {
-    updatePayload.metadata_json = input.metadataJson;
+  const current = await getPlayerById(input.playerId);
+  if (!current) {
+    throw new Error("Player not found.");
   }
 
+  const metadata = {
+    ...current.metadataJson,
+    ...(input.metadataJson ?? {}),
+    preferredName: input.preferredName,
+    gender: input.gender,
+    jerseySize: input.jerseySize,
+    medicalNotes: input.medicalNotes
+  };
+
   const { data, error } = await supabase
-    .schema("people").from("players")
-    .update(updatePayload)
+    .schema("people")
+    .from("profiles")
+    .update({
+      display_name: `${input.firstName} ${input.lastName}`.trim(),
+      first_name: input.firstName,
+      last_name: input.lastName,
+      dob: input.dateOfBirth,
+      metadata_json: metadata
+    })
     .eq("id", input.playerId)
-    .select(playerSelect)
+    .eq("profile_type", "player")
+    .select(profileSelect)
     .single();
 
   if (error) {
     throw new Error(`Failed to update player: ${error.message}`);
   }
 
-  return mapPlayer(data as PlayerRow);
+  return mapPlayer(data as ProfileRow);
 }
 
 export async function listPlayerGuardians(playerId: string): Promise<PlayerGuardian[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("people").from("player_guardians")
-    .select(guardianSelect)
-    .eq("player_id", playerId)
+    .schema("people")
+    .from("profile_links")
+    .select(linkSelect)
+    .eq("profile_id", playerId)
+    .in("relationship_type", ["self", "guardian", "delegated_manager"])
     .order("created_at", { ascending: true });
 
   if (error) {
     throw new Error(`Failed to list player guardians: ${error.message}`);
   }
 
-  return (data ?? []).map((row) => mapGuardian(row as GuardianRow));
+  return (data ?? []).map((row) => mapGuardian(row as LinkRow));
 }
 
 export async function linkPlayerGuardianRecord(input: {
@@ -216,25 +292,42 @@ export async function linkPlayerGuardianRecord(input: {
   relationship: string | null;
 }): Promise<PlayerGuardian> {
   const supabase = await createSupabaseServer();
+
+  const { data: playerRow, error: playerError } = await supabase
+    .schema("people")
+    .from("profiles")
+    .select("id, org_id")
+    .eq("id", input.playerId)
+    .single();
+
+  if (playerError) {
+    throw new Error(`Failed to load player profile context: ${playerError.message}`);
+  }
+
+  const relationship = input.relationship === "self" ? "self" : "guardian";
+
   const { data, error } = await supabase
-    .schema("people").from("player_guardians")
+    .schema("people")
+    .from("profile_links")
     .upsert(
       {
-        player_id: input.playerId,
-        guardian_user_id: input.guardianUserId,
-        relationship: input.relationship,
-        can_manage: true
+        org_id: playerRow.org_id,
+        account_user_id: input.guardianUserId,
+        profile_id: input.playerId,
+        relationship_type: relationship,
+        can_manage: true,
+        invite_status: "accepted"
       },
       {
-        onConflict: "player_id,guardian_user_id"
+        onConflict: "org_id,account_user_id,profile_id,relationship_type"
       }
     )
-    .select(guardianSelect)
+    .select(linkSelect)
     .single();
 
   if (error) {
     throw new Error(`Failed to link guardian: ${error.message}`);
   }
 
-  return mapGuardian(data as GuardianRow);
+  return mapGuardian(data as LinkRow);
 }

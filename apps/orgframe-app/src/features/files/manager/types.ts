@@ -73,9 +73,16 @@ export type FileManagerFile = {
     zoom: number;
   };
   dominantColor?: string;
+  uploaderUserId: string | null;
   createdAt: string;
   updatedAt: string;
   metadataJson: Record<string, unknown>;
+};
+
+export type FileManagerPerson = {
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
 };
 
 export type FileManagerUploadDefaults = {
@@ -106,6 +113,9 @@ export type FileManagerSnapshot = {
   folders: FileManagerFolder[];
   files: FileManagerFile[];
   systemFolderIds: Record<string, string>;
+  peopleByUserId: Record<string, FileManagerPerson>;
+  organizationScopeIconUrl: string | null;
+  personalScopeAvatarUrl: string | null;
 };
 
 export type FileManagerLoadInput = {

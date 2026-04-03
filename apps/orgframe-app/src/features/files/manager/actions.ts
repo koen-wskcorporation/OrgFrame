@@ -3,8 +3,11 @@
 import { z } from "zod";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { requireAuth } from "@/src/features/core/auth/server/requireAuth";
+import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
+import { getSignedProfileAvatarUrl } from "@/src/features/core/account/storage/getSignedProfileAvatarUrl";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { canReadAnyOrgFiles, canReadAccessTag, canWriteAnyOrgFiles, canWriteAccessTag } from "@/src/features/files/manager/access";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 import {
   createFolderRecord,
   deleteFileRecord,
@@ -23,6 +26,7 @@ import {
 import type {
   FileManagerAccessTag,
   FileManagerEntityType,
+  FileManagerPerson,
   FileManagerLoadInput,
   FileManagerMutationInput,
   FileManagerScope,
@@ -180,6 +184,76 @@ function canWriteFolderForScope(scope: ScopeContext, accessTag: FileManagerAcces
   return canWriteAccessTag(scope.membershipPermissions, accessTag);
 }
 
+async function resolvePeopleByUserId(userIds: string[]) {
+  if (userIds.length === 0) {
+    return {};
+  }
+
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .schema("people").from("users")
+    .select("user_id, first_name, last_name, avatar_path")
+    .in("user_id", userIds);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const peopleByUserId: Record<string, FileManagerPerson> = {};
+  await Promise.all(
+    (data ?? []).map(async (row) => {
+      const userId = String(row.user_id ?? "");
+      if (!userId) {
+        return;
+      }
+
+      const firstName = typeof row.first_name === "string" ? row.first_name.trim() : "";
+      const lastName = typeof row.last_name === "string" ? row.last_name.trim() : "";
+      const name = `${firstName} ${lastName}`.trim() || `User ${userId.slice(0, 8)}`;
+      const avatarPath = typeof row.avatar_path === "string" ? row.avatar_path : null;
+      const avatarUrl = avatarPath ? await getSignedProfileAvatarUrl(avatarPath, 60 * 10).catch(() => null) : null;
+
+      peopleByUserId[userId] = {
+        userId,
+        name,
+        avatarUrl
+      };
+    })
+  );
+
+  for (const userId of userIds) {
+    if (!peopleByUserId[userId]) {
+      peopleByUserId[userId] = {
+        userId,
+        name: `User ${userId.slice(0, 8)}`,
+        avatarUrl: null
+      };
+    }
+  }
+
+  return peopleByUserId;
+}
+
+async function resolvePersonalScopeAvatarUrl(userId: string) {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .schema("people").from("users")
+    .select("avatar_path")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
+  const avatarPath = typeof data?.avatar_path === "string" ? data.avatar_path : null;
+  if (!avatarPath) {
+    return null;
+  }
+
+  return getSignedProfileAvatarUrl(avatarPath, 60 * 10).catch(() => null);
+}
+
 export async function loadFileManagerSnapshotAction(input: FileManagerLoadInput): Promise<FileManagerActionResult<FileManagerSnapshot>> {
   try {
     const parsed = loadSchema.parse(input);
@@ -224,13 +298,37 @@ export async function loadFileManagerSnapshotAction(input: FileManagerLoadInput)
     });
 
     const readableFiles = files.filter((file) => canReadFolderForScope(scope, file.accessTag));
+    const peopleByUserId = await resolvePeopleByUserId(
+      Array.from(
+        new Set(
+          readableFiles
+            .flatMap((file) => {
+              const metadata = file.metadataJson ?? {};
+              const createdByUserId = typeof metadata.createdByUserId === "string" ? metadata.createdByUserId : null;
+              const lastEditedByUserId = typeof metadata.lastEditedByUserId === "string" ? metadata.lastEditedByUserId : null;
+              return [file.uploaderUserId, createdByUserId, lastEditedByUserId].filter((value): value is string => Boolean(value));
+            })
+            .filter((value) => value.length > 0)
+        )
+      )
+    );
+
+    let organizationScopeIconUrl: string | null = null;
+    if (parsed.orgSlug) {
+      const orgForIcon = await getOrgAuthContext(parsed.orgSlug).catch(() => null);
+      organizationScopeIconUrl = getOrgAssetPublicUrl(orgForIcon?.branding.iconPath ?? null);
+    }
+    const personalScopeAvatarUrl = await resolvePersonalScopeAvatarUrl(scope.userId);
 
     return {
       ok: true,
       data: {
         folders: readableFolders,
         files: readableFiles,
-        systemFolderIds: resolveSystemFolderIds(readableFolders)
+        systemFolderIds: resolveSystemFolderIds(readableFolders),
+        peopleByUserId,
+        organizationScopeIconUrl,
+        personalScopeAvatarUrl
       }
     };
   } catch (error) {
@@ -384,7 +482,8 @@ export async function mutateFileManagerAction(input: FileManagerMutationInput): 
 
       const renamed = await renameFileRecord({
         fileId: parsed.fileId,
-        name: parsed.name
+        name: parsed.name,
+        userId: scope.userId
       });
 
       return {
@@ -414,7 +513,8 @@ export async function mutateFileManagerAction(input: FileManagerMutationInput): 
 
       const moved = await moveFileRecord({
         fileId: parsed.fileId,
-        folderId: parsed.folderId
+        folderId: parsed.folderId,
+        userId: scope.userId
       });
 
       return {

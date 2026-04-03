@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { extractOrgSlugFromSubdomain, getTenantBaseHosts, normalizeHost } from "@/src/shared/domains/customDomains";
 
 type SupabaseCookieOptions = {
   domain?: string;
@@ -16,13 +17,8 @@ export type SupabaseCookieToSet = {
   options?: SupabaseCookieOptions;
 };
 
-function getSharedAuthCookieDomain() {
-  const raw = process.env.AUTH_COOKIE_DOMAIN;
-  if (typeof raw !== "string") {
-    return null;
-  }
-
-  const trimmed = raw.trim().toLowerCase();
+function normalizeCookieDomain(value: string) {
+  const trimmed = value.trim().toLowerCase();
   if (!trimmed) {
     return null;
   }
@@ -35,6 +31,67 @@ function getSharedAuthCookieDomain() {
   return normalized || null;
 }
 
+function isIpHost(host: string) {
+  if (host === "127.0.0.1" || host === "::1") {
+    return true;
+  }
+
+  return /^\d+\.\d+\.\d+\.\d+$/.test(host);
+}
+
+function looksLikeTenantSubdomain(host: string, candidates: string[]) {
+  for (const candidate of candidates) {
+    if (candidate === host) {
+      continue;
+    }
+
+    if (extractOrgSlugFromSubdomain(host, candidate)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getDefaultSharedCookieDomain(requestHost: string | null | undefined) {
+  const host = normalizeHost(requestHost);
+  if (!host || isIpHost(host)) {
+    return null;
+  }
+
+  const tenantBaseHosts = Array.from(getTenantBaseHosts());
+  const candidates = tenantBaseHosts.filter((candidate) => {
+    if (!candidate || isIpHost(candidate)) {
+      return false;
+    }
+
+    return !looksLikeTenantSubdomain(candidate, tenantBaseHosts);
+  });
+
+  let bestMatch: string | null = null;
+
+  for (const candidate of candidates) {
+    if (host !== candidate && !host.endsWith(`.${candidate}`)) {
+      continue;
+    }
+
+    if (!bestMatch || candidate.length > bestMatch.length) {
+      bestMatch = candidate;
+    }
+  }
+
+  return bestMatch;
+}
+
+function getSharedAuthCookieDomain(requestHost: string | null | undefined) {
+  const explicit = normalizeCookieDomain(process.env.AUTH_COOKIE_DOMAIN ?? "");
+  if (explicit) {
+    return explicit;
+  }
+
+  return getDefaultSharedCookieDomain(requestHost);
+}
+
 function getForwardedProtoValue(value: string | null) {
   return value?.split(",")[0]?.trim().toLowerCase();
 }
@@ -44,8 +101,8 @@ export function isHttpsRequest(request: Pick<NextRequest, "headers" | "nextUrl">
   return forwardedProto === "https" || request.nextUrl.protocol === "https:";
 }
 
-export function normalizeSupabaseCookieOptions(options: SupabaseCookieOptions | undefined, isHttps: boolean) {
-  const sharedCookieDomain = getSharedAuthCookieDomain();
+export function normalizeSupabaseCookieOptions(options: SupabaseCookieOptions | undefined, isHttps: boolean, requestHost?: string | null) {
+  const sharedCookieDomain = getSharedAuthCookieDomain(requestHost);
   const normalized: SupabaseCookieOptions = {
     ...options,
     path: "/",

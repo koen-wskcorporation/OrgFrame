@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { BrandingCssVarsBridge } from "@/src/features/core/layout/components/BrandingCssVarsBridge";
 import { OrgHeader } from "@/src/features/core/layout/components/OrgHeader";
+import { OrgShareProvider } from "@/src/features/org-share/OrgShareProvider";
 import { applyBrandingVars } from "@/src/shared/branding/applyBrandingVars";
 import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
 import { shouldShowBranchHeaders } from "@/src/shared/env/branchVisibility";
@@ -67,7 +68,9 @@ export default async function OrgLayout({
           toolAvailability={orgRequest.org.toolAvailability}
         />
       ) : null}
-      <div className="org-layout-content">{children}</div>
+      <OrgShareProvider orgSlug={orgRequest.org.orgSlug}>
+        <div className="org-layout-content">{children}</div>
+      </OrgShareProvider>
     </div>
   );
 }

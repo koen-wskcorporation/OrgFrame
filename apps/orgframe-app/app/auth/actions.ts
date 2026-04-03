@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
+import { getPlatformHost, normalizeHost } from "@/src/shared/domains/customDomains";
 
 function cleanValue(value: FormDataEntryValue | null) {
   if (typeof value !== "string") {
@@ -194,16 +195,13 @@ export async function lookupAuthAccountAction(formData: FormData): Promise<AuthA
 async function getRequestOrigin() {
   const headerStore = await headers();
   const forwardedProto = headerStore.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
-  const forwardedHost = headerStore.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = forwardedHost || headerStore.get("host");
-
-  if (host) {
-    const protocol = forwardedProto === "https" || forwardedProto === "http" ? forwardedProto : process.env.NODE_ENV === "production" ? "https" : "http";
-    return `${protocol}://${host}`;
+  const protocol = forwardedProto === "https" || forwardedProto === "http" ? forwardedProto : process.env.NODE_ENV === "production" ? "https" : "http";
+  const canonicalHost = normalizeHost(getPlatformHost());
+  if (canonicalHost) {
+    return `${protocol}://${canonicalHost}`;
   }
 
-  const fallbackOrigin = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://localhost:3000";
-  return fallbackOrigin.replace(/\/+$/, "");
+  return (process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://orgframe.test:3000").replace(/\/+$/, "");
 }
 
 export async function signInAction(formData: FormData) {

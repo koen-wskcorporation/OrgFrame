@@ -5,14 +5,10 @@ import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermiss
 import { requireOrgToolEnabled } from "@/src/shared/org/requireOrgToolEnabled";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { getSupabasePublicConfig } from "@/src/shared/supabase/config";
-import { importProfiles, type ConflictRecord, type ImportProfileKey, type ImportRunListItem, type ImportRunStatus } from "@/src/features/imports/contracts";
-import { getImportProfile } from "@/src/features/imports/profiles";
-
-const profileSchema = z.enum(importProfiles);
+import { type ConflictRecord, type ImportProfileKey, type ImportRunListItem, type ImportRunStatus } from "@/src/features/imports/contracts";
 
 const startRunSchema = z.object({
   orgSlug: z.string().trim().min(1),
-  profile: profileSchema,
   fileId: z.string().uuid(),
   filePath: z.string().trim().min(1),
   fileName: z.string().trim().min(1),
@@ -24,7 +20,7 @@ const startRunSchema = z.object({
 const runActionSchema = z.object({
   orgSlug: z.string().trim().min(1),
   runId: z.string().uuid(),
-  batchSize: z.number().int().min(1).max(500).default(200)
+  batchSize: z.number().int().min(1).max(500).default(25)
 });
 
 const listRunSchema = z.object({
@@ -83,13 +79,22 @@ function asStringOrNull(value: unknown) {
 
 async function getSessionAccessToken() {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.auth.getSession();
-
-  if (error || !data.session?.access_token) {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
     throw new Error("Missing auth session for import action.");
   }
 
-  return data.session.access_token;
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (!sessionError && sessionData.session?.access_token) {
+    return sessionData.session.access_token;
+  }
+
+  const { data: refreshedData, error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError || !refreshedData.session?.access_token) {
+    throw new Error("Missing auth session for import action.");
+  }
+
+  return refreshedData.session.access_token;
 }
 
 async function invokeEdgeFunction(name: "file-processing" | "ai-conflict-resolver" | "database-writer", accessToken: string, payload: EdgePayload) {
@@ -106,13 +111,23 @@ async function invokeEdgeFunction(name: "file-processing" | "ai-conflict-resolve
     cache: "no-store"
   });
 
-  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const rawText = await response.text();
+  const body = (() => {
+    try {
+      return JSON.parse(rawText) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  })();
 
   if (!response.ok) {
-    throw new Error(asString(body.error, `Edge function ${name} failed.`));
+    const fromJson = asString(body.error);
+    const fromText = rawText.trim();
+    const detail = fromJson || fromText;
+    throw new Error(detail || `Edge function ${name} failed (${response.status}).`);
   }
 
-  return body;
+  return body as Record<string, unknown>;
 }
 
 export async function startImportRunAction(input: z.input<typeof startRunSchema>) {
@@ -120,15 +135,13 @@ export async function startImportRunAction(input: z.input<typeof startRunSchema>
   const org = await requireOrgPermission(payload.orgSlug, "org.manage.read");
   requireOrgToolEnabled(org.toolAvailability, "imports");
 
-  getImportProfile(payload.profile);
-
   const token = await getSessionAccessToken();
 
   return invokeEdgeFunction("file-processing", token, {
     action: "start_run",
     org_id: org.orgId,
     org_slug: org.orgSlug,
-    profile: payload.profile,
+    profile: "people_roster",
     file: {
       id: payload.fileId,
       bucket: payload.bucket,
@@ -182,6 +195,34 @@ export async function applyImportBatchAction(input: z.input<typeof runActionSche
     org_id: org.orgId,
     run_id: payload.runId,
     batch_size: payload.batchSize
+  });
+}
+
+export async function cancelImportRunAction(input: z.input<typeof runActionSchema>) {
+  const payload = runActionSchema.pick({ orgSlug: true, runId: true }).parse(input);
+  const org = await requireOrgPermission(payload.orgSlug, "org.manage.read");
+  requireOrgToolEnabled(org.toolAvailability, "imports");
+
+  const token = await getSessionAccessToken();
+
+  return invokeEdgeFunction("database-writer", token, {
+    action: "cancel_run",
+    org_id: org.orgId,
+    run_id: payload.runId
+  });
+}
+
+export async function undoImportRunAction(input: z.input<typeof runActionSchema>) {
+  const payload = runActionSchema.pick({ orgSlug: true, runId: true }).parse(input);
+  const org = await requireOrgPermission(payload.orgSlug, "org.manage.read");
+  requireOrgToolEnabled(org.toolAvailability, "imports");
+
+  const token = await getSessionAccessToken();
+
+  return invokeEdgeFunction("database-writer", token, {
+    action: "undo_run",
+    org_id: org.orgId,
+    run_id: payload.runId
   });
 }
 

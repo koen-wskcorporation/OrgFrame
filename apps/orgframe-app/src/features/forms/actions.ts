@@ -987,6 +987,30 @@ export async function submitFormResponseAction(input: z.input<typeof submitFormS
       return asError("Registration did not complete. Please try again.");
     }
 
+    if (user) {
+      const serviceRole = createOptionalSupabaseServiceRoleClient();
+      if (serviceRole) {
+        const { data: existingMembership, error: membershipError } = await serviceRole
+          .schema("orgs")
+          .from("memberships")
+          .select("id")
+          .eq("org_id", org.orgId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (!membershipError && !existingMembership) {
+          await serviceRole
+            .schema("orgs")
+            .from("memberships")
+            .insert({
+              org_id: org.orgId,
+              user_id: user.id,
+              role: "participant"
+            });
+        }
+      }
+    }
+
     revalidatePath(`/${payload.orgSlug}/register/${payload.formSlug}`);
     await triggerGoogleSheetSyncBestEffort(org.orgId, form.id);
 

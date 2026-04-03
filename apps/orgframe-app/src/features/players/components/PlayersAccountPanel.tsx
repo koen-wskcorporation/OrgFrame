@@ -3,9 +3,8 @@
 import { Pencil, Plus } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { AssetTile } from "@orgframe/ui/primitives/asset-tile";
+import { Badge } from "@orgframe/ui/primitives/badge";
 import { Button } from "@orgframe/ui/primitives/button";
-import { CalendarPicker } from "@orgframe/ui/primitives/calendar-picker";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
@@ -14,8 +13,10 @@ import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { Select } from "@orgframe/ui/primitives/select";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { PersonCard } from "@orgframe/ui/primitives/person-card";
 import { createPlayerAction, linkGuardianByEmailAction, updatePlayerAction } from "@/src/features/players/actions";
 import type { PlayerGuardian, PlayerProfile } from "@/src/features/players/types";
+import { ProfileCreatePopup, type ProfileCreatePayload } from "@/src/features/people/components/ProfileCreatePopup";
 
 type PlayerWithGuardians = {
   player: PlayerProfile;
@@ -89,10 +90,7 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
   const [isLinkGuardianOpen, setIsLinkGuardianOpen] = useState(false);
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
 
-  const [createDraftState, setCreateDraftState] = useState<PlayerDraft>(() => createDraft());
   const [editDraftState, setEditDraftState] = useState<PlayerDraft>(() => createDraft());
-  const [createBirthCertificatePath, setCreateBirthCertificatePath] = useState("");
-  const [createGenderMode, setCreateGenderMode] = useState<string>("");
   const [editGenderMode, setEditGenderMode] = useState<string>("");
   const [guardianLinkPlayerId, setGuardianLinkPlayerId] = useState<string | null>(null);
   const [guardianLinkEmail, setGuardianLinkEmail] = useState("");
@@ -132,9 +130,6 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
       return;
     }
     setIsCreateOpen(false);
-    setCreateDraftState(createDraft());
-    setCreateBirthCertificatePath("");
-    setCreateGenderMode("");
   }
 
   function closeEdit() {
@@ -180,13 +175,12 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
     );
   }
 
-  function handleCreatePlayer(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
+  function handleCreateProfile(payload: ProfileCreatePayload) {
     startCreating(async () => {
       const result = await createPlayerAction({
-        ...createDraftState,
-        birthCertificatePath: createBirthCertificatePath
+        firstName: payload.firstName ?? payload.displayName.split(" ")[0] ?? "",
+        lastName: payload.lastName ?? payload.displayName.split(" ").slice(1).join(" ") ?? "Profile",
+        dateOfBirth: payload.dob
       });
 
       if (!result.ok) {
@@ -327,123 +321,79 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
         renderItem={({ item }) => {
           const myGuardianLink = item.guardians.find((guardian) => guardian.guardianUserId === currentUserId);
           const relationshipToMe = myGuardianLink?.relationship ?? "Unspecified";
+          const isSelf = Boolean(myGuardianLink && myGuardianLink.relationship === "self");
 
           return (
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-3">
-                  <CardTitle>
-                    {item.player.firstName} {item.player.lastName}
-                  </CardTitle>
-                  <Button onClick={() => openEdit(item.player)} type="button" variant="secondary">
-                    <Pencil className="h-4 w-4" />
-                    Edit
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
+            <PersonCard
+              actions={
+                <Button onClick={() => openEdit(item.player)} type="button" variant="secondary">
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
+              }
+              badges={[
+                <Badge key="type" variant="neutral">
+                  Player Profile
+                </Badge>,
+                ...(isSelf
+                  ? [
+                      <Badge key="you" variant="success">
+                        You
+                      </Badge>
+                    ]
+                  : [])
+              ]}
+              name={`${item.player.firstName} ${item.player.lastName}`}
+              subtitle={item.player.preferredName ? `Preferred: ${item.player.preferredName}` : "Linked profile"}
+              sections={[
+                {
+                  key: "identity",
+                  title: "Identity",
+                  content: (
+                    <div className="space-y-2 text-sm">
+                      <p>
+                        <span className="font-semibold">DOB:</span> {item.player.dateOfBirth ?? "Not set"}
+                      </p>
+                      <p>
+                        <span className="font-semibold">Gender:</span> {item.player.gender ?? "Not set"}
+                      </p>
+                    </div>
+                  )
+                },
+                {
+                  key: "relationships",
+                  title: "Relationships",
+                  content: (
+                    <div className="space-y-2 text-sm">
+                      <p>
+                        <span className="font-semibold">Relationship to you:</span> {relationshipToMe}
+                      </p>
+                      <p>
+                        <span className="font-semibold">Guardians linked:</span> {item.guardians.length}
+                      </p>
+                    </div>
+                  )
+                }
+              ]}
+            >
                 <div className="space-y-2 text-sm">
-                  <p>
-                    <span className="font-semibold">DOB:</span> {item.player.dateOfBirth ?? "Not set"}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Relationship to you:</span> {relationshipToMe}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Gender:</span> {item.player.gender ?? "Not set"}
-                  </p>
+                  <p className="text-xs text-text-muted">Profile ID: {item.player.id}</p>
                 </div>
-              </CardContent>
-            </Card>
+            </PersonCard>
           );
         }}
       />
 
-      <CreateModal
-        footer={
-          <>
-            <Button disabled={isCreating} onClick={closeCreate} type="button" variant="ghost">
-              Cancel
-            </Button>
-            <Button disabled={isCreating} form="create-player-form" loading={isCreating} type="submit">
-              {isCreating ? "Saving..." : "Create player"}
-            </Button>
-          </>
-        }
+      <ProfileCreatePopup
+        allowedProfileTypes={["player"]}
+        canSetAccountUserId={false}
+        loading={isCreating}
         onClose={closeCreate}
+        onSubmit={handleCreateProfile}
         open={isCreateOpen}
         subtitle="Create a new player profile for registration."
-        title="Add player"
-      >
-        <form className="grid gap-3 md:grid-cols-2" id="create-player-form" onSubmit={handleCreatePlayer}>
-          <FormField label="First name">
-            <Input
-              onChange={(event) => setCreateDraftState((current) => ({ ...current, firstName: event.target.value }))}
-              required
-              value={createDraftState.firstName}
-            />
-          </FormField>
-          <FormField label="Last name">
-            <Input
-              onChange={(event) => setCreateDraftState((current) => ({ ...current, lastName: event.target.value }))}
-              required
-              value={createDraftState.lastName}
-            />
-          </FormField>
-          <FormField label="Date of birth">
-            <CalendarPicker onChange={(value) => setCreateDraftState((current) => ({ ...current, dateOfBirth: value }))} value={createDraftState.dateOfBirth} />
-          </FormField>
-          <FormField label="Gender">
-            <Select
-              onChange={(event) => {
-                const mode = event.target.value;
-                setCreateGenderMode(mode);
-
-                if (mode === "other" || mode === "") {
-                  if (mode === "") {
-                    setCreateDraftState((current) => ({ ...current, gender: "" }));
-                  }
-                  return;
-                }
-
-                setCreateDraftState((current) => ({ ...current, gender: mode }));
-              }}
-              options={GENDER_PRESET_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
-              value={createGenderMode}
-            />
-          </FormField>
-          {createGenderMode === "other" ? (
-            <FormField label="Gender (other)">
-              <Input onChange={(event) => setCreateDraftState((current) => ({ ...current, gender: event.target.value }))} value={createDraftState.gender} />
-            </FormField>
-          ) : null}
-          <FormField className="md:col-span-2" label="Birth certificate (optional)">
-            <AssetTile
-              constraints={{
-                accept: ".pdf,image/*",
-                maxSizeMB: 10,
-                aspect: "free"
-              }}
-              emptyLabel="Upload birth certificate"
-              fit="contain"
-              kind="account"
-              onChange={(asset) => setCreateBirthCertificatePath(asset.path)}
-              onRemove={() => setCreateBirthCertificatePath("")}
-              previewAlt="Birth certificate upload"
-              purpose="birth-certificate"
-              specificationText="PDF, JPG, PNG, WEBP, HEIC, or HEIF"
-              title="Birth certificate"
-            />
-          </FormField>
-          <FormField className="md:col-span-2" label="Medical notes">
-            <Textarea
-              className="min-h-[90px]"
-              onChange={(event) => setCreateDraftState((current) => ({ ...current, medicalNotes: event.target.value }))}
-              value={createDraftState.medicalNotes}
-            />
-          </FormField>
-        </form>
-      </CreateModal>
+        title="Add profile"
+      />
 
       <ContextPanel
         footer={

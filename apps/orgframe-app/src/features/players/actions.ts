@@ -5,6 +5,7 @@ import { z } from "zod";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { requireAuth } from "@/src/features/core/auth/server/requireAuth";
 import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
+import { getOrgPublicContext } from "@/src/shared/org/getOrgPublicContext";
 import {
   createPlayerRecord,
   getPlayerById,
@@ -19,6 +20,7 @@ import type { PlayerGuardian, PlayerProfile } from "@/src/features/players/types
 const textSchema = z.string().trim();
 
 const createPlayerSchema = z.object({
+  orgSlug: textSchema.min(1).optional(),
   firstName: textSchema.min(1).max(80),
   lastName: textSchema.min(1).max(80),
   preferredName: textSchema.max(80).optional(),
@@ -139,8 +141,10 @@ export async function createPlayerAction(input: z.input<typeof createPlayerSchem
   try {
     const user = await requireAuth();
     const payload = parsed.data;
+    const org = payload.orgSlug ? await getOrgPublicContext(payload.orgSlug) : null;
     const player = await createPlayerRecord({
       ownerUserId: user.id,
+      orgId: org?.orgId ?? null,
       firstName: payload.firstName,
       lastName: payload.lastName,
       preferredName: normalizeOptional(payload.preferredName),

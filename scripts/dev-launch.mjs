@@ -30,6 +30,7 @@ function isPortFree(port) {
 
 const preferredPort = 3000;
 const fallbackPort = 3001;
+const appDevHost = "orgframe.test";
 const preferredFree = await isPortFree(preferredPort);
 const fallbackFree = await isPortFree(fallbackPort);
 
@@ -110,11 +111,13 @@ function shutdownOthers(exceptPid = null) {
 for (const target of rawTargets) {
   const selectedPort = portByTarget.get(target);
   const workspace = target === "app" ? "orgframe-app" : "orgframe-web";
-  console.log(`Starting ${workspace} on port ${selectedPort}...`);
+  const hostMessage = target === "app" ? ` at http://${appDevHost}:${selectedPort}` : ` on port ${selectedPort}`;
+  console.log(`Starting ${workspace}${hostMessage}...`);
+  const extraArgs = ["--port", String(selectedPort)];
 
   const child = spawn(
     "npm",
-    ["run", "dev", "--workspace", workspace, "--", "--port", String(selectedPort)],
+    ["run", "dev", "--workspace", workspace, "--", ...extraArgs],
     {
       stdio: "inherit",
       env: process.env

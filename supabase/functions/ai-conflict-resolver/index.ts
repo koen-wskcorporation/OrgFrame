@@ -70,7 +70,12 @@ async function requireAuthorizedClient(request: Request, orgId: string) {
     return { error: json({ error: "Missing Authorization header." }, 401) } as const;
   }
 
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const publishableKey = request.headers.get("apikey")?.trim() || SUPABASE_ANON_KEY;
+  if (!publishableKey) {
+    return { error: json({ error: "Missing API key." }, 500) } as const;
+  }
+
+  const userClient = createClient(SUPABASE_URL, publishableKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
@@ -225,6 +230,20 @@ Deno.serve(async (request: Request) => {
     const auth = await requireAuthorizedClient(request, payload.org_id);
     if ("error" in auth) {
       return auth.error;
+    }
+
+    const { data: run } = await auth.service
+      .schema("imports").from("import_runs")
+      .select("id, status")
+      .eq("id", payload.run_id)
+      .eq("org_id", payload.org_id)
+      .maybeSingle();
+
+    if (run?.status === "cancelled" || run?.status === "undone") {
+      return json({
+        ok: true,
+        status: run.status
+      });
     }
 
     const batchSize = Math.max(1, Math.min(500, payload.batch_size ?? 100));

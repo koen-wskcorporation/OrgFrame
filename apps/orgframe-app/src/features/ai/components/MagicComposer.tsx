@@ -4,12 +4,13 @@ import { useEffect, useRef, type RefObject } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { ChipButton } from "@orgframe/ui/primitives/chip";
+import { Input } from "@orgframe/ui/primitives/input";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { cn } from "@orgframe/ui/primitives/utils";
 
 type MagicComposerProps = {
   inputId?: string;
-  inputRef?: RefObject<HTMLTextAreaElement | null>;
+  inputRef?: RefObject<HTMLTextAreaElement | HTMLInputElement | null>;
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -34,7 +35,7 @@ export function MagicComposer({
   compact = false,
   className
 }: MagicComposerProps) {
-  const localRef = useRef<HTMLTextAreaElement | null>(null);
+  const localRef = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
   const textareaRef = inputRef ?? localRef;
 
   useEffect(() => {
@@ -44,7 +45,7 @@ export function MagicComposer({
     }
 
     if (compact) {
-      element.style.height = "36px";
+      element.style.removeProperty("height");
       return;
     }
 
@@ -54,37 +55,73 @@ export function MagicComposer({
   }, [compact, value]);
 
   return (
-    <div className={cn("rounded-card border bg-surface shadow-sm", className)}>
-      <div className="relative">
-        <Sparkles className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-text-muted" />
-        <Textarea
-          className={cn("resize-none border-0 bg-transparent pl-9 pr-12", compact ? "h-9 min-h-[36px] py-1.5" : "min-h-[40px] py-2")}
-          disabled={disabled || loading}
-          id={inputId}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              onSubmit();
-            }
-          }}
-          placeholder={placeholder}
-          ref={textareaRef}
-          rows={1}
-          value={value}
-        />
-        <Button
-          className={cn("absolute right-2 h-7 w-7 rounded-full p-0", compact ? "top-1/2 -translate-y-1/2" : "bottom-2")}
-          disabled={!value.trim()}
-          loading={loading}
-          onClick={onSubmit}
-          size="sm"
-          type="button"
-          variant="secondary"
-        >
-          <ArrowUp className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+    <div className={cn(compact ? "relative" : "rounded-card border bg-surface shadow-sm", className)}>
+      {compact ? (
+        <div className="relative">
+          <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+          <Input
+            className="h-10 rounded-full bg-surface pl-9 pr-12 shadow-sm"
+            disabled={disabled || loading}
+            id={inputId}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                onSubmit();
+              }
+            }}
+            placeholder={placeholder}
+            ref={(node) => {
+              textareaRef.current = node;
+            }}
+            value={value}
+          />
+          <Button
+            className="absolute right-1.5 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full p-0"
+            disabled={!value.trim()}
+            loading={loading}
+            onClick={onSubmit}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ) : (
+        <div className="relative">
+          <Sparkles className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-text-muted" />
+          <Textarea
+            className="min-h-[40px] resize-none border-0 bg-transparent py-2 pl-9 pr-12"
+            disabled={disabled || loading}
+            id={inputId}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                onSubmit();
+              }
+            }}
+            placeholder={placeholder}
+            ref={(node) => {
+              textareaRef.current = node;
+            }}
+            rows={1}
+            value={value}
+          />
+          <Button
+            className="absolute bottom-2 right-2 h-7 w-7 rounded-full p-0"
+            disabled={!value.trim()}
+            loading={loading}
+            onClick={onSubmit}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
 
       {!compact && suggestions.length > 0 ? (
         <div className="flex flex-wrap gap-1.5 border-t border-border/70 px-2.5 py-2">

@@ -1,7 +1,7 @@
 "use client";
 
-import { Building2, ChevronDown, Home, LogOut, Monitor, Moon, Plus, Settings2, Sun } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { Bell, Building2, ChevronDown, Home, LogOut, Monitor, Moon, Plus, Settings2, Sun } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { buttonVariants } from "@orgframe/ui/primitives/button";
 import { CreateOrganizationDialog } from "@/src/features/core/dashboard/components/CreateOrganizationDialog";
@@ -28,6 +28,46 @@ type AccountMenuProps = {
   signOutAction: (formData: FormData) => Promise<void>;
   tenantBaseOrigin?: string | null;
 };
+
+type HeaderNotification = {
+  id: string;
+  orgId: string;
+  orgName: string | null;
+  orgSlug: string | null;
+  itemType: string;
+  title: string;
+  body: string | null;
+  href: string | null;
+  isRead: boolean;
+  createdAt: string;
+};
+
+function formatRelativeTime(isoValue: string) {
+  const createdAt = new Date(isoValue);
+  if (Number.isNaN(createdAt.getTime())) {
+    return "Just now";
+  }
+
+  const deltaSeconds = Math.round((createdAt.getTime() - Date.now()) / 1000);
+  const ranges = [
+    { unit: "year", seconds: 60 * 60 * 24 * 365 },
+    { unit: "month", seconds: 60 * 60 * 24 * 30 },
+    { unit: "day", seconds: 60 * 60 * 24 },
+    { unit: "hour", seconds: 60 * 60 },
+    { unit: "minute", seconds: 60 },
+    { unit: "second", seconds: 1 }
+  ] as const;
+
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  for (const range of ranges) {
+    if (Math.abs(deltaSeconds) >= range.seconds || range.unit === "second") {
+      const value = Math.round(deltaSeconds / range.seconds);
+      return formatter.format(value, range.unit);
+    }
+  }
+
+  return "Just now";
+}
 
 function initialsFromName(firstName?: string | null, lastName?: string | null, email?: string | null) {
   const first = firstName?.trim().charAt(0) ?? "";
@@ -202,7 +242,12 @@ export function AccountMenu({
 }: AccountMenuProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<HeaderNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const notificationsButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const accountLabel = email ?? "Signed-in account";
   const fullName = useMemo(() => {
@@ -273,26 +318,155 @@ export function AccountMenu({
     { mode: "dark", icon: Moon, label: "Dark mode" },
     { mode: "auto", icon: Monitor, label: "Auto theme" }
   ];
+  const secondaryAccountLabel = accountLabel;
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    setNotificationsLoading(true);
+    void (async () => {
+      try {
+        const response = await fetch("/api/account/notifications", {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal
+        });
+
+        if (!response.ok) {
+          setNotifications([]);
+          setUnreadCount(0);
+          setNotificationsLoading(false);
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          authenticated: boolean;
+          unreadCount?: number;
+          notifications?: HeaderNotification[];
+        };
+
+        setNotifications(payload.notifications ?? []);
+        setUnreadCount(payload.unreadCount ?? 0);
+        setNotificationsLoading(false);
+      } catch {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setNotifications([]);
+        setUnreadCount(0);
+        setNotificationsLoading(false);
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [pathname]);
 
   return (
-    <div className="relative">
+    <div className="relative flex items-center gap-2">
+      <button
+        aria-expanded={notificationsOpen}
+        aria-haspopup="menu"
+        className={cn(
+          buttonVariants({ size: "md", variant: "ghost" }),
+          "relative h-10 w-10 rounded-full border border-border/70 bg-surface p-0 text-text shadow-sm hover:bg-surface-muted"
+        )}
+        onClick={() => {
+          setNotificationsOpen((prev) => !prev);
+          setOpen(false);
+        }}
+        ref={notificationsButtonRef}
+        type="button"
+      >
+        <Bell className="h-4 w-4" />
+        {unreadCount > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold leading-none text-accent-foreground">
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        ) : null}
+      </button>
+
+      <Popover
+        anchorRef={notificationsButtonRef}
+        className="w-[25rem] overflow-hidden rounded-[22px] border border-border/70 bg-surface/95 p-0 shadow-floating backdrop-blur-xl"
+        onClose={() => setNotificationsOpen(false)}
+        open={notificationsOpen}
+      >
+        <div className="flex items-center justify-between border-b border-border/70 bg-gradient-to-br from-surface to-surface-muted/35 p-4">
+          <div>
+            <p className="text-sm font-semibold text-text">Notifications</p>
+            <p className="text-xs text-text-muted">{unreadCount > 0 ? `${unreadCount} unread` : "All caught up"}</p>
+          </div>
+        </div>
+
+        <div className="max-h-[22rem] space-y-1 overflow-y-auto p-2.5">
+          {notificationsLoading ? <p className="px-2 py-6 text-center text-sm text-text-muted">Loading notifications...</p> : null}
+          {!notificationsLoading && notifications.length === 0 ? (
+            <p className="px-2 py-6 text-center text-sm text-text-muted">No notifications yet.</p>
+          ) : null}
+          {!notificationsLoading
+            ? notifications.map((notification) => {
+                const href = notification.href
+                  ? notification.href.startsWith("/")
+                    ? toTenantBaseHref(notification.href, tenantBaseOrigin)
+                    : notification.href
+                  : null;
+
+                return (
+                  <NavItem
+                    href={href ?? undefined}
+                    key={notification.id}
+                    onClick={() => setNotificationsOpen(false)}
+                    size="md"
+                    variant="sidebar"
+                  >
+                    <span className="flex min-w-0 items-start gap-2">
+                      <span
+                        aria-hidden
+                        className={cn("mt-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full", notification.isRead ? "bg-border" : "bg-accent")}
+                      />
+                      <span className="min-w-0">
+                        <span className="line-clamp-1 text-left text-sm font-semibold text-text">{notification.title}</span>
+                        {notification.body ? <span className="line-clamp-2 block text-left text-xs text-text-muted">{notification.body}</span> : null}
+                        <span className="mt-0.5 block text-left text-[11px] text-text-muted">
+                          {notification.orgName ? `${notification.orgName} • ` : ""}
+                          {formatRelativeTime(notification.createdAt)}
+                        </span>
+                      </span>
+                    </span>
+                  </NavItem>
+                );
+              })
+            : null}
+        </div>
+      </Popover>
+
       <button
         aria-expanded={open}
         aria-haspopup="menu"
-        className={cn(buttonVariants({ size: "md", variant: "ghost" }), "h-10 gap-2 rounded-full border border-border/70 bg-surface px-2 pr-3 shadow-sm")}
-        onClick={() => setOpen((prev) => !prev)}
+        className={cn(
+          buttonVariants({ size: "md", variant: "ghost" }),
+          "h-11 gap-2 rounded-full border border-border/70 bg-gradient-to-b from-surface to-surface-muted/35 px-2 pr-3 shadow-sm hover:from-surface-muted/70 hover:to-surface-muted/40"
+        )}
+        onClick={() => {
+          setOpen((prev) => !prev);
+          setNotificationsOpen(false);
+        }}
         ref={buttonRef}
         type="button"
       >
         {avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img alt={`${fullName} profile`} className="h-8 w-8 rounded-full border object-cover" src={avatarUrl} />
         ) : (
           <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border bg-surface-muted text-xs font-semibold text-text">
             {initials}
           </span>
         )}
-        <span className="max-w-32 truncate text-sm font-semibold text-text">{fullName}</span>
+        <span className="min-w-0 text-left">
+          <span className="block max-w-40 truncate text-sm font-semibold text-text">{fullName}</span>
+          <span className="block max-w-44 truncate text-[11px] text-text-muted">{secondaryAccountLabel}</span>
+        </span>
         <ChevronDown className={cn("h-4 w-4 text-text-muted transition-transform duration-200", open ? "rotate-180" : "")} />
       </button>
 
@@ -300,7 +474,6 @@ export function AccountMenu({
         <div className="border-b border-border/70 bg-gradient-to-br from-surface to-surface-muted/45 p-4">
           <div className="flex items-center gap-3">
             {avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img alt={`${fullName} profile`} className="h-11 w-11 rounded-full border object-cover" src={avatarUrl} />
             ) : (
               <span className="inline-flex h-11 w-11 items-center justify-center rounded-full border bg-surface-muted text-sm font-semibold text-text">{initials}</span>

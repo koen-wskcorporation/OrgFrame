@@ -20,11 +20,11 @@ export function getPlatformHost() {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL;
 
   if (!siteUrl) {
-    return "localhost";
+    return "orgframe.app";
   }
 
   const host = normalizeHost(parseHostFromUrl(siteUrl));
-  return host || "localhost";
+  return host || "orgframe.app";
 }
 
 function readOptionalHost(value: string | undefined) {
@@ -36,7 +36,7 @@ function readOptionalHost(value: string | undefined) {
 }
 
 export function getTenantBaseHosts() {
-  const hosts = new Set<string>(["orgframe.app", "staging.orgframe.app", "localhost", "127.0.0.1"]);
+  const hosts = new Set<string>(["orgframe.app", "staging.orgframe.app", "orgframe.test", "staging.orgframe.test"]);
   const primary = getPlatformHost();
 
   if (primary) {

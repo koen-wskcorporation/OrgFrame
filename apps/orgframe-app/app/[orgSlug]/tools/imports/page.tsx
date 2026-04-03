@@ -48,7 +48,6 @@ export default async function SmartImportPage({ params }: { params: Promise<{ or
         showBorder={false}
         title="Smart Import"
       />
-      <Alert variant="info">AI suggestions auto-apply only at confidence 0.85 or above. Lower-confidence matches require manual review.</Alert>
       <SmartImportWorkspace initialRuns={runs.runs} orgSlug={orgContext.orgSlug} />
     </PageStack>
   );

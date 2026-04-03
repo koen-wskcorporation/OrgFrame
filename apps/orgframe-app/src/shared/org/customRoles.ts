@@ -27,6 +27,8 @@ const legacyManagerPermissions: Permission[] = [
   "events.write"
 ];
 
+const participantPermissions: Permission[] = ["org.dashboard.read", "people.read"];
+
 export async function listOrgCustomRoles(_supabase: SupabaseClient<any>, _orgId: string): Promise<OrgCustomRole[]> {
   return [];
 }
@@ -51,6 +53,10 @@ export async function resolveOrgRolePermissions(_supabase: SupabaseClient<any>, 
 
   if (normalizedRoleKey === "manager") {
     return legacyManagerPermissions;
+  }
+
+  if (normalizedRoleKey === "participant") {
+    return participantPermissions;
   }
 
   return [];

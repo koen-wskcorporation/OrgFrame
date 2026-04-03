@@ -92,6 +92,10 @@ function canonicalize(raw: Record<string, unknown>, aliases: Record<string, stri
   const output: Record<string, unknown> = {};
   const keys = Object.keys(raw);
 
+  for (const key of keys) {
+    output[canonicalKey(key)] = raw[key];
+  }
+
   for (const [canonical, aliasList] of Object.entries(aliases)) {
     const matchedKey = keys.find((key) => {
       const normalized = canonicalKey(key);
@@ -111,24 +115,116 @@ async function hashRow(raw: Record<string, unknown>) {
     .join("");
 }
 
+function decodeText(bytes: Uint8Array) {
+  const utf8 = new TextDecoder("utf-8").decode(bytes);
+  const nulCount = Array.from(utf8).reduce((count, ch) => (ch === "\u0000" ? count + 1 : count), 0);
+  if (nulCount > Math.max(4, Math.floor(utf8.length * 0.02))) {
+    return new TextDecoder("utf-16le").decode(bytes);
+  }
+
+  return utf8;
+}
+
+function parseCsv(input: string): Array<Record<string, unknown>> {
+  const text = input.replace(/^\uFEFF/, "");
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i] ?? "";
+    const next = text[i + 1] ?? "";
+
+    if (ch === "\"") {
+      if (inQuotes && next === "\"") {
+        cell += "\"";
+        i += 1;
+        continue;
+      }
+
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (!inQuotes && ch === ",") {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+
+    if (!inQuotes && (ch === "\n" || ch === "\r")) {
+      if (ch === "\r" && next === "\n") {
+        i += 1;
+      }
+
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+
+    cell += ch;
+  }
+
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell);
+    rows.push(row);
+  }
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const headers = rows[0]?.map((value) => value.trim()).filter((value) => value.length > 0) ?? [];
+  if (headers.length === 0) {
+    return [];
+  }
+
+  const parsed: Array<Record<string, unknown>> = [];
+  for (const values of rows.slice(1)) {
+    const record: Record<string, unknown> = {};
+    for (let i = 0; i < headers.length; i += 1) {
+      const header = headers[i] ?? "";
+      record[header] = values[i] ?? "";
+    }
+
+    const hasValue = Object.values(record).some((value) => clean(value).length > 0);
+    if (hasValue) {
+      parsed.push(record);
+    }
+  }
+
+  return parsed;
+}
+
 function parseWorkbook(bytes: Uint8Array): Array<Record<string, unknown>> {
-  const workbook = XLSX.read(bytes, { type: "array", cellDates: false });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) {
-    return [];
+  try {
+    const workbook = XLSX.read(bytes, { type: "array", cellDates: false });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      return parseCsv(decodeText(bytes));
+    }
+
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      return parseCsv(decodeText(bytes));
+    }
+
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: "",
+      raw: false
+    });
+
+    if (rows.length === 0) {
+      return parseCsv(decodeText(bytes));
+    }
+
+    return rows.map((row) => asObject(row));
+  } catch {
+    return parseCsv(decodeText(bytes));
   }
-
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet) {
-    return [];
-  }
-
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-    defval: "",
-    raw: false
-  });
-
-  return rows.map((row) => asObject(row));
 }
 
 async function resolveCandidates(input: {
@@ -207,7 +303,7 @@ async function resolveCandidates(input: {
 
 function classifyMatch(candidates: Candidate[]) {
   if (candidates.length === 0) {
-    return "conflict";
+    return "direct";
   }
 
   if (candidates.length === 1 && candidates[0] && candidates[0].score >= 0.95) {
@@ -223,7 +319,12 @@ async function requireAuthorizedClient(request: Request, orgId: string) {
     return { error: json({ error: "Missing Authorization header." }, 401) } as const;
   }
 
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const publishableKey = request.headers.get("apikey")?.trim() || SUPABASE_ANON_KEY;
+  if (!publishableKey) {
+    return { error: json({ error: "Missing API key." }, 500) } as const;
+  }
+
+  const userClient = createClient(SUPABASE_URL, publishableKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
@@ -283,16 +384,18 @@ Deno.serve(async (request: Request) => {
     }
 
     if (payload.action === "start_run") {
-      if (!payload.file || !payload.profile) {
-        return json({ error: "Missing file/profile for start_run." }, 400);
+      if (!payload.file) {
+        return json({ error: "Missing file for start_run." }, 400);
       }
+
+      const profile = payload.profile ?? "people_roster";
 
       const { data, error } = await auth.service
         .schema("imports").from("import_runs")
         .insert({
           org_id: payload.org_id,
           created_by_user_id: auth.user.id,
-          profile_key: payload.profile,
+          profile_key: profile,
           status: "queued",
           progress: 0,
           source_bucket: payload.file.bucket,
@@ -323,13 +426,21 @@ Deno.serve(async (request: Request) => {
 
     const { data: run, error: runError } = await auth.service
       .schema("imports").from("import_runs")
-      .select("id, org_id, profile_key, source_bucket, source_path, source_filename, row_count")
+      .select("id, org_id, profile_key, source_bucket, source_path, source_filename, row_count, status")
       .eq("id", payload.run_id)
       .eq("org_id", payload.org_id)
       .maybeSingle();
 
     if (runError || !run) {
       return json({ error: "Run not found." }, 404);
+    }
+
+    if (run.status === "cancelled" || run.status === "undone") {
+      return json({
+        ok: true,
+        run_id: run.id,
+        status: run.status
+      });
     }
 
     await auth.service

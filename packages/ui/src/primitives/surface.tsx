@@ -5,17 +5,59 @@ import { cn } from "./utils";
 type SurfaceHeaderProps = {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
+  showAvatar?: boolean;
+  avatarUrl?: string | null;
+  avatarAlt?: string;
+  topAction?: React.ReactNode;
   titleId?: string;
   className?: string;
 };
 
-export function SurfaceHeader({ title, subtitle, titleId, className }: SurfaceHeaderProps) {
+function initialsFor(value: React.ReactNode) {
+  if (typeof value !== "string") {
+    return "??";
+  }
+
+  const parts = value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 0) {
+    return "??";
+  }
+
+  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "??";
+}
+
+export function SurfaceHeader({ title, subtitle, showAvatar = false, avatarUrl = null, avatarAlt, topAction, titleId, className }: SurfaceHeaderProps) {
+  const fallbackInitials = initialsFor(title);
+  const avatarSizeClass = subtitle ? "h-11 w-11" : "h-9 w-9";
+
   return (
     <div className={cn("relative shrink-0 border-b px-5 py-4 pr-16 md:px-6", className)}>
-      <h2 className="text-lg font-semibold leading-tight text-text" id={titleId}>
-        {title}
-      </h2>
-      {subtitle ? <p className="mt-1 text-sm leading-relaxed text-text-muted">{subtitle}</p> : null}
+      {topAction ? <div className="mb-2">{topAction}</div> : null}
+      <div className="flex min-w-0 items-start gap-3">
+        {showAvatar
+          ? avatarUrl
+            ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img alt={avatarAlt ?? "Header avatar"} className={cn("aspect-square shrink-0 rounded-full border object-cover", avatarSizeClass)} src={avatarUrl} />
+              )
+            : (
+                <span className={cn("inline-flex aspect-square shrink-0 items-center justify-center rounded-full border bg-surface-muted text-xs font-semibold text-text-muted", avatarSizeClass)}>
+                  {fallbackInitials}
+                </span>
+              )
+          : null}
+        <div className="min-w-0">
+          <h2 className="truncate text-lg font-semibold leading-tight text-text" id={titleId}>
+            {title}
+          </h2>
+          {subtitle ? <p className="truncate text-sm leading-relaxed text-text-muted">{subtitle}</p> : null}
+        </div>
+      </div>
     </div>
   );
 }

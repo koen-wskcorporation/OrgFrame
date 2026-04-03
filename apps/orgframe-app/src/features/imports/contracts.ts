@@ -11,7 +11,9 @@ export type ImportRunStatus =
   | "applying"
   | "completed"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "undoing"
+  | "undone";
 
 export type ImportConflictState = "pending_ai" | "needs_review" | "auto_applied" | "manual_resolved" | "dismissed";
 

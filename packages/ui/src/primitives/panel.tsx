@@ -17,6 +17,10 @@ export type PanelProps = {
   onClose: () => void;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
+  headerShowAvatar?: boolean;
+  headerAvatarUrl?: string | null;
+  headerAvatarAlt?: string;
+  headerTopAction?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
   panelClassName?: string;
@@ -43,6 +47,10 @@ export function Panel({
   onClose,
   title,
   subtitle,
+  headerShowAvatar = false,
+  headerAvatarUrl,
+  headerAvatarAlt,
+  headerTopAction,
   children,
   footer,
   panelClassName,
@@ -308,7 +316,14 @@ export function Panel({
             })
       }}
     >
-      <SurfaceHeader subtitle={subtitle} title={title} />
+      <SurfaceHeader
+        avatarAlt={headerAvatarAlt}
+        avatarUrl={headerAvatarUrl}
+        showAvatar={headerShowAvatar}
+        subtitle={subtitle}
+        title={title}
+        topAction={headerTopAction}
+      />
       <SurfaceCloseButton className="z-[101]" label="Close panel" onClick={onClose} />
       <SurfaceBody className={contentClassName}>{children}</SurfaceBody>
       {footer ? <SurfaceFooter footerRef={footerRef}>{footer}</SurfaceFooter> : null}

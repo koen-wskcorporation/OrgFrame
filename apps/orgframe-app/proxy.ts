@@ -9,7 +9,7 @@ import {
   resolveOrgSubdomain,
   isReservedSubdomain
 } from "@/src/shared/domains/customDomains";
-import { parseHostWithPort } from "@/src/shared/domains/hostHeaders";
+import { parseHostWithPort, type ParsedHostHeader } from "@/src/shared/domains/hostHeaders";
 import { createDataApiPublicClient } from "@/src/shared/data-api/client";
 import { updateDataApiSessionFromProxy } from "@/src/shared/data-api/proxy";
 
@@ -18,6 +18,70 @@ function applyRedirectHostname(url: URL, hostname: string, port: string) {
   if (port) {
     url.port = port;
   }
+}
+
+function redirectAbsolute(url: URL, status: number) {
+  return new NextResponse(null, {
+    status,
+    headers: {
+      location: url.toString()
+    }
+  });
+}
+
+function buildAbsoluteRequestUrl(protocol: string, host: string, port: string, pathname: string, search: string) {
+  const authority = port ? `${host}:${port}` : host;
+  return new URL(`${pathname}${search}`, `${protocol}://${authority}`);
+}
+
+function isSameUrlTargetForRequest(request: NextRequest, parsedHost: ParsedHostHeader, protocol: string, target: URL) {
+  const current = buildAbsoluteRequestUrl(protocol, parsedHost.host || request.nextUrl.hostname, parsedHost.port, request.nextUrl.pathname, request.nextUrl.search);
+  return current.toString() === target.toString();
+}
+
+export function resolveProxyRequestHost(request: NextRequest) {
+  const forwardedHost = parseHostWithPort(request.headers.get("x-forwarded-host"));
+  const headerHost = parseHostWithPort(request.headers.get("host"));
+  const urlHost = parseHostWithPort(request.nextUrl.host);
+  const isLocalUrlHost = !urlHost.host || urlHost.host === "localhost" || urlHost.host === "127.0.0.1";
+
+  if (isLocalUrlHost) {
+    if (forwardedHost.host) {
+      return forwardedHost;
+    }
+
+    if (headerHost.host) {
+      return headerHost;
+    }
+
+    return urlHost;
+  }
+
+  if (headerHost.host) {
+    return headerHost;
+  }
+
+  return urlHost;
+}
+
+export function resolveProxyRequestHostForRouting(request: NextRequest, tenantBaseHosts: Set<string>) {
+  const candidates = [
+    parseHostWithPort(request.headers.get("x-forwarded-host")),
+    parseHostWithPort(request.headers.get("host")),
+    parseHostWithPort(request.nextUrl.host)
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate.host) {
+      continue;
+    }
+
+    if (resolveOrgSubdomain(candidate.host, tenantBaseHosts)) {
+      return candidate;
+    }
+  }
+
+  return resolveProxyRequestHost(request);
 }
 
 async function resolveOrgSlugForDomain(host: string) {
@@ -45,21 +109,47 @@ async function resolveOrgSlugForDomain(host: string) {
   return null;
 }
 
+function getGlobalPlatformRedirectHost(pathname: string) {
+  const trimmedPath = pathname.replace(/^\/+/, "");
+  if (!trimmedPath) {
+    return null;
+  }
+
+  const [firstSegment] = trimmedPath.split("/");
+  if (firstSegment && PLATFORM_ONLY_ROOT_SEGMENTS.has(firstSegment)) {
+    return getPlatformHost();
+  }
+
+  return null;
+}
+
 export async function proxy(request: NextRequest) {
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const hostHeader = forwardedHost || request.headers.get("host");
-  const parsedHost = parseHostWithPort(hostHeader);
-  const host = parsedHost.host;
   const tenantBaseHosts = getTenantBaseHosts();
+  const parsedHost = resolveProxyRequestHostForRouting(request, tenantBaseHosts);
+  const host = parsedHost.host;
   const platformHosts = getPlatformHosts();
   const orgSubdomain = resolveOrgSubdomain(host, tenantBaseHosts);
+  const globalPlatformRedirectHost = getGlobalPlatformRedirectHost(request.nextUrl.pathname);
+  const protocol = getRequestProtocol(request);
+
+  if (globalPlatformRedirectHost && normalizeHost(globalPlatformRedirectHost) !== host) {
+    const redirectUrl = buildAbsoluteRequestUrl(protocol, globalPlatformRedirectHost, parsedHost.port, request.nextUrl.pathname, request.nextUrl.search);
+    if (!isSameUrlTargetForRequest(request, parsedHost, protocol, redirectUrl)) {
+      return redirectAbsolute(redirectUrl, 307);
+    }
+  }
 
   const legacyOrgPathRedirect = getLegacyOrgPathRedirect(host, request.nextUrl.pathname, tenantBaseHosts);
   if (legacyOrgPathRedirect) {
-    const redirectUrl = request.nextUrl.clone();
-    applyRedirectHostname(redirectUrl, `${legacyOrgPathRedirect.orgSlug}.${legacyOrgPathRedirect.baseHost}`, parsedHost.port);
+    const redirectUrl = buildAbsoluteRequestUrl(
+      protocol,
+      `${legacyOrgPathRedirect.orgSlug}.${legacyOrgPathRedirect.baseHost}`,
+      parsedHost.port,
+      request.nextUrl.pathname,
+      request.nextUrl.search
+    );
     redirectUrl.pathname = legacyOrgPathRedirect.pathname;
-    return NextResponse.redirect(redirectUrl, { status: 301 });
+    return redirectAbsolute(redirectUrl, 301);
   }
 
   let rewriteUrl: URL | null = null;
@@ -68,11 +158,8 @@ export async function proxy(request: NextRequest) {
     const redirectHost = getPlatformRedirectHostForSubdomain(request.nextUrl.pathname, orgSubdomain.baseHost);
 
     if (redirectHost && normalizeHost(redirectHost) !== host) {
-      const protocol = getRequestProtocol(request);
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.protocol = `${protocol}:`;
-      applyRedirectHostname(redirectUrl, redirectHost, parsedHost.port);
-      return NextResponse.redirect(redirectUrl, { status: 307 });
+      const redirectUrl = buildAbsoluteRequestUrl(protocol, redirectHost, parsedHost.port, request.nextUrl.pathname, request.nextUrl.search);
+      return redirectAbsolute(redirectUrl, 307);
     }
 
     if (!shouldSkipCustomDomainRoutingPath(request.nextUrl.pathname)) {
@@ -84,7 +171,7 @@ export async function proxy(request: NextRequest) {
         const redirectUrl = request.nextUrl.clone();
         applyRedirectHostname(redirectUrl, host, parsedHost.port);
         redirectUrl.pathname = stripOrgPrefixPath(currentPathname, prefix);
-        return NextResponse.redirect(redirectUrl, { status: 308 });
+        return redirectAbsolute(redirectUrl, 308);
       }
 
       rewriteUrl = request.nextUrl.clone();
@@ -97,11 +184,8 @@ export async function proxy(request: NextRequest) {
       const redirectHost = getCustomDomainRedirectHost(request.nextUrl.pathname, orgSlug);
 
       if (redirectHost && normalizeHost(redirectHost) !== host) {
-        const protocol = getRequestProtocol(request);
-        const redirectUrl = request.nextUrl.clone();
-        redirectUrl.protocol = `${protocol}:`;
-        applyRedirectHostname(redirectUrl, redirectHost, parsedHost.port);
-        return NextResponse.redirect(redirectUrl, { status: 307 });
+        const redirectUrl = buildAbsoluteRequestUrl(protocol, redirectHost, parsedHost.port, request.nextUrl.pathname, request.nextUrl.search);
+        return redirectAbsolute(redirectUrl, 307);
       }
 
       if (!shouldSkipCustomDomainRoutingPath(request.nextUrl.pathname)) {
@@ -113,7 +197,7 @@ export async function proxy(request: NextRequest) {
           const redirectUrl = request.nextUrl.clone();
           applyRedirectHostname(redirectUrl, host, parsedHost.port);
           redirectUrl.pathname = stripOrgPrefixPath(currentPathname, prefix);
-          return NextResponse.redirect(redirectUrl, { status: 308 });
+          return redirectAbsolute(redirectUrl, 308);
         }
 
         rewriteUrl = request.nextUrl.clone();
@@ -203,9 +287,14 @@ export function getCustomDomainRedirectHost(pathname: string, _orgSlug: string) 
 
   const [firstSegment] = trimmedPath.split("/");
   const platformHost = getPlatformHost();
+  const canonicalOrgHost = `${_orgSlug}.${platformHost}`;
 
   if (firstSegment && PLATFORM_ONLY_ROOT_SEGMENTS.has(firstSegment)) {
     return platformHost;
+  }
+
+  if (firstSegment === "tools") {
+    return canonicalOrgHost;
   }
 
   return null;

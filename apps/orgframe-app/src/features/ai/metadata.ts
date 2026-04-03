@@ -24,7 +24,7 @@ function extractTitleFromPrompt(prompt: string) {
 
 function buildPlayerCard(input: { prompt: string; orgSlug?: string }) {
   const title = extractTitleFromPrompt(input.prompt) ?? "Player profile";
-  const href = input.orgSlug ? `/${input.orgSlug}/tools/access` : "/account/players";
+  const href = input.orgSlug ? `/${input.orgSlug}/tools/people` : "/account/players";
 
   const card: AiResultCard = {
     id: makeId("player"),

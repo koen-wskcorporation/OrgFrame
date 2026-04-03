@@ -1,16 +1,10 @@
 import type { Metadata } from "next";
-import { ProgramManageDetailPage } from "../ProgramManageDetailPage";
+import { Alert } from "@orgframe/ui/primitives/alert";
 
 export const metadata: Metadata = {
   title: "Program Structure"
 };
 
-export default async function OrgManageProgramStructurePage({
-  params
-}: {
-  params: Promise<{ orgSlug: string; programId: string }>;
-}) {
-  const { orgSlug, programId } = await params;
-
-  return <ProgramManageDetailPage activeSection="structure" orgSlug={orgSlug} programId={programId} />;
+export default async function OrgManageProgramStructurePage() {
+  return <Alert variant="info">Structure tab placeholder: program structure map is temporarily disabled.</Alert>;
 }

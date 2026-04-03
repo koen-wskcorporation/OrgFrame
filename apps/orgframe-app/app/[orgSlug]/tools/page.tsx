@@ -56,18 +56,18 @@ export default async function OrgManageOverviewPage({
     },
     {
       section: "organization" as const,
-      title: "User Accounts",
-      description: "Invite users, manage core access levels, and account recovery.",
-      href: "/tools/access",
-      cta: "Open Accounts & Access",
-      enabled: tools.access && canManageOrg
+      title: "People",
+      description: "Manage accounts, linked player/staff profiles, and relationship access.",
+      href: "/tools/people",
+      cta: "Open People",
+      enabled: tools.people && canManageOrg
     },
     {
       section: "organization" as const,
-      title: "Billing",
-      description: "View subscription details and billing controls.",
-      href: "/tools/billing",
-      cta: "Open Billing",
+      title: "Payments",
+      description: "Review transactions and configure Stripe payment settings.",
+      href: "/tools/payments",
+      cta: "Open Payments",
       enabled: tools.billing && canManageOrg
     },
     {
@@ -104,7 +104,7 @@ export default async function OrgManageOverviewPage({
     {
       key: "organization" as const,
       label: "Organization",
-      description: "Brand, access, domains, and billing settings.",
+      description: "Brand, access, domains, and payment settings.",
       href: "/tools?section=organization"
     },
     {
@@ -118,7 +118,7 @@ export default async function OrgManageOverviewPage({
   return (
     <PageStack>
       <PageHeader
-        description="Configure organization details, access, and billing from one place."
+        description="Configure organization details, access, and payments from one place."
         showBorder={false}
         title={`Manage`}
       />

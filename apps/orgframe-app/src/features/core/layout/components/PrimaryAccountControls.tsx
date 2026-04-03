@@ -5,37 +5,46 @@ import { usePathname } from "next/navigation";
 import { signOutAction } from "@/app/auth/actions";
 import { AuthDialogTrigger } from "@/src/features/core/auth/components/AuthDialogTrigger";
 import { AccountMenu } from "@/src/features/core/layout/components/AccountMenu";
-
-type HeaderAccountState =
-  | {
-      authenticated: false;
-    }
-  | {
-      authenticated: true;
-      user: {
-        userId: string;
-        email: string | null;
-        firstName: string | null;
-        lastName: string | null;
-        avatarUrl: string | null;
-      };
-      organizations: {
-        orgId: string;
-        orgName: string;
-        orgSlug: string;
-        iconUrl: string | null;
-      }[];
-    };
+import type { HeaderAccountState } from "@/src/features/core/layout/types";
 
 type PrimaryAccountControlsProps = {
   currentOrgSlug?: string | null;
   homeHref?: string;
   tenantBaseOrigin?: string | null;
+  initialState?: HeaderAccountState | null;
 };
 
-export function PrimaryAccountControls({ currentOrgSlug = null, homeHref = "/", tenantBaseOrigin = null }: PrimaryAccountControlsProps) {
-  const [state, setState] = useState<HeaderAccountState | null>(null);
+const PLATFORM_ROOT_SEGMENTS = new Set(["account", "api", "auth", "brand", "forbidden", "x"]);
+
+function buildAuthNextPath(pathname: string | null, currentOrgSlug: string | null) {
+  const safePath = pathname && pathname.startsWith("/") ? pathname : "/";
+
+  if (!currentOrgSlug) {
+    return safePath;
+  }
+
+  if (safePath === "/") {
+    return `/${currentOrgSlug}`;
+  }
+
+  const [firstSegment] = safePath.replace(/^\/+/, "").split("/");
+  if (firstSegment === currentOrgSlug || (firstSegment && PLATFORM_ROOT_SEGMENTS.has(firstSegment))) {
+    return safePath;
+  }
+
+  return `/${currentOrgSlug}${safePath}`;
+}
+
+export function PrimaryAccountControls({ currentOrgSlug = null, homeHref = "/", tenantBaseOrigin = null, initialState = null }: PrimaryAccountControlsProps) {
+  const [state, setState] = useState<HeaderAccountState | null>(initialState);
   const pathname = usePathname();
+  const normalizedTenantBaseOrigin = tenantBaseOrigin ? tenantBaseOrigin.replace(/\/+$/, "") : null;
+  const authNextPath = buildAuthNextPath(pathname, currentOrgSlug);
+  const authHref = normalizedTenantBaseOrigin
+    ? `${normalizedTenantBaseOrigin}/auth?next=${encodeURIComponent(authNextPath)}`
+    : authNextPath
+      ? `/auth?next=${encodeURIComponent(authNextPath)}`
+      : "/auth";
 
   useEffect(() => {
     const controller = new AbortController();
@@ -49,9 +58,7 @@ export function PrimaryAccountControls({ currentOrgSlug = null, homeHref = "/", 
         });
 
         if (!response.ok) {
-          setState({
-            authenticated: false
-          });
+          setState((previous) => previous ?? { authenticated: false });
           return;
         }
 
@@ -62,9 +69,7 @@ export function PrimaryAccountControls({ currentOrgSlug = null, homeHref = "/", 
           return;
         }
 
-        setState({
-          authenticated: false
-        });
+        setState((previous) => previous ?? { authenticated: false });
       }
     })();
 
@@ -89,5 +94,5 @@ export function PrimaryAccountControls({ currentOrgSlug = null, homeHref = "/", 
     );
   }
 
-  return <AuthDialogTrigger />;
+  return <AuthDialogTrigger authHref={authHref} />;
 }

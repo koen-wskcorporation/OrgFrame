@@ -10,11 +10,14 @@ import { shouldShowBranchHeaders } from "@/src/shared/env/branchVisibility";
 import { getTenantBaseHosts, resolveOrgSubdomain } from "@/src/shared/domains/customDomains";
 import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
 import { listUserOrgs } from "@/src/shared/org/listUserOrgs";
+import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
+import { getCurrentUser } from "@/src/features/core/account/server/getCurrentUser";
 import { FileManagerProvider } from "@/src/features/files/manager";
 import { UploadProvider } from "@/src/features/files/uploads";
 import { OrderPanelProvider } from "@/src/features/orders";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { parseHostWithPort } from "@/src/shared/domains/hostHeaders";
+import type { HeaderAccountState } from "@/src/features/core/layout/types";
 
 export const metadata: Metadata = {
   title: {
@@ -26,8 +29,7 @@ export const metadata: Metadata = {
 
 async function getHeaderRoutingContext() {
   const headerStore = await headers();
-  const forwardedHost = headerStore.get("x-forwarded-host");
-  const hostHeader = forwardedHost || headerStore.get("host");
+  const hostHeader = headerStore.get("host") || headerStore.get("x-forwarded-host");
   const parsedHost = parseHostWithPort(hostHeader);
   const host = parsedHost.host;
   const hostWithPort = parsedHost.hostWithPort || host;
@@ -70,18 +72,37 @@ export default async function RootLayout({
 }>) {
   const showHeaders = shouldShowBranchHeaders();
   const headerRouting = showHeaders ? await getHeaderRoutingContext() : { currentOrgSlug: null, homeHref: "/", tenantBaseOrigin: null };
-  const orgOptions = showHeaders
-    ? await listUserOrgs()
-        .then((memberships) =>
-          memberships.map((membership) => ({
-            orgSlug: membership.orgSlug,
+  const memberships = showHeaders ? await listUserOrgs().catch(() => []) : [];
+  const sessionUser = showHeaders ? await getSessionUser().catch(() => null) : null;
+  const currentUser = showHeaders && sessionUser ? await getCurrentUser({ sessionUser }).catch(() => null) : null;
+  const orgOptions = memberships.map((membership) => ({
+    orgSlug: membership.orgSlug,
+    orgName: membership.orgName,
+    orgLogoUrl: getOrgAssetPublicUrl(membership.logoPath),
+    orgIconUrl: getOrgAssetPublicUrl(membership.iconPath)
+  }));
+  const initialAccountState: HeaderAccountState | null = showHeaders
+    ? sessionUser
+      ? {
+          authenticated: true,
+          user: {
+            userId: sessionUser.id,
+            email: currentUser?.email ?? sessionUser.email,
+            firstName: currentUser?.firstName ?? null,
+            lastName: currentUser?.lastName ?? null,
+            avatarUrl: currentUser?.avatarUrl ?? null
+          },
+          organizations: memberships.map((membership) => ({
+            orgId: membership.orgId,
             orgName: membership.orgName,
-            orgLogoUrl: getOrgAssetPublicUrl(membership.logoPath),
-            orgIconUrl: getOrgAssetPublicUrl(membership.iconPath)
+            orgSlug: membership.orgSlug,
+            iconUrl: getOrgAssetPublicUrl(membership.iconPath ?? membership.logoPath)
           }))
-        )
-        .catch(() => [])
-    : [];
+        }
+      : {
+          authenticated: false
+        }
+    : null;
   return (
     <html lang="en">
       <body className="bg-canvas text-text antialiased">
@@ -97,6 +118,7 @@ export default async function RootLayout({
                           <PrimaryHeader
                             currentOrgSlug={headerRouting.currentOrgSlug}
                             homeHref={headerRouting.homeHref}
+                            initialAccountState={initialAccountState}
                             orgOptions={orgOptions}
                             tenantBaseOrigin={headerRouting.tenantBaseOrigin}
                           />

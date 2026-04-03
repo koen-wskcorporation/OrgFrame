@@ -201,7 +201,7 @@ export function OrgAiCommandCenter({ initialOrgSlug = null, orgOptions, disabled
   const router = useRouter();
   const pathname = usePathname();
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
   const sidebarScrollRef = useRef<HTMLDivElement | null>(null);
 
   const [surfaceState, setSurfaceState] = useState<CommandSurfaceState>("idle");
@@ -547,7 +547,7 @@ export function OrgAiCommandCenter({ initialOrgSlug = null, orgOptions, disabled
 
   return (
     <>
-      <div className="relative w-full max-w-[22rem] xl:max-w-[26rem]" ref={rootRef}>
+      <div className="relative mx-auto w-full max-w-[22rem] xl:max-w-[26rem]" ref={rootRef}>
         <MagicComposer
           compact
           disabled={disabled}

@@ -188,6 +188,7 @@ function mapFileRow(row: Record<string, unknown>, url: string | null): FileManag
     height: asInteger(row.height) ?? undefined,
     crop: asCrop(row.crop_json),
     dominantColor: asNullableString(row.dominant_color) ?? undefined,
+    uploaderUserId: asNullableString(row.uploader_user_id),
     createdAt: asString(row.created_at),
     updatedAt: asString(row.updated_at),
     metadataJson: asObject(row.metadata_json)
@@ -310,7 +311,7 @@ export async function listFiles(input: {
   let query = supabase
     .schema("files").from("app_files")
     .select(
-      "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, created_at, updated_at"
+      "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, uploader_user_id, created_at, updated_at"
     )
     .eq("scope", input.scope);
 
@@ -453,7 +454,7 @@ export async function getFileById(fileId: string) {
   const { data, error } = await supabase
     .schema("files").from("app_files")
     .select(
-      "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, created_at, updated_at"
+      "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, uploader_user_id, created_at, updated_at"
     )
     .eq("id", fileId)
     .maybeSingle();
@@ -684,7 +685,7 @@ export async function deleteFolderRecord(input: { folderId: string }) {
   }
 }
 
-export async function renameFileRecord(input: { fileId: string; name: string }) {
+export async function renameFileRecord(input: { fileId: string; name: string; userId: string }) {
   const file = await getFileById(input.fileId);
   if (!file) {
     throw new Error("File not found.");
@@ -705,11 +706,16 @@ export async function renameFileRecord(input: { fileId: string; name: string }) 
     .schema("files").from("app_files")
     .update({
       name: resolvedName,
-      extension: splitNameAndExtension(resolvedName).extension
+      extension: splitNameAndExtension(resolvedName).extension,
+      metadata_json: {
+        ...file.metadataJson,
+        lastEditedByUserId: input.userId,
+        lastEditedAt: new Date().toISOString()
+      }
     })
     .eq("id", file.id)
     .select(
-      "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, created_at, updated_at"
+      "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, uploader_user_id, created_at, updated_at"
     )
     .single();
 
@@ -723,7 +729,7 @@ export async function renameFileRecord(input: { fileId: string; name: string }) 
   return mapFileRow(row, urls.get(key) ?? null);
 }
 
-export async function moveFileRecord(input: { fileId: string; folderId: string }) {
+export async function moveFileRecord(input: { fileId: string; folderId: string; userId: string }) {
   const file = await getFileById(input.fileId);
   if (!file) {
     throw new Error("File not found.");
@@ -748,11 +754,16 @@ export async function moveFileRecord(input: { fileId: string; folderId: string }
       owner_user_id: targetFolder.ownerUserId,
       access_tag: targetFolder.accessTag,
       entity_type: targetFolder.entityType,
-      entity_id: targetFolder.entityId
+      entity_id: targetFolder.entityId,
+      metadata_json: {
+        ...file.metadataJson,
+        lastEditedByUserId: input.userId,
+        lastEditedAt: new Date().toISOString()
+      }
     })
     .eq("id", file.id)
     .select(
-      "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, created_at, updated_at"
+      "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, uploader_user_id, created_at, updated_at"
     )
     .single();
 
@@ -886,12 +897,15 @@ export async function insertUploadedFileRecord(input: {
       dominant_color: input.payload.dominantColor ?? null,
       metadata_json: {
         ...(input.payload.metadataJson ?? {}),
-        legacyPurpose: input.payload.legacyPurpose ?? null
+        legacyPurpose: input.payload.legacyPurpose ?? null,
+        createdByUserId: input.userId,
+        lastEditedByUserId: input.userId,
+        lastEditedAt: new Date().toISOString()
       },
       uploader_user_id: input.userId
     })
     .select(
-      "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, created_at, updated_at"
+      "id, scope, org_id, owner_user_id, folder_id, name, extension, mime_type, size_bytes, bucket, storage_path, visibility, access_tag, entity_type, entity_id, width, height, crop_json, dominant_color, metadata_json, uploader_user_id, created_at, updated_at"
     )
     .single();
 

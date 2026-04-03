@@ -7,15 +7,25 @@ import { Button, type ButtonProps } from "@orgframe/ui/primitives/button";
 type AuthDialogTriggerProps = Pick<ButtonProps, "className" | "size" | "variant"> & {
   initialMode?: AuthMode;
   label?: string;
+  authHref?: string;
 };
 
 export function AuthDialogTrigger({
   className,
+  authHref,
   initialMode = "signin",
   label = "Sign in",
   size = "sm",
   variant = "secondary"
 }: AuthDialogTriggerProps) {
+  if (authHref) {
+    return (
+      <Button className={className} href={authHref} size={size} variant={variant}>
+        {label}
+      </Button>
+    );
+  }
+
   const [open, setOpen] = useState(false);
 
   return (

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { CalendarPicker } from "@orgframe/ui/primitives/calendar-picker";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Panel } from "@orgframe/ui/primitives/panel";
 import { Select } from "@orgframe/ui/primitives/select";
@@ -1101,9 +1102,9 @@ export function FacilityCalendarWorkspace({
                     <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Selected spaces</p>
                     <div className="flex flex-wrap gap-2">
                       {facilitySelections.map((selection) => (
-                        <span className="rounded-full border bg-surface px-2 py-1 text-xs" key={selection.spaceId}>
+                        <Chip className="normal-case tracking-normal" color="neutral" key={selection.spaceId} size="compact">
                           {spaceById.get(selection.spaceId)?.name ?? selection.spaceId}
-                        </span>
+                        </Chip>
                       ))}
                     </div>
                     <Button
@@ -1196,9 +1197,9 @@ export function FacilityCalendarWorkspace({
                 {selectedAllocations.length === 0 ? <p className="text-sm text-text-muted">No facility spaces assigned.</p> : null}
                 <div className="flex flex-wrap gap-2">
                   {selectedAllocations.map((allocation) => (
-                    <span className="rounded-full border bg-surface px-2 py-1 text-xs" key={allocation.id}>
+                    <Chip className="normal-case tracking-normal" color="neutral" key={allocation.id} size="compact">
                       {spaceById.get(allocation.spaceId)?.name ?? allocation.spaceId}
-                    </span>
+                    </Chip>
                   ))}
                 </div>
                 <Button disabled={!canWrite} onClick={openEditFacilityDialog} size="sm" type="button" variant="secondary">

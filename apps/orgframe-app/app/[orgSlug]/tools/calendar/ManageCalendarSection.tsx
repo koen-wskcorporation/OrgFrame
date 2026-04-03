@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { CalendarPicker } from "@orgframe/ui/primitives/calendar-picker";
 import { Card, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Input } from "@orgframe/ui/primitives/input";
 import { CreateModal } from "@orgframe/ui/primitives/interaction-containers";
 import { Panel, PanelScreens } from "@orgframe/ui/primitives/panel";
@@ -57,7 +58,8 @@ import { FacilityBookingDialog } from "@/src/features/calendar/components/Facili
 import { CalendarSourceFilterPopover } from "@/src/features/calendar/components/CalendarSourceFilterPopover";
 import { ScrollableSheetBody } from "@/src/features/calendar/components/ScrollableSheetBody";
 import { UniversalAddressField } from "@/src/features/calendar/components/UniversalAddressField";
-import { UniversalSharePopup, type ShareTarget } from "@/src/features/calendar/components/UniversalSharePopup";
+import { useOrgSharePopup } from "@/src/features/org-share/OrgShareProvider";
+import type { ShareTarget } from "@/src/features/org-share/types";
 import {
   buildSpaceById,
   computeFacilityConflicts,
@@ -126,7 +128,6 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
   const [facilitySelections, setFacilitySelections] = useState<FacilityBookingSelection[]>([]);
   const [facilityDialogOpen, setFacilityDialogOpen] = useState(false);
   const [bookingMode, setBookingMode] = useState<"quick-add" | "edit-occurrence" | null>(null);
-  const [sharePopupOpen, setSharePopupOpen] = useState(false);
   const [shareTargets, setShareTargets] = useState<ShareTarget[]>([]);
   const [sharePermission, setSharePermission] = useState<"view" | "comment" | "edit">("view");
   const [editTitle, setEditTitle] = useState("");
@@ -141,6 +142,7 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
     endsAtUtc?: string;
   } | null>(null);
   const [pendingRecurringScope, setPendingRecurringScope] = useState<"occurrence" | "following" | "series">("occurrence");
+  const { openShare } = useOrgSharePopup();
   const [ruleDraft, setRuleDraft] = useState<ScheduleRuleDraft>(() =>
     buildRuleDraftFromWindow(new Date().toISOString(), new Date(Date.now() + 60 * 60 * 1000).toISOString(), Intl.DateTimeFormat().resolvedOptions().timeZone)
   );
@@ -184,53 +186,6 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
     [facilitySelections, spaceById]
   );
   const selectedFacilityAddress = useMemo(() => getFacilityAddress(selectedFacility), [selectedFacility]);
-  const shareOptions = useMemo<ShareTarget[]>(() => {
-    const teamTargets: ShareTarget[] = activeTeams.map((team) => ({
-      id: team.id,
-      type: "team",
-      label: team.label,
-      subtitle: "Team"
-    }));
-
-    const divisionTargets = Array.from(
-      new Set(
-        activeTeams
-          .map((team) => {
-            const divisionMatch = team.label.match(/\b\d{1,2}U\b/i);
-            return divisionMatch ? divisionMatch[0].toUpperCase() : null;
-          })
-          .filter((value): value is string => Boolean(value))
-      )
-    ).map((division) => ({
-      id: division.toLowerCase(),
-      type: "division" as const,
-      label: division,
-      subtitle: "Division"
-    }));
-
-    const programTargets = Array.from(
-      new Set(
-        activeTeams
-          .map((team) => team.label.split("/")[0]?.trim())
-          .filter((value): value is string => Boolean(value && value.length > 0))
-      )
-    ).map((program) => ({
-      id: program.toLowerCase(),
-      type: "program" as const,
-      label: program,
-      subtitle: "Program"
-    }));
-
-    return [
-      ...teamTargets,
-      ...divisionTargets,
-      ...programTargets,
-      { id: "org-admins", type: "admin", label: "Organization Admins", subtitle: "Admin group" },
-      { id: "all-coaches", type: "group", label: "All Coaches", subtitle: "Group" },
-      { id: "all-managers", type: "group", label: "All Managers", subtitle: "Group" }
-    ];
-  }, [activeTeams]);
-
   useEffect(() => {
     if (!quickAddDraft?.open) {
       setLocationDraft("");
@@ -899,7 +854,6 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
     const scopedPermission = inviteOnly ? "view" : input.permission;
     setShareTargets(scopedTargets);
     setSharePermission(scopedPermission);
-    setSharePopupOpen(false);
 
     if (!selectedOccurrence || !selectedEntry) {
       return;
@@ -966,6 +920,25 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
       }
 
       refreshWorkspace("Sharing updated");
+    });
+  }
+
+  function openShareDialog() {
+    const inviteOnly = selectedEntry?.entryType === "practice";
+    void openShare({
+      allowManualPeople: !inviteOnly,
+      allowedTypes: inviteOnly ? ["team"] : undefined,
+      initialPermission: sharePermission,
+      initialTargets: shareTargets,
+      onApply: applyShareTargets,
+      primaryActionLabel: inviteOnly ? "Send invites" : "Share",
+      searchPlaceholder: inviteOnly ? "Add teams to this practice" : undefined,
+      selectedLabel: inviteOnly ? "Invited teams" : "Shared with",
+      showPermissionControl: !inviteOnly,
+      subtitle: inviteOnly
+        ? "Invite other teams to join this practice."
+        : "Search and share with teams, divisions, programs, people, admins, and groups.",
+      title: inviteOnly ? "Invite Teams" : "Share"
     });
   }
 
@@ -1520,26 +1493,6 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
         spaces={facilityReadModel.spaces}
         ignoreOccurrenceId={bookingMode === "edit-occurrence" ? selectedOccurrence?.id ?? null : null}
       />
-      <UniversalSharePopup
-        allowManualPeople={!inviteOnlyShare}
-        allowedTypes={inviteOnlyShare ? ["team"] : undefined}
-        initialPermission={sharePermission}
-        initialTargets={shareTargets}
-        onApply={applyShareTargets}
-        onClose={() => setSharePopupOpen(false)}
-        open={sharePopupOpen}
-        options={shareOptions}
-        primaryActionLabel={inviteOnlyShare ? "Send invites" : "Share"}
-        searchPlaceholder={inviteOnlyShare ? "Add teams to this practice" : undefined}
-        selectedLabel={inviteOnlyShare ? "Invited teams" : "Shared with"}
-        showPermissionControl={!inviteOnlyShare}
-        subtitle={
-          inviteOnlyShare
-            ? "Invite other teams to join this practice."
-            : "Search and share with teams, divisions, programs, people, admins, and groups."
-        }
-        title={inviteOnlyShare ? "Invite Teams" : "Share"}
-      />
       <CreateModal
         footer={
           createMode ? (
@@ -1693,9 +1646,9 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
                         <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Selected spaces</p>
                         <div className="flex flex-wrap gap-2">
                           {facilitySelections.map((selection) => (
-                            <span className="rounded-full border bg-surface px-2 py-1 text-xs" key={selection.spaceId}>
+                            <Chip className="normal-case tracking-normal" color="neutral" key={selection.spaceId} size="compact">
                               {spaceById.get(selection.spaceId)?.name ?? selection.spaceId}
-                            </span>
+                            </Chip>
                           ))}
                         </div>
                         <Button
@@ -1781,6 +1734,27 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
               <UniversalAddressField disabled={!canWrite} onChange={setEditLocationDraft} value={editLocationDraft} />
             </label>
 
+            <div className="space-y-2 rounded-control border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  {inviteOnlyShare ? "Invited teams" : "Sharing"}
+                </p>
+                <Button disabled={!canWrite} onClick={openShareDialog} size="sm" type="button" variant="secondary">
+                  {inviteOnlyShare ? "Invite teams" : "Share"}
+                </Button>
+              </div>
+              {visibleShareTargets.length === 0 ? <p className="text-sm text-text-muted">No recipients selected.</p> : null}
+              {visibleShareTargets.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {visibleShareTargets.map((target) => (
+                    <Chip className="normal-case tracking-normal" color="neutral" key={`${target.type}:${target.id}`} size="compact">
+                      {target.label}
+                    </Chip>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
             {selectedOccurrence.sourceRuleId ? (
               <div className="space-y-2 rounded-control border p-3">
                 <label className="space-y-1 text-xs text-text-muted">
@@ -1805,9 +1779,9 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
               {selectedAllocations.length === 0 ? <p className="text-sm text-text-muted">No facility spaces assigned.</p> : null}
               <div className="flex flex-wrap gap-2">
                 {selectedAllocations.map((allocation) => (
-                  <span className="rounded-full border bg-surface px-2 py-1 text-xs" key={allocation.id}>
+                  <Chip className="normal-case tracking-normal" color="neutral" key={allocation.id} size="compact">
                     {spaceById.get(allocation.spaceId)?.name ?? allocation.spaceId}
-                  </span>
+                  </Chip>
                 ))}
               </div>
               <Button disabled={!canWrite} onClick={openEditFacilityDialog} size="sm" type="button" variant="secondary">

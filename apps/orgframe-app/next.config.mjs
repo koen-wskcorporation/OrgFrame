@@ -2,6 +2,7 @@
 const nextConfig = {
   transpilePackages: ["@orgframe/ui"],
   devIndicators: false,
+  allowedDevOrigins: ["orgframe.test", "*.orgframe.test"],
   experimental: {
     serverActions: {
       bodySizeLimit: "50mb"

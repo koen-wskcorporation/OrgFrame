@@ -18,7 +18,7 @@ Early-stage Next.js App Router project for multi-tenant sports organizations.
 
 - In Supabase Dashboard, include exact redirect URLs for every environment:
   - `https://<production-domain>/auth/callback`
-  - `http://localhost:3000/auth/callback`
+  - `http://orgframe.test:3000/auth/callback`
 - Ensure Site URL matches your production app origin.
 - Keep auth cookies on app domain defaults (no custom cookie domain override in app code).
 
@@ -60,7 +60,7 @@ Use this branch strategy:
 1. Keep separate Supabase projects for production and staging.
 2. In staging Supabase Auth settings:
    - Add staging callback URL: `https://<staging-domain>/auth/callback`
-   - Include local callback URL: `http://localhost:3000/auth/callback`
+   - Include local callback URL: `http://orgframe.test:3000/auth/callback`
 3. In production Supabase Auth settings:
    - Add production callback URL: `https://<production-domain>/auth/callback`
 4. Never reuse production service-role/secret keys in staging.

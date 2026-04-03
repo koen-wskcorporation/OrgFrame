@@ -67,7 +67,7 @@ export async function getOrderPanelDataAction(input: z.input<typeof lookupOrderP
     const orderQuery = supabase
       .schema("commerce").from("orders")
       .select(
-        "id, source_order_id, source_order_no, source_payment_status, order_status, order_date, total_amount, total_paid_amount, balance_amount, billing_first_name, billing_last_name, billing_address, items_json, metadata_json"
+        "id, source_order_id, source_order_no, payer_user_id, source_payment_status, order_status, order_date, total_amount, total_paid_amount, balance_amount, billing_first_name, billing_last_name, billing_address, items_json, metadata_json"
       )
       .eq("org_id", orgContext.orgId)
       .limit(1);
@@ -89,7 +89,7 @@ export async function getOrderPanelDataAction(input: z.input<typeof lookupOrderP
       const { data: fallbackRow, error: fallbackError } = await supabase
         .schema("commerce").from("orders")
         .select(
-          "id, source_order_id, source_order_no, source_payment_status, order_status, order_date, total_amount, total_paid_amount, balance_amount, billing_first_name, billing_last_name, billing_address, items_json, metadata_json"
+          "id, source_order_id, source_order_no, payer_user_id, source_payment_status, order_status, order_date, total_amount, total_paid_amount, balance_amount, billing_first_name, billing_last_name, billing_address, items_json, metadata_json"
         )
         .eq("org_id", orgContext.orgId)
         .eq("source_order_no", payload.sourceRef)
@@ -115,7 +115,9 @@ export async function getOrderPanelDataAction(input: z.input<typeof lookupOrderP
 
     const { data: paymentsRows, error: paymentsError } = await supabase
       .schema("commerce").from("payments")
-      .select("id, source_payment_key, payment_status, payment_date, payment_amount, paid_registration_fee, paid_cc_fee, metadata_json")
+      .select(
+        "id, source_payment_key, source_event_id, source_event_sequence, source_event_count, payer_user_id, player_id, registration_id, payment_status, payment_date, payment_amount, paid_registration_fee, paid_cc_fee, metadata_json"
+      )
       .eq("org_id", orgContext.orgId)
       .eq("order_id", resolvedOrder.id)
       .order("payment_date", { ascending: true });
@@ -134,6 +136,7 @@ export async function getOrderPanelDataAction(input: z.input<typeof lookupOrderP
         id: resolvedOrder.id,
         sourceOrderId: resolvedOrder.source_order_id,
         sourceOrderNo: resolvedOrder.source_order_no,
+        payerUserId: resolvedOrder.payer_user_id,
         sourcePaymentStatus: resolvedOrder.source_payment_status,
         orderStatus: resolvedOrder.order_status,
         orderDate: resolvedOrder.order_date,
@@ -163,6 +166,14 @@ export async function getOrderPanelDataAction(input: z.input<typeof lookupOrderP
       payments: (paymentsRows ?? []).map((payment) => ({
         id: payment.id,
         sourcePaymentKey: payment.source_payment_key,
+        sourceEventId: payment.source_event_id ?? null,
+        sourceEventSequence:
+          typeof payment.source_event_sequence === "number" ? payment.source_event_sequence : payment.source_event_sequence ? Number(payment.source_event_sequence) : null,
+        sourceEventCount:
+          typeof payment.source_event_count === "number" ? payment.source_event_count : payment.source_event_count ? Number(payment.source_event_count) : null,
+        payerUserId: payment.payer_user_id ?? null,
+        playerId: payment.player_id ?? null,
+        registrationId: payment.registration_id ?? null,
         paymentStatus: payment.payment_status,
         paymentDate: payment.payment_date,
         paymentAmount: asMoney(payment.payment_amount),

@@ -155,7 +155,7 @@ function listAssignableRoles(): AccessRoleDefinition[] {
 
 async function requireAccessContext(orgSlug: string) {
   const orgContext = await getOrgAuthContext(orgSlug);
-  requireOrgToolEnabled(orgContext.toolAvailability, "access");
+  requireOrgToolEnabled(orgContext.toolAvailability, "people");
   requirePermission(orgContext.membershipPermissions, "org.manage.read");
   return orgContext;
 }
@@ -465,7 +465,7 @@ export async function inviteUserToOrgAction(input: {
       return asFailure("action_failed", insertError.message);
     }
 
-    revalidatePath(`/${orgSlug}/tools/access`);
+    revalidatePath(`/${orgSlug}/tools/people`);
 
     const members = await listAccessMembersForOrg({
       supabase,
@@ -565,7 +565,7 @@ export async function updateMembershipRoleAction(input: {
       return asFailure("action_failed", updateError.message);
     }
 
-    revalidatePath(`/${orgSlug}/tools/access`);
+    revalidatePath(`/${orgSlug}/tools/people`);
 
     const members = await listAccessMembersForOrg({
       supabase,
@@ -635,7 +635,7 @@ export async function removeMembershipAction(input: {
       return asFailure("action_failed", deleteError.message);
     }
 
-    revalidatePath(`/${orgSlug}/tools/access`);
+    revalidatePath(`/${orgSlug}/tools/people`);
 
     const members = await listAccessMembersForOrg({
       supabase,

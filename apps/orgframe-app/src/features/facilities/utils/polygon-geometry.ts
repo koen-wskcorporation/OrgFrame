@@ -19,6 +19,8 @@ export type FacilityPolygonGeometry = {
   bounds: PolygonBounds;
 };
 
+export const UNIVERSAL_STRUCTURE_CORNER_RADIUS = 16;
+
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};

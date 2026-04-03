@@ -206,20 +206,12 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
   }, [canCollapse, config, pathname]);
 
   useEffect(() => {
-    setExpandedByKey((current) => {
-      const next = { ...current };
+    setExpandedByKey(() => {
+      const activeParent = parentNodes.find((node) => isParentActive(pathname, node));
+      const next: Record<string, boolean> = {};
 
       for (const node of parentNodes) {
-        const active = isParentActive(pathname, node);
-
-        if (active) {
-          next[node.key] = true;
-          continue;
-        }
-
-        if (!(node.key in next)) {
-          next[node.key] = false;
-        }
+        next[node.key] = activeParent ? node.key === activeParent.key : false;
       }
 
       return next;
@@ -227,10 +219,16 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
   }, [pathname, parentNodes]);
 
   function toggleParent(key: string) {
-    setExpandedByKey((current) => ({
-      ...current,
-      [key]: !current[key]
-    }));
+    setExpandedByKey((current) => {
+      const nextValue = !current[key];
+      const next: Record<string, boolean> = {};
+
+      for (const node of parentNodes) {
+        next[node.key] = node.key === key ? nextValue : false;
+      }
+
+      return next;
+    });
   }
 
   function markOptimisticActive(href?: string) {
@@ -306,14 +304,12 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
 
   function renderChildItem(item: OrgAreaSidebarChildItem) {
     const isActive = item.href ? matchesPath(activePathname, item.href, item.match ?? "prefix") : false;
-    const Icon = item.icon;
 
     return (
       <NavItem
         active={isActive}
         disabled={item.disabled || !item.href}
         href={item.href}
-        icon={<Icon className="h-4 w-4" />}
         key={item.key}
         rightSlot={item.soon ? <SoonBadge /> : null}
         size="sm"

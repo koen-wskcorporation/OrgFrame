@@ -3,6 +3,7 @@ import { cookies, headers } from "next/headers";
 import type { NextRequest, NextResponse } from "next/server";
 import { getSupabasePublicConfig } from "@/src/shared/supabase/config";
 import { normalizeSupabaseCookieOptions, type SupabaseCookieToSet } from "@/src/shared/supabase/cookies";
+import { parseHostWithPort } from "@/src/shared/domains/hostHeaders";
 
 function isHttpsFromHeaders(headerStore: Headers) {
   const forwardedProto = headerStore.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
@@ -19,6 +20,9 @@ export async function createSupabaseServer() {
   const cookieStore = await cookies();
   const headerStore = await headers();
   const isHttps = isHttpsFromHeaders(headerStore);
+  const forwardedHost = headerStore.get("x-forwarded-host")?.split(",")[0]?.trim() ?? "";
+  const hostHeader = headerStore.get("host")?.split(",")[0]?.trim() ?? "";
+  const requestHost = parseHostWithPort(forwardedHost || hostHeader).host;
   const { supabaseUrl, supabasePublishableKey } = getSupabasePublicConfig();
 
   return createServerClient<any>(supabaseUrl, supabasePublishableKey, {
@@ -33,7 +37,7 @@ export async function createSupabaseServer() {
       setAll(cookiesToSet: SupabaseCookieToSet[]) {
         try {
           cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, normalizeSupabaseCookieOptions(options, isHttps));
+            cookieStore.set(name, value, normalizeSupabaseCookieOptions(options, isHttps, requestHost));
           });
         } catch {
           // Server Components can read cookies but cannot always mutate them.
@@ -48,6 +52,9 @@ export function createSupabaseServerForRequest(request: NextRequest, response: N
   const { supabaseUrl, supabasePublishableKey } = getSupabasePublicConfig();
   const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
   const isHttps = forwardedProto === "https" || request.nextUrl.protocol === "https:";
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const hostHeader = request.headers.get("host");
+  const requestHost = parseHostWithPort(forwardedHost || hostHeader || request.nextUrl.host).host;
 
   return createServerClient<any>(supabaseUrl, supabasePublishableKey, {
     cookieOptions: {
@@ -60,7 +67,7 @@ export function createSupabaseServerForRequest(request: NextRequest, response: N
       },
       setAll(cookiesToSet: SupabaseCookieToSet[]) {
         cookiesToSet.forEach(({ name, value, options }) => {
-          response.cookies.set(name, value, normalizeSupabaseCookieOptions(options, isHttps));
+          response.cookies.set(name, value, normalizeSupabaseCookieOptions(options, isHttps, requestHost));
         });
       }
     }

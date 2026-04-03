@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { AuthDialog, type AuthMode } from "@/src/features/core/auth/components/AuthDialog";
 
 type AuthLoginPagePopupProps = {
@@ -11,9 +10,5 @@ type AuthLoginPagePopupProps = {
 };
 
 export function AuthLoginPagePopup({ initialMode = "signin", errorMessage = null, infoMessage = null, nextPath = "/" }: AuthLoginPagePopupProps) {
-  const router = useRouter();
-
-  return (
-    <AuthDialog errorMessage={errorMessage} infoMessage={infoMessage} initialMode={initialMode} nextPath={nextPath} onClose={() => router.back()} open />
-  );
+  return <AuthDialog errorMessage={errorMessage} infoMessage={infoMessage} initialMode={initialMode} nextPath={nextPath} onClose={() => {}} open presentation="inline" />;
 }
