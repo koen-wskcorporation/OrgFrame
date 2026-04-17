@@ -1,2 +1,8 @@
-export { metadata } from "@/app/[orgSlug]/manage/access/page";
-export { default } from "@/app/[orgSlug]/manage/access/page";
+import { redirectLegacyRoute } from "../../../legacy-route-utils";
+
+export default async function OrgToolsAccessLegacyPage({ params }: { params: Promise<{ orgSlug: string }> }) {
+  await redirectLegacyRoute({
+    params,
+    pathname: "/tools/people"
+  });
+}

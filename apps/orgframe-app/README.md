@@ -1,4 +1,4 @@
-# Sports SaaS
+# OrgFrame
 
 Early-stage Next.js App Router project for multi-tenant sports organizations.
 
@@ -18,7 +18,7 @@ Early-stage Next.js App Router project for multi-tenant sports organizations.
 
 - In Supabase Dashboard, include exact redirect URLs for every environment:
   - `https://<production-domain>/auth/callback`
-  - `http://localhost:3000/auth/callback`
+  - `http://orgframe.test:3000/auth/callback`
 - Ensure Site URL matches your production app origin.
 - Keep auth cookies on app domain defaults (no custom cookie domain override in app code).
 
@@ -60,7 +60,7 @@ Use this branch strategy:
 1. Keep separate Supabase projects for production and staging.
 2. In staging Supabase Auth settings:
    - Add staging callback URL: `https://<staging-domain>/auth/callback`
-   - Include local callback URL: `http://localhost:3000/auth/callback`
+   - Include local callback URL: `http://orgframe.test:3000/auth/callback`
 3. In production Supabase Auth settings:
    - Add production callback URL: `https://<production-domain>/auth/callback`
 4. Never reuse production service-role/secret keys in staging.
@@ -109,18 +109,17 @@ Org routes (`orgSlug` is always first segment):
 
 - `/[orgSlug]`
 - `/[orgSlug]/[pageSlug]`
-- `/[orgSlug]/icon`
-- `/[orgSlug]/manage`
-- `/[orgSlug]/manage/site`
-- `/[orgSlug]/manage/info`
-- `/[orgSlug]/manage/branding`
-- `/[orgSlug]/manage/access`
-- `/[orgSlug]/manage/billing`
-- `/[orgSlug]/manage/programs`
-- `/[orgSlug]/manage/programs/[programId]`
-- `/[orgSlug]/manage/forms`
-- `/[orgSlug]/manage/forms/[formId]`
-- `/[orgSlug]/manage/forms/[formId]/submissions`
+- `/[orgSlug]/tools`
+- `/[orgSlug]/tools/site`
+- `/[orgSlug]/tools/info`
+- `/[orgSlug]/tools/branding`
+- `/[orgSlug]/tools/access`
+- `/[orgSlug]/tools/billing`
+- `/[orgSlug]/tools/programs`
+- `/[orgSlug]/tools/programs/[programId]`
+- `/[orgSlug]/tools/forms`
+- `/[orgSlug]/tools/forms/[formId]`
+- `/[orgSlug]/tools/forms/[formId]/submissions`
 - `/[orgSlug]/programs`
 - `/[orgSlug]/programs/[programSlug]`
 - `/[orgSlug]/register/[formSlug]`
@@ -149,8 +148,17 @@ npm run lint
 
 Environment variables:
 
-- `OPENAI_API_KEY` (required, server-only)
-- `OPENAI_MODEL` (optional, defaults to `gpt-4.1-mini`)
+- `AI_GATEWAY_API_KEY` (required, server-only; Vercel AI Gateway token)
+- `AI_GATEWAY_BASE_URL` (optional, defaults to `https://ai-gateway.vercel.sh/v1`)
+- `AI_MODEL` (optional, defaults to `google/gemini-2.5-flash`)
+- `AI_FALLBACK_MODELS` (optional, comma-separated fallback models, e.g. `google/gemini-2.5-flash-lite`)
+- `AI_RETRY_ATTEMPTS` (optional, defaults to `3`)
+- `AI_RETRY_BASE_DELAY_MS` (optional, defaults to `350`)
+- `AI_REQUEST_TIMEOUT_MS` (optional, defaults to `30000`)
+- `AI_MAX_OUTPUT_TOKENS` (optional, defaults to `1200`)
+- `AI_MAX_CONCURRENT_REQUESTS` (optional, defaults to `6`)
+- `AI_RATE_LIMIT_PER_WINDOW` (optional, defaults to `20`)
+- `AI_RATE_LIMIT_WINDOW_SECONDS` (optional, defaults to `300`)
 
 API contract:
 
@@ -182,10 +190,10 @@ Execution model:
 
 ### Adding a new AI Tool/Intent
 
-1. Add a Zod input schema in [`modules/ai/schemas.ts`](/Users/koenstewart/Documents/Sports SaaS/modules/ai/schemas.ts).
-2. Implement tool handler in [`modules/ai/tools/`](/Users/koenstewart/Documents/Sports SaaS/modules/ai/tools).
+1. Add a Zod input schema in [`src/features/ai/schemas.ts`](/Users/koenstewart/Documents/Sports SaaS/apps/orgframe-app/src/features/ai/schemas.ts).
+2. Implement tool handler in [`src/features/ai/tools/`](/Users/koenstewart/Documents/Sports SaaS/apps/orgframe-app/src/features/ai/tools).
 3. Define required permission(s), dry-run behavior, and execute behavior.
-4. Register in [`modules/ai/tools/registry.ts`](/Users/koenstewart/Documents/Sports SaaS/modules/ai/tools/registry.ts) and expose JSON schema for OpenAI tool calling.
+4. Register in [`src/features/ai/tools/registry.ts`](/Users/koenstewart/Documents/Sports SaaS/apps/orgframe-app/src/features/ai/tools/registry.ts) and expose JSON schema for gateway tool calling.
 5. For executable actions, emit a versioned `AiChangesetV1` and wire confirm-time execution through `execute_changes`.
 6. Add/extend migrations or RPCs as needed for transactional writes and stale-precondition checks.
 
@@ -205,13 +213,13 @@ The app still needs its runtime Sheets identity for ongoing sync/reconcile after
 
 ## Site Management
 
-- Use `/{orgSlug}/manage/site` to manage pages and navigation.
-- Page content is powered by `org_pages` + `org_page_blocks`.
-- Navigation is powered by `org_nav_items`.
+- Use `/{orgSlug}/tools/site` to manage pages and navigation.
+- Page content is powered by `site_pages` + `site_page_blocks`.
+- Navigation is powered by `site_structure_nodes`.
 
 ## Programs + Forms Architecture
 
-- Programs data lives in `programs`, `program_nodes`, and `program_schedule_blocks`.
+- Programs data lives in `programs`, `program_structure_nodes`, and `program_schedule_blocks`.
 - Forms data lives in `org_forms`, `org_form_versions`, `org_form_submissions`, and `org_form_submission_entries`.
 - Registration links forms to players and capacity via `program_registrations` and `submit_form_response(...)`.
 - Public discovery and registration routes are canonical at `/{orgSlug}/programs` and `/{orgSlug}/register/{formSlug}`.

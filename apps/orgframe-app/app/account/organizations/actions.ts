@@ -1,7 +1,7 @@
 "use server";
 
-import { isReservedOrgSlug } from "@/lib/org/reservedSlugs";
-import { createSupabaseServer } from "@/lib/supabase/server";
+import { isReservedOrgSlug } from "@/src/shared/org/reservedSlugs";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
 
 const orgSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 

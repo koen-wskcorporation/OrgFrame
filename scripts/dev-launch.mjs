@@ -1,5 +1,6 @@
 import net from "node:net";
 import { spawn } from "node:child_process";
+import { platform } from "node:os";
 
 const rawTargets = process.argv.slice(2).map((value) => value.toLowerCase());
 const validTargets = new Set(["app", "web"]);
@@ -29,6 +30,7 @@ function isPortFree(port) {
 
 const preferredPort = 3000;
 const fallbackPort = 3001;
+const appDevHost = "orgframe.test";
 const preferredFree = await isPortFree(preferredPort);
 const fallbackFree = await isPortFree(fallbackPort);
 
@@ -55,6 +57,46 @@ if (rawTargets.length === 1) {
 
 const children = [];
 let shuttingDown = false;
+let localhostTabsRefreshed = false;
+
+function refreshLocalhostTabsOnMac() {
+  if (localhostTabsRefreshed || platform() !== "darwin") return;
+  localhostTabsRefreshed = true;
+
+  const script = `
+set browserNames to {"Google Chrome", "Brave Browser", "Microsoft Edge", "Arc"}
+repeat with browserName in browserNames
+  try
+    tell application browserName
+      repeat with w in windows
+        repeat with t in tabs of w
+          set pageUrl to URL of t
+          if pageUrl starts with "http://localhost" or pageUrl starts with "https://localhost" or pageUrl starts with "http://127.0.0.1" or pageUrl starts with "https://127.0.0.1" then
+            tell t to reload
+          end if
+        end repeat
+      end repeat
+    end tell
+  end try
+end repeat
+
+try
+  tell application "Safari"
+    repeat with w in windows
+      repeat with t in tabs of w
+        set pageUrl to URL of t
+        if pageUrl starts with "http://localhost" or pageUrl starts with "https://localhost" or pageUrl starts with "http://127.0.0.1" or pageUrl starts with "https://127.0.0.1" then
+          tell t to do JavaScript "window.location.reload()"
+        end if
+      end repeat
+    end repeat
+  end tell
+end try
+`;
+
+  // Fire-and-forget so shutdown remains fast even if browser scripting is unavailable.
+  spawn("osascript", ["-e", script], { stdio: "ignore", detached: true }).unref();
+}
 
 function shutdownOthers(exceptPid = null) {
   if (shuttingDown) return;
@@ -69,11 +111,13 @@ function shutdownOthers(exceptPid = null) {
 for (const target of rawTargets) {
   const selectedPort = portByTarget.get(target);
   const workspace = target === "app" ? "orgframe-app" : "orgframe-web";
-  console.log(`Starting ${workspace} on port ${selectedPort}...`);
+  const hostMessage = target === "app" ? ` at http://${appDevHost}:${selectedPort}` : ` on port ${selectedPort}`;
+  console.log(`Starting ${workspace}${hostMessage}...`);
+  const extraArgs = ["--port", String(selectedPort)];
 
   const child = spawn(
     "npm",
-    ["run", "dev", "--workspace", workspace, "--", "--port", String(selectedPort)],
+    ["run", "dev", "--workspace", workspace, "--", ...extraArgs],
     {
       stdio: "inherit",
       env: process.env
@@ -98,10 +142,16 @@ for (const target of rawTargets) {
 
 process.on("SIGINT", () => {
   shutdownOthers();
+  refreshLocalhostTabsOnMac();
   process.exit(130);
 });
 
 process.on("SIGTERM", () => {
   shutdownOthers();
+  refreshLocalhostTabsOnMac();
   process.exit(143);
+});
+
+process.on("exit", () => {
+  refreshLocalhostTabsOnMac();
 });

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
-import { createSupabaseServerForRequest } from "@/lib/supabase/server";
+import { createSupabaseServerForRequest } from "@/src/shared/data-api/server";
+import { getPlatformHost, normalizeHost } from "@/src/shared/domains/customDomains";
 
 function normalizeNextPath(nextPath: string | null, fallbackPath: string) {
   const candidate = nextPath?.trim();
@@ -22,6 +23,18 @@ function normalizeNextPath(nextPath: string | null, fallbackPath: string) {
 }
 
 export async function GET(request: NextRequest) {
+  const canonicalHost = normalizeHost(getPlatformHost());
+  const currentHost = normalizeHost(request.nextUrl.hostname);
+  if (canonicalHost && currentHost && canonicalHost !== currentHost) {
+    const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+    const protocol = forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : request.nextUrl.protocol.replace(":", "");
+    const canonicalUrl = request.nextUrl.clone();
+    canonicalUrl.protocol = `${protocol}:`;
+    canonicalUrl.hostname = canonicalHost;
+    canonicalUrl.port = "";
+    return NextResponse.redirect(canonicalUrl, { status: 307 });
+  }
+
   const nextPath = normalizeNextPath(request.nextUrl.searchParams.get("next"), "/");
   const successResponse = NextResponse.redirect(new URL(nextPath, request.url), { status: 303 });
   const supabase = createSupabaseServerForRequest(request, successResponse);

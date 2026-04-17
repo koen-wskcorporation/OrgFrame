@@ -1,2 +1,8 @@
-export { metadata } from "@/app/[orgSlug]/manage/billing/page";
-export { default } from "@/app/[orgSlug]/manage/billing/page";
+import { redirectLegacyRoute } from "../../../legacy-route-utils";
+
+export default async function OrgToolsManageBillingLegacyPage({ params }: { params: Promise<{ orgSlug: string }> }) {
+  await redirectLegacyRoute({
+    params,
+    pathname: "/tools/payments/settings"
+  });
+}

@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { BrandingCssVarsBridge } from "@orgframe/ui/shared/BrandingCssVarsBridge";
-import { OrgHeader } from "@orgframe/ui/shared/OrgHeader";
-import { applyBrandingVars } from "@/lib/branding/applyBrandingVars";
-import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
-import { shouldShowBranchHeaders } from "@/lib/env/branchVisibility";
-import { getOrgRequestContext } from "@/lib/org/getOrgRequestContext";
-import { can } from "@/lib/permissions/can";
-import { listOrgPagesForHeader } from "@/modules/site-builder/db/queries";
+import { BrandingCssVarsBridge } from "@/src/features/core/layout/components/BrandingCssVarsBridge";
+import { OrgHeader } from "@/src/features/core/layout/components/OrgHeader";
+import { OrgShareProvider } from "@/src/features/org-share/OrgShareProvider";
+import { applyBrandingVars } from "@/src/shared/branding/applyBrandingVars";
+import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
+import { shouldShowBranchHeaders } from "@/src/shared/env/branchVisibility";
+import { getOrgRequestContext } from "@/src/shared/org/getOrgRequestContext";
+import { listOrgPagesForHeader, resolveOrgSiteStructureForHeader } from "@/src/features/site/db/queries";
 
 export async function generateMetadata({ params }: { params: Promise<{ orgSlug: string }> }): Promise<Metadata> {
   const { orgSlug } = await params;
@@ -16,10 +16,10 @@ export async function generateMetadata({ params }: { params: Promise<{ orgSlug: 
   return {
     title: {
       default: "Home",
-      template: `%s | ${orgName}`
+      template: `%s | ${orgName} | OrgFrame`
     },
     icons: {
-      icon: `/${orgSlug}/icon`
+      icon: "/icon"
     }
   };
 }
@@ -39,14 +39,15 @@ export default async function OrgLayout({
     orgId: orgRequest.org.orgId,
     includeUnpublished: canEditPages
   }).catch(() => []);
+  const resolvedSiteStructure = await resolveOrgSiteStructureForHeader({
+    orgId: orgRequest.org.orgId,
+    orgSlug: orgRequest.org.orgSlug,
+    includeUnpublished: canEditPages
+  }).catch(() => []);
 
   const brandingVars = applyBrandingVars({ accent: orgRequest.org.branding.accent });
   const capabilities = orgRequest.capabilities;
   const canManageOrg = capabilities?.manage.canAccessArea ?? false;
-  const canActWithAi = orgRequest.membership
-    ? can(orgRequest.membership.permissions, "org.branding.write") || can(orgRequest.membership.permissions, "forms.write")
-    : false;
-  const showAiAssistant = Boolean(orgRequest.membership);
   const showHeaders = shouldShowBranchHeaders();
 
   return (
@@ -54,19 +55,22 @@ export default async function OrgLayout({
       <BrandingCssVarsBridge vars={brandingVars as Record<string, string>} />
       {showHeaders ? (
         <OrgHeader
-          canActWithAi={canActWithAi}
           canEditPages={canEditPages}
           canManageOrg={canManageOrg}
+          capabilities={capabilities}
           governingBodyLogoUrl={orgRequest.org.governingBody?.logoUrl ?? null}
           governingBodyName={orgRequest.org.governingBody?.name ?? null}
           pages={pages}
-          showAiAssistant={showAiAssistant}
+          resolvedSiteStructure={resolvedSiteStructure}
           orgLogoUrl={orgLogoUrl}
           orgName={orgRequest.org.orgName}
           orgSlug={orgRequest.org.orgSlug}
+          toolAvailability={orgRequest.org.toolAvailability}
         />
       ) : null}
-      <div className="org-layout-content">{children}</div>
+      <OrgShareProvider orgSlug={orgRequest.org.orgSlug}>
+        <div className="org-layout-content">{children}</div>
+      </OrgShareProvider>
     </div>
   );
 }

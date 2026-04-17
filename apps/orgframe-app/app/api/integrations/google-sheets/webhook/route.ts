@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { reconcileGoogleSheetBySpreadsheetId, runGoogleSheetOutboxProcessor, verifyGoogleSheetWebhookSignature } from "@/modules/forms/integrations/google-sheets/sync";
+import { reconcileGoogleSheetBySpreadsheetId, runGoogleSheetOutboxProcessor, verifyGoogleSheetWebhookSignature } from "@/src/features/forms/integrations/google-sheets/sync";
 
 export const runtime = "nodejs";
 

@@ -1,6 +1,7 @@
 .next
 node_modules
 .env.local
+env.local
 .env
 coverage
 .DS_Store

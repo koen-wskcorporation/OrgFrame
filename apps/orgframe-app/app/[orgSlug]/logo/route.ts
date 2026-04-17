@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getOrgAssetPublicUrl } from "@/lib/branding/getOrgAssetPublicUrl";
-import { getOrgPublicContext } from "@/lib/org/getOrgPublicContext";
+import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
+import { getOrgPublicContext } from "@/src/shared/org/getOrgPublicContext";
 
 export async function GET(
   request: Request,

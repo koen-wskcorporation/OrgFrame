@@ -46,33 +46,33 @@ Best for:
 ## App audit and decisions
 
 ### Migrated from panel to popup
-- `packages/ui/src/auth/AuthDialog.tsx` (`Account Access`) -> `Popup`
-- `packages/ui/src/dashboard/CreateOrganizationDialog.tsx` (`Create organization`) -> `Popup`
+- `apps/orgframe-app/src/features/core/auth/components/AuthDialog.tsx` (`Account Access`) -> `Popup`
+- `apps/orgframe-app/src/features/core/dashboard/components/CreateOrganizationDialog.tsx` (`Create organization`) -> `Popup`
 - `packages/ui/src/ui/data-table.tsx` (`Table columns`) -> `Popup`
-- `packages/ui/src/modules/programs/components/ProgramsManagePanel.tsx` (`Create program`) -> `Popup`
-- `packages/ui/src/modules/programs/schedule/components/OccurrenceEditDialog.tsx` (`Edit/Add occurrence`) -> `Popup`
-- `packages/ui/src/modules/manage-access/components/AccountsAccessPanel.tsx` (`Remove access`) -> `Popup`
+- `apps/orgframe-app/src/features/programs/components/ProgramsManagePanel.tsx` (`Create program`) -> `Popup`
+- `apps/orgframe-app/src/features/programs/schedule/components/OccurrenceEditDialog.tsx` (`Edit/Add occurrence`) -> `Popup`
+- `apps/orgframe-app/src/features/access/components/AccountsAccessPanel.tsx` (`Remove access`) -> `Popup`
 
 ### Migrated from panel to full-screen popup
-- `packages/ui/src/modules/forms/components/RegistrationFormClient.tsx` (`Add player`) -> `FullScreenPopup`
+- `apps/orgframe-app/src/features/forms/components/RegistrationFormClient.tsx` (`Add player`) -> `FullScreenPopup`
 
 ### Migrated from custom dropdown to popover
-- `packages/ui/src/shared/AccountMenu.tsx` -> `Popover`
+- `apps/orgframe-app/src/features/core/layout/components/AccountMenu.tsx` -> `Popover`
 
 ### Kept as panel (contextual editing)
-- `packages/ui/src/calendar/UnifiedCalendar.tsx` and `packages/ui/src/modules/calendar/components/UnifiedCalendar.tsx` (`Create event`)
-- `packages/ui/src/modules/ai/components/AiAssistantLauncher.tsx` (`AI Assistant`)
-- `packages/ui/src/modules/events/components/EventsManagePanel.tsx` (`Create/Edit event`)
-- `packages/ui/src/modules/facilities/components/FacilitySchedulePanel.tsx` (`Create/Edit rule`)
-- `packages/ui/src/modules/facilities/components/FacilityStructurePanel.tsx` (`Add/Edit space`)
-- `packages/ui/src/modules/facilities/components/FacilityTreeEditor.tsx` (`Add/Edit space`)
-- `packages/ui/src/modules/facilities/components/ReservationEditorPanel.tsx`
-- `packages/ui/src/modules/forms/components/FormCreatePanel.tsx`
-- `packages/ui/src/modules/forms/components/FormFieldsVisualEditor.tsx` (`Field settings`, `Field library`)
-- `packages/ui/src/modules/forms/components/FormSubmissionsPanel.tsx` (filters, controls, views, submission details)
-- `packages/ui/src/modules/manage-access/components/AccountsAccessPanel.tsx` (`Member profile`)
-- `packages/ui/src/modules/players/components/PlayersAccountPanel.tsx` (`Add/Edit player`, `Link guardian`)
-- `packages/ui/src/modules/programs/components/ProgramEditorPanel.tsx` (`Edit node`, `Add element`)
-- `packages/ui/src/modules/programs/teams/components/TeamDetailPanel.tsx`
-- `packages/ui/src/modules/site-builder/components/OrgSitePage.tsx` (`Page Editor`)
-- `packages/ui/src/shared/EditorSettingsDialog.tsx` (shared wrapper still intentionally panel-based)
+- `apps/orgframe-app/src/features/calendar/components/Calendar.tsx` and `apps/orgframe-app/src/features/calendar/components/CalendarWorkspace.tsx` (`Create event`)
+- `apps/orgframe-app/src/features/ai/components/AiAssistantLauncher.tsx` (`AI Assistant`)
+- `apps/orgframe-app/src/features/events/components/EventsManagePanel.tsx` (`Create/Edit event`)
+- `apps/orgframe-app/src/features/facilities/components/FacilitySchedulePanel.tsx` (`Create/Edit rule`)
+- `apps/orgframe-app/src/features/facilities/components/FacilityStructurePanel.tsx` (`Add/Edit space`)
+- `apps/orgframe-app/src/features/facilities/components/FacilityTreeEditor.tsx` (`Add/Edit space`)
+- `apps/orgframe-app/src/features/facilities/components/ReservationEditorPanel.tsx`
+- `apps/orgframe-app/src/features/forms/components/FormCreatePanel.tsx`
+- `apps/orgframe-app/src/features/forms/components/FormFieldsVisualEditor.tsx` (`Field settings`, `Field library`)
+- `apps/orgframe-app/src/features/forms/components/FormSubmissionsPanel.tsx` (filters, controls, views, submission details)
+- `apps/orgframe-app/src/features/access/components/AccountsAccessPanel.tsx` (`Member profile`)
+- `apps/orgframe-app/src/features/players/components/PlayersAccountPanel.tsx` (`Add/Edit player`, `Link guardian`)
+- `apps/orgframe-app/src/features/programs/components/ProgramEditorPanel.tsx` (`Edit node`, `Add element`)
+- `apps/orgframe-app/src/features/programs/teams/components/TeamDetailPanel.tsx`
+- `apps/orgframe-app/src/features/site/components/OrgSitePage.tsx` (`Page Editor`)
+- `apps/orgframe-app/src/features/core/layout/components/EditorSettingsDialog.tsx` (shared wrapper still intentionally panel-based)

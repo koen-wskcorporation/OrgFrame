@@ -1,13 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { resolveOrgRolePermissions } from "@/lib/org/customRoles";
-import { can } from "@/lib/permissions/can";
-import { createSupabaseServerForRequest } from "@/lib/supabase/server";
+import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
+import { can } from "@/src/shared/permissions/can";
+import { createSupabaseServerForRequest } from "@/src/shared/data-api/server";
 import {
   buildGoogleSheetsOauthDialogUrl,
   createSignedGoogleSheetsOauthState,
   getGoogleSheetsOauthConfig
-} from "@/modules/forms/integrations/google-sheets/oauth";
-import type { OrgRole } from "@/modules/core/access";
+} from "@/src/features/forms/integrations/google-sheets/oauth";
+import type { OrgRole } from "@/src/features/core/access";
 
 export const runtime = "nodejs";
 
@@ -74,13 +74,13 @@ async function requireFormsWriteContext(request: NextRequest) {
     return { error: "AUTH_REQUIRED", status: 401 } as const;
   }
 
-  const { data: org, error: orgError } = await supabase.from("orgs").select("id, slug").eq("slug", orgSlug).maybeSingle();
+  const { data: org, error: orgError } = await supabase.schema("orgs").from("orgs").select("id, slug").eq("slug", orgSlug).maybeSingle();
   if (orgError || !org) {
     return { error: "ORG_NOT_FOUND", status: 404 } as const;
   }
 
   const { data: membership, error: membershipError } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("role")
     .eq("org_id", org.id)
     .eq("user_id", user.id)
@@ -95,7 +95,7 @@ async function requireFormsWriteContext(request: NextRequest) {
     return { error: "FORBIDDEN", status: 403 } as const;
   }
 
-  const { data: form, error: formError } = await supabase.from("org_forms").select("id").eq("org_id", org.id).eq("id", formId).maybeSingle();
+  const { data: form, error: formError } = await supabase.schema("forms").from("org_forms").select("id").eq("org_id", org.id).eq("id", formId).maybeSingle();
   if (formError || !form) {
     return { error: "FORM_NOT_FOUND", status: 404 } as const;
   }

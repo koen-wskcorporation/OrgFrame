@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { AuthLoginPagePopup } from "@orgframe/ui/auth/AuthLoginPagePopup";
-import { getSessionUser } from "@/lib/auth/getSessionUser";
-import type { AuthMode } from "@orgframe/ui/auth/AuthDialog";
-import { AppPage } from "@orgframe/ui/ui/layout";
+import { AuthLoginPagePopup } from "@/src/features/core/auth/components/AuthLoginPagePopup";
+import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
+import type { AuthMode } from "@/src/features/core/auth/components/AuthDialog";
+import { AppPage } from "@orgframe/ui/primitives/layout";
 
 export const metadata: Metadata = {
   title: "Sign In"

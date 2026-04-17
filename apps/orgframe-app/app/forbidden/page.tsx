@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import type { Metadata } from "next";
-import { Button } from "@orgframe/ui/ui/button";
-import { AuthDialogTrigger } from "@orgframe/ui/auth/AuthDialogTrigger";
-import { AppPage } from "@orgframe/ui/ui/layout";
-import { CenteredStateCard } from "@orgframe/ui/ui/state";
-import { getTenantBaseHosts, normalizeHost, resolveOrgSubdomain } from "@/lib/domains/customDomains";
+import { Button } from "@orgframe/ui/primitives/button";
+import { AuthDialogTrigger } from "@/src/features/core/auth/components/AuthDialogTrigger";
+import { AppPage } from "@orgframe/ui/primitives/layout";
+import { CenteredStateCard } from "@orgframe/ui/primitives/state";
+import { getTenantBaseHosts, normalizeHost, resolveOrgSubdomain } from "@/src/shared/domains/customDomains";
 
 export const metadata: Metadata = {
   title: "Access Forbidden"

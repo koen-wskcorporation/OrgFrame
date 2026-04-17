@@ -24,6 +24,7 @@
   --accent: var(--app-accent);
   --accent-foreground: var(--app-accent-foreground);
   --ring: var(--app-ring);
+  --warning: 39 94% 46%;
   --destructive: 0 72% 50%;
   --success: 145 58% 36%;
   --radius-xs: 14px;
@@ -57,6 +58,7 @@
   --accent: var(--app-accent);
   --accent-foreground: var(--app-accent-foreground);
   --ring: var(--app-ring);
+  --warning: 40 92% 57%;
   --destructive: 0 72% 58%;
   --success: 145 55% 46%;
   --shadow: 0 14px 34px hsl(220 45% 3% / 0.42);
@@ -105,6 +107,8 @@ body {
   width: 100%;
   max-width: none;
   min-width: 0;
+  transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: width;
 }
 
 .app-frame {
@@ -122,13 +126,24 @@ body {
   height: 0;
 }
 
-body.panel-open .org-layout-content {
+body.panel-open-content .org-layout-content {
   margin-right: calc(var(--panel-active-width, 325px) + var(--layout-gap));
 }
 
+body.panel-open-app .app-root {
+  width: calc(100% - (var(--panel-active-width, 325px) + var(--layout-gap)));
+}
+
+body.panel-open-app .org-layout-content {
+  margin-right: 0;
+}
+
 @media (max-width: 1023px) {
-  body.panel-open .org-layout-content {
+  body.panel-open-content .org-layout-content,
+  body.panel-open-app .app-root,
+  body.panel-open-app .org-layout-content {
     margin-right: 0;
+    width: 100%;
   }
 }
 
@@ -140,7 +155,8 @@ body.panel-open .org-layout-content {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .org-layout-content {
+  .org-layout-content,
+  .app-root {
     transition: none;
   }
 }
@@ -266,6 +282,38 @@ a {
 
   .ui-list-item-hover {
     @apply transition-colors hover:bg-surface-muted/65;
+  }
+
+  .ui-card-header-row {
+    @apply flex flex-wrap items-start justify-between gap-3;
+  }
+
+  .ui-card-header-copy {
+    @apply min-w-0 space-y-1;
+  }
+
+  .ui-list-row {
+    @apply flex flex-wrap items-start justify-between gap-3 rounded-control border bg-surface px-4 py-3 shadow-sm;
+  }
+
+  .ui-list-row-hover {
+    @apply transition-colors hover:bg-surface-muted/65;
+  }
+
+  .ui-list-row-content {
+    @apply min-w-0 flex-1 space-y-1;
+  }
+
+  .ui-list-row-title {
+    @apply text-sm font-semibold text-text;
+  }
+
+  .ui-list-row-meta {
+    @apply text-xs text-text-muted;
+  }
+
+  .ui-list-row-actions {
+    @apply ml-auto flex flex-wrap items-center gap-2;
   }
 
   .ui-surface-block {

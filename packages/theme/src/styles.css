@@ -10,6 +10,7 @@
   --accent: var(--brand-primary);
   --accent-foreground: 0 0% 100%;
   --ring: var(--brand-primary);
+  --warning: 39 94% 46%;
   --destructive: 0 72% 50%;
   --success: var(--brand-accent);
   --radius: 24px;

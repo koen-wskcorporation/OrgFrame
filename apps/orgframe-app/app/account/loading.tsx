@@ -1,5 +1,5 @@
-import { AppPage } from "@orgframe/ui/ui/layout";
-import { PageLoadingSkeleton } from "@orgframe/ui/ui/skeleton";
+import { AppPage } from "@orgframe/ui/primitives/layout";
+import { PageLoadingSkeleton } from "@orgframe/ui/primitives/skeleton";
 
 export default function AccountLoading() {
   return (

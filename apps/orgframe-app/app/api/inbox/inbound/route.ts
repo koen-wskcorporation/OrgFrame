@@ -1,11 +1,11 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createOptionalSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
-import { resolveOrgIdFromSlug } from "@/modules/communications/db/queries";
-import { normalizeDisplayName, normalizeEmail, normalizePhone } from "@/modules/communications/normalization";
-import { resolveDirection, resolveInboundIdentity } from "@/modules/communications/service";
-import type { CommChannelType } from "@/modules/communications/types";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
+import { resolveOrgIdFromSlug } from "@/src/features/communications/db/queries";
+import { normalizeDisplayName, normalizeEmail, normalizePhone } from "@/src/features/communications/normalization";
+import { resolveDirection, resolveInboundIdentity } from "@/src/features/communications/service";
+import type { CommChannelType } from "@/src/features/communications/types";
 
 export const runtime = "nodejs";
 

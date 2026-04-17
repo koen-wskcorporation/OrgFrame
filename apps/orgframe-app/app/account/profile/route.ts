@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createSupabaseServerForRequest } from "@/lib/supabase/server";
+import { createSupabaseServerForRequest } from "@/src/shared/data-api/server";
 
 function cleanValue(value: FormDataEntryValue | null) {
   if (typeof value !== "string") {
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     avatar_path: avatarPath
   };
 
-  const { error } = await supabase.from("user_profiles").upsert(updates, {
+  const { error } = await supabase.schema("people").from("users").upsert(updates, {
     onConflict: "user_id"
   });
 

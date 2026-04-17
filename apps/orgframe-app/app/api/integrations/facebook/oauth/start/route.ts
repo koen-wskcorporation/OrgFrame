@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { resolveOrgRolePermissions } from "@/lib/org/customRoles";
-import { can } from "@/lib/permissions/can";
-import { createSupabaseServerForRequest } from "@/lib/supabase/server";
-import { buildFacebookOauthDialogUrl, createSignedFacebookOauthState, getFacebookOauthConfig } from "@/modules/communications/integrations/facebook-oauth";
-import type { OrgRole } from "@/modules/core/access";
+import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
+import { can } from "@/src/shared/permissions/can";
+import { createSupabaseServerForRequest } from "@/src/shared/data-api/server";
+import { buildFacebookOauthDialogUrl, createSignedFacebookOauthState, getFacebookOauthConfig } from "@/src/features/communications/integrations/facebook-oauth";
+import type { OrgRole } from "@/src/features/core/access";
 
 export const runtime = "nodejs";
 
@@ -25,13 +25,13 @@ async function requireCommunicationsWriteOrgContext(request: NextRequest) {
     return { error: "AUTH_REQUIRED", status: 401 } as const;
   }
 
-  const { data: org, error: orgError } = await supabase.from("orgs").select("id, slug").eq("slug", orgSlug).maybeSingle();
+  const { data: org, error: orgError } = await supabase.schema("orgs").from("orgs").select("id, slug").eq("slug", orgSlug).maybeSingle();
   if (orgError || !org) {
     return { error: "ORG_NOT_FOUND", status: 404 } as const;
   }
 
   const { data: membership, error: membershipError } = await supabase
-    .from("org_memberships")
+    .schema("orgs").from("memberships")
     .select("role")
     .eq("org_id", org.id)
     .eq("user_id", user.id)

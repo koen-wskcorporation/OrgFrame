@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { AccountSidebar, AccountSidebarMobile } from "@orgframe/ui/account/AccountSidebar";
-import { UniversalAppShell } from "@orgframe/ui/shared/UniversalAppShell";
-import { requireAuth } from "@/lib/auth/requireAuth";
+import { AccountSidebar, AccountSidebarMobile } from "@/src/features/core/account/components/AccountSidebar";
+import { UniversalAppShell } from "@/src/features/core/layout/components/UniversalAppShell";
+import { requireAuth } from "@/src/features/core/auth/server/requireAuth";
 
 export default async function AccountLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAuth().catch(() => null);

@@ -7,6 +7,6 @@ export default async function ProgramAliasPage({
 }) {
   const { orgSlug, segments } = await params;
   const suffix = Array.isArray(segments) ? segments.join("/") : "";
-  const target = suffix ? `/${orgSlug}/programs/${suffix}` : `/${orgSlug}/programs`;
+  const target = suffix ? `/programs/${suffix}` : "/programs";
   redirect(target);
 }

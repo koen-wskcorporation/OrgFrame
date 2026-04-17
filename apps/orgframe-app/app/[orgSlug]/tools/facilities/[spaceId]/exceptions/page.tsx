@@ -1,2 +1,15 @@
-export { metadata } from "@/app/[orgSlug]/manage/facilities/[spaceId]/exceptions/page";
-export { default } from "@/app/[orgSlug]/manage/facilities/[spaceId]/exceptions/page";
+import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Facility Exceptions"
+};
+
+export default async function OrgManageFacilityExceptionsPage({
+  params
+}: {
+  params: Promise<{ orgSlug: string; spaceId: string }>;
+}) {
+  const { orgSlug } = await params;
+  redirect(`/tools/calendar`);
+}

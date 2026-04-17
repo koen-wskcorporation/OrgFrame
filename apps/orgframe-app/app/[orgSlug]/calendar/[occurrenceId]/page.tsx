@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { BackButton } from "@orgframe/ui/ui/back-button";
-import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
-import { PageHeader } from "@orgframe/ui/ui/page-header";
-import { getOrgPublicContext } from "@/lib/org/getOrgPublicContext";
-import { getCalendarOccurrenceReadModel } from "@/modules/calendar/db/queries";
+import { BackButton } from "@orgframe/ui/primitives/back-button";
+import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { PageHeader } from "@orgframe/ui/primitives/page-header";
+import { getOrgPublicContext } from "@/src/shared/org/getOrgPublicContext";
+import { getCalendarOccurrenceReadModel } from "@/src/features/calendar/db/queries";
 
 export const metadata: Metadata = {
   title: "Calendar Item"
@@ -26,7 +26,7 @@ export default async function OrgCalendarOccurrenceDetailPage({
   const location = typeof readModel.entry.settingsJson.location === "string" ? readModel.entry.settingsJson.location : null;
 
   return (
-    <main className="app-page-shell w-full py-8 md:py-10">
+    <main className="app-page-shell w-full pb-8 pt-0 md:pb-10 md:pt-0">
       <div className="ui-stack-page">
         <BackButton fallbackHref={`/${org.orgSlug}`} label="Back" size="sm" variant="ghost" />
         <PageHeader description={`${readModel.entry.entryType} · ${new Date(readModel.occurrence.startsAtUtc).toLocaleString()}`} title={readModel.entry.title} />

@@ -24,6 +24,9 @@
     ],
     "baseUrl": ".",
     "paths": {
+      "@orgframe/auth": [
+        "../../packages/auth/src/index.ts"
+      ],
       "@orgframe/ui/*": [
         "../../packages/ui/src/*"
       ],

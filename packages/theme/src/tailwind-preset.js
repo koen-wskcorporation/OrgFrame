@@ -18,6 +18,7 @@ const preset = {
           foreground: 'hsl(var(--accent-foreground))'
         },
         ring: 'hsl(var(--ring))',
+        warning: 'hsl(var(--warning))',
         destructive: 'hsl(var(--destructive))',
         success: 'hsl(var(--success))'
       },

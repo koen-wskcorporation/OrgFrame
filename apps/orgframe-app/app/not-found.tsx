@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Button } from "@orgframe/ui/ui/button";
-import { AppPage } from "@orgframe/ui/ui/layout";
-import { CenteredStateCard } from "@orgframe/ui/ui/state";
+import { Button } from "@orgframe/ui/primitives/button";
+import { AppPage } from "@orgframe/ui/primitives/layout";
+import { CenteredStateCard } from "@orgframe/ui/primitives/state";
 
 export default function NotFoundPage() {
   const router = useRouter();

@@ -1,29 +1,38 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
-import { AppFooter } from "@orgframe/ui/shared/AppFooter";
-import { PrimaryHeader } from "@orgframe/ui/shared/PrimaryHeader";
-import { ConfirmDialogProvider } from "@orgframe/ui/ui/confirm-dialog";
-import { ThemeModeProvider } from "@orgframe/ui/ui/theme-mode";
-import { ToastProvider } from "@orgframe/ui/ui/toast";
-import { shouldShowBranchHeaders } from "@/lib/env/branchVisibility";
-import { getTenantBaseHosts, normalizeHost, resolveOrgSubdomain } from "@/lib/domains/customDomains";
-import { UploadProvider } from "@/modules/uploads";
-import { OrderPanelProvider } from "@/modules/orders";
+import { AppFooter } from "@/src/features/core/layout/components/AppFooter";
+import { PrimaryHeader } from "@/src/features/core/layout/components/PrimaryHeader";
+import { ConfirmDialogProvider } from "@orgframe/ui/primitives/confirm-dialog";
+import { ThemeModeProvider } from "@orgframe/ui/primitives/theme-mode";
+import { ToastProvider } from "@orgframe/ui/primitives/toast";
+import { shouldShowBranchHeaders } from "@/src/shared/env/branchVisibility";
+import { getTenantBaseHosts, resolveOrgSubdomain } from "@/src/shared/domains/customDomains";
+import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
+import { listUserOrgs } from "@/src/shared/org/listUserOrgs";
+import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
+import { getCurrentUser } from "@/src/features/core/account/server/getCurrentUser";
+import { FileManagerProvider } from "@/src/features/files/manager";
+import { UploadProvider } from "@/src/features/files/uploads";
+import { OrderPanelProvider } from "@/src/features/orders";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { parseHostWithPort } from "@/src/shared/domains/hostHeaders";
+import type { HeaderAccountState } from "@/src/features/core/layout/types";
 
 export const metadata: Metadata = {
   title: {
-    default: "Sports SaaS",
-    template: "%s | Sports SaaS"
+    default: "OrgFrame",
+    template: "%s | OrgFrame"
   },
   description: "Multi-tenant sports operations suite"
 };
 
 async function getHeaderRoutingContext() {
   const headerStore = await headers();
-  const forwardedHost = headerStore.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = normalizeHost(forwardedHost || headerStore.get("host"));
+  const hostHeader = headerStore.get("host") || headerStore.get("x-forwarded-host");
+  const parsedHost = parseHostWithPort(hostHeader);
+  const host = parsedHost.host;
+  const hostWithPort = parsedHost.hostWithPort || host;
   const tenantBaseHosts = getTenantBaseHosts();
   const orgSubdomain = resolveOrgSubdomain(host, tenantBaseHosts);
 
@@ -32,7 +41,8 @@ async function getHeaderRoutingContext() {
     forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : process.env.NODE_ENV === "production" ? "https" : "http";
 
   if (orgSubdomain) {
-    const tenantBaseOrigin = `${protocol}://${orgSubdomain.baseHost}`;
+    const baseHostWithPort = parsedHost.port ? `${orgSubdomain.baseHost}:${parsedHost.port}` : orgSubdomain.baseHost;
+    const tenantBaseOrigin = `${protocol}://${baseHostWithPort}`;
     return {
       currentOrgSlug: orgSubdomain.orgSlug,
       homeHref: `${tenantBaseOrigin}/`,
@@ -44,7 +54,7 @@ async function getHeaderRoutingContext() {
     return {
       currentOrgSlug: null,
       homeHref: "/",
-      tenantBaseOrigin: `${protocol}://${host}`
+      tenantBaseOrigin: `${protocol}://${hostWithPort}`
     };
   }
 
@@ -62,6 +72,37 @@ export default async function RootLayout({
 }>) {
   const showHeaders = shouldShowBranchHeaders();
   const headerRouting = showHeaders ? await getHeaderRoutingContext() : { currentOrgSlug: null, homeHref: "/", tenantBaseOrigin: null };
+  const memberships = showHeaders ? await listUserOrgs().catch(() => []) : [];
+  const sessionUser = showHeaders ? await getSessionUser().catch(() => null) : null;
+  const currentUser = showHeaders && sessionUser ? await getCurrentUser({ sessionUser }).catch(() => null) : null;
+  const orgOptions = memberships.map((membership) => ({
+    orgSlug: membership.orgSlug,
+    orgName: membership.orgName,
+    orgLogoUrl: getOrgAssetPublicUrl(membership.logoPath),
+    orgIconUrl: getOrgAssetPublicUrl(membership.iconPath)
+  }));
+  const initialAccountState: HeaderAccountState | null = showHeaders
+    ? sessionUser
+      ? {
+          authenticated: true,
+          user: {
+            userId: sessionUser.id,
+            email: currentUser?.email ?? sessionUser.email,
+            firstName: currentUser?.firstName ?? null,
+            lastName: currentUser?.lastName ?? null,
+            avatarUrl: currentUser?.avatarUrl ?? null
+          },
+          organizations: memberships.map((membership) => ({
+            orgId: membership.orgId,
+            orgName: membership.orgName,
+            orgSlug: membership.orgSlug,
+            iconUrl: getOrgAssetPublicUrl(membership.iconPath ?? membership.logoPath)
+          }))
+        }
+      : {
+          authenticated: false
+        }
+    : null;
   return (
     <html lang="en">
       <body className="bg-canvas text-text antialiased">
@@ -69,17 +110,25 @@ export default async function RootLayout({
           <ToastProvider>
             <ConfirmDialogProvider>
               <OrderPanelProvider>
-                <UploadProvider>
-                  <div className="app-frame">
-                    <div className="app-root flex min-h-screen min-w-0 flex-col">
-                      {showHeaders ? (
-                        <PrimaryHeader currentOrgSlug={headerRouting.currentOrgSlug} homeHref={headerRouting.homeHref} tenantBaseOrigin={headerRouting.tenantBaseOrigin} />
-                      ) : null}
-                      <div className={showHeaders ? "flex-1 min-w-0 pt-[var(--layout-gap)]" : "flex-1 min-w-0"}>{children}</div>
+                <FileManagerProvider>
+                  <UploadProvider>
+                    <div className="app-frame">
+                      <div className="app-root flex min-h-screen min-w-0 flex-col">
+                        {showHeaders ? (
+                          <PrimaryHeader
+                            currentOrgSlug={headerRouting.currentOrgSlug}
+                            homeHref={headerRouting.homeHref}
+                            initialAccountState={initialAccountState}
+                            orgOptions={orgOptions}
+                            tenantBaseOrigin={headerRouting.tenantBaseOrigin}
+                          />
+                        ) : null}
+                        <div className={showHeaders ? "flex-1 min-w-0 pt-[var(--layout-gap)]" : "flex-1 min-w-0"}>{children}</div>
+                      </div>
+                      <div className="panel-dock" id="panel-dock" />
                     </div>
-                    <div className="panel-dock" id="panel-dock" />
-                  </div>
-                </UploadProvider>
+                  </UploadProvider>
+                </FileManagerProvider>
               </OrderPanelProvider>
             </ConfirmDialogProvider>
           </ToastProvider>

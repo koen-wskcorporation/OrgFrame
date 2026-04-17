@@ -1,2 +1,10 @@
-export { metadata } from "@/app/[orgSlug]/manage/programs/[programId]/settings/page";
-export { default } from "@/app/[orgSlug]/manage/programs/[programId]/settings/page";
+import type { Metadata } from "next";
+import { Alert } from "@orgframe/ui/primitives/alert";
+
+export const metadata: Metadata = {
+  title: "Program Settings"
+};
+
+export default async function OrgManageProgramSettingsPage() {
+  return <Alert variant="info">Placeholder: settings tab for this program.</Alert>;
+}

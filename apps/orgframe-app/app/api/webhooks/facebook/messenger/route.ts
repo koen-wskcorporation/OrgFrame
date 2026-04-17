@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { createOptionalSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
-import { parseFacebookMessengerWebhookPayload, verifyFacebookWebhookSignature } from "@/modules/communications/integrations/facebook";
-import { normalizeDisplayName } from "@/modules/communications/normalization";
-import { resolveDirection, resolveFacebookIdentityLabelForWebhook, resolveInboundIdentity } from "@/modules/communications/service";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
+import { parseFacebookMessengerWebhookPayload, verifyFacebookWebhookSignature } from "@/src/features/communications/integrations/facebook";
+import { normalizeDisplayName } from "@/src/features/communications/normalization";
+import { resolveDirection, resolveFacebookIdentityLabelForWebhook, resolveInboundIdentity } from "@/src/features/communications/service";
 
 export const runtime = "nodejs";
 

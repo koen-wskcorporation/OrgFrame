@@ -1,15 +1,17 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { Alert } from "@orgframe/ui/ui/alert";
-import { AssetTile } from "@orgframe/ui/ui/asset-tile";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
-import { FormField } from "@orgframe/ui/ui/form-field";
-import { Input } from "@orgframe/ui/ui/input";
-import { PageStack } from "@orgframe/ui/ui/layout";
-import { PageHeader } from "@orgframe/ui/ui/page-header";
-import { SubmitButton } from "@orgframe/ui/ui/submit-button";
-import { getCurrentUser } from "@/lib/auth/getCurrentUser";
-import { requireAuth } from "@/lib/auth/requireAuth";
+import { Alert } from "@orgframe/ui/primitives/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { FormField } from "@orgframe/ui/primitives/form-field";
+import { Input } from "@orgframe/ui/primitives/input";
+import { PageStack } from "@orgframe/ui/primitives/layout";
+import { PageHeader } from "@orgframe/ui/primitives/page-header";
+import { SubmitButton } from "@orgframe/ui/primitives/submit-button";
+import { listAccountPaymentMethods } from "@/src/features/billing/service";
+import { getCurrentUser } from "@/src/features/core/account/server/getCurrentUser";
+import { AccountPaymentMethodsCard } from "@/src/features/core/account/components/AccountPaymentMethodsCard";
+import { AccountProfileCard } from "@/src/features/core/account/components/AccountProfileCard";
+import { requireAuth } from "@/src/features/core/auth/server/requireAuth";
 
 export const metadata: Metadata = {
   title: "Account"
@@ -17,14 +19,16 @@ export const metadata: Metadata = {
 
 const successMessageByCode: Record<string, string> = {
   profile: "Profile updated successfully.",
-  password: "Password updated successfully."
+  password: "Password updated successfully.",
+  payment_method: "Payment method added successfully."
 };
 
 const errorMessageByCode: Record<string, string> = {
   profile_save_failed: "Unable to save profile details right now.",
   service_unavailable: "We could not reach the account service. Please try again in a moment.",
   weak_password: "Password must be at least 8 characters.",
-  password_update_failed: "Unable to update password right now."
+  password_update_failed: "Unable to update password right now.",
+  payment_method_cancelled: "Payment method setup was cancelled."
 };
 
 export default async function AccountPage({
@@ -36,6 +40,7 @@ export default async function AccountPage({
   const currentUser = await getCurrentUser({
     sessionUser
   });
+  const paymentMethods = currentUser ? await listAccountPaymentMethods(currentUser.userId).catch(() => []) : [];
   const query = await searchParams;
 
   if (!currentUser) {
@@ -44,8 +49,6 @@ export default async function AccountPage({
 
   const successMessage = query.saved ? successMessageByCode[query.saved] : null;
   const errorMessage = query.error ? errorMessageByCode[query.error] : null;
-  const fullName = [currentUser.firstName, currentUser.lastName].filter(Boolean).join(" ") || "No name set";
-
   return (
     <PageStack>
       <PageHeader description="Manage your profile details and account security." showBorder={false} title="Account" />
@@ -53,63 +56,15 @@ export default async function AccountPage({
       {successMessage ? <Alert variant="success">{successMessage}</Alert> : null}
       {errorMessage ? <Alert variant="destructive">{errorMessage}</Alert> : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-          <CardDescription>Your identity details shown across organizations.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-3 rounded-control border bg-surface-muted p-3">
-            {currentUser.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img alt={`${fullName} avatar`} className="h-12 w-12 rounded-full border object-cover" src={currentUser.avatarUrl} />
-            ) : (
-              <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border bg-surface text-sm font-semibold">
-                {(fullName.charAt(0) || "A").toUpperCase()}
-              </span>
-            )}
-            <div>
-              <p className="text-sm font-semibold">{fullName}</p>
-              <p className="text-xs text-text-muted">{currentUser.email ?? "No email available"}</p>
-            </div>
-          </div>
+      <AccountProfileCard
+        avatarPath={currentUser.avatarPath}
+        avatarUrl={currentUser.avatarUrl}
+        email={currentUser.email}
+        firstName={currentUser.firstName}
+        lastName={currentUser.lastName}
+      />
 
-          <form action="/account/profile" className="space-y-3" method="post">
-            <div className="grid gap-3 md:grid-cols-2">
-              <FormField label="First name">
-                <Input defaultValue={currentUser.firstName ?? ""} name="firstName" />
-              </FormField>
-              <FormField label="Last name">
-                <Input defaultValue={currentUser.lastName ?? ""} name="lastName" />
-              </FormField>
-              <FormField label="Profile picture">
-                <AssetTile
-                  constraints={{
-                    accept: "image/*",
-                    maxSizeMB: 5,
-                    aspect: "square",
-                    recommendedPx: {
-                      w: 640,
-                      h: 640
-                    }
-                  }}
-                  emptyLabel="Upload profile picture"
-                  fit="contain"
-                  initialPath={currentUser.avatarPath}
-                  initialUrl={currentUser.avatarUrl}
-                  kind="account"
-                  name="avatarPath"
-                  previewAlt={`${fullName} avatar`}
-                  purpose="profile-photo"
-                  specificationText="PNG, JPG, WEBP, HEIC, or SVG"
-                  title="Profile picture"
-                />
-              </FormField>
-            </div>
-            <SubmitButton>Save profile</SubmitButton>
-          </form>
-        </CardContent>
-      </Card>
+      <AccountPaymentMethodsCard paymentMethods={paymentMethods} />
 
       <Card>
         <CardHeader>

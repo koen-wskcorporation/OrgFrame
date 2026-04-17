@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { OrgSitePage } from "@orgframe/ui/modules/site-builder/components/OrgSitePage";
-import { getOrgSitePageForRender } from "@/modules/site-builder/server/getOrgSitePageForRender";
+import { OrgSitePage } from "@/src/features/site/components/OrgSitePage";
+import { getOrgSitePageForRender } from "@/src/features/site/server/getOrgSitePageForRender";
 
 function titleFromSlug(slug: string) {
   return slug
@@ -30,7 +30,7 @@ export default async function OrgPublicPageBySlug({
   const { orgSlug, pageSlug } = await params;
 
   if (pageSlug.toLowerCase() === "home") {
-    redirect(`/${orgSlug}`);
+    redirect("/");
   }
 
   const pageData = await getOrgSitePageForRender({

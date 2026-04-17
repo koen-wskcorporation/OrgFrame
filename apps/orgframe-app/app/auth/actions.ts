@@ -2,8 +2,9 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { createSupabaseServer } from "@/lib/supabase/server";
-import { createOptionalSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
+import { createSupabaseServer } from "@/src/shared/data-api/server";
+import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
+import { getPlatformHost, normalizeHost } from "@/src/shared/domains/customDomains";
 
 function cleanValue(value: FormDataEntryValue | null) {
   if (typeof value !== "string") {
@@ -46,6 +47,11 @@ type AuthAccountLookupResult = {
   requiresActivation: boolean;
   displayName: string | null;
   avatarUrl: string | null;
+};
+
+type SendActivationEmailResult = {
+  ok: boolean;
+  message: string;
 };
 
 type AuthUserRow = {
@@ -156,7 +162,7 @@ export async function lookupAuthAccountAction(formData: FormData): Promise<AuthA
   }
 
   const { data: profile } = await supabase
-    .from("user_profiles")
+    .schema("people").from("users")
     .select("first_name, last_name, avatar_path")
     .eq("user_id", user.id)
     .maybeSingle();
@@ -189,16 +195,13 @@ export async function lookupAuthAccountAction(formData: FormData): Promise<AuthA
 async function getRequestOrigin() {
   const headerStore = await headers();
   const forwardedProto = headerStore.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
-  const forwardedHost = headerStore.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = forwardedHost || headerStore.get("host");
-
-  if (host) {
-    const protocol = forwardedProto === "https" || forwardedProto === "http" ? forwardedProto : process.env.NODE_ENV === "production" ? "https" : "http";
-    return `${protocol}://${host}`;
+  const protocol = forwardedProto === "https" || forwardedProto === "http" ? forwardedProto : process.env.NODE_ENV === "production" ? "https" : "http";
+  const canonicalHost = normalizeHost(getPlatformHost());
+  if (canonicalHost) {
+    return `${protocol}://${canonicalHost}`;
   }
 
-  const fallbackOrigin = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://localhost:3000";
-  return fallbackOrigin.replace(/\/+$/, "");
+  return (process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://orgframe.test:3000").replace(/\/+$/, "");
 }
 
 export async function signInAction(formData: FormData) {
@@ -274,6 +277,42 @@ export async function requestPasswordResetAction(formData: FormData) {
   }
 
   redirect("/auth/reset?message=reset_email_sent");
+}
+
+export async function sendActivationEmail(input: { email: string }): Promise<SendActivationEmailResult> {
+  const email = cleanValue(input.email).toLowerCase();
+  if (!isLikelyEmail(email)) {
+    return {
+      ok: false,
+      message: "Invalid email address."
+    };
+  }
+
+  try {
+    const origin = await getRequestOrigin();
+    const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent("/auth/reset?mode=update")}`;
+    const supabase = await createSupabaseServer();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo
+    });
+
+    if (error) {
+      return {
+        ok: false,
+        message: "Unable to send activation email right now."
+      };
+    }
+
+    return {
+      ok: true,
+      message: "Activation email sent. Check your inbox to verify your email and set a password."
+    };
+  } catch {
+    return {
+      ok: false,
+      message: "Unable to send activation email right now."
+    };
+  }
 }
 
 export async function updatePasswordFromResetAction(formData: FormData) {

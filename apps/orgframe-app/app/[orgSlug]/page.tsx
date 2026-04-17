@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { OrgSitePage } from "@orgframe/ui/modules/site-builder/components/OrgSitePage";
-import { getOrgSitePageForRender } from "@/modules/site-builder/server/getOrgSitePageForRender";
+import { OrgSitePage } from "@/src/features/site/components/OrgSitePage";
+import { getOrgSitePageForRender } from "@/src/features/site/server/getOrgSitePageForRender";
 
 export const metadata: Metadata = {
   title: "Home"

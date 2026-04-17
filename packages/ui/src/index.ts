@@ -1,7 +1,10 @@
-export { Button, buttonVariants } from "./ui/button";
-export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardHeaderCompact, CardTitle } from "./ui/card";
-export { AppPage, CardGrid, PageStack, SectionStack } from "./ui/layout";
-export { Panel } from "./ui/panel";
-export { Popover } from "./ui/popover";
-export { Popup } from "./ui/popup";
-export { ConfirmDialogProvider, useConfirmDialog } from "./ui/confirm-dialog";
+export { Button, buttonVariants } from "./primitives/button";
+export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardHeaderCompact, CardTitle } from "./primitives/card";
+export { AppPage, CardGrid, PageStack, SectionStack } from "./primitives/layout";
+export { Panel } from "./primitives/panel";
+export { Popover } from "./primitives/popover";
+export { Popup } from "./primitives/popup";
+export { PersonChip } from "./primitives/person-chip";
+export { PersonCard, type PersonCardProps } from "./primitives/person-card";
+export { Tooltip } from "./primitives/tooltip";
+export { ConfirmDialogProvider, useConfirmDialog } from "./primitives/confirm-dialog";

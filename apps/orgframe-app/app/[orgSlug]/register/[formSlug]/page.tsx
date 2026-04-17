@@ -1,14 +1,14 @@
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { Alert } from "@orgframe/ui/ui/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
-import { PageHeader } from "@orgframe/ui/ui/page-header";
-import { getSessionUser } from "@/lib/auth/getSessionUser";
-import { RegistrationFormClient } from "@orgframe/ui/modules/forms/components/RegistrationFormClient";
-import { getFormBySlug } from "@/modules/forms/db/queries";
-import { getOrgPublicContext } from "@/lib/org/getOrgPublicContext";
-import { listPlayersForPicker } from "@/modules/players/db/queries";
-import { listProgramNodes } from "@/modules/programs/db/queries";
+import { Alert } from "@orgframe/ui/primitives/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { PageHeader } from "@orgframe/ui/primitives/page-header";
+import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
+import { RegistrationFormClient } from "@/src/features/forms/components/RegistrationFormClient";
+import { getFormBySlug } from "@/src/features/forms/db/queries";
+import { getOrgPublicContext } from "@/src/shared/org/getOrgPublicContext";
+import { listPlayersForPicker } from "@/src/features/players/db/queries";
+import { listProgramNodes } from "@/src/features/programs/db/queries";
 
 function titleFromSlug(slug: string) {
   return slug
@@ -48,7 +48,7 @@ export default async function OrgFormRegistrationPage({
   const requireSignIn = form.formKind === "program_registration" || form.settingsJson.requireSignIn !== false;
 
   if (requireSignIn && !user) {
-    redirect(`/auth?next=${encodeURIComponent(`/${org.orgSlug}/register/${form.slug}`)}`);
+    redirect(`/auth?next=${encodeURIComponent(`/register/${form.slug}`)}`);
   }
 
   const [players, programNodes] = await Promise.all([

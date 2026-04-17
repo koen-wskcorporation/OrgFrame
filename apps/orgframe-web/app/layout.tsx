@@ -1,16 +1,16 @@
-import type { Metadata } from 'next';
-import './globals.css';
-import { ConfirmDialogProvider } from "@orgframe/ui/ui/confirm-dialog";
+import type { Metadata } from "next";
+import "./globals.css";
+import { ConfirmDialogProvider } from "@orgframe/ui/primitives/confirm-dialog";
 
 export const metadata: Metadata = {
-  title: 'OrgFrame | Sports Operations Platform',
-  description: 'OrgFrame helps sports organizations run operations, communication, scheduling, and registrations in one workspace.',
+  title: "OrgFrame | Sports Operations Platform",
+  description: "OrgFrame helps sports organizations run operations, communication, scheduling, and registrations in one workspace.",
   openGraph: {
-    title: 'OrgFrame | Sports Operations Platform',
-    description: 'Operate your organization from one modern platform with OrgFrame.',
-    url: 'https://orgframe.com',
-    siteName: 'OrgFrame',
-    type: 'website'
+    title: "OrgFrame | Sports Operations Platform",
+    description: "Operate your organization from one modern platform with OrgFrame.",
+    url: "https://orgframe.com",
+    siteName: "OrgFrame",
+    type: "website"
   },
   icons: {
     icon: [

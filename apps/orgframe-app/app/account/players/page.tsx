@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@orgframe/ui/ui/page-header";
-import { requireAuth } from "@/lib/auth/requireAuth";
-import { listPlayerGuardians, listPlayersForGuardian } from "@/modules/players/db/queries";
-import { PlayersAccountPanel } from "@orgframe/ui/modules/players/components/PlayersAccountPanel";
+import { PageHeader } from "@orgframe/ui/primitives/page-header";
+import { requireAuth } from "@/src/features/core/auth/server/requireAuth";
+import { listPlayerGuardians, listPlayersForGuardian } from "@/src/features/players/db/queries";
+import { PlayersAccountPanel } from "@/src/features/players/components/PlayersAccountPanel";
 
 export const metadata: Metadata = {
   title: "Players"

@@ -1,12 +1,12 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Alert } from "@orgframe/ui/ui/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
-import { FormField } from "@orgframe/ui/ui/form-field";
-import { Input } from "@orgframe/ui/ui/input";
-import { AppPage, PageStack } from "@orgframe/ui/ui/layout";
-import { PageHeader } from "@orgframe/ui/ui/page-header";
-import { SubmitButton } from "@orgframe/ui/ui/submit-button";
+import { Alert } from "@orgframe/ui/primitives/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { FormField } from "@orgframe/ui/primitives/form-field";
+import { Input } from "@orgframe/ui/primitives/input";
+import { AppPage, PageStack } from "@orgframe/ui/primitives/layout";
+import { PageHeader } from "@orgframe/ui/primitives/page-header";
+import { SubmitButton } from "@orgframe/ui/primitives/submit-button";
 import { requestPasswordResetAction, updatePasswordFromResetAction } from "@/app/auth/actions";
 
 export const metadata: Metadata = {
@@ -75,7 +75,7 @@ export default async function ResetPage({
             )}
             <p className="mt-4 text-center text-sm text-text-muted">
               Remembered your password?{" "}
-              <Link className="text-link underline-offset-2 hover:underline" href="/auth">
+              <Link className="text-accent underline-offset-2 hover:underline" href="/auth">
                 Back to sign in
               </Link>
             </p>

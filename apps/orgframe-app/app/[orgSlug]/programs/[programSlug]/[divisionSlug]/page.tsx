@@ -1,11 +1,16 @@
 import { notFound } from "next/navigation";
-import { Alert } from "@orgframe/ui/ui/alert";
-import { Button } from "@orgframe/ui/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/ui/card";
-import { PageHeader } from "@orgframe/ui/ui/page-header";
-import { getOrgPublicContext } from "@/lib/org/getOrgPublicContext";
-import { getProgramDetailsBySlug } from "@/modules/programs/db/queries";
-import { listProgramScheduleTimelineWithFallback } from "@/modules/programs/schedule/db/queries";
+import type { Metadata } from "next";
+import { Alert } from "@orgframe/ui/primitives/alert";
+import { Button } from "@orgframe/ui/primitives/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { PageHeader } from "@orgframe/ui/primitives/page-header";
+import { ManageCalendarSection } from "@/app/[orgSlug]/tools/calendar/ManageCalendarSection";
+import { getOrgRequestContext } from "@/src/shared/org/getOrgRequestContext";
+import { can } from "@/src/shared/permissions/can";
+import { getCalendarWorkspaceDataAction } from "@/src/features/calendar/actions";
+import { scopeCalendarReadModelByContext } from "@/src/features/calendar/read-model-scope";
+import { getProgramDetailsBySlug } from "@/src/features/programs/db/queries";
+import { listProgramScheduleTimelineWithFallback } from "@/src/features/programs/schedule/db/queries";
 
 type DivisionPageProps = {
   params: Promise<{ orgSlug: string; programSlug: string; divisionSlug: string }>;
@@ -39,12 +44,30 @@ function formatOccurrenceLine(input: { startsAtUtc: string; endsAtUtc: string; t
   })} (${input.timezone})`;
 }
 
+function titleFromSlug(slug: string) {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+export async function generateMetadata({ params }: DivisionPageProps): Promise<Metadata> {
+  const { divisionSlug, programSlug } = await params;
+  const divisionTitle = titleFromSlug(divisionSlug) || "Division";
+  const programTitle = titleFromSlug(programSlug) || "Program";
+
+  return {
+    title: `${divisionTitle} (${programTitle})`
+  };
+}
+
 export default async function ProgramDivisionPage({ params, searchParams }: DivisionPageProps) {
   const { orgSlug, programSlug, divisionSlug } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const tab = resolveTab(resolvedSearchParams);
-  const org = await getOrgPublicContext(orgSlug);
-  const details = await getProgramDetailsBySlug(org.orgId, programSlug, { includeDraft: false });
+  const orgRequest = await getOrgRequestContext(orgSlug);
+  const details = await getProgramDetailsBySlug(orgRequest.org.orgId, programSlug, { includeDraft: false });
 
   if (!details) {
     notFound();
@@ -56,6 +79,29 @@ export default async function ProgramDivisionPage({ params, searchParams }: Divi
   }
 
   const teams = details.nodes.filter((node) => node.nodeKind === "team" && node.parentId === division.id);
+  const canReadPrograms = Boolean(
+    orgRequest.membership &&
+      (can(orgRequest.membership.permissions, "programs.read") ||
+        can(orgRequest.membership.permissions, "programs.write") ||
+        can(orgRequest.membership.permissions, "calendar.read") ||
+        can(orgRequest.membership.permissions, "calendar.write"))
+  );
+  const canWritePrograms = Boolean(
+    orgRequest.membership &&
+      (can(orgRequest.membership.permissions, "programs.write") ||
+        can(orgRequest.membership.permissions, "calendar.write") ||
+        can(orgRequest.membership.permissions, "org.manage.read"))
+  );
+
+  const workspaceData = tab === "calendar" && canReadPrograms ? await getCalendarWorkspaceDataAction({ orgSlug }) : null;
+  const scopedReadModel =
+    workspaceData?.ok
+      ? scopeCalendarReadModelByContext({
+          readModel: workspaceData.data.readModel,
+          divisionId: division.id
+        })
+      : null;
+
   const scheduleTimeline =
     tab === "calendar" || tab === "home" ? await listProgramScheduleTimelineWithFallback({ programId: details.program.id, legacyDetails: details }) : null;
   const calendarNodes = new Set([division.id, ...teams.map((team) => team.id)]);
@@ -118,7 +164,7 @@ export default async function ProgramDivisionPage({ params, searchParams }: Divi
                     <p className="font-medium text-text">{team.name}</p>
                     <p className="text-xs text-text-muted">Team · {team.slug}</p>
                   </div>
-                  <Button href={`/${orgSlug}/programs/${details.program.slug}/${division.slug}/${team.slug}`} size="sm" variant="secondary">
+                  <Button href={`/programs/${details.program.slug}/${division.slug}/${team.slug}`} size="sm" variant="secondary">
                     View team
                   </Button>
                 </div>
@@ -128,21 +174,18 @@ export default async function ProgramDivisionPage({ params, searchParams }: Divi
         ) : null}
 
         {tab === "calendar" ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Calendar</CardTitle>
-              <CardDescription>Upcoming sessions for this division and its teams.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {filteredOccurrences.length === 0 ? <Alert variant="info">No scheduled sessions yet.</Alert> : null}
-              {filteredOccurrences.slice(0, 20).map((occurrence) => (
-                <div className="rounded-control border bg-surface px-3 py-2 text-sm" key={occurrence.id}>
-                  <p className="font-medium text-text">{occurrence.title ?? "Division session"}</p>
-                  <p className="text-xs text-text-muted">{formatOccurrenceLine(occurrence)}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          <div className="space-y-2">
+            {!canReadPrograms ? <Alert variant="info">Division calendar visibility is limited to authorized members.</Alert> : null}
+            {canReadPrograms && workspaceData?.ok && scopedReadModel ? (
+              <ManageCalendarSection
+                activeTeams={workspaceData.data.activeTeams}
+                canWrite={canWritePrograms}
+                initialFacilityReadModel={workspaceData.data.facilityReadModel}
+                initialReadModel={scopedReadModel}
+                orgSlug={orgSlug}
+              />
+            ) : null}
+          </div>
         ) : null}
 
         {tab === "standings" ? (

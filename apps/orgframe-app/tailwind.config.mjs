@@ -6,7 +6,7 @@ const config = {
   darkMode: ["class"],
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./modules/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
     "../../packages/ui/src/**/*.{js,ts,jsx,tsx,mdx}"
   ],
   theme: {
@@ -27,6 +27,7 @@ const config = {
           foreground: "hsl(var(--accent-foreground))"
         },
         ring: "hsl(var(--ring))",
+        warning: "hsl(var(--warning))",
         destructive: "hsl(var(--destructive))",
         success: "hsl(var(--success))"
       },
