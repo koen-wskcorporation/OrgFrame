@@ -15,7 +15,15 @@ function getWebhookSecret(): string | null {
 export async function POST(request: Request) {
   const secret = getWebhookSecret();
   if (!secret) {
-    console.error("[auth/email-hook] SUPABASE_AUTH_EMAIL_HOOK_SECRET not set");
+    const raw = process.env.SUPABASE_AUTH_EMAIL_HOOK_SECRET;
+    console.error("[auth/email-hook] secret missing", {
+      defined: raw !== undefined,
+      rawType: typeof raw,
+      rawLength: typeof raw === "string" ? raw.length : null,
+      trimmedLength: typeof raw === "string" ? raw.trim().length : null,
+      startsWithV1: typeof raw === "string" ? raw.trim().startsWith("v1,") : false,
+      envKeysWithSupabase: Object.keys(process.env).filter((k) => k.includes("SUPABASE")).sort()
+    });
     return NextResponse.json({ ok: false, error: "hook_secret_not_configured" }, { status: 500 });
   }
 
