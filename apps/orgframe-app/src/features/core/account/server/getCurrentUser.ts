@@ -30,7 +30,7 @@ export async function getCurrentUser(options?: GetCurrentUserOptions): Promise<C
       .maybeSingle();
 
     const avatarPath = profile?.avatar_path ?? null;
-    const avatarUrl = avatarPath ? await getSignedProfileAvatarUrl(avatarPath, 60 * 10) : null;
+    const avatarUrl = avatarPath ? await getSignedProfileAvatarUrl(avatarPath) : null;
 
     return {
       userId: sessionUser.id,

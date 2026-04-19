@@ -17,11 +17,11 @@ import { listPlayersForPicker } from "@/src/features/players/db/queries";
 import { isReservedOrgSlug } from "@/src/shared/org/reservedSlugs";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
-import { filterPermissionsByOrgTools, resolveOrgToolAvailability } from "@/src/shared/org/features";
+import { filterPermissionsByOrgTools, resolveOrgToolAvailability } from "@/src/features/core/config/tools";
 import { extractOrgSlugFromSubdomain, getTenantBaseHosts, normalizeHost } from "@/src/shared/domains/customDomains";
 import type { OrgRole } from "@/src/features/core/access";
 
-const NON_ORG_PATH_SEGMENTS = new Set(["account", "api", "auth", "brand", "forbidden", "x", "_next"]);
+const NON_ORG_PATH_SEGMENTS = new Set(["account", "api", "auth", "brand", "create", "forbidden", "inbox", "profiles", "settings", "x", "_next"]);
 const ORG_SEGMENT_PATTERN = /^[a-z0-9-]+$/;
 
 type OrgResolution = {

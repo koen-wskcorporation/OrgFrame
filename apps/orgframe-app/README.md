@@ -100,8 +100,9 @@ Global routes:
 - `/auth/logout`
 - `/auth/reset`
 - `/auth/callback`
-- `/account`
-- `/account/players`
+- `/settings`
+- `/profiles`
+- `/inbox`
 - `/forbidden`
 - `/api/auth/debug`
 
@@ -109,17 +110,17 @@ Org routes (`orgSlug` is always first segment):
 
 - `/[orgSlug]`
 - `/[orgSlug]/[pageSlug]`
-- `/[orgSlug]/tools`
-- `/[orgSlug]/tools/site`
-- `/[orgSlug]/tools/info`
-- `/[orgSlug]/tools/branding`
-- `/[orgSlug]/tools/access`
-- `/[orgSlug]/tools/billing`
-- `/[orgSlug]/tools/programs`
-- `/[orgSlug]/tools/programs/[programId]`
-- `/[orgSlug]/tools/forms`
-- `/[orgSlug]/tools/forms/[formId]`
-- `/[orgSlug]/tools/forms/[formId]/submissions`
+- `/[orgSlug]/manage`
+- `/[orgSlug]/manage/site`
+- `/[orgSlug]/manage/info`
+- `/[orgSlug]/manage/branding`
+- `/[orgSlug]/manage/access`
+- `/[orgSlug]/manage/billing`
+- `/[orgSlug]/manage/programs`
+- `/[orgSlug]/manage/programs/[programId]`
+- `/[orgSlug]/manage/forms`
+- `/[orgSlug]/manage/forms/[formId]`
+- `/[orgSlug]/manage/forms/[formId]/submissions`
 - `/[orgSlug]/programs`
 - `/[orgSlug]/programs/[programSlug]`
 - `/[orgSlug]/register/[formSlug]`
@@ -159,6 +160,7 @@ Environment variables:
 - `AI_MAX_CONCURRENT_REQUESTS` (optional, defaults to `6`)
 - `AI_RATE_LIMIT_PER_WINDOW` (optional, defaults to `20`)
 - `AI_RATE_LIMIT_WINDOW_SECONDS` (optional, defaults to `300`)
+- `ORGFRAME_AI_FIRST_MODE` (optional, defaults to `false`; when `true`, routes disabled sports-ops modules to `/{orgSlug}/workspace`)
 
 API contract:
 
@@ -197,6 +199,11 @@ Execution model:
 5. For executable actions, emit a versioned `AiChangesetV1` and wire confirm-time execution through `execute_changes`.
 6. Add/extend migrations or RPCs as needed for transactional writes and stale-precondition checks.
 
+### AI-first edge functions
+
+- `ai-workspace-actions`: executes AI-confirmed mutations (`update_player_profile`, `assign_player_team`, `create_practice`, `create_team`) with org permission checks.
+- `vector-retrieve`: org-scoped vector retrieval for RAG (`organization_id` metadata filter is mandatory).
+
 ## Google Sheets (User-Owned)
 
 Forms -> Submissions -> Connect Google Sheets now uses a Google OAuth popup and creates the spreadsheet as the signed-in user.
@@ -213,7 +220,7 @@ The app still needs its runtime Sheets identity for ongoing sync/reconcile after
 
 ## Site Management
 
-- Use `/{orgSlug}/tools/site` to manage pages and navigation.
+- Use `/{orgSlug}/manage/site` to manage pages and navigation.
 - Page content is powered by `site_pages` + `site_page_blocks`.
 - Navigation is powered by `site_structure_nodes`.
 

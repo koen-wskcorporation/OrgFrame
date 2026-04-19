@@ -10,6 +10,7 @@ import { CreateModal } from "@orgframe/ui/primitives/interaction-containers";
 import { Select } from "@orgframe/ui/primitives/select";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { X } from "lucide-react";
 import { createFormAction } from "@/src/features/forms/actions";
 import type { Program } from "@/src/features/programs/types";
 
@@ -145,7 +146,7 @@ export function FormCreatePanel({ open, onClose, orgSlug, programs, canWrite = t
       });
       resetState();
       onClose();
-      router.push(`/tools/forms/${result.data.formId}/editor`);
+      router.push(`/manage/forms/${result.data.formId}/editor`);
     });
   }
 
@@ -154,6 +155,7 @@ export function FormCreatePanel({ open, onClose, orgSlug, programs, canWrite = t
       footer={
         <>
           <Button onClick={handleClose} type="button" variant="ghost">
+            <X className="h-4 w-4" />
             Cancel
           </Button>
           <Button disabled={isSaveDisabled} form="create-form-form" loading={isSaving} type="submit">

@@ -242,10 +242,10 @@ export function PeopleSystemGroupsTree({ groups }: { groups: PeopleSystemGroupWo
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button onClick={expandAll} size="sm" variant="ghost">
-              Expand all
+              Expand All
             </Button>
             <Button onClick={collapseAll} size="sm" variant="ghost">
-              Collapse all
+              Collapse All
             </Button>
           </div>
         </div>

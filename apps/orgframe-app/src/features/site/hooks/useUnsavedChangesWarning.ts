@@ -74,7 +74,7 @@ export function useUnsavedChangesWarning({
         const shouldLeave = await confirm({
           title: "Unsaved changes",
           description: message,
-          confirmLabel: "Leave page",
+          confirmLabel: "Leave Page",
           cancelLabel: "Stay"
         });
 
@@ -104,7 +104,7 @@ export function useUnsavedChangesWarning({
         const shouldLeave = await confirm({
           title: "Unsaved changes",
           description: message,
-          confirmLabel: "Leave page",
+          confirmLabel: "Leave Page",
           cancelLabel: "Stay"
         });
 

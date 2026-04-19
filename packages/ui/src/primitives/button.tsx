@@ -1,6 +1,10 @@
+"use client";
+
 import * as React from "react";
 import Link from "next/link";
 import { cva, type VariantProps } from "class-variance-authority";
+import { ChevronDown } from "lucide-react";
+import { Popover } from "./popover";
 import { SpinnerIcon } from "./spinner-icon";
 import { cn } from "./utils";
 
@@ -26,6 +30,8 @@ const buttonVariants = cva(
   }
 );
 
+type DropdownPlacement = "bottom-start" | "bottom-end" | "top-start" | "top-end";
+
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
@@ -34,25 +40,139 @@ export interface ButtonProps
   prefetch?: boolean;
   replace?: boolean;
   scroll?: boolean;
+  iconOnly?: boolean;
+  dropdown?: React.ReactNode;
+  dropdownOnly?: boolean;
+  dropdownPlacement?: DropdownPlacement;
+  dropdownClassName?: string;
+  dropdownOpen?: boolean;
+  onDropdownOpenChange?: (open: boolean) => void;
 }
 
-const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(
-  ({ children, className, href, loading = false, prefetch, replace, scroll, variant, size, ...props }, ref) => {
-    const classes = cn(buttonVariants({ variant, size }), className);
-    const content = <span className={cn("inline-flex items-center gap-2", loading ? "opacity-0" : undefined)}>{children}</span>;
-    const loadingSpinner = loading ? <SpinnerIcon className="pointer-events-none absolute inset-0 m-auto h-4 w-4" /> : null;
+const iconOnlyClasses =
+  "h-8 w-8 shrink-0 rounded-full px-0 text-text-muted hover:bg-surface-muted hover:text-text [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0";
 
+const chevronSizeClass: Record<NonNullable<ButtonProps["size"]>, string> = {
+  sm: "h-9 w-9",
+  md: "h-10 w-10",
+  lg: "h-11 w-11"
+};
+
+const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(
+  (
+    {
+      children,
+      className,
+      href,
+      loading = false,
+      prefetch,
+      replace,
+      scroll,
+      variant,
+      size,
+      iconOnly = false,
+      dropdown,
+      dropdownOnly = false,
+      dropdownPlacement = "bottom-end",
+      dropdownClassName,
+      dropdownOpen,
+      onDropdownOpenChange,
+      onClick,
+      ...props
+    },
+    ref
+  ) => {
+    const resolvedVariant = variant ?? (iconOnly ? "ghost" : undefined);
+    const resolvedSizeProp = size ?? (iconOnly ? "sm" : undefined);
+    const classes = cn(buttonVariants({ variant: resolvedVariant, size: resolvedSizeProp }), iconOnly ? iconOnlyClasses : undefined, className);
+    const renderedChildren = (() => {
+      if (!loading) return children;
+      const spinner = <SpinnerIcon className="pointer-events-none h-4 w-4" key="loading-spinner" />;
+      const arr = React.Children.toArray(children);
+      const iconIndex = arr.findIndex((c) => React.isValidElement(c));
+      if (iconIndex === -1) return [spinner, ...arr];
+      const next = [...arr];
+      next[iconIndex] = spinner;
+      return next;
+    })();
+    const content = <span className="inline-flex items-center gap-2">{renderedChildren}</span>;
+
+    const hasDropdown = dropdown !== undefined && dropdown !== null && dropdown !== false;
+    const isControlled = dropdownOpen !== undefined;
+    const [internalOpen, setInternalOpen] = React.useState(false);
+    const open = isControlled ? Boolean(dropdownOpen) : internalOpen;
+    const setOpen = React.useCallback(
+      (next: boolean) => {
+        if (!isControlled) setInternalOpen(next);
+        onDropdownOpenChange?.(next);
+      },
+      [isControlled, onDropdownOpenChange]
+    );
+
+    const chevronRef = React.useRef<HTMLButtonElement | null>(null);
+    const wrapperRef = React.useRef<HTMLDivElement | null>(null);
+    const resolvedSize = size ?? "md";
+    const chevronDims = chevronSizeClass[resolvedSize];
+
+    const dropdownContent = React.Children.map(dropdown, (child) => {
+      if (!React.isValidElement(child)) return child;
+      const childProps = child.props as { onClick?: (event: React.MouseEvent) => void };
+      const existingOnClick = childProps.onClick;
+      return React.cloneElement(child as React.ReactElement<{ onClick?: (event: React.MouseEvent) => void }>, {
+        onClick: (event: React.MouseEvent) => {
+          existingOnClick?.(event);
+          if (!event.defaultPrevented) setOpen(false);
+        }
+      });
+    });
+
+    if (hasDropdown && dropdownOnly) {
+      const { disabled, type = "button", ...buttonProps } = props;
+      return (
+        <>
+          <button
+            aria-busy={loading || undefined}
+            aria-expanded={open}
+            aria-haspopup="menu"
+            className={cn(classes, "pr-3")}
+            disabled={disabled || loading}
+            onClick={(event) => {
+              onClick?.(event);
+              if (!event.defaultPrevented) setOpen(!open);
+            }}
+            ref={(node) => {
+              chevronRef.current = node;
+              if (typeof ref === "function") ref(node);
+              else if (ref) (ref as React.MutableRefObject<HTMLButtonElement | null>).current = node;
+            }}
+            type={type}
+            {...buttonProps}
+          >
+            <span className="inline-flex items-center gap-2">
+              {renderedChildren}
+              <ChevronDown className={cn("h-4 w-4 transition-transform", open ? "rotate-180" : "rotate-0")} />
+            </span>
+          </button>
+          <Popover anchorRef={chevronRef} className={cn("min-w-[11rem] max-w-[15rem] space-y-1", dropdownClassName)} onClose={() => setOpen(false)} open={open} placement={dropdownPlacement}>
+            {dropdownContent}
+          </Popover>
+        </>
+      );
+    }
+
+    let mainNode: React.ReactNode;
     if (typeof href === "string") {
       const isDisabled = Boolean(props.disabled || loading);
       const { disabled: _disabled, type: _type, value: _value, ...buttonishProps } = props;
       const linkProps = buttonishProps as Omit<React.ComponentProps<typeof Link>, "href">;
 
-      return (
+      mainNode = (
         <Link
           aria-busy={loading || undefined}
           aria-disabled={isDisabled || undefined}
-          className={cn(classes, isDisabled ? "pointer-events-none opacity-55" : undefined)}
+          className={cn(classes, hasDropdown ? "rounded-r-none pr-3" : undefined, isDisabled ? "pointer-events-none opacity-55" : undefined)}
           href={href}
+          onClick={onClick as unknown as React.MouseEventHandler<HTMLAnchorElement>}
           prefetch={prefetch}
           ref={ref as React.Ref<HTMLAnchorElement>}
           replace={replace}
@@ -60,26 +180,52 @@ const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonPro
           tabIndex={isDisabled ? -1 : linkProps.tabIndex}
           {...linkProps}
         >
-          {loadingSpinner}
           {content}
         </Link>
       );
+    } else {
+      const { disabled, type = "button", ...buttonProps } = props;
+      mainNode = (
+        <button
+          aria-busy={loading || undefined}
+          className={cn(classes, hasDropdown ? "rounded-r-none pr-3" : undefined)}
+          disabled={disabled || loading}
+          onClick={onClick}
+          ref={ref as React.Ref<HTMLButtonElement>}
+          type={type}
+          {...buttonProps}
+        >
+          {content}
+        </button>
+      );
     }
 
-    const { disabled, type = "button", ...buttonProps } = props;
+    if (!hasDropdown) {
+      return mainNode;
+    }
 
     return (
-      <button
-        aria-busy={loading || undefined}
-        className={classes}
-        disabled={disabled || loading}
-        ref={ref as React.Ref<HTMLButtonElement>}
-        type={type}
-        {...buttonProps}
-      >
-        {loadingSpinner}
-        {content}
-      </button>
+      <div className="inline-flex items-stretch" ref={wrapperRef}>
+        {mainNode}
+        <button
+          aria-expanded={open}
+          aria-haspopup="menu"
+          aria-label="Open menu"
+          className={cn(
+            buttonVariants({ variant, size }),
+            "shrink-0 rounded-l-none border-l-0 px-0",
+            chevronDims
+          )}
+          onClick={() => setOpen(!open)}
+          ref={chevronRef}
+          type="button"
+        >
+          <ChevronDown className={cn("h-4 w-4 transition-transform", open ? "rotate-180" : "rotate-0")} />
+        </button>
+        <Popover anchorRef={chevronRef} className={cn("min-w-[11rem] max-w-[15rem] space-y-1", dropdownClassName)} onClose={() => setOpen(false)} open={open} placement={dropdownPlacement}>
+          {dropdownContent}
+        </Popover>
+      </div>
     );
   }
 );

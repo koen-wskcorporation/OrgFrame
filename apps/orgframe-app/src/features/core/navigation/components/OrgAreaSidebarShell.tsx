@@ -2,7 +2,8 @@
 
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import * as React from "react";
-import { IconButton } from "@orgframe/ui/primitives/icon-button";
+import { Badge } from "@orgframe/ui/primitives/badge";
+import { Button } from "@orgframe/ui/primitives/button";
 import { cn } from "@orgframe/ui/primitives/utils";
 
 type OrgAreaSidebarShellProps = {
@@ -29,6 +30,7 @@ export function OrgAreaSidebarShell({ children, mobile = false, collapsed = fals
 type OrgAreaSidebarHeaderProps = {
   title: string;
   subtitle?: string;
+  roleChipLabel?: string;
   show?: boolean;
   collapsed?: boolean;
   canCollapse?: boolean;
@@ -38,7 +40,7 @@ type OrgAreaSidebarHeaderProps = {
 
 export function OrgAreaSidebarHeader({
   title,
-  subtitle,
+  roleChipLabel,
   show = true,
   collapsed = false,
   canCollapse = false,
@@ -53,23 +55,33 @@ export function OrgAreaSidebarHeader({
     return (
       <>
         <header className="flex min-h-[44px] items-center justify-center">
-          <IconButton icon={<PanelLeftOpen />} label="Expand sidebar" onClick={onExpand} />
+          <Button iconOnly aria-label="Expand sidebar" onClick={onExpand}>
+            <PanelLeftOpen />
+          </Button>
         </header>
-        <div className="my-3 border-t border-border" />
+        <div className="my-3 border-t border-border/80" />
       </>
     );
   }
 
   return (
     <>
-      <header className="flex min-h-[44px] items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold leading-tight tracking-tight text-text">{title}</h2>
-          {subtitle ? <p className="mt-1 text-xs text-text-muted">{subtitle}</p> : null}
+      <header className="flex min-h-[44px] items-center justify-between gap-3 px-1">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="truncate text-base font-semibold leading-tight tracking-tight text-text">{title}</h2>
+            {roleChipLabel ? (
+              <Badge variant="neutral">{roleChipLabel}</Badge>
+            ) : null}
+          </div>
         </div>
-        {canCollapse ? <IconButton icon={<PanelLeftClose />} label="Collapse sidebar" onClick={onCollapse} /> : null}
+        {canCollapse ? (
+          <Button iconOnly aria-label="Collapse sidebar" onClick={onCollapse}>
+            <PanelLeftClose />
+          </Button>
+        ) : null}
       </header>
-      <div className="my-3 border-t border-border" />
+      <div className="my-3 border-t border-border/80" />
     </>
   );
 }

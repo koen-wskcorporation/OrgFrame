@@ -12,6 +12,7 @@ import { Popup } from "@orgframe/ui/primitives/popup";
 import { Select } from "@orgframe/ui/primitives/select";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { submitFormResponseAction } from "@/src/features/forms/actions";
 import { REGISTRATION_PAGE_KEYS } from "@/src/features/forms/types";
 import { createPlayerAction } from "@/src/features/players/actions";
@@ -854,7 +855,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {showSubmitAnotherResponseButton ? (
                 <Button onClick={handleSubmitAnotherResponse} type="button" variant="secondary">
-                  Submit another response
+                  Submit Another Response
                 </Button>
               ) : null}
               {successButtons.map((button) => (
@@ -927,7 +928,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
                 {registrationPlayerPage?.description ? <p className="text-sm text-text-muted">{registrationPlayerPage.description}</p> : null}
               </div>
               <Button onClick={() => setPlayerModalOpen(true)} size="sm" type="button" variant="secondary">
-                Add player
+                Add Player
               </Button>
             </div>
 
@@ -1060,11 +1061,13 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
 
         <div className="flex flex-wrap items-center gap-2">
           <Button disabled={currentPageIndex === 0} onClick={handleBackClick} type="button" variant="secondary">
+            <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
 
           {!isLastPage ? (
             <Button onClick={handleNextClick} type="button">
+              <ArrowRight className="h-4 w-4" />
               Next
             </Button>
           ) : (
@@ -1083,7 +1086,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
               Cancel
             </Button>
             <Button disabled={isCreatingPlayer} form="registration-create-player-form" loading={isCreatingPlayer} type="submit">
-              {isCreatingPlayer ? "Saving..." : "Add player"}
+              {isCreatingPlayer ? "Saving..." : "Add Player"}
             </Button>
           </>
         }

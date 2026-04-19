@@ -27,6 +27,42 @@ export function getPlatformHost() {
   return host || "orgframe.app";
 }
 
+export function getCanonicalAuthHost() {
+  const explicit = process.env.AUTH_CANONICAL_HOST;
+  if (explicit) {
+    const host = normalizeHost(parseHostFromUrl(explicit));
+    if (host) {
+      return host;
+    }
+  }
+
+  return getPlatformHost();
+}
+
+export function isCanonicalAuthHost(host: string | null | undefined) {
+  const normalized = normalizeHost(host);
+  if (!normalized) {
+    return false;
+  }
+
+  return normalized === getCanonicalAuthHost();
+}
+
+export function isPlatformHost(host: string | null | undefined) {
+  const normalized = normalizeHost(host);
+  if (!normalized) {
+    return false;
+  }
+
+  for (const baseHost of getTenantBaseHosts()) {
+    if (normalized === baseHost || normalized.endsWith(`.${baseHost}`)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function readOptionalHost(value: string | undefined) {
   if (!value) {
     return "";
@@ -66,7 +102,7 @@ export function getPlatformHosts() {
   return hosts;
 }
 
-const RESERVED_SUBDOMAINS = new Set(["www", "admin", "api", "docs", "status", "staging"]);
+const RESERVED_SUBDOMAINS = new Set(["www", "admin", "api", "auth", "docs", "status", "staging"]);
 
 export function isReservedSubdomain(value: string) {
   return RESERVED_SUBDOMAINS.has(value.toLowerCase());
@@ -128,7 +164,9 @@ export function shouldSkipCustomDomainRoutingPath(pathname: string) {
     pathname.startsWith("/api") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/auth") ||
-    pathname.startsWith("/account") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/profiles") ||
+    pathname.startsWith("/inbox") ||
     pathname.startsWith("/forbidden")
   );
 }

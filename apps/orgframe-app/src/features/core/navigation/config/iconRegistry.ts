@@ -1,4 +1,5 @@
 import {
+  BarChart2,
   Building2,
   CalendarDays,
   CreditCard,
@@ -28,14 +29,14 @@ export const ORG_ADMIN_ICON_MAP: Record<OrgAdminNavIcon, LucideIcon> = {
   calendar: CalendarDays,
   "file-text": FileText,
   map: MapPinned,
-  inbox: Inbox
+  inbox: Inbox,
+  "bar-chart": BarChart2
 };
 
 export type OrgHierarchyEntityType = "program" | "division" | "team";
 
 export const ORG_HIERARCHY_ENTITY_CONFIG: Record<OrgHierarchyEntityType, { label: string; icon: LucideIcon }> = {
-  program: { label: "Program", icon: Wrench },
+  program: { label: "Program", icon: LayoutDashboard },
   division: { label: "Division", icon: Spline },
   team: { label: "Team", icon: Users }
 };
-

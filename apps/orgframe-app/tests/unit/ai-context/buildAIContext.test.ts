@@ -178,12 +178,12 @@ describe("buildAIContext", () => {
 
   it("resolves account context without org on account routes", async () => {
     state.players = [{ id: "player-1", label: "Alex Doe", subtitle: "DOB: 2012-04-03" }];
-    const ctx = await buildAIContext(new Request("https://orgframe.app/account/players?playerId=player-1"));
+    const ctx = await buildAIContext(new Request("https://orgframe.app/profiles?playerId=player-1"));
 
     assert.equal(ctx.org, null);
     assert.equal(ctx.membership, null);
     assert.equal(ctx.debug.resolvedFrom.org, "none");
-    assert.equal(ctx.scope.currentModule, "players");
+    assert.equal(ctx.scope.currentModule, "profiles");
     assert.equal(ctx.account.activePlayerId, "player-1");
     assert.deepEqual(ctx.account.players, state.players);
   });

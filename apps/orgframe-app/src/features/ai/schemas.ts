@@ -15,7 +15,7 @@ const aiUiContextSchema = z.object({
     queryParams: z.record(z.string().trim().min(1).max(80), z.string().trim().min(1).max(200)).optional()
   }),
   page: z.object({
-    currentModule: z.enum(["calendar", "facilities", "programs", "teams", "communications", "files", "account", "players", "unknown"]).optional(),
+    currentModule: z.enum(["calendar", "facilities", "programs", "teams", "communications", "files", "settings", "profiles", "workspace", "unknown"]).optional(),
     tool: optionalTextSchema,
     entityType: optionalTextSchema,
     entityId: optionalTextSchema,
@@ -50,6 +50,15 @@ const aiUiContextSchema = z.object({
       language: optionalTextSchema,
       online: z.boolean().optional(),
       visibilityState: optionalTextSchema
+    })
+    .optional(),
+  workspaceContext: z
+    .object({
+      view: z.enum(["overview", "data_table", "calendar", "import_review", "visualization", "action_result"]).optional(),
+      entityType: optionalTextSchema,
+      entityIds: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
+      filters: z.record(z.string().trim().min(1).max(80), z.string().trim().min(1).max(200)).optional(),
+      importRunId: z.string().trim().min(1).max(120).optional()
     })
     .optional()
 });
@@ -168,8 +177,9 @@ export const resolveEntitiesInputSchema = z.object({
 
 export const queryOrgDataInputSchema = z.object({
   orgSlug: z.string().trim().min(1),
-  metric: z.enum(["form_submission_count", "forms_summary", "programs_summary", "events_summary", "org_overview"]).optional().default("form_submission_count"),
+  metric: z.enum(["form_submission_count", "forms_summary", "programs_summary", "events_summary", "org_overview", "rag_retrieve"]).optional().default("form_submission_count"),
   question: z.string().trim().min(1).max(4000).optional(),
+  topK: z.number().int().min(1).max(20).optional(),
   formId: z.string().trim().min(1).optional(),
   formSlug: z.string().trim().min(1).optional(),
   formName: z.string().trim().min(1).max(200).optional()

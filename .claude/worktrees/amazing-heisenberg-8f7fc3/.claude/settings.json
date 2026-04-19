@@ -1,0 +1,44 @@
+{
+  "version": "1.0",
+  "permissions": {
+    "allowlist": [
+      {
+        "description": "Read TypeScript/config files (no auth)",
+        "tool": "Read",
+        "glob": "**/*.{ts,tsx,json,mjs,md}",
+        "priority": 1
+      },
+      {
+        "description": "File search & glob patterns",
+        "tool": "Glob",
+        "priority": 1
+      },
+      {
+        "description": "Code search with Grep",
+        "tool": "Grep",
+        "priority": 1
+      },
+      {
+        "description": "List files and git commands",
+        "tool": "Bash",
+        "command": "^(ls|find|git|npm run typecheck|npm run lint|npm run test)",
+        "priority": 1
+      },
+      {
+        "description": "Edit project files",
+        "tool": "Edit",
+        "priority": 2
+      },
+      {
+        "description": "Write new files",
+        "tool": "Write",
+        "priority": 2
+      }
+    ]
+  },
+  "hints": {
+    "context-awareness": "Always read CLAUDE.md first for conventions and paths before exploring.",
+    "token-efficiency": "Use /compact frequently. Point Claude to exact file:line numbers. Switch to Haiku for linting/formatting.",
+    "arch-notes": "Feature modules in src/features/ own their domain. Server components by default. Use getOrgRequestContext() for org/user/perms."
+  }
+}

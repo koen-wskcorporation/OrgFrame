@@ -120,7 +120,7 @@ export function FormSettingsPanel({ orgSlug, form, programs, programNodes, canWr
         <CardHeaderRow
           actions={
             <Button disabled={isSaving || !canWrite} form="form-settings-form" loading={isSaving} type="submit">
-              {isSaving ? "Saving..." : "Save settings"}
+              {isSaving ? "Saving..." : "Save Settings"}
             </Button>
           }
           description="Configure metadata, registration linkage, and publishing behavior."

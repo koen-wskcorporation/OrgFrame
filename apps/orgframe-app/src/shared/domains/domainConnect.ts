@@ -229,7 +229,7 @@ export async function getGoDaddyQuickConnectDiagnostics(params: {
 
   const supported = settings ? await isTemplateSupported(settings.urlAPI, config.providerId, config.serviceId) : false;
 
-  const redirectUri = config.redirectUri || `https://${params.platformHost}/${params.orgSlug}/tools/domains?setup=1&step=3&method=godaddy`;
+  const redirectUri = config.redirectUri || `https://${params.platformHost}/${params.orgSlug}/manage/domains?setup=1&step=3&method=godaddy`;
 
   let applyUrl: string | null = null;
   let reason: string | null = null;

@@ -4,16 +4,16 @@ function getSegments(pathname: string) {
   return pathname.split("/").map((segment) => segment.trim()).filter(Boolean);
 }
 
-function fromToolsRoute(segments: string[]): AIContext["scope"] {
-  const tool = segments[1] ?? "";
+function fromManageRoute(segments: string[]): AIContext["scope"] {
+  const module = segments[1] ?? "";
 
-  if (tool === "calendar" || tool === "events") {
+  if (module === "calendar" || module === "events") {
     return {
       currentModule: "calendar"
     };
   }
 
-  if (tool === "facilities") {
+  if (module === "facilities") {
     return {
       currentModule: "facilities",
       entityType: segments[2] ? "facility" : undefined,
@@ -21,7 +21,7 @@ function fromToolsRoute(segments: string[]): AIContext["scope"] {
     };
   }
 
-  if (tool === "programs") {
+  if (module === "programs") {
     return {
       currentModule: "programs",
       entityType: segments[2] ? "program" : undefined,
@@ -29,13 +29,13 @@ function fromToolsRoute(segments: string[]): AIContext["scope"] {
     };
   }
 
-  if (tool === "inbox") {
+  if (module === "inbox") {
     return {
       currentModule: "communications"
     };
   }
 
-  if (tool === "files") {
+  if (module === "files") {
     return {
       currentModule: "files"
     };
@@ -57,8 +57,8 @@ export function resolveScope(pathname: string): AIContext["scope"] {
 
   const root = segments[0] ?? "";
 
-  if (root === "tools") {
-    return fromToolsRoute(segments);
+  if (root === "manage") {
+    return fromManageRoute(segments);
   }
 
   if (root === "calendar") {
@@ -105,15 +105,15 @@ export function resolveScope(pathname: string): AIContext["scope"] {
     };
   }
 
-  if (root === "account") {
-    if (segments[1] === "players") {
-      return {
-        currentModule: "players"
-      };
-    }
-
+  if (root === "profiles") {
     return {
-      currentModule: "account"
+      currentModule: "profiles"
+    };
+  }
+
+  if (root === "settings") {
+    return {
+      currentModule: "settings"
     };
   }
 

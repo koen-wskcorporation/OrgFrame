@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { ManageCalendarSection } from "@/app/[orgSlug]/tools/calendar/ManageCalendarSection";
+import { ManageCalendarSection } from "@/app/[orgSlug]/manage/calendar/ManageCalendarSection";
 import { getOrgRequestContext } from "@/src/shared/org/getOrgRequestContext";
 import { can } from "@/src/shared/permissions/can";
 import { getCalendarWorkspaceDataAction } from "@/src/features/calendar/actions";

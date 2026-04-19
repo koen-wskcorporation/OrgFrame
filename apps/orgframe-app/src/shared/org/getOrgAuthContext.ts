@@ -4,8 +4,10 @@ import { createDataApiServiceRoleClient, createSupabaseServer } from "@/src/shar
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
 import { getGoverningBodyLogoUrl } from "@/src/shared/branding/getGoverningBodyLogoUrl";
-import { filterPermissionsByOrgTools, resolveOrgToolAvailability } from "@/src/shared/org/features";
+import { filterPermissionsByOrgTools, resolveOrgToolAvailability } from "@/src/features/core/config/tools";
 import { isReservedOrgSlug } from "@/src/shared/org/reservedSlugs";
+import { normalizeOrgType } from "@/src/shared/org/orgTypes";
+import { getOrgDisplayHost } from "@/src/shared/org/orgDisplayHost";
 import type { OrgRole } from "@/src/features/core/access";
 import type { OrgAuthContext, OrgBranding, OrgGoverningBody } from "@/src/shared/org/types";
 
@@ -66,7 +68,7 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
   const supabase = await createSupabaseServer();
   const { data: org, error: orgError } = await supabase
     .schema("orgs").from("orgs")
-    .select("id, slug, name, logo_path, icon_path, brand_primary, features_json, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
+    .select("id, slug, name, org_type, logo_path, icon_path, brand_primary, features_json, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
     .eq("slug", orgSlug)
     .maybeSingle();
 
@@ -77,6 +79,15 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
   if (!org) {
     notFound();
   }
+
+  const { data: customDomainRow } = await supabase
+    .schema("orgs").from("custom_domains")
+    .select("domain")
+    .eq("org_id", org.id)
+    .eq("status", "verified")
+    .maybeSingle();
+
+  const customDomain = customDomainRow?.domain ?? null;
 
   const { data: membership, error: membershipError } = await supabase
     .schema("orgs").from("memberships")
@@ -114,6 +125,9 @@ const getOrgAuthContextCached = cache(async (orgSlug: string): Promise<OrgAuthCo
     orgId: org.id,
     orgSlug: org.slug,
     orgName: org.name,
+    orgType: normalizeOrgType(org.org_type),
+    customDomain,
+    displayHost: getOrgDisplayHost(org.slug, customDomain),
     userId: user.id,
     membershipRole,
     membershipPermissions,

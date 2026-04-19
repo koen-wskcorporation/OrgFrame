@@ -22,7 +22,6 @@
         "name": "next"
       }
     ],
-    "baseUrl": ".",
     "paths": {
       "@orgframe/auth": [
         "../../packages/auth/src/index.ts"

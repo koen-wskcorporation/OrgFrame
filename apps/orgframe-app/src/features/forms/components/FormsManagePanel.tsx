@@ -117,7 +117,7 @@ export function FormsManagePanel({ orgSlug, forms, programs, canWrite = true }: 
                   onToggle={() => toggleFormStatus(form)}
                   statusLabel={form.status === "published" ? `Published status for ${form.name}` : `Unpublished status for ${form.name}`}
                 />
-                <Link className="ui-list-row-title hover:underline" href={`/tools/forms/${form.id}/editor`}>
+                <Link className="ui-list-row-title hover:underline" href={`/manage/forms/${form.id}/editor`}>
                   {form.name}
                 </Link>
               </div>
@@ -127,7 +127,7 @@ export function FormsManagePanel({ orgSlug, forms, programs, canWrite = true }: 
               <p className="text-sm text-text-muted">/register/{form.slug}</p>
             </div>
             <div className="ui-list-row-actions">
-              <Button href={`/tools/forms/${form.id}/editor`} size="sm" variant="secondary">
+              <Button href={`/manage/forms/${form.id}/editor`} size="sm" variant="secondary">
                 Open
               </Button>
             </div>

@@ -1,6 +1,7 @@
 const reservedSlugs = new Set([
   "account",
   "auth",
+  "create",
   "debug",
   "forbidden",
   "_next",
@@ -8,7 +9,10 @@ const reservedSlugs = new Set([
   "favicon.ico",
   "robots.txt",
   "sitemap.xml",
-  "not-found"
+  "not-found",
+  "inbox",
+  "profiles",
+  "settings"
 ]);
 
 export function isReservedOrgSlug(orgSlug: string) {

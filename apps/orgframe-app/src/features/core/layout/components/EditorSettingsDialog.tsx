@@ -3,6 +3,7 @@
 import { Button } from "@orgframe/ui/primitives/button";
 import { Popup } from "@orgframe/ui/primitives/popup";
 import { cn } from "@orgframe/ui/primitives/utils";
+import { Check } from "lucide-react";
 
 type EditorSettingsDialogProps = {
   open: boolean;
@@ -33,6 +34,7 @@ export function EditorSettingsDialog({
       footer={
         footer ?? (
           <Button onClick={onClose} size="sm">
+            <Check className="h-4 w-4" />
             Save
           </Button>
         )

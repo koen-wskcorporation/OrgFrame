@@ -6,6 +6,12 @@ import {
   proposeUpdateResponseStatusAction
 } from "@/src/features/ai/tools/intents/forms-actions";
 import { proposeSetOrgGoverningBody } from "@/src/features/ai/tools/intents/set-org-governing-body";
+import {
+  proposeAssignPlayerTeamAction,
+  proposeCreateTeamAction,
+  proposeCreatePracticeAction,
+  proposeUpdatePlayerProfileAction
+} from "@/src/features/ai/tools/intents/workspace-actions";
 import { proposeStubIntent } from "@/src/features/ai/tools/intents/stub-intents";
 import type { AiToolDefinition } from "@/src/features/ai/tools/base";
 
@@ -46,6 +52,22 @@ function inferIntent(intentType: string, parameters: Record<string, unknown>) {
 
   if (freeText.includes("move") && freeText.includes("player")) {
     return "players.move_registration";
+  }
+
+  if (freeText.includes("jersey") || (freeText.includes("player") && freeText.includes("update"))) {
+    return "players.update_profile_fields";
+  }
+
+  if ((freeText.includes("assign") || freeText.includes("add")) && freeText.includes("team") && freeText.includes("player")) {
+    return "teams.assign_player";
+  }
+
+  if ((freeText.includes("create") || freeText.includes("new")) && freeText.includes("team")) {
+    return "teams.create_team";
+  }
+
+  if ((freeText.includes("schedule") || freeText.includes("create")) && freeText.includes("practice")) {
+    return "calendar.create_practice";
   }
 
   if (freeText.includes("schedule")) {
@@ -124,6 +146,74 @@ export const proposeChangesTool: AiToolDefinition<typeof proposeChangesInputSche
 
     if (intentType === "forms.responses.update_status") {
       const proposal = await proposeUpdateResponseStatusAction({
+        context: context.requestContext,
+        orgSlug: input.orgSlug,
+        parameters: {
+          ...input.parameters,
+          freeText: cleanText(input.parameters.freeText) || cleanText(input.parameters.userMessage)
+        },
+        entitySelections: input.entitySelections
+      });
+
+      return {
+        ok: true,
+        proposal
+      };
+    }
+
+    if (intentType === "players.update_profile_fields") {
+      const proposal = await proposeUpdatePlayerProfileAction({
+        context: context.requestContext,
+        orgSlug: input.orgSlug,
+        parameters: {
+          ...input.parameters,
+          freeText: cleanText(input.parameters.freeText) || cleanText(input.parameters.userMessage)
+        },
+        entitySelections: input.entitySelections
+      });
+
+      return {
+        ok: true,
+        proposal
+      };
+    }
+
+    if (intentType === "teams.assign_player") {
+      const proposal = await proposeAssignPlayerTeamAction({
+        context: context.requestContext,
+        orgSlug: input.orgSlug,
+        parameters: {
+          ...input.parameters,
+          freeText: cleanText(input.parameters.freeText) || cleanText(input.parameters.userMessage)
+        },
+        entitySelections: input.entitySelections
+      });
+
+      return {
+        ok: true,
+        proposal
+      };
+    }
+
+    if (intentType === "teams.create_team") {
+      const proposal = await proposeCreateTeamAction({
+        context: context.requestContext,
+        orgSlug: input.orgSlug,
+        parameters: {
+          ...input.parameters,
+          freeText: cleanText(input.parameters.freeText) || cleanText(input.parameters.userMessage)
+        },
+        entitySelections: input.entitySelections
+      });
+
+      return {
+        ok: true,
+        proposal
+      };
+    }
+
+    if (intentType === "calendar.create_practice") {
+      const proposal = await proposeCreatePracticeAction({
         context: context.requestContext,
         orgSlug: input.orgSlug,
         parameters: {

@@ -1,0 +1,162 @@
+source_column,non_empty_rows,current_target,current_handling,recommended_target,transform,schema_change_required,priority,notes
+Program Name,482,programs.programs.name,Used in program_structure profile as primary name source.,programs.programs.name,trim + canonical slug generation,no,high,Already used when importing program_structure.
+Division Name,482,imports.import_rows.raw_row_json,Captured in canonical row but writer does not create division nodes.,"programs.program_structure_nodes(name,node_kind=division,parent_id=program)","upsert by (program_id,parent_id,name)",no,high,Implement true hierarchy writer.
+Account First Name,482,imports.import_rows.raw_row_json,Not mapped to person/contact model.,people.household_contacts.first_name,trim,yes,high,Need non-auth contact table.
+Account Last Name,482,imports.import_rows.raw_row_json,Not mapped to person/contact model.,people.household_contacts.last_name,trim,yes,high,Need non-auth contact table.
+Player First Name,482,people.players.first_name,Mapped by people_roster profile alias and written directly.,people.players.first_name,trim,no,high,Already active in writer.
+Player Last Name,482,people.players.last_name,Mapped by people_roster profile alias and written directly.,people.players.last_name,trim,no,high,Already active in writer.
+Player Gender,482,imports.import_rows.raw_row_json,Not mapped by writer.,people.players.gender,"normalize {Male,Female,Other,Unknown}",no,high,Column is fully populated in sample.
+Player Birth Date,482,imports.import_rows.raw_row_json,Alias not currently recognized; not mapped to date_of_birth.,people.players.date_of_birth,parse mm/dd/yyyy to date; reject impossible dates,no,high,Add alias: player_birth_date -> date_of_birth.
+Street Address,482,imports.import_rows.raw_row_json,Not mapped.,people.household_contacts.street_1,trim,yes,high,Fully populated in sample.
+Unit,16,imports.import_rows.raw_row_json,Not mapped.,people.household_contacts.street_2,trim,yes,medium,Sparse in sample (16 rows).
+City,482,imports.import_rows.raw_row_json,Not mapped.,people.household_contacts.city,trim/title-case,yes,high,Fully populated in sample.
+State,482,imports.import_rows.raw_row_json,Not mapped.,people.household_contacts.state,normalize state,yes,high,Fully populated in sample.
+Postal Code,482,imports.import_rows.raw_row_json,Not mapped.,people.household_contacts.postal_code,strip spaces,yes,high,Fully populated in sample.
+User Email,482,imports.import_rows.raw_row_json,Alias not recognized (expects guardian_email/contact_email).,people.household_contacts.email,lowercase; validate,yes,high,Could fallback into people.user_profiles if matching auth user exists.
+Telephone,0,imports.import_rows.raw_row_json,Not mapped (sample empty).,people.household_contacts.phone_primary,normalize E.164,yes,medium,
+Cellphone,482,imports.import_rows.raw_row_json,Not mapped due to alias mismatch.,people.household_contacts.phone_mobile,normalize E.164,yes,high,Fully populated in sample.
+Other Phone,0,imports.import_rows.raw_row_json,Not mapped.,people.household_contacts.phone_other,normalize E.164,yes,low,Sample empty.
+Team Name,482,imports.import_rows.raw_row_json,In canonical program profile but not written to teams.,programs.program_structure_nodes/team + programs.program_team_members linkage,resolve team then attach player member record,no,high,High value for roster reconstruction.
+Order Date,482,commerce.orders.order_date,Mapped and written.,commerce.orders.order_date,parse datetime with timezone,no,high,Already active.
+Order No,482,imports.import_rows.raw_row_json,Not mapped due to alias mismatch.,commerce.orders.source_order_no,trim string,no,high,Add alias order_no.
+Order Detail Description,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.items_json[].description,trim,no,high,
+OrderItem Amount,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.items_json[].amount,parse decimal,no,high,
+OrderItem Amount Paid,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.items_json[].amount_paid,parse decimal,no,high,
+OrderItem Balance,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.items_json[].balance_amount,parse decimal,no,high,Line-level balance.
+Order Payment Status,482,imports.import_rows.raw_row_json,Not mapped by writer.,commerce.orders.source_payment_status,normalize enum,no,high,Important operational status.
+Jersey Size,482,imports.import_rows.raw_row_json,Not mapped by writer.,people.players.jersey_size,normalize size vocabulary,no,high,Column is fully populated in sample.
+Player Allergies,0,imports.import_rows.raw_row_json,Not mapped by writer.,people.players.allergies,trim text,no,medium,Target column exists via sportsconnect migration.
+Player Emergency Contact First Name,0,imports.import_rows.raw_row_json,Not mapped.,people.player_emergency_contacts.first_name,trim,yes,medium,Sample empty.
+Player Emergency Contact Last Name,0,imports.import_rows.raw_row_json,Not mapped.,people.player_emergency_contacts.last_name,trim,yes,medium,Sample empty.
+Player Emergency Telephone,0,imports.import_rows.raw_row_json,Not mapped.,people.player_emergency_contacts.phone,normalize E.164,yes,medium,Sample empty.
+Player Insurance Company,0,imports.import_rows.raw_row_json,Not mapped by writer.,people.players.insurance_company,trim text,no,low,Target column exists via sportsconnect migration.
+Player Insurance Policy Holder,0,imports.import_rows.raw_row_json,Not mapped by writer.,people.players.insurance_policy_holder,trim text,no,low,Target column exists via sportsconnect migration.
+Player Insurance Policy Number,0,imports.import_rows.raw_row_json,Not mapped by writer.,people.players.metadata_json.insurance_policy_number,trim; redact in UI,optional,low,Add first-class column only if needed for workflows.
+Player Physical Conditions,0,imports.import_rows.raw_row_json,Not mapped by writer.,people.players.physical_conditions,trim text,no,medium,Target column exists via sportsconnect migration.
+Player Waiver,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.player_waiver,parse boolean/text as appropriate,no,high,Registration-level attribute.
+Player Verification Waiver,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.player_verification_waiver,parse boolean/text as appropriate,no,high,Registration-level attribute.
+Shorts Size,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.shorts_size,type-aware parse (boolean/date/text),no,low,Sample empty in this export.
+Socks Size,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.socks_size,type-aware parse (boolean/date/text),no,low,Sample empty in this export.
+Pants Size,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.pants_size,type-aware parse (boolean/date/text),no,low,Sample empty in this export.
+Special Player Request,211,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.special_request,parse boolean/text as appropriate,no,medium,Registration-level attribute.
+Tetanus Shot,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.tetanus_shot,type-aware parse (boolean/date/text),no,low,Sample empty in this export.
+Tetanus Shot Date,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.tetanus_shot_date,type-aware parse (boolean/date/text),no,low,Sample empty in this export.
+Position Played,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_team_members.position,trim,no,medium,Sample empty.
+Race Estimated Finish Time,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.race_estimated_finish_time,type-aware parse (boolean/date/text),no,low,Sample empty in this export.
+Race Shirt,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.race_shirt,type-aware parse (boolean/date/text),no,low,Sample empty in this export.
+New Or Returning,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.new_or_returning,parse boolean/text as appropriate,no,medium,Registration-level attribute.
+School Name,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.school_name,parse boolean/text as appropriate,no,low,Registration-level attribute.
+Little League School Name,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.little_league_school_name,parse boolean/text as appropriate,no,medium,Registration-level attribute.
+Current Grade,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.current_grade,parse boolean/text as appropriate,no,high,Registration-level attribute.
+Rising Grade,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.rising_grade,parse boolean/text as appropriate,no,low,Registration-level attribute.
+Teammate Request,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.teammate_request,parse boolean/text as appropriate,no,low,Registration-level attribute.
+Coach Request,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.coach_request,parse boolean/text as appropriate,no,low,Registration-level attribute.
+Previous Coach,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.previous_coach,parse boolean/text as appropriate,no,low,Registration-level attribute.
+Years of Experience,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.years_of_experience,parse boolean/text as appropriate,no,low,Registration-level attribute.
+USL Membership Number,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.usl_membership_number,parse boolean/text as appropriate,no,low,Registration-level attribute.
+Little League Eligibility,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.little_league_eligibility,parse boolean/text as appropriate,no,medium,Registration-level attribute.
+Association Player ID,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.association_player_id,parse boolean/text as appropriate,no,low,Registration-level attribute.
+Division Id,482,imports.import_rows.raw_row_json,Not mapped to external IDs.,programs.program_structure_nodes.settings_json.source_division_id OR dedicated column,trim preserve as string,optional,high,Dedicated source ID columns preferred for idempotency.
+Division Start Date,482,imports.import_rows.raw_row_json,Not mapped.,programs.programs.start_date OR division settings_json.start_date,parse date,no,medium,Need rule: program-level vs division-level dates.
+Division End Date,482,imports.import_rows.raw_row_json,Not mapped.,programs.programs.end_date OR division settings_json.end_date,parse date,no,medium,
+Division Price,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_structure_nodes.settings_json.price,"parse decimal(12,2)",no,high,Important for fee reporting.
+Division Gender,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_structure_nodes.settings_json.gender,normalize enum,no,medium,
+Division Open Registration,482,imports.import_rows.raw_row_json,Not mapped.,programs.programs.registration_open_at,parse datetime with org timezone,no,high,
+Division Close Registration,482,imports.import_rows.raw_row_json,Not mapped.,programs.programs.registration_close_at,parse datetime with org timezone,no,high,
+Division Max Players,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_structure_nodes.capacity,parse integer >=0,no,high,
+Division Accept Deposits,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_structure_nodes.settings_json.accept_deposits,parse boolean,no,medium,Sample empty.
+Division Deposit Amount,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_structure_nodes.settings_json.deposit_amount,parse decimal,no,medium,Sample empty.
+Division Tryout Fee Amount,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_structure_nodes.settings_json.tryout_fee_amount,parse decimal,no,medium,
+Division Minimum Age,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_structure_nodes.settings_json.minimum_age,parse integer,no,medium,
+Division Maximum Age,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_structure_nodes.settings_json.maximum_age,parse integer,no,medium,
+Enabled Wait List,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_structure_nodes.waitlist_enabled,parse boolean,no,high,Fully populated in sample.
+Order Detail Program Name,482,imports.import_rows.raw_row_json,Not mapped to line items currently.,commerce.orders.items_json[].source_program_name,trim,no,high,Use with item builder.
+Order Detail Division Name,482,imports.import_rows.raw_row_json,Not mapped to line items currently.,commerce.orders.items_json[].source_division_name,trim,no,high,
+Order Deposit Only,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.items_json[].metadata_json.deposit_only,parse boolean,no,medium,
+Order Deposit Only Amount,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.items_json[].metadata_json.deposit_only_amount,parse decimal,no,medium,
+Order Detail Player Id,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.player_id via source-player lookup,resolve external player id,yes,high,Requires external player ID key.
+Order Id,482,commerce.orders.source_order_id,Mapped in commerce_orders profile and writer.,commerce.orders.source_order_id,trim string,no,high,Already active.
+Order Notes,25,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.metadata_json.order_notes,trim,no,low,25 non-empty.
+Order Amount,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.total_amount,"parse decimal(12,2)",no,high,Use as order total when consistent with line/payments.
+Order Time Stamp,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.order_time_stamp,parse datetime with timezone,no,medium,Column exists in orders lineage.
+Billing First Name,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.billing_first_name,trim,no,medium,
+Billing Last Name,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.billing_last_name,trim,no,medium,
+Billing Address,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.billing_address,trim,no,medium,
+Last 4 of CC,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.card_last4,digits-only length 4,no,medium,Do not store full PAN.
+Order Card Expiry Month,482,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.card_expiry_month,2-digit month,no,low,
+Order Card Expiry Year,482,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.card_expiry_year,4-digit year,no,low,
+Orders Order Notes,37,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.metadata_json.orders_order_notes,trim,no,low,37 non-empty.
+Order Status,482,commerce.orders.order_status,Mapped and written.,commerce.orders.order_status,normalize enum,no,high,Already active.
+Order Payment Message,19,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.payment_message,trim,no,low,19 non-empty.
+Order Payment Amount,482,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.payment_amount,"parse decimal(12,2)",no,high,
+User Paid CC Fee,482,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.paid_cc_fee,parse decimal,no,high,
+User Paid Registration Fee,482,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.paid_registration_fee,parse decimal,no,high,
+Admin Paid CC Fee,482,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.admin_paid_cc_fee,parse decimal,no,medium,
+Admin Paid Registration Fee,482,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.admin_paid_registration_fee,parse decimal,no,medium,
+Total Payment Amount,482,imports.import_rows.raw_row_json,Not mapped.,commerce.orders.total_paid_amount,"parse decimal(12,2)",no,high,
+Order Payment Method,482,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.payment_method,normalize enum,no,medium,
+Non-Volunteer Fee,482,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.non_volunteer_fee,parse decimal,no,low,
+ODP Order Detail Payment Id,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.source_payment_key,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+ODP Order Detail Id,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.odp_order_detail_id,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+ODP Payment History Id,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.odp_payment_history_id,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+ODP Paid Amount,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.payment_amount,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+ODP Paid Reg Fee,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.paid_registration_fee,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+ODP Paid CC Fee,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.paid_cc_fee,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+ODP Created By,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.odp_created_by,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+ODP Created Date,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.payment_date,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Order Id,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.external_order_id,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Payment Date,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.payment_date,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Bill To First Name,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.bill_to_first_name,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Bill To Last Name,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.bill_to_last_name,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Bill To Address,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.bill_to_address,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Bill To City,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.bill_to_city,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Bill To State,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.bill_to_state,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Bill To Zip,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.bill_to_zip,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Payment Amount,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.payment_amount,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Payment Method,0,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.payment_method,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Order Notes,25,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.order_notes,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Credit Card Number,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.masked_card_number,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Card Expiry Month,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.card_expiry_month,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Card Expiry Year,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.card_expiry_year,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Transaction Id,450,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.transaction_id,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Auth Code,0,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.auth_code,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Avs Code,4,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.avs_code,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Payment Status,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.payment_status,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Is Open Order Payment,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.is_open_order_payment,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Order Payment History Id,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.source_payment_key,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Old Order Payment History Id,52,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.old_payment_history_id,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Credit Card Type,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.metadata_json.credit_card_type,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH CC Fee,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.paid_cc_fee,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+OPH Per Reg Fee,475,imports.import_rows.raw_row_json,Not mapped.,commerce.payments.paid_registration_fee,trim/parse by type; store PCI-safe values only,no,medium,Many OPH/ODP fields are populated in sample.
+Player Id,482,imports.import_rows.raw_row_json,Not persisted as external ID.,people.players.source_external_id,trim; preserve as string,yes,high,Add unique key with source_system for idempotent re-import.
+Player Middle Initial,0,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.middle_initial,upper 1-char,optional,low,Sample column empty.
+Birth Date Time Stamp,482,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.birth_datetime_source,parse timestamp,no,low,Useful for provenance only.
+Player Age,482,imports.import_rows.raw_row_json,Not mapped.,derived metric (do not persist as canonical),recompute from DOB at query time,no,low,Avoid stale age values.
+Little League Age (Baseball),482,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.ll_age_baseball,parse integer,no,medium,
+Little League Age (Softball),482,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.ll_age_softball,parse integer,no,medium,
+Player Email,0,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.email,"lowercase, validate email",optional,low,Sample column empty.
+Player Street,482,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.address.street_1,trim,optional,low,Prefer household/contact model if address must be relational.
+Player Unit,0,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.address.street_2,trim,optional,low,Sample column empty.
+Player City,482,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.address.city,trim/title-case,optional,low,
+Player State,482,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.address.state,normalize to USPS or preserve full name,optional,low,
+Player Postal Code,482,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.address.postal_code,strip spaces; preserve leading zeros,optional,low,
+Player Telephone,0,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.phone_primary,normalize E.164 where possible,optional,low,Sample column empty.
+Player State Abbreviation,482,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.address.state_abbr,upper 2-char,optional,low,Could also derive from Player State.
+Player Cellphone,0,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.phone_mobile,normalize E.164 where possible,optional,low,Sample column empty.
+Registration Number,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.registration_number,trim,no,medium,Sample empty.
+Player Jersey Number,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_team_members.jersey_number,trim,no,medium,Only meaningful when team membership exists.
+Player Evaluation Comment,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.evaluation_comment,trim,no,low,Sample empty.
+Player Evaluation Rating,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.evaluation_rating,parse numeric,no,low,Sample empty.
+Numeric Ranking (Auto Assign),0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.numeric_ranking,parse integer,no,low,Sample empty.
+Birth Certificate Note,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.birth_certificate_note,trim,no,low,Sample empty.
+Recent Team,469,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.recent_team,trim,no,medium,469 non-empty in sample.
+Tryout Rejection Email Sent,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.tryout_rejection_email_sent,parse boolean/text as appropriate,no,low,Registration-level attribute.
+Tryout Acceptance Status,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.tryout_acceptance_status,parse boolean/text as appropriate,no,low,Registration-level attribute.
+Tryout Acceptance Email Status,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.tryout_acceptance_email_status,parse boolean/text as appropriate,no,low,Registration-level attribute.
+New Registrant,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.new_registrant,parse boolean/text as appropriate,no,medium,Registration-level attribute.
+Play Down,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.play_down,parse boolean/text as appropriate,no,low,Registration-level attribute.
+Birth Certificate,482,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.birth_certificate,parse boolean,no,low,Populated in sample.
+Verification Note,0,imports.import_rows.raw_row_json,Not mapped.,programs.program_registrations.metadata_json.verification_note,trim,no,low,Sample empty.
+Player Suffix,0,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.suffix,trim uppercase,optional,low,Sample empty.
+Weight,0,imports.import_rows.raw_row_json,Not mapped.,people.players.metadata_json.weight,parse decimal and unit,optional,low,Sample empty.
+Associated Team Staff,76,imports.import_rows.raw_row_json,Not mapped.,programs.program_team_staff (lookup/create user) OR registration metadata,split names; resolve identities,optional,low,76 non-empty; identity resolution needed.

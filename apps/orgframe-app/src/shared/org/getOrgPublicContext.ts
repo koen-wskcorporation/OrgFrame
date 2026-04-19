@@ -2,8 +2,10 @@ import { cache } from "react";
 import { notFound } from "next/navigation";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { getGoverningBodyLogoUrl } from "@/src/shared/branding/getGoverningBodyLogoUrl";
-import { resolveOrgToolAvailability } from "@/src/shared/org/features";
+import { resolveOrgToolAvailability } from "@/src/features/core/config/tools";
 import { isReservedOrgSlug } from "@/src/shared/org/reservedSlugs";
+import { normalizeOrgType } from "@/src/shared/org/orgTypes";
+import { getOrgDisplayHost } from "@/src/shared/org/orgDisplayHost";
 import type { OrgBranding, OrgGoverningBody, OrgPublicContext } from "@/src/shared/org/types";
 
 function mapBranding(org: {
@@ -57,7 +59,7 @@ export const getOrgPublicContext = cache(async (orgSlug: string): Promise<OrgPub
   const supabase = await createSupabaseServer();
   const { data: org, error: orgError } = await supabase
     .schema("orgs").from("orgs")
-    .select("id, slug, name, logo_path, icon_path, brand_primary, features_json, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
+    .select("id, slug, name, org_type, logo_path, icon_path, brand_primary, features_json, governing_body:governing_bodies!orgs_governing_body_id_fkey(id, slug, name, logo_path)")
     .eq("slug", orgSlug)
     .maybeSingle();
 
@@ -69,10 +71,22 @@ export const getOrgPublicContext = cache(async (orgSlug: string): Promise<OrgPub
     notFound();
   }
 
+  const { data: customDomainRow } = await supabase
+    .schema("orgs").from("custom_domains")
+    .select("domain")
+    .eq("org_id", org.id)
+    .eq("status", "verified")
+    .maybeSingle();
+
+  const customDomain = customDomainRow?.domain ?? null;
+
   return {
     orgId: org.id,
     orgSlug: org.slug,
     orgName: org.name,
+    orgType: normalizeOrgType(org.org_type),
+    customDomain,
+    displayHost: getOrgDisplayHost(org.slug, customDomain),
     branding: mapBranding(org),
     governingBody: mapGoverningBody(org.governing_body),
     toolAvailability: resolveOrgToolAvailability(org.features_json)

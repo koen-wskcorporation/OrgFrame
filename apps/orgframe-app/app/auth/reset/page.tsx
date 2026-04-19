@@ -1,12 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
-import { AppPage, PageStack } from "@orgframe/ui/primitives/layout";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { SubmitButton } from "@orgframe/ui/primitives/submit-button";
+import { AuthShell } from "@/src/features/core/auth/components/AuthShell";
 import { requestPasswordResetAction, updatePasswordFromResetAction } from "@/app/auth/actions";
 
 export const metadata: Metadata = {
@@ -38,50 +36,40 @@ export default async function ResetPage({
   const infoMessage = query.message ? infoMessageByCode[query.message] ?? query.message : null;
 
   return (
-    <AppPage className="relative min-h-screen overflow-hidden px-0 pb-0 pt-0">
-      <div aria-hidden="true" className="auth-photo-bg" />
-
-      <PageStack className="relative z-10 px-4 py-8 md:px-6 md:py-10">
-        <PageHeader description="Request a reset email or set a new password from a valid reset link." title="Reset Password" />
-
+    <AuthShell
+      subtitle={isUpdateMode ? "Choose a new account password to finish reset." : "Enter your account email to receive a reset link."}
+      title={isUpdateMode ? "Set new password" : "Reset password"}
+    >
+      <div className="space-y-4">
         {errorMessage ? <Alert variant="destructive">{errorMessage}</Alert> : null}
         {infoMessage ? <Alert variant="info">{infoMessage}</Alert> : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{isUpdateMode ? "Set new password" : "Send reset email"}</CardTitle>
-            <CardDescription>
-              {isUpdateMode ? "Choose a new account password to finish reset." : "Enter your account email to receive a reset link."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isUpdateMode ? (
-              <form action={updatePasswordFromResetAction} className="space-y-3">
-                <FormField hint="Minimum 8 characters" label="New password">
-                  <Input autoComplete="new-password" name="password" required type="password" />
-                </FormField>
-                <FormField label="Confirm password">
-                  <Input autoComplete="new-password" name="confirmPassword" required type="password" />
-                </FormField>
-                <SubmitButton className="w-full">Update password</SubmitButton>
-              </form>
-            ) : (
-              <form action={requestPasswordResetAction} className="space-y-3">
-                <FormField label="Email">
-                  <Input autoComplete="email" name="email" required type="email" />
-                </FormField>
-                <SubmitButton className="w-full">Send reset email</SubmitButton>
-              </form>
-            )}
-            <p className="mt-4 text-center text-sm text-text-muted">
-              Remembered your password?{" "}
-              <Link className="text-accent underline-offset-2 hover:underline" href="/auth">
-                Back to sign in
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
-      </PageStack>
-    </AppPage>
+        {isUpdateMode ? (
+          <form action={updatePasswordFromResetAction} className="space-y-3">
+            <FormField hint="Minimum 8 characters" label="New password">
+              <Input autoComplete="new-password" name="password" required type="password" />
+            </FormField>
+            <FormField label="Confirm password">
+              <Input autoComplete="new-password" name="confirmPassword" required type="password" />
+            </FormField>
+            <SubmitButton className="w-full">Update password</SubmitButton>
+          </form>
+        ) : (
+          <form action={requestPasswordResetAction} className="space-y-3">
+            <FormField label="Email">
+              <Input autoComplete="email" name="email" required type="email" />
+            </FormField>
+            <SubmitButton className="w-full">Send reset email</SubmitButton>
+          </form>
+        )}
+
+        <p className="mt-5 text-center text-sm text-text-muted">
+          Remembered your password?{" "}
+          <Link className="font-medium text-text underline underline-offset-2 hover:text-text-muted" href="/auth">
+            Back to sign in
+          </Link>
+        </p>
+      </div>
+    </AuthShell>
   );
 }

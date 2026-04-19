@@ -123,9 +123,20 @@ export function PeopleDirectoryPanel({ orgSlug, currentUserId, canWritePeople, l
         renderCell: (row) =>
           row.profiles.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
-              {row.profiles.map((entry) => (
-                <PersonChip key={entry.profile.id} name={entry.profile.displayName} />
-              ))}
+              {row.profiles.map((entry) => {
+                const relationshipLabels = Array.from(new Set(entry.links.map((link) => relationshipBadgeLabel(link.relationshipType))));
+                const metaLabel = relationshipLabels.join(", ");
+                const hasSelfLink = entry.links.some((link) => link.relationshipType === "self");
+
+                return (
+                  <PersonChip
+                    key={entry.profile.id}
+                    metaLabel={metaLabel.length > 0 ? metaLabel : undefined}
+                    metaTone={hasSelfLink ? "success" : "neutral"}
+                    name={entry.profile.displayName}
+                  />
+                );
+              })}
             </div>
           ) : (
             <span className="text-text-muted">—</span>
@@ -553,7 +564,7 @@ export function PeopleDirectoryPanel({ orgSlug, currentUserId, canWritePeople, l
         }}
         open={editAccountPopupOpen}
         orgSlug={orgSlug}
-        submitLabel="Save account"
+        submitLabel="Save Account"
         targetUserId={selectedAccount?.userId}
         title="Edit account details"
       />

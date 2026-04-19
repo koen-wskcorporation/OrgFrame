@@ -6,12 +6,13 @@ import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Chip } from "@orgframe/ui/primitives/chip";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { Plus } from "lucide-react";
 import type { AccountPaymentMethod } from "@/src/features/billing/types";
 import {
   createAccountPaymentMethodCheckoutFromAccountAction,
   removeAccountPaymentMethodFromAccountAction,
   setDefaultAccountPaymentMethodFromAccountAction
-} from "@/app/account/actions";
+} from "@/app/(account)/settings/actions";
 
 export function AccountPaymentMethodsCard({ paymentMethods }: { paymentMethods: AccountPaymentMethod[] }) {
   const { toast } = useToast();
@@ -98,7 +99,8 @@ export function AccountPaymentMethodsCard({ paymentMethods }: { paymentMethods: 
         ))}
 
         <Button disabled={isPending} onClick={handleAddPaymentMethod}>
-          Add payment method
+          <Plus className="h-4 w-4" />
+          Add Payment Method
         </Button>
       </CardContent>
     </Card>

@@ -15,6 +15,7 @@ import {
   BarChart3,
   Users,
   TableProperties,
+  X,
   type LucideIcon
 } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
@@ -106,6 +107,7 @@ export function BlockLibraryDialog({ open, onClose, onSelect }: BlockLibraryDial
       description="Select a section type to add to this page."
       footer={
         <Button onClick={onClose} size="sm" variant="ghost">
+          <X className="h-4 w-4" />
           Close
         </Button>
       }

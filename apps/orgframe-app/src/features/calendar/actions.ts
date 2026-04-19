@@ -523,9 +523,9 @@ function filterReadModelByActorVisibility(input: {
 }
 
 function revalidateCalendarRoutes(orgSlug: string) {
-  revalidatePath(`/${orgSlug}/tools/calendar`);
-  revalidatePath(`/${orgSlug}/tools/facilities`);
-  revalidatePath(`/${orgSlug}/tools/programs`);
+  revalidatePath(`/${orgSlug}/manage/calendar`);
+  revalidatePath(`/${orgSlug}/manage/facilities`);
+  revalidatePath(`/${orgSlug}/manage/programs`);
   revalidatePath(`/${orgSlug}`);
   revalidatePath(`/${orgSlug}`, "layout");
 }

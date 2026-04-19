@@ -78,8 +78,8 @@ export function ProgramTeamsPanel({ orgSlug, programId, canWrite, nodes, teamSum
     <div className="ui-stack-page">
       <WorkspaceCardShell
         actions={
-          <Button href={`/tools/programs/${programId}/structure`} type="button" variant="secondary">
-            Open structure
+          <Button href={`/manage/programs/${programId}/structure`} type="button" variant="secondary">
+            Open Structure
           </Button>
         }
         contentClassName="space-y-4"
@@ -130,8 +130,8 @@ export function ProgramTeamsPanel({ orgSlug, programId, canWrite, nodes, teamSum
                   <Button onClick={() => setActiveTeamId(summary.team.id)} size="sm" type="button" variant="secondary">
                     Manage
                   </Button>
-                  <Button href={`/tools/programs/${programId}/structure?teamId=${summary.team.id}`} size="sm" type="button" variant="ghost">
-                    Open in structure
+                  <Button href={`/manage/programs/${programId}/structure?teamId=${summary.team.id}`} size="sm" type="button" variant="ghost">
+                    Open in Structure
                   </Button>
                 </div>
               </div>

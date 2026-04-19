@@ -1,6 +1,21 @@
 export const importProfiles = ["people_roster", "program_structure", "commerce_orders"] as const;
 
 export type ImportProfileKey = (typeof importProfiles)[number];
+export const importPlatformKeys = ["spreadsheet", "sportsconnect", "sportsengine", "stack_sports", "other"] as const;
+export type ImportPlatformKey = (typeof importPlatformKeys)[number];
+
+export type ImportPlatformCatalogItem = {
+  key: ImportPlatformKey;
+  label: string;
+  description: string;
+  logoAssetPath: string | null;
+  supportsApiPull: boolean;
+  supportsFileUpload: boolean;
+  requiresOauth: boolean;
+  oauthProvider: string | null;
+  apiVersion: string | null;
+  isActive: boolean;
+};
 
 export type ImportRunStatus =
   | "queued"
@@ -64,6 +79,10 @@ export type ApplyResult = {
 
 export type ImportRunListItem = {
   id: string;
+  importSessionId: string | null;
+  sourcePlatformKey: ImportPlatformKey | null;
+  sourcePlatformLabel: string | null;
+  sourcePlatformLogoPath: string | null;
   profile: ImportProfileKey;
   status: ImportRunStatus;
   progress: number;

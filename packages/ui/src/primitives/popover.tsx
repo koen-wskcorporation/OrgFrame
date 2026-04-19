@@ -151,7 +151,7 @@ export function Popover({
   const content = (
     <div
       className={cn(
-        "fixed z-[1300] w-[20rem] max-w-[calc(100vw-1.5rem)] origin-top-left rounded-card border bg-surface p-2 shadow-card transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
+        "fixed z-[1300] w-max max-w-[min(calc(100vw-1.5rem),18rem)] origin-top-left rounded-card border bg-surface p-2 shadow-card transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
         position.visible ? "opacity-100 scale-100" : "pointer-events-none opacity-0 scale-95",
         className
       )}

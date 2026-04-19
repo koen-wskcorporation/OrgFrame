@@ -2,6 +2,7 @@ import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl
 import { getCurrentUser, type CurrentUser } from "@/src/features/core/account/server/getCurrentUser";
 import { requireAuth } from "@/src/features/core/auth/server/requireAuth";
 import { listUserOrgs } from "@/src/shared/org/listUserOrgs";
+import type { OrgType } from "@/src/shared/org/orgTypes";
 import type { OrgRole } from "@/src/features/core/access";
 
 export type DashboardUser = Pick<CurrentUser, "userId" | "email" | "firstName" | "lastName" | "avatarUrl">;
@@ -10,6 +11,8 @@ export type DashboardOrgMembership = {
   orgId: string;
   orgName: string;
   orgSlug: string;
+  orgType: OrgType | null;
+  displayHost: string;
   role: OrgRole;
   iconUrl: string | null;
 };
@@ -32,6 +35,8 @@ export async function getDashboardContext(): Promise<DashboardContext> {
       orgId: membership.orgId,
       orgName: membership.orgName,
       orgSlug: membership.orgSlug,
+      orgType: membership.orgType,
+      displayHost: membership.displayHost,
       role: membership.role,
       iconUrl
     };

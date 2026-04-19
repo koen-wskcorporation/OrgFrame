@@ -1,3 +1,4 @@
+export const ORG_HEADER_EDITOR_TOOLBAR_SLOT_ID = "org-header-editor-toolbar-slot";
 export const ORG_SITE_OPEN_EDITOR_EVENT = "org-site:open-editor";
 export const ORG_SITE_OPEN_EDITOR_REQUEST_KEY = "org-site:open-editor-request";
 export const ORG_SITE_EDITOR_STATE_EVENT = "org-site:editor-state";

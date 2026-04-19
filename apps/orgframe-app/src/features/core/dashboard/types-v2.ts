@@ -1,6 +1,7 @@
 import type { OrgCapabilities } from "@/src/shared/permissions/orgCapabilities";
 import type { OrgRole, Permission } from "@/src/features/core/access";
-import type { OrgToolAvailability } from "@/src/shared/org/features";
+import type { OrgToolAvailability } from "@/src/features/core/config/tools";
+import type { OrgType } from "@/src/shared/org/orgTypes";
 
 export const personalHubModuleKeys = ["notifications", "schedule", "registrations", "inbox"] as const;
 
@@ -18,6 +19,8 @@ export type DashboardV2OrgMembership = {
   orgId: string;
   orgSlug: string;
   orgName: string;
+  orgType: OrgType | null;
+  displayHost: string;
   role: OrgRole;
   iconUrl: string | null;
   logoUrl: string | null;

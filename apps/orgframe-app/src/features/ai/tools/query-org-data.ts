@@ -1,11 +1,12 @@
 import { createSupabaseServer } from "@/src/shared/data-api/server";
+import { getSupabasePublicConfig } from "@/src/shared/supabase/config";
 import type { Permission } from "@/src/features/core/access";
 import { queryOrgDataInputSchema } from "@/src/features/ai/schemas";
 import type { AiToolDefinition } from "@/src/features/ai/tools/base";
 
 const formSubmissionStatuses = ["submitted", "in_review", "approved", "rejected", "waitlisted", "cancelled"] as const;
 
-type Metric = "form_submission_count" | "forms_summary" | "programs_summary" | "events_summary" | "org_overview";
+type Metric = "form_submission_count" | "forms_summary" | "programs_summary" | "events_summary" | "org_overview" | "rag_retrieve";
 
 type FormRow = {
   id: string;
@@ -52,6 +53,59 @@ async function resolveOrgId(orgSlug: string) {
   }
 
   return data?.id ?? null;
+}
+
+async function getSessionAccessToken() {
+  const supabase = await createSupabaseServer();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    throw new Error("Missing auth session for RAG retrieval.");
+  }
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (!sessionError && sessionData.session?.access_token) {
+    return sessionData.session.access_token;
+  }
+
+  const { data: refreshedData, error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError || !refreshedData.session?.access_token) {
+    throw new Error("Missing auth session for RAG retrieval.");
+  }
+
+  return refreshedData.session.access_token;
+}
+
+async function runRagRetrieve(input: { orgId: string; query: string; topK: number }) {
+  const accessToken = await getSessionAccessToken();
+  const { supabaseUrl, supabasePublishableKey } = getSupabasePublicConfig();
+  const response = await fetch(`${supabaseUrl}/functions/v1/vector-retrieve`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: supabasePublishableKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      org_id: input.orgId,
+      query: input.query,
+      top_k: input.topK,
+    }),
+    cache: "no-store",
+  });
+
+  const rawText = await response.text();
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = JSON.parse(rawText) as Record<string, unknown>;
+  } catch {
+    parsed = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(cleanText(parsed.error) || rawText || `RAG retrieval failed (${response.status}).`);
+  }
+
+  return parsed;
 }
 
 async function countRows(input: {
@@ -400,6 +454,33 @@ export const queryOrgDataTool: AiToolDefinition<typeof queryOrgDataInputSchema, 
         orgSlug: input.orgSlug,
         data: await getEventsSummary(orgId),
         warnings
+      };
+    }
+
+    if (input.metric === "rag_retrieve") {
+      const query = cleanText(input.question);
+      if (!query) {
+        return {
+          ok: true,
+          metric: input.metric,
+          orgSlug: input.orgSlug,
+          data: {
+            error: "MISSING_QUERY",
+          },
+          warnings: ["Provide a question for RAG retrieval."],
+        };
+      }
+
+      return {
+        ok: true,
+        metric: input.metric,
+        orgSlug: input.orgSlug,
+        data: await runRagRetrieve({
+          orgId,
+          query,
+          topK: input.topK ?? 6,
+        }),
+        warnings,
       };
     }
 

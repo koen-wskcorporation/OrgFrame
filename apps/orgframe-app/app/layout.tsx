@@ -7,11 +7,12 @@ import { ConfirmDialogProvider } from "@orgframe/ui/primitives/confirm-dialog";
 import { ThemeModeProvider } from "@orgframe/ui/primitives/theme-mode";
 import { ToastProvider } from "@orgframe/ui/primitives/toast";
 import { shouldShowBranchHeaders } from "@/src/shared/env/branchVisibility";
-import { getTenantBaseHosts, resolveOrgSubdomain } from "@/src/shared/domains/customDomains";
+import { getCanonicalAuthHost, getTenantBaseHosts, normalizeHost, resolveOrgSubdomain } from "@/src/shared/domains/customDomains";
 import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
 import { listUserOrgs } from "@/src/shared/org/listUserOrgs";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { getCurrentUser } from "@/src/features/core/account/server/getCurrentUser";
+import { listProfilesForAccount } from "@/src/features/people/db/queries";
 import { FileManagerProvider } from "@/src/features/files/manager";
 import { UploadProvider } from "@/src/features/files/uploads";
 import { OrderPanelProvider } from "@/src/features/orders";
@@ -65,16 +66,37 @@ async function getHeaderRoutingContext() {
   };
 }
 
+async function isCanonicalAuthRequest() {
+  const headerStore = await headers();
+  const hostHeader = headerStore.get("host") || headerStore.get("x-forwarded-host");
+  const parsedHost = parseHostWithPort(hostHeader);
+  const canonicalHost = normalizeHost(getCanonicalAuthHost());
+  return Boolean(canonicalHost && parsedHost.host && parsedHost.host === canonicalHost);
+}
+
 export default async function RootLayout({
   children
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const showHeaders = shouldShowBranchHeaders();
+  const onCanonicalAuthHost = await isCanonicalAuthRequest();
+  const showHeaders = shouldShowBranchHeaders() && !onCanonicalAuthHost;
   const headerRouting = showHeaders ? await getHeaderRoutingContext() : { currentOrgSlug: null, homeHref: "/", tenantBaseOrigin: null };
   const memberships = showHeaders ? await listUserOrgs().catch(() => []) : [];
   const sessionUser = showHeaders ? await getSessionUser().catch(() => null) : null;
   const currentUser = showHeaders && sessionUser ? await getCurrentUser({ sessionUser }).catch(() => null) : null;
+  const profileRecords = showHeaders && sessionUser ? await listProfilesForAccount(sessionUser.id).catch(() => []) : [];
+  const accountProfiles = profileRecords
+    .map(({ profile, links }) => {
+      const primaryLink = links[0];
+      if (!primaryLink) return null;
+      return {
+        id: profile.id,
+        displayName: profile.displayName,
+        relationshipType: primaryLink.relationshipType
+      };
+    })
+    .filter((profile): profile is { id: string; displayName: string; relationshipType: "self" | "guardian" | "delegated_manager" } => Boolean(profile));
   const orgOptions = memberships.map((membership) => ({
     orgSlug: membership.orgSlug,
     orgName: membership.orgName,
@@ -97,7 +119,8 @@ export default async function RootLayout({
             orgName: membership.orgName,
             orgSlug: membership.orgSlug,
             iconUrl: getOrgAssetPublicUrl(membership.iconPath ?? membership.logoPath)
-          }))
+          })),
+          profiles: accountProfiles
         }
       : {
           authenticated: false

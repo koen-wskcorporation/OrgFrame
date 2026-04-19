@@ -1,5 +1,6 @@
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { Trash2 } from "lucide-react";
 import { RichTextEditor } from "@/src/features/core/editor/components/RichTextEditor";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
@@ -162,6 +163,7 @@ export function CtaGridBlockEditor({ block, context, onChange }: BlockEditorProp
               />
 
               <Button onClick={() => removeItem(item.id)} size="sm" variant="ghost">
+                <Trash2 className="h-4 w-4" />
                 Remove card
               </Button>
             </CardContent>

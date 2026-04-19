@@ -1,4 +1,3 @@
-import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { OrgSitePage } from "@/src/features/site/components/OrgSitePage";
 import { getOrgSitePageForRender } from "@/src/features/site/server/getOrgSitePageForRender";
@@ -13,13 +12,11 @@ export default async function OrgPublicHomePage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const pageData = await getOrgSitePageForRender({
-    orgSlug,
-    pageSlug: "home"
-  });
+
+  const pageData = await getOrgSitePageForRender({ orgSlug, pageSlug: "home" });
 
   if (!pageData.page || !pageData.blocks) {
-    notFound();
+    return null;
   }
 
   return (
@@ -30,7 +27,7 @@ export default async function OrgPublicHomePage({
       initialRuntimeData={pageData.runtimeData}
       orgName={pageData.orgContext.orgName}
       orgSlug={pageData.orgContext.orgSlug}
-      pageSlug={pageData.page.slug}
+      pageSlug="home"
     />
   );
 }

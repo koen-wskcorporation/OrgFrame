@@ -57,30 +57,24 @@ export function RichTextEditor({ value, onChange, className, minHeight = 130, pl
 
   return (
     <div className={cn("rounded-card border bg-surface", focused ? "border-accent" : "border-border", className)}>
-      <div className="flex flex-wrap items-center gap-2 border-b px-2 py-2">
-        <Button onClick={() => applyCommand("bold")} size="sm" type="button" variant="ghost">
-          <Bold className="h-4 w-4" />
-          Bold
+      <div className="flex flex-wrap items-center gap-1 border-b px-1.5 py-1.5">
+        <Button iconOnly aria-label="Bold" onClick={() => applyCommand("bold")} type="button">
+          <Bold />
         </Button>
-        <Button onClick={() => applyCommand("italic")} size="sm" type="button" variant="ghost">
-          <Italic className="h-4 w-4" />
-          Italic
+        <Button iconOnly aria-label="Italic" onClick={() => applyCommand("italic")} type="button">
+          <Italic />
         </Button>
-        <Button onClick={() => applyCommand("underline")} size="sm" type="button" variant="ghost">
-          <Underline className="h-4 w-4" />
-          Underline
+        <Button iconOnly aria-label="Underline" onClick={() => applyCommand("underline")} type="button">
+          <Underline />
         </Button>
-        <Button onClick={() => applyCommand("insertUnorderedList")} size="sm" type="button" variant="ghost">
-          <List className="h-4 w-4" />
-          List
+        <Button iconOnly aria-label="Bulleted list" onClick={() => applyCommand("insertUnorderedList")} type="button">
+          <List />
         </Button>
-        <Button onClick={() => applyCommand("insertOrderedList")} size="sm" type="button" variant="ghost">
-          <ListOrdered className="h-4 w-4" />
-          Numbered
+        <Button iconOnly aria-label="Numbered list" onClick={() => applyCommand("insertOrderedList")} type="button">
+          <ListOrdered />
         </Button>
-        <Button onClick={addLink} size="sm" type="button" variant="ghost">
-          <LinkIcon className="h-4 w-4" />
-          Link
+        <Button iconOnly aria-label="Insert link" onClick={addLink} type="button">
+          <LinkIcon />
         </Button>
       </div>
       <div className="relative px-3 py-2">

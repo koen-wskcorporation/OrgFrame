@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { Check } from "lucide-react";
 import type { DashboardUserPreferences, PersonalHubModuleKey } from "@/src/features/core/dashboard/types-v2";
 
 type DashboardPreferencesEditorProps = {
@@ -132,6 +133,7 @@ export function DashboardPreferencesEditor({ initialPreferences, orgOptions }: D
 
           <div className="flex justify-end">
             <Button loading={saving} onClick={savePreferences} size="sm" variant="primary">
+              <Check className="h-4 w-4" />
               Save Preferences
             </Button>
           </div>

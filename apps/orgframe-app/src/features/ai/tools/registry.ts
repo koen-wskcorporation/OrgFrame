@@ -3,14 +3,17 @@ import type { AiToolExecutionContext } from "@/src/features/ai/tools/base";
 import { hasRequiredPermissions } from "@/src/features/ai/tools/base";
 import { executeChangesTool, type ExecuteChangesResult } from "@/src/features/ai/tools/execute-changes";
 import { proposeChangesTool, type ProposeChangesResult } from "@/src/features/ai/tools/propose-changes";
+import { proposeWidgetTool, type ProposeWidgetResult } from "@/src/features/ai/tools/propose-widget";
 import { queryOrgDataTool, type QueryOrgDataResult } from "@/src/features/ai/tools/query-org-data";
 import { resolveEntitiesTool, type ResolveEntitiesResult } from "@/src/features/ai/tools/resolve-entities";
+import { widgetTypes } from "@/src/features/manage-dashboard/types";
 
 export const aiTools = {
   resolve_entities: resolveEntitiesTool,
   propose_changes: proposeChangesTool,
   query_org_data: queryOrgDataTool,
-  execute_changes: executeChangesTool
+  execute_changes: executeChangesTool,
+  propose_widget: proposeWidgetTool
 } as const;
 
 export type AiToolName = keyof typeof aiTools;
@@ -70,8 +73,9 @@ const queryOrgDataToolDefinition = {
     additionalProperties: false,
     properties: {
       orgSlug: { type: "string" },
-      metric: { type: "string", enum: ["form_submission_count", "forms_summary", "programs_summary", "events_summary", "org_overview"] },
+      metric: { type: "string", enum: ["form_submission_count", "forms_summary", "programs_summary", "events_summary", "org_overview", "rag_retrieve"] },
       question: { type: "string" },
+      topK: { type: "integer" },
       formId: { type: "string" },
       formSlug: { type: "string" },
       formName: { type: "string" }
@@ -80,8 +84,25 @@ const queryOrgDataToolDefinition = {
   }
 };
 
-export const aiAskToolDefinitions = [resolveEntitiesToolDefinition, queryOrgDataToolDefinition];
-export const aiPlanningToolDefinitions = [resolveEntitiesToolDefinition, proposeChangesToolDefinition];
+const proposeWidgetToolDefinition = {
+  type: "function" as const,
+  name: "propose_widget",
+  description: proposeWidgetTool.description,
+  strict: true,
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      orgSlug: { type: "string" },
+      widgetType: { type: "string", enum: [...widgetTypes] },
+      rationale: { type: "string" }
+    },
+    required: ["orgSlug", "widgetType"]
+  }
+};
+
+export const aiAskToolDefinitions = [resolveEntitiesToolDefinition, queryOrgDataToolDefinition, proposeWidgetToolDefinition];
+export const aiPlanningToolDefinitions = [resolveEntitiesToolDefinition, proposeChangesToolDefinition, proposeWidgetToolDefinition];
 export const aiToolDefinitions = aiPlanningToolDefinitions;
 
 export function canUseTool(grantedPermissions: Permission[], requiredPermissions: Permission[]) {
@@ -92,11 +113,12 @@ export async function runAiTool(name: "resolve_entities", context: AiToolExecuti
 export async function runAiTool(name: "propose_changes", context: AiToolExecutionContext, input: unknown): Promise<ProposeChangesResult>;
 export async function runAiTool(name: "query_org_data", context: AiToolExecutionContext, input: unknown): Promise<QueryOrgDataResult>;
 export async function runAiTool(name: "execute_changes", context: AiToolExecutionContext, input: unknown): Promise<ExecuteChangesResult>;
+export async function runAiTool(name: "propose_widget", context: AiToolExecutionContext, input: unknown): Promise<ProposeWidgetResult>;
 export async function runAiTool(
   name: AiToolName,
   context: AiToolExecutionContext,
   input: unknown
-): Promise<ResolveEntitiesResult | ProposeChangesResult | QueryOrgDataResult | ExecuteChangesResult>;
+): Promise<ResolveEntitiesResult | ProposeChangesResult | QueryOrgDataResult | ExecuteChangesResult | ProposeWidgetResult>;
 export async function runAiTool(name: AiToolName, context: AiToolExecutionContext, input: unknown) {
   if (name === "resolve_entities") {
     if (!canUseTool(context.requestContext.permissionEnvelope.permissions, resolveEntitiesTool.requiredPermissions)) {
@@ -126,6 +148,14 @@ export async function runAiTool(name: AiToolName, context: AiToolExecutionContex
       throw new Error("Invalid tool input for query_org_data.");
     }
     return queryOrgDataTool.execute(context, parsed.data);
+  }
+
+  if (name === "propose_widget") {
+    const parsed = proposeWidgetTool.inputSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new Error("Invalid tool input for propose_widget.");
+    }
+    return proposeWidgetTool.execute(context, parsed.data);
   }
 
   if (!canUseTool(context.requestContext.permissionEnvelope.permissions, executeChangesTool.requiredPermissions)) {

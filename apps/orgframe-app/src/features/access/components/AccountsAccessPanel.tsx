@@ -551,7 +551,7 @@ export function AccountsAccessPanel({
                 onClick={() => handleRoleSave(selectedMember)}
                 variant="secondary"
               >
-                {activeRoleSaveId === selectedMember.membershipId ? "Saving..." : "Save role"}
+                {activeRoleSaveId === selectedMember.membershipId ? "Saving..." : "Save Role"}
               </Button>
               <Button
                 disabled={!canManageActions || !selectedMember.email || activeResetMembershipId === selectedMember.membershipId}
@@ -559,7 +559,7 @@ export function AccountsAccessPanel({
                 onClick={() => handleSendReset(selectedMember)}
                 variant="ghost"
               >
-                {activeResetMembershipId === selectedMember.membershipId ? "Sending..." : "Send password reset"}
+                {activeResetMembershipId === selectedMember.membershipId ? "Sending..." : "Send Password Reset"}
               </Button>
               <Button
                 className="ui-button-danger"

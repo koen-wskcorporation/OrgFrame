@@ -14,7 +14,7 @@ export function AuthDialogTrigger({
   className,
   authHref,
   initialMode = "signin",
-  label = "Sign in",
+  label = "Sign In",
   size = "sm",
   variant = "secondary"
 }: AuthDialogTriggerProps) {

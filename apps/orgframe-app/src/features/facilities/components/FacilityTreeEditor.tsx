@@ -137,12 +137,12 @@ function renderTree(
             <p className="ui-list-row-meta">
               {space.spaceKind} · {space.isBookable ? "Bookable" : "Not bookable"}
             </p>
-            {orgSlug ? <p className="mt-1 text-sm text-text-muted">/{orgSlug}/tools/facilities/{space.id}</p> : null}
+            {orgSlug ? <p className="mt-1 text-sm text-text-muted">/{orgSlug}/manage/facilities/{space.id}</p> : null}
           </div>
 
           <div className="ui-list-row-actions">
             {orgSlug ? (
-              <Button href={`/tools/facilities/${space.id}`} size="sm" variant="secondary">
+              <Button href={`/manage/facilities/${space.id}`} size="sm" variant="secondary">
                 Manage
               </Button>
             ) : null}
@@ -152,7 +152,7 @@ function renderTree(
                   Edit
                 </Button>
                 <Button onClick={() => onToggleBookable(space)} size="sm" type="button" variant="ghost">
-                  {space.isBookable ? "Mark not bookable" : "Mark bookable"}
+                  {space.isBookable ? "Mark Not Bookable" : "Mark Bookable"}
                 </Button>
                 <Button
                   className="ui-button-danger"
@@ -339,7 +339,7 @@ export function FacilityTreeEditor({
       actions={
         <Button disabled={!canWrite} onClick={openCreatePanel} type="button">
           <Plus className="h-4 w-4" />
-          Add space
+          Add Space
         </Button>
       }
       contentClassName="ui-list-stack"

@@ -10,12 +10,12 @@ export function EmptyState({ demoOrgSlug }: EmptyStateProps) {
     <InlineEmptyState
       actions={
         <>
-          <Button href="/account" size="sm" variant="secondary">
-            Account settings
+          <Button href="/settings" size="sm" variant="secondary">
+            Settings
           </Button>
           {demoOrgSlug ? (
             <Button href={`/${demoOrgSlug}`} size="sm" variant="ghost">
-              View demo organization
+              View Demo Organization
             </Button>
           ) : null}
         </>

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { isOrgToolEnabled, type OrgToolAvailability, type OrgToolKey } from "@/src/shared/org/features";
+import { isOrgToolEnabled, type OrgToolAvailability, type OrgToolKey } from "@/src/features/core/config/tools";
 
 export function requireOrgToolEnabled(toolAvailability: OrgToolAvailability, tool: OrgToolKey, reason?: string) {
   if (isOrgToolEnabled(toolAvailability, tool)) {

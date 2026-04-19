@@ -3,9 +3,8 @@
 import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { ButtonConfigDialog } from "@/src/features/core/editor/buttons/ButtonConfigDialog";
-import { buttonVariantLabelByValue, type ButtonConfig } from "@/src/features/core/editor/buttons/types";
-import { buttonVariants } from "@orgframe/ui/primitives/button";
-import { IconButton } from "@orgframe/ui/primitives/icon-button";
+import type { ButtonConfig } from "@/src/features/core/editor/buttons/types";
+import { Button, buttonVariants } from "@orgframe/ui/primitives/button";
 import { cn } from "@orgframe/ui/primitives/utils";
 import { createLocalId, normalizeButtons } from "@/src/shared/links";
 
@@ -142,7 +141,9 @@ export function ButtonListEditor({
       <div className="w-full min-w-0 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold text-text">{title}</p>
-          <IconButton disabled={buttons.length >= maxButtons} icon={<Plus />} label={addButtonLabel} onClick={openAddDialog} />
+          <Button iconOnly aria-label={addButtonLabel} disabled={buttons.length >= maxButtons} onClick={openAddDialog}>
+            <Plus />
+          </Button>
         </div>
 
         {buttons.length === 0 ? (
@@ -152,26 +153,26 @@ export function ButtonListEditor({
             {buttons.map((button, index) => (
               <div className="flex min-w-0 max-w-full items-center overflow-hidden rounded-control border bg-surface" key={button.id}>
                 <button
-                  className={cn(
-                    "flex h-9 min-w-0 max-w-full items-center gap-2 px-3 text-left text-xs font-semibold text-text transition-colors hover:bg-surface-muted"
-                  )}
+                  aria-label={`Edit ${button.label}`}
+                  className="flex h-9 min-w-0 max-w-full items-center px-1.5 transition-colors hover:bg-surface-muted"
                   onClick={() => openEditDialog(index)}
                   type="button"
                 >
-                  <span className="max-w-[180px] min-w-0 truncate">{button.label}</span>
                   <span
                     className={cn(
                       buttonVariants({
                         size: "sm",
                         variant: button.variant
                       }),
-                      "h-6 px-2 text-[10px] uppercase tracking-wide"
+                      "pointer-events-none h-7 px-3 text-xs"
                     )}
                   >
-                    {buttonVariantLabelByValue[button.variant]}
+                    <span className="max-w-[180px] min-w-0 truncate">{button.label}</span>
                   </span>
                 </button>
-                <IconButton className="h-9 w-9 border-l rounded-none" icon={<X />} label={`Remove ${button.label}`} onClick={() => removeButton(index)} />
+                <Button iconOnly aria-label={`Remove ${button.label}`} className="h-9 w-9 border-l rounded-none" onClick={() => removeButton(index)}>
+                  <X />
+                </Button>
               </div>
             ))}
           </div>

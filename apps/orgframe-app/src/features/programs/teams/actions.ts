@@ -192,8 +192,8 @@ export async function updateTeamProfileAction(input: {
       calendarTeamVisibility: payload.calendarTeamVisibility ?? null
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/programs/${team.programId}/structure`);
-    revalidatePath(`/${org.orgSlug}/tools/programs/${team.programId}/teams`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${team.programId}/structure`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${team.programId}/teams`);
 
     return {
       ok: true,
@@ -259,8 +259,8 @@ export async function addTeamMemberAction(input: {
       assignedByUserId: org.userId
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/programs/${team.programId}/structure`);
-    revalidatePath(`/${org.orgSlug}/tools/programs/${team.programId}/teams`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${team.programId}/structure`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${team.programId}/teams`);
 
     return {
       ok: true,
@@ -314,8 +314,8 @@ export async function updateTeamMemberAction(input: {
       notes: payload.notes ?? null
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/programs/${member.programId}/structure`);
-    revalidatePath(`/${org.orgSlug}/tools/programs/${member.programId}/teams`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${member.programId}/structure`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${member.programId}/teams`);
 
     return {
       ok: true,
@@ -355,10 +355,10 @@ export async function removeTeamMemberAction(input: {
     await removeTeamMember(payload.memberId);
 
     if (data?.program_id) {
-      revalidatePath(`/${org.orgSlug}/tools/programs/${data.program_id}/structure`);
-      revalidatePath(`/${org.orgSlug}/tools/programs/${data.program_id}/teams`);
+      revalidatePath(`/${org.orgSlug}/manage/programs/${data.program_id}/structure`);
+      revalidatePath(`/${org.orgSlug}/manage/programs/${data.program_id}/teams`);
     } else {
-      revalidatePath(`/${org.orgSlug}/tools/programs`);
+      revalidatePath(`/${org.orgSlug}/manage/programs`);
     }
 
     return {
@@ -415,8 +415,8 @@ export async function addTeamStaffAction(input: {
       notes: payload.notes ?? null
     });
 
-    revalidatePath(`/${org.orgSlug}/tools/programs/${team.programId}/structure`);
-    revalidatePath(`/${org.orgSlug}/tools/programs/${team.programId}/teams`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${team.programId}/structure`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${team.programId}/teams`);
 
     return {
       ok: true,
@@ -453,10 +453,10 @@ export async function removeTeamStaffAction(input: {
     await removeTeamStaff(payload.staffId);
 
     if (data?.program_id) {
-      revalidatePath(`/${org.orgSlug}/tools/programs/${data.program_id}/structure`);
-      revalidatePath(`/${org.orgSlug}/tools/programs/${data.program_id}/teams`);
+      revalidatePath(`/${org.orgSlug}/manage/programs/${data.program_id}/structure`);
+      revalidatePath(`/${org.orgSlug}/manage/programs/${data.program_id}/teams`);
     } else {
-      revalidatePath(`/${org.orgSlug}/tools/programs`);
+      revalidatePath(`/${org.orgSlug}/manage/programs`);
     }
 
     return {

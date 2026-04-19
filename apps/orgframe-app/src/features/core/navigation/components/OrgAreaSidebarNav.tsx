@@ -2,7 +2,7 @@
 
 import { ChevronDown, Menu, type LucideIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Chip } from "@orgframe/ui/primitives/chip";
 import { OrgAreaSidebarHeader, OrgAreaSidebarShell } from "@/src/features/core/navigation/components/OrgAreaSidebarShell";
 import { NavItem } from "@orgframe/ui/primitives/nav-item";
@@ -37,6 +37,7 @@ export type OrgAreaSidebarNode = OrgAreaSidebarLeafItem | OrgAreaSidebarParentIt
 export type OrgAreaSidebarConfig = {
   title: string;
   subtitle: string;
+  roleChipLabel?: string;
   mobileLabel: string;
   ariaLabel: string;
   items: OrgAreaSidebarNode[];
@@ -59,7 +60,7 @@ type OrgAreaSidebarNavMobileProps = {
 };
 
 function isParentNode(node: OrgAreaSidebarNode): node is OrgAreaSidebarParentItem {
-  return "children" in node;
+  return "children" in node && Array.isArray((node as OrgAreaSidebarParentItem).children);
 }
 
 function matchesPath(pathname: string, href: string, mode: MatchMode = "prefix") {
@@ -153,18 +154,6 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
   const collapseStorageKey = config.collapseStorageKey ?? "org-area-sidebar:collapsed";
   const activePathname = optimisticPathname ?? pathname;
 
-  const parentNodes = useMemo(
-    () => config.items.filter((node): node is OrgAreaSidebarParentItem => isParentNode(node)),
-    [config.items]
-  );
-
-  const [expandedByKey, setExpandedByKey] = useState<Record<string, boolean>>(() => {
-    return parentNodes.reduce<Record<string, boolean>>((draft, node) => {
-      draft[node.key] = isParentActive(pathname, node);
-      return draft;
-    }, {});
-  });
-
   useEffect(() => {
     setOptimisticPathname(null);
   }, [pathname]);
@@ -204,32 +193,6 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
       setCollapsed(true);
     }
   }, [canCollapse, config, pathname]);
-
-  useEffect(() => {
-    setExpandedByKey(() => {
-      const activeParent = parentNodes.find((node) => isParentActive(pathname, node));
-      const next: Record<string, boolean> = {};
-
-      for (const node of parentNodes) {
-        next[node.key] = activeParent ? node.key === activeParent.key : false;
-      }
-
-      return next;
-    });
-  }, [pathname, parentNodes]);
-
-  function toggleParent(key: string) {
-    setExpandedByKey((current) => {
-      const nextValue = !current[key];
-      const next: Record<string, boolean> = {};
-
-      for (const node of parentNodes) {
-        next[node.key] = node.key === key ? nextValue : false;
-      }
-
-      return next;
-    });
-  }
 
   function markOptimisticActive(href?: string) {
     if (!href || !href.startsWith("/")) {
@@ -271,14 +234,13 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
     }
   }, [config.items, router]);
 
-  function renderLeafItem(item: OrgAreaSidebarLeafItem) {
+  function renderLeafItem(item: OrgAreaSidebarChildItem, options?: { size?: "sm" | "md"; variant?: "sidebar" | "dropdown" }) {
     const isActive = item.href ? matchesPath(activePathname, item.href, item.match ?? "prefix") : false;
     const Icon = item.icon;
 
     return (
       <NavItem
         active={isActive}
-        accentWhenActive
         ariaLabel={collapsed ? item.label : undefined}
         iconOnly={collapsed}
         className={collapsed ? "mx-auto !h-10 !w-10 !min-h-0 !justify-center !p-0" : undefined}
@@ -287,33 +249,9 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
         icon={<Icon className="h-[17px] w-[17px]" />}
         key={item.key}
         rightSlot={!collapsed && item.soon ? <SoonBadge /> : null}
-        size="md"
+        size={options?.size ?? "md"}
         title={item.label}
-        variant="sidebar"
-        prefetch
-        onMouseDown={() => {
-          markOptimisticActive(item.href);
-          prefetchRoute(item.href);
-        }}
-        onClick={() => markOptimisticActive(item.href)}
-      >
-        {item.label}
-      </NavItem>
-    );
-  }
-
-  function renderChildItem(item: OrgAreaSidebarChildItem) {
-    const isActive = item.href ? matchesPath(activePathname, item.href, item.match ?? "prefix") : false;
-
-    return (
-      <NavItem
-        active={isActive}
-        disabled={item.disabled || !item.href}
-        href={item.href}
-        key={item.key}
-        rightSlot={item.soon ? <SoonBadge /> : null}
-        size="sm"
-        variant="sidebar"
+        variant={options?.variant ?? "sidebar"}
         prefetch
         onMouseDown={() => {
           markOptimisticActive(item.href);
@@ -333,68 +271,42 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
         collapsed={collapsed}
         onCollapse={() => setCollapsed(true)}
         onExpand={() => setCollapsed(false)}
+        roleChipLabel={config.roleChipLabel}
         show={showHeader}
-        subtitle={config.subtitle}
         title={config.title}
       />
 
       <nav aria-label={config.ariaLabel} className={cn(collapsed ? "flex flex-col items-center gap-2" : "space-y-1")}>
         {config.items.map((node) => {
-          if (!isParentNode(node)) {
-            return renderLeafItem(node);
+          if (!isParentNode(node) || collapsed) {
+            return renderLeafItem(node as OrgAreaSidebarChildItem);
           }
 
           const Icon = node.icon;
-          const expanded = !collapsed && Boolean(expandedByKey[node.key]);
           const parentActive = isParentActive(activePathname, node);
-          const parentDisabled = node.disabled || (!node.href && node.children.length === 0);
 
           return (
-            <div className={cn(collapsed ? "w-10" : "space-y-1")} key={node.key}>
-              <NavItem
-                active={parentActive}
-                accentWhenActive
-                ariaLabel={collapsed ? node.label : undefined}
-                ariaExpanded={expanded}
-                iconOnly={collapsed}
-                className={cn(
-                  parentDisabled ? "opacity-55" : undefined,
-                  collapsed ? "mx-auto !h-10 !w-10 !min-h-0 !justify-center !p-0" : undefined
-                )}
-                disabled={!node.href && collapsed}
-                href={node.href}
-                icon={<Icon className="h-[17px] w-[17px]" />}
-                prefetch
-                onMouseDown={() => {
-                  markOptimisticActive(node.href);
-                  prefetchRoute(node.href);
-                }}
-                onClick={
-                  !collapsed
-                    ? () => {
-                        markOptimisticActive(node.href);
-                        toggleParent(node.key);
-                      }
-                    : undefined
-                }
-                rightSlot={
-                  !collapsed ? (
-                    <span className="flex items-center gap-2 text-text-muted">
-                      {node.soon ? <SoonBadge /> : null}
-                      <ChevronDown className={cn("h-4 w-4 transition-transform", expanded ? "rotate-180" : "rotate-0")} />
-                    </span>
-                  ) : null
-                }
-                size="md"
-                title={node.label}
-                type="button"
-                variant="sidebar"
-              >
-                {node.label}
-              </NavItem>
-
-              {expanded ? <div className="space-y-1 pl-[14px]">{node.children.map((child) => renderChildItem(child))}</div> : null}
-            </div>
+            <NavItem
+              key={node.key}
+              active={parentActive}
+              disabled={node.disabled || !node.href}
+              dropdown={node.children.map((child) => renderLeafItem(child, { size: "sm", variant: "dropdown" }))}
+              dropdownPlacement="bottom-end"
+              href={node.href}
+              icon={<Icon className="h-[17px] w-[17px]" />}
+              prefetch
+              rightSlot={node.soon ? <SoonBadge /> : null}
+              size="md"
+              title={node.label}
+              variant="sidebar"
+              onMouseDown={() => {
+                markOptimisticActive(node.href);
+                prefetchRoute(node.href);
+              }}
+              onClick={() => markOptimisticActive(node.href)}
+            >
+              {node.label}
+            </NavItem>
           );
         })}
       </nav>

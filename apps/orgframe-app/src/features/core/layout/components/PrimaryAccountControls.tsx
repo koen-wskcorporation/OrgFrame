@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { signOutAction } from "@/app/auth/actions";
 import { AuthDialogTrigger } from "@/src/features/core/auth/components/AuthDialogTrigger";
@@ -36,7 +35,6 @@ function buildAuthNextPath(pathname: string | null, currentOrgSlug: string | nul
 }
 
 export function PrimaryAccountControls({ currentOrgSlug = null, homeHref = "/", tenantBaseOrigin = null, initialState = null }: PrimaryAccountControlsProps) {
-  const [state, setState] = useState<HeaderAccountState | null>(initialState);
   const pathname = usePathname();
   const normalizedTenantBaseOrigin = tenantBaseOrigin ? tenantBaseOrigin.replace(/\/+$/, "") : null;
   const authNextPath = buildAuthNextPath(pathname, currentOrgSlug);
@@ -46,48 +44,15 @@ export function PrimaryAccountControls({ currentOrgSlug = null, homeHref = "/", 
       ? `/auth?next=${encodeURIComponent(authNextPath)}`
       : "/auth";
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    void (async () => {
-      try {
-        const response = await fetch("/api/account/session", {
-          method: "GET",
-          cache: "no-store",
-          signal: controller.signal
-        });
-
-        if (!response.ok) {
-          setState((previous) => previous ?? { authenticated: false });
-          return;
-        }
-
-        const payload = (await response.json()) as HeaderAccountState;
-        setState(payload);
-      } catch {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setState((previous) => previous ?? { authenticated: false });
-      }
-    })();
-
-    return () => {
-      controller.abort();
-    };
-  }, [pathname]);
-
-  if (state?.authenticated) {
+  if (initialState?.authenticated) {
     return (
       <AccountMenu
-        avatarUrl={state.user.avatarUrl}
-        currentOrgSlug={currentOrgSlug}
-        email={state.user.email}
-        firstName={state.user.firstName}
+        avatarUrl={initialState.user.avatarUrl}
+        email={initialState.user.email}
+        firstName={initialState.user.firstName}
         homeHref={homeHref}
-        lastName={state.user.lastName}
-        organizations={state.organizations}
+        lastName={initialState.user.lastName}
+        profiles={initialState.profiles}
         signOutAction={signOutAction}
         tenantBaseOrigin={tenantBaseOrigin}
       />

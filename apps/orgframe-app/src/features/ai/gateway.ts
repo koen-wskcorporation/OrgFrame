@@ -2,7 +2,7 @@ import { getAiConfig } from "@/src/features/ai/config";
 import type { AiConversationMessage, AiMode, AiProposal, AiResolvedContext, AiUiContext } from "@/src/features/ai/types";
 import { aiAskToolDefinitions, aiPlanningToolDefinitions, runAiTool, type AiToolName } from "@/src/features/ai/tools";
 
-const knownToolNames = new Set<AiToolName>(["resolve_entities", "propose_changes", "query_org_data", "execute_changes"]);
+const knownToolNames = new Set<AiToolName>(["resolve_entities", "propose_changes", "query_org_data", "execute_changes", "propose_widget"]);
 
 type GatewayTelemetry = {
   phase: "ask" | "act";
@@ -157,6 +157,9 @@ function buildUiContextInstruction(uiContext?: AiUiContext) {
     uiContext.viewport ? `Viewport: ${uiContext.viewport.width}x${uiContext.viewport.height}, mobile=${String(uiContext.viewport.isMobile)}.` : null,
     uiContext.runtime
       ? `Runtime: timezone=${uiContext.runtime.timezone ?? "unknown"}, language=${uiContext.runtime.language ?? "unknown"}, online=${String(uiContext.runtime.online ?? "unknown")}, visibility=${uiContext.runtime.visibilityState ?? "unknown"}.`
+      : null,
+    uiContext.workspaceContext
+      ? `Workspace context: view=${uiContext.workspaceContext.view ?? "unknown"}${uiContext.workspaceContext.entityType ? ` entityType=${uiContext.workspaceContext.entityType}` : ""}${uiContext.workspaceContext.entityIds?.length ? ` entityIds=${uiContext.workspaceContext.entityIds.join(",")}` : ""}${uiContext.workspaceContext.importRunId ? ` importRunId=${uiContext.workspaceContext.importRunId}` : ""}.`
       : null
   ]
     .filter(Boolean)

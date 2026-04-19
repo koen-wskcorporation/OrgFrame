@@ -193,7 +193,7 @@ export function RecurringEventEditor({ draft, canWrite, onChange, className }: R
 
           <div className="pt-1">
             <Button onClick={() => setShowAdvanced((current) => !current)} size="sm" type="button" variant="ghost">
-              {showAdvanced ? "Hide advanced options" : "Show advanced options"}
+              {showAdvanced ? "Hide Advanced Options" : "Show Advanced Options"}
             </Button>
           </div>
 

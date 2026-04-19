@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { ArrowLeft } from "lucide-react";
 import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
 import { connectFacebookPageAction, disconnectInboxIntegrationAction, getInboxConnectionsDataAction } from "@/src/features/communications/actions";
 import type { CommChannelIntegration } from "@/src/features/communications/types";
@@ -230,7 +231,8 @@ export function InboxConnectionsWorkspace({ orgSlug, canWrite, initialIntegratio
             <Button disabled={!canWrite || isMutating} onClick={launchFacebookPopup} type="button">
               Connect with Facebook
             </Button>
-            <Button href="/tools/inbox" variant="secondary">
+            <Button href="/manage/inbox" variant="secondary">
+              <ArrowLeft className="h-4 w-4" />
               Back to Inbox
             </Button>
           </div>

@@ -32,7 +32,7 @@ export type AIContext = {
     }>;
   };
   scope: {
-    currentModule?: "calendar" | "facilities" | "programs" | "teams" | "communications" | "files" | "account" | "players" | "unknown";
+    currentModule?: "calendar" | "facilities" | "programs" | "teams" | "communications" | "files" | "settings" | "profiles" | "workspace" | "unknown";
     entityId?: string;
     entityType?: string;
   };

@@ -83,10 +83,10 @@ export function FormEditorPanel({ orgSlug, form, programs, programNodes, canWrit
                 </Button>
                 <Button onClick={() => setBuilderView((current) => (current === "editor" ? "preview" : "editor"))} type="button" variant="secondary">
                   {builderView === "editor" ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-                  {builderView === "editor" ? "Live preview" : "Editor"}
+                  {builderView === "editor" ? "Live Preview" : "Editor"}
                 </Button>
                 <Button disabled={isSaving || !canWrite} loading={isSaving} onClick={handleSaveDraft} type="button">
-                  {isSaving ? "Saving..." : "Save draft"}
+                  {isSaving ? "Saving..." : "Save Draft"}
                 </Button>
               </div>
             }

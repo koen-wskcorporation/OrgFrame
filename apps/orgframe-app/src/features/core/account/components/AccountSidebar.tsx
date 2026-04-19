@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, Users } from "lucide-react";
+import { Home, Inbox, Settings, Users } from "lucide-react";
 import { useMemo } from "react";
 import { OrgAreaSidebarNav, OrgAreaSidebarNavMobile, type OrgAreaSidebarConfig } from "@/src/features/core/navigation/components/OrgAreaSidebarNav";
 
@@ -12,23 +12,37 @@ type AccountSidebarProps = {
 function navConfig(): OrgAreaSidebarConfig {
   return {
     title: "Account",
-    subtitle: "Profile and players",
+    subtitle: "Your personal workspace",
     mobileLabel: "Account",
     ariaLabel: "Account navigation",
     collapseStorageKey: "account-sidebar:collapsed",
     items: [
       {
-        key: "account-overview",
-        label: "Overview",
-        icon: LayoutDashboard,
-        href: "/account",
+        key: "account-home",
+        label: "Home",
+        icon: Home,
+        href: "/",
         match: "exact"
       },
       {
-        key: "account-players",
-        label: "Players",
+        key: "account-profiles",
+        label: "Profiles",
         icon: Users,
-        href: "/account/players",
+        href: "/profiles",
+        match: "prefix"
+      },
+      {
+        key: "account-inbox",
+        label: "Inbox",
+        icon: Inbox,
+        href: "/inbox",
+        match: "prefix"
+      },
+      {
+        key: "account-settings",
+        label: "Settings",
+        icon: Settings,
+        href: "/settings",
         match: "prefix"
       }
     ]

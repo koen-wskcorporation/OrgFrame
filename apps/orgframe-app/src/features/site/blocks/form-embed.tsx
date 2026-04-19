@@ -5,6 +5,7 @@ import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Select } from "@orgframe/ui/primitives/select";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { Input } from "@orgframe/ui/primitives/input";
+import { LogIn } from "lucide-react";
 import { asBody, asObject, asText } from "@/src/features/site/blocks/helpers";
 import { RegistrationFormClient } from "@/src/features/forms/components/RegistrationFormClient";
 import type { BlockContext, BlockEditorProps, BlockRenderProps, FormEmbedBlockConfig } from "@/src/features/site/types";
@@ -64,7 +65,8 @@ export function FormEmbedBlockRender({ block, context, runtimeData, isEditing }:
             <div className="space-y-3">
               <Alert variant="info">Sign in to complete this form.</Alert>
               <Button href={`/auth?next=${encodeURIComponent(getPagePath(context))}`} variant="secondary">
-                Sign in
+                <LogIn className="h-4 w-4" />
+                Sign In
               </Button>
             </div>
           ) : (

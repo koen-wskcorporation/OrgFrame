@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Bot } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Panel } from "@orgframe/ui/primitives/panel";
-import { MagicComposer } from "@/src/features/ai/components/MagicComposer";
+import { AiComposer } from "@/src/features/ai/components/AiComposer";
 import { InlineThread } from "@/src/features/ai/components/InlineThread";
 import { nextCommandSurfaceState, trimConversation, type CommandSurfaceState, type CommandTurn } from "@/src/features/ai/components/command-surface";
 import type { AiConversationMessage, AiResultCard, AiSuggestedAction, AiUiContext } from "@/src/features/ai/types";
@@ -64,18 +64,18 @@ function inferModuleFromPath(pathname: string): UiScopeModule {
   }
 
   let scopedSegments = segments;
-  if (segments[0] !== "tools" && segments[0] !== "account" && segments.length > 1) {
+  if (segments[0] !== "manage" && segments[0] !== "tools" && segments[0] !== "account" && segments.length > 1) {
     scopedSegments = segments.slice(1);
   }
 
   const [root] = scopedSegments;
-  if (root === "tools") {
-    const tool = scopedSegments[1];
-    if (tool === "calendar" || tool === "events") return "calendar";
-    if (tool === "facilities") return "facilities";
-    if (tool === "programs") return "programs";
-    if (tool === "inbox") return "communications";
-    if (tool === "files") return "files";
+  if (root === "manage" || root === "tools") {
+    const module = scopedSegments[1];
+    if (module === "calendar" || module === "events") return "calendar";
+    if (module === "facilities") return "facilities";
+    if (module === "programs") return "programs";
+    if (module === "inbox") return "communications";
+    if (module === "files") return "files";
     return "unknown";
   }
 
@@ -85,7 +85,9 @@ function inferModuleFromPath(pathname: string): UiScopeModule {
   if (root === "teams") return "teams";
   if (root === "communications" || root === "inbox") return "communications";
   if (root === "files") return "files";
-  if (root === "account") return scopedSegments[1] === "players" ? "players" : "account";
+  if (root === "profiles") return "profiles";
+  if (root === "settings") return "settings";
+  if (root === "workspace") return "workspace";
 
   return "unknown";
 }
@@ -101,17 +103,17 @@ function buildUiContext(input: { pathname: string; orgSlug: string | null; sourc
   const active = document.activeElement as HTMLElement | null;
   const queryParams = Object.fromEntries(new URLSearchParams(location.search).entries());
   const segments = input.pathname.split("/").map((segment) => segment.trim()).filter(Boolean);
-  const maybeOrgSlugFromPath = segments[0] && segments[0] !== "tools" && segments[0] !== "account" ? segments[0] : undefined;
+  const maybeOrgSlugFromPath = segments[0] && segments[0] !== "manage" && segments[0] !== "tools" && segments[0] !== "account" ? segments[0] : undefined;
   const scopedSegments = maybeOrgSlugFromPath ? segments.slice(1) : segments;
-  const isToolsRoute = scopedSegments[0] === "tools";
-  const tool = isToolsRoute ? scopedSegments[1] : undefined;
+  const isManageRoute = scopedSegments[0] === "manage" || scopedSegments[0] === "tools";
+  const module = isManageRoute ? scopedSegments[1] : undefined;
 
   let entityType: string | undefined;
   let entityId: string | undefined;
-  if (tool === "facilities" && scopedSegments[2]) {
+  if (module === "facilities" && scopedSegments[2]) {
     entityType = "facility";
     entityId = scopedSegments[2];
-  } else if (tool === "programs" && scopedSegments[2]) {
+  } else if (module === "programs" && scopedSegments[2]) {
     entityType = "program";
     entityId = scopedSegments[2];
   } else if (scopedSegments[0] === "programs" && scopedSegments[1]) {
@@ -150,7 +152,7 @@ function buildUiContext(input: { pathname: string; orgSlug: string | null; sourc
     },
     page: {
       currentModule: inferModuleFromPath(input.pathname),
-      tool: cleanText(tool, 80),
+      tool: cleanText(module, 80),
       entityType: cleanText(entityType, 80),
       entityId: cleanText(entityId, 120),
       orgSlugFromPath: cleanText(maybeOrgSlugFromPath ?? input.orgSlug ?? undefined, 80)
@@ -548,8 +550,8 @@ export function OrgAiCommandCenter({ initialOrgSlug = null, orgOptions, disabled
   return (
     <>
       <div className="relative mx-auto w-full max-w-[22rem] xl:max-w-[26rem]" ref={rootRef}>
-        <MagicComposer
-          compact
+        <AiComposer
+          variant="compact"
           disabled={disabled}
           inputId="org-ai-command-input"
           inputRef={composerRef}
@@ -597,7 +599,7 @@ export function OrgAiCommandCenter({ initialOrgSlug = null, orgOptions, disabled
         contentClassName="space-y-3"
         footer={
           <div className="space-y-2">
-            <MagicComposer
+            <AiComposer
               disabled={disabled}
               loading={isRunning}
               onChange={setComposerValue}
@@ -611,7 +613,7 @@ export function OrgAiCommandCenter({ initialOrgSlug = null, orgOptions, disabled
             {activeTurns.length > 0 ? (
               <div className="flex items-center justify-end">
                 <Button onClick={clearThread} size="sm" type="button" variant="ghost">
-                  Clear thread
+                  Clear Thread
                 </Button>
               </div>
             ) : null}

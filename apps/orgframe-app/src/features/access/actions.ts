@@ -15,7 +15,7 @@ import {
   type OrgRole,
   type Permission
 } from "@/src/features/core/access";
-import type { OrgToolAvailability } from "@/src/shared/org/features";
+import type { OrgToolAvailability } from "@/src/features/core/config/tools";
 
 const roleKeySchema = z.string().trim().min(2).max(32);
 
@@ -434,13 +434,18 @@ export async function inviteUserToOrgAction(input: {
       return asFailure("already_member", "That user already has access to this organization.");
     }
 
-    const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email);
+    const { data: createdUserData, error: createUserError } = existingUser
+      ? { data: null, error: null }
+      : await supabase.auth.admin.createUser({
+          email,
+          email_confirm: false
+        });
 
-    if (inviteError && !existingUser) {
-      return asFailure("action_failed", inviteError.message);
+    if (createUserError && !existingUser) {
+      return asFailure("action_failed", createUserError.message);
     }
 
-    let userId = inviteData.user?.id ?? existingUser?.id ?? null;
+    let userId = createdUserData?.user?.id ?? existingUser?.id ?? null;
 
     if (!userId) {
       const matchedUser = await findAuthUserByEmail(supabase, email);
@@ -465,7 +470,7 @@ export async function inviteUserToOrgAction(input: {
       return asFailure("action_failed", insertError.message);
     }
 
-    revalidatePath(`/${orgSlug}/tools/people`);
+    revalidatePath(`/${orgSlug}/manage/people`);
 
     const members = await listAccessMembersForOrg({
       supabase,
@@ -565,7 +570,7 @@ export async function updateMembershipRoleAction(input: {
       return asFailure("action_failed", updateError.message);
     }
 
-    revalidatePath(`/${orgSlug}/tools/people`);
+    revalidatePath(`/${orgSlug}/manage/people`);
 
     const members = await listAccessMembersForOrg({
       supabase,
@@ -635,7 +640,7 @@ export async function removeMembershipAction(input: {
       return asFailure("action_failed", deleteError.message);
     }
 
-    revalidatePath(`/${orgSlug}/tools/people`);
+    revalidatePath(`/${orgSlug}/manage/people`);
 
     const members = await listAccessMembersForOrg({
       supabase,

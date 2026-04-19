@@ -6,6 +6,7 @@ import { Button } from "@orgframe/ui/primitives/button";
 import { Chip } from "@orgframe/ui/primitives/chip";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
+import { X } from "lucide-react";
 import { EditorSettingsDialog } from "@/src/features/core/layout/components/EditorSettingsDialog";
 import { describeButtonHref, isExternalHref } from "@/src/shared/links";
 import { cn } from "@orgframe/ui/primitives/utils";
@@ -195,10 +196,11 @@ export function LinkPickerDialog({
       footer={
         <>
           <Button onClick={onClose} size="sm" variant="ghost">
+            <X className="h-4 w-4" />
             Cancel
           </Button>
           <Button onClick={handleConfirm} size="sm">
-            Use link
+            Use Link
           </Button>
         </>
       }

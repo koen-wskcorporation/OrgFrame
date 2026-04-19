@@ -1,9 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Avatar } from "@orgframe/ui/primitives/avatar";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { AccountEditPopup } from "@/src/features/core/account/components/AccountEditPopup";
+import { EditableAvatar } from "@/src/features/core/account/components/EditableAvatar";
+import { saveProfilePhoto } from "@/src/features/core/account/components/saveProfilePhoto";
 
 type AccountProfileCardProps = {
   email: string | null;
@@ -29,6 +33,7 @@ export function AccountProfileCard({
   className
 }: AccountProfileCardProps) {
   const [editOpen, setEditOpen] = useState(false);
+  const router = useRouter();
   const fullName = [firstName, lastName].filter(Boolean).join(" ") || "No name set";
 
   return (
@@ -40,12 +45,18 @@ export function AccountProfileCard({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3 rounded-control border bg-surface-muted p-3">
-            {avatarUrl ? (
-              <img alt={`${fullName} avatar`} className="h-12 w-12 rounded-full border object-cover" src={avatarUrl} />
+            {allowEdit ? (
+              <EditableAvatar
+                name={fullName}
+                onSelect={async (result) => {
+                  await saveProfilePhoto(result);
+                  router.refresh();
+                }}
+                sizePx={48}
+                src={avatarUrl}
+              />
             ) : (
-              <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border bg-surface text-sm font-semibold">
-                {(fullName.charAt(0) || "A").toUpperCase()}
-              </span>
+              <Avatar alt={`${fullName} avatar`} name={fullName} sizePx={48} src={avatarUrl} />
             )}
             <div>
               <p className="text-sm font-semibold">{fullName}</p>

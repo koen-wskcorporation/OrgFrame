@@ -8,6 +8,7 @@ import { Input } from "@orgframe/ui/primitives/input";
 import { CreateModal } from "@orgframe/ui/primitives/interaction-containers";
 import { AssetTile } from "@orgframe/ui/primitives/asset-tile";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { X } from "lucide-react";
 import { updateAccountDetailsAction } from "@/src/features/core/account/actions";
 
 type AccountEditPopupProps = {
@@ -46,7 +47,7 @@ export function AccountEditPopup({
   initialAvatarUrl,
   title = "Edit account details",
   subtitle = "Update account name and profile image.",
-  submitLabel = "Save account",
+  submitLabel = "Save Account",
   onSaved
 }: AccountEditPopupProps) {
   const router = useRouter();
@@ -105,6 +106,7 @@ export function AccountEditPopup({
       footer={
         <>
           <Button disabled={isSaving} onClick={onClose} type="button" variant="ghost">
+            <X className="h-4 w-4" />
             Cancel
           </Button>
           <Button disabled={isSaving} form="account-edit-form" loading={isSaving} type="submit">

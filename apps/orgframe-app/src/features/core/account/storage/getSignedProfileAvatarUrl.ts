@@ -2,7 +2,7 @@ import "server-only";
 
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 
-export async function getSignedProfileAvatarUrl(path: string, expiresInSeconds = 60 * 10) {
+export async function getSignedProfileAvatarUrl(path: string, expiresInSeconds = 60 * 60) {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase.storage.from("account-assets").createSignedUrl(path, expiresInSeconds);
 

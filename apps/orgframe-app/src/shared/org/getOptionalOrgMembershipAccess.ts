@@ -2,7 +2,7 @@ import { cache } from "react";
 import { createDataApiServiceRoleClient, createSupabaseServer } from "@/src/shared/data-api/server";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
-import { filterPermissionsByOrgTools, type OrgToolAvailability } from "@/src/shared/org/features";
+import { filterPermissionsByOrgTools, type OrgToolAvailability } from "@/src/features/core/config/tools";
 import type { OrgRole, Permission } from "@/src/features/core/access";
 import type { SessionUser } from "@/src/features/core/auth/server/getSessionUser";
 

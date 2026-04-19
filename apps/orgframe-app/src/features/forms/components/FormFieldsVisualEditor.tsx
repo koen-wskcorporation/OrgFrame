@@ -34,7 +34,6 @@ import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { FormField } from "@orgframe/ui/primitives/form-field";
-import { IconButton } from "@orgframe/ui/primitives/icon-button";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Panel } from "@orgframe/ui/primitives/panel";
 import { Select } from "@orgframe/ui/primitives/select";
@@ -393,16 +392,18 @@ function SortableFormFieldRow({
     <div ref={setNodeRef} style={style}>
       <div className={cn("rounded-control border bg-surface p-3 transition-colors hover:bg-surface-muted", selected ? "border-accent/60" : "")}>
         <div className="flex items-start gap-2">
-          <IconButton
-            icon={<GripVertical className="h-3.5 w-3.5" />}
-            label="Drag field"
+          <Button
+            iconOnly
+            aria-label="Drag field"
             className={cn("mt-[2px]", disabled ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing")}
             disabled={disabled}
             suppressHydrationWarning
             type="button"
             {...attributes}
             {...listeners}
-          />
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </Button>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1">
@@ -430,29 +431,35 @@ function SortableFormFieldRow({
             Required
           </label>
 
-          <IconButton
-            icon={<Copy className="h-4 w-4" />}
-            label="Duplicate field"
+          <Button
+            iconOnly
+            aria-label="Duplicate field"
             disabled={disabled}
             onClick={() => onDuplicate(field.id)}
             type="button"
-          />
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
 
-          <IconButton
-            icon={<Settings2 className="h-4 w-4" />}
-            label="Field settings"
+          <Button
+            iconOnly
+            aria-label="Field settings"
             disabled={disabled}
             onClick={() => onOpenSettings(field.id)}
             type="button"
-          />
+          >
+            <Settings2 className="h-4 w-4" />
+          </Button>
 
-          <IconButton
-            icon={<Trash2 className="h-4 w-4" />}
-            label="Remove field"
+          <Button
+            iconOnly
+            aria-label="Remove field"
             disabled={disabled}
             onClick={() => onDelete(field.id)}
             type="button"
-          />
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     </div>
