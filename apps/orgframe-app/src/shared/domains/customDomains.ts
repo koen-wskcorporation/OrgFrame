@@ -36,7 +36,7 @@ export function getCanonicalAuthHost() {
     }
   }
 
-  return getPlatformHost();
+  return "";
 }
 
 export function isCanonicalAuthHost(host: string | null | undefined) {
