@@ -15,6 +15,7 @@ function getWebhookSecret(): string | null {
 export async function POST(request: Request) {
   const secret = getWebhookSecret();
   if (!secret) {
+    console.error("[auth/email-hook] SUPABASE_AUTH_EMAIL_HOOK_SECRET not set");
     return NextResponse.json({ ok: false, error: "hook_secret_not_configured" }, { status: 500 });
   }
 
@@ -28,12 +29,18 @@ export async function POST(request: Request) {
   try {
     const wh = new Webhook(secret);
     payload = wh.verify(rawBody, headers) as SupabaseEmailHookPayload;
-  } catch {
+  } catch (error) {
+    console.error("[auth/email-hook] signature verification failed", error instanceof Error ? error.message : error);
     return NextResponse.json({ ok: false, error: "invalid_signature" }, { status: 401 });
   }
 
   const result = await handleSupabaseEmailHook(payload);
   if (!result.ok) {
+    console.error("[auth/email-hook] send failed", {
+      error: result.error,
+      action: payload.email_data.email_action_type,
+      user: payload.user.id
+    });
     return NextResponse.json({ ok: false, error: result.error }, { status: 500 });
   }
 
