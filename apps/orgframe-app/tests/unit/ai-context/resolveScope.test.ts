@@ -27,17 +27,23 @@ describe("resolveScope", () => {
     });
   });
 
-  it("parses /tools/facilities/:id", () => {
-    assert.deepEqual(resolveScope("/tools/facilities/space-1"), {
+  it("parses /manage/facilities/:id", () => {
+    assert.deepEqual(resolveScope("/manage/facilities/space-1"), {
       currentModule: "facilities",
       entityType: "facility",
       entityId: "space-1"
     });
   });
 
-  it("parses /account/players", () => {
-    assert.deepEqual(resolveScope("/account/players"), {
-      currentModule: "players"
+  it("parses /profiles", () => {
+    assert.deepEqual(resolveScope("/profiles"), {
+      currentModule: "profiles"
+    });
+  });
+
+  it("parses /workspace", () => {
+    assert.deepEqual(resolveScope("/workspace"), {
+      currentModule: "workspace"
     });
   });
 

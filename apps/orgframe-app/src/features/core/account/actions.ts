@@ -163,10 +163,10 @@ export async function updateAccountDetailsAction(
     }
 
     if (payload.orgSlug) {
-      revalidatePath(`/${payload.orgSlug}/tools/people`);
+      revalidatePath(`/${payload.orgSlug}/manage/people`);
     }
     if (isSelfEdit) {
-      revalidatePath("/account");
+      revalidatePath("/settings");
     }
 
     return {

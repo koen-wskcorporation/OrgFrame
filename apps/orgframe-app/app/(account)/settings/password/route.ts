@@ -10,7 +10,7 @@ function cleanValue(value: FormDataEntryValue | null) {
 }
 
 export async function POST(request: NextRequest) {
-  const response = NextResponse.redirect(new URL("/account?saved=password", request.url), { status: 303 });
+  const response = NextResponse.redirect(new URL("/settings?saved=password", request.url), { status: 303 });
   const supabase = createSupabaseServerForRequest(request, response);
   const {
     data: { user }
@@ -24,13 +24,13 @@ export async function POST(request: NextRequest) {
   const password = cleanValue(formData.get("newPassword"));
 
   if (password.length < 8) {
-    return NextResponse.redirect(new URL("/account?error=weak_password", request.url), { status: 303 });
+    return NextResponse.redirect(new URL("/settings?error=weak_password", request.url), { status: 303 });
   }
 
   const { error } = await supabase.auth.updateUser({ password });
 
   if (error) {
-    return NextResponse.redirect(new URL("/account?error=password_update_failed", request.url), { status: 303 });
+    return NextResponse.redirect(new URL("/settings?error=password_update_failed", request.url), { status: 303 });
   }
 
   return response;

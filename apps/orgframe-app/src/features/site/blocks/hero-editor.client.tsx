@@ -105,7 +105,7 @@ export function HeroBlockEditorClient({ block, context, onChange }: BlockEditorP
             size="sm"
             variant="secondary"
           >
-            Reset crop
+            Reset Crop
           </Button>
         </div>
       </div>

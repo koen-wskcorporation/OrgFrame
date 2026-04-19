@@ -31,7 +31,7 @@ describe("Account menu org switch hrefs", () => {
   it("uses subdomain hrefs on local tenant base hosts", () => {
     const href = buildOrgSwitchHrefLikeApp(
       "batmen",
-      "/mgsll/tools",
+      "/mgsll/manage",
       "mgsll",
       "orgframe.test",
       "orgframe.test:3000",
@@ -39,6 +39,6 @@ describe("Account menu org switch hrefs", () => {
       "mgsll.orgframe.test"
     );
 
-    assert.equal(href, "http://batmen.orgframe.test:3000/tools");
+    assert.equal(href, "http://batmen.orgframe.test:3000/manage");
   });
 });

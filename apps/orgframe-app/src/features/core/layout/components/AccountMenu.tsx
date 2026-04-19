@@ -1,32 +1,44 @@
 "use client";
 
-import { Bell, Building2, ChevronDown, Home, LogOut, Monitor, Moon, Plus, Settings2, Sun } from "lucide-react";
+import { Bell, ChevronDown, Home, Inbox, LogOut, Monitor, Moon, Settings2, Sun, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { buttonVariants } from "@orgframe/ui/primitives/button";
-import { CreateOrganizationDialog } from "@/src/features/core/dashboard/components/CreateOrganizationDialog";
-import { AdaptiveLogo } from "@orgframe/ui/primitives/adaptive-logo";
-import { IconButton } from "@orgframe/ui/primitives/icon-button";
+import { Avatar } from "@orgframe/ui/primitives/avatar";
+import { Button, buttonVariants } from "@orgframe/ui/primitives/button";
 import { NavItem } from "@orgframe/ui/primitives/nav-item";
 import { Popover } from "@orgframe/ui/primitives/popover";
 import { ThemeMode, useThemeMode } from "@orgframe/ui/primitives/theme-mode";
 import { cn } from "@orgframe/ui/primitives/utils";
+
+type ProfileRelationship = "self" | "guardian" | "delegated_manager";
+
+type AccountMenuProfile = {
+  id: string;
+  displayName: string;
+  relationshipType: ProfileRelationship;
+};
 
 type AccountMenuProps = {
   email?: string | null;
   firstName?: string | null;
   lastName?: string | null;
   avatarUrl?: string | null;
-  organizations?: {
-    orgId: string;
-    orgName: string;
-    orgSlug: string;
-    iconUrl: string | null;
-  }[];
-  currentOrgSlug?: string | null;
+  profiles?: AccountMenuProfile[];
   homeHref?: string;
   signOutAction: (formData: FormData) => Promise<void>;
   tenantBaseOrigin?: string | null;
+};
+
+const RELATIONSHIP_LABELS: Record<ProfileRelationship, string> = {
+  self: "You",
+  guardian: "Guardian",
+  delegated_manager: "Manager"
+};
+
+const RELATIONSHIP_TAG_CLASSES: Record<ProfileRelationship, string> = {
+  self: "border-accent/40 bg-accent/10 text-text",
+  guardian: "border-border bg-surface-muted text-text-muted",
+  delegated_manager: "border-border bg-surface-muted text-text-muted"
 };
 
 type HeaderNotification = {
@@ -80,145 +92,6 @@ function initialsFromName(firstName?: string | null, lastName?: string | null, e
   return (email?.trim().charAt(0) ?? "A").toUpperCase();
 }
 
-function getTenantBaseHost(tenantBaseOrigin?: string | null) {
-  if (!tenantBaseOrigin) {
-    return "";
-  }
-
-  try {
-    return new URL(tenantBaseOrigin).hostname;
-  } catch {
-    return "";
-  }
-}
-
-function getTenantBaseAuthority(tenantBaseOrigin?: string | null) {
-  if (!tenantBaseOrigin) {
-    return "";
-  }
-
-  try {
-    return new URL(tenantBaseOrigin).host;
-  } catch {
-    return "";
-  }
-}
-
-function getTenantBaseProtocol(tenantBaseOrigin?: string | null) {
-  if (!tenantBaseOrigin) {
-    return "";
-  }
-
-  try {
-    return new URL(tenantBaseOrigin).protocol;
-  } catch {
-    return "";
-  }
-}
-
-function getCurrentHost() {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  return window.location.hostname.toLowerCase();
-}
-
-function getCurrentProtocol() {
-  if (typeof window === "undefined") {
-    return "https:";
-  }
-
-  return window.location.protocol;
-}
-
-function normalizePathname(pathname: string) {
-  if (!pathname) {
-    return "/";
-  }
-  if (pathname.length > 1 && pathname.endsWith("/")) {
-    return pathname.slice(0, -1);
-  }
-  return pathname;
-}
-
-function toOrgPathSuffix(pathname: string, currentOrgSlug: string, hasTenantBaseHost: boolean) {
-  const normalizedPath = normalizePathname(pathname);
-
-  if (normalizedPath === "/") {
-    return "/";
-  }
-
-  const segments = normalizedPath.split("/").filter(Boolean);
-  if (segments.length === 0) {
-    return "/";
-  }
-
-  if (currentOrgSlug && segments[0] === currentOrgSlug) {
-    return segments.length === 1 ? "/" : `/${segments.slice(1).join("/")}`;
-  }
-
-  if (!hasTenantBaseHost) {
-    return "/";
-  }
-
-  const first = segments[0]?.toLowerCase() ?? "";
-  if (first === "account" || first === "auth" || first === "api") {
-    return "/";
-  }
-
-  return `/${segments.join("/")}`;
-}
-
-function collapseToClosestOrgPath(pathSuffix: string) {
-  const normalizedSuffix = normalizePathname(pathSuffix);
-  if (normalizedSuffix === "/") {
-    return "/";
-  }
-
-  const segments = normalizedSuffix.split("/").filter(Boolean);
-  if (segments.length === 0) {
-    return "/";
-  }
-
-  const first = segments[0]?.toLowerCase();
-  const second = segments[1]?.toLowerCase();
-
-  const collectionTools = new Set(["facility", "facilities", "forms", "programs"]);
-  if ((first === "tools" || first === "manage") && second && collectionTools.has(second) && segments.length >= 3) {
-    return `/${segments.slice(0, 2).join("/")}`;
-  }
-
-  const publicCollections = new Set(["calendar", "events", "programs", "register"]);
-  if (first && publicCollections.has(first) && segments.length >= 2) {
-    return `/${first}`;
-  }
-
-  return normalizedSuffix;
-}
-
-function buildOrgSwitchHref(
-  targetOrgSlug: string,
-  pathname: string,
-  currentOrgSlug: string,
-  tenantBaseHost: string,
-  tenantBaseAuthority: string,
-  tenantBaseProtocol: string
-) {
-  const protocol = tenantBaseProtocol || getCurrentProtocol();
-  const pathSuffix = collapseToClosestOrgPath(toOrgPathSuffix(pathname, currentOrgSlug, Boolean(tenantBaseHost)));
-
-  if (tenantBaseAuthority) {
-    return `${protocol}//${targetOrgSlug}.${tenantBaseAuthority}${pathSuffix}`;
-  }
-
-  if (pathSuffix === "/") {
-    return `/${targetOrgSlug}`;
-  }
-
-  return `/${targetOrgSlug}${pathSuffix}`;
-}
-
 function toTenantBaseHref(pathname: string, tenantBaseOrigin?: string | null) {
   if (!tenantBaseOrigin) {
     return pathname;
@@ -234,8 +107,7 @@ export function AccountMenu({
   firstName,
   lastName,
   avatarUrl,
-  organizations = [],
-  currentOrgSlug: currentOrgSlugProp = null,
+  profiles = [],
   homeHref = "/",
   signOutAction,
   tenantBaseOrigin = null
@@ -249,7 +121,6 @@ export function AccountMenu({
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const notificationsButtonRef = useRef<HTMLButtonElement | null>(null);
 
-  const accountLabel = email ?? "Signed-in account";
   const fullName = useMemo(() => {
     const parts = [firstName?.trim(), lastName?.trim()].filter(Boolean) as string[];
 
@@ -259,42 +130,6 @@ export function AccountMenu({
 
     return "Account";
   }, [firstName, lastName]);
-  const initials = initialsFromName(firstName, lastName, email);
-  const tenantBaseHost = useMemo(() => getTenantBaseHost(tenantBaseOrigin), [tenantBaseOrigin]);
-  const tenantBaseAuthority = useMemo(() => getTenantBaseAuthority(tenantBaseOrigin), [tenantBaseOrigin]);
-  const tenantBaseProtocol = useMemo(() => getTenantBaseProtocol(tenantBaseOrigin), [tenantBaseOrigin]);
-  const currentOrgSlug = useMemo(() => {
-    if (currentOrgSlugProp) {
-      return currentOrgSlugProp;
-    }
-
-    const currentHost = getCurrentHost();
-    if (tenantBaseHost && currentHost.endsWith(`.${tenantBaseHost}`)) {
-      return currentHost.slice(0, -(tenantBaseHost.length + 1));
-    }
-
-    const [_, slug] = pathname.split("/");
-    return slug ?? "";
-  }, [currentOrgSlugProp, pathname, tenantBaseHost]);
-  const orgLinks = useMemo(() => {
-    return new Map(
-      organizations.map((organization) => [
-        organization.orgSlug,
-        buildOrgSwitchHref(organization.orgSlug, pathname, currentOrgSlug, tenantBaseHost, tenantBaseAuthority, tenantBaseProtocol)
-      ])
-    );
-  }, [organizations, pathname, currentOrgSlug, tenantBaseHost, tenantBaseAuthority, tenantBaseProtocol]);
-  const orderedOrganizations = useMemo(() => {
-    return [...organizations].sort((a, b) => {
-      if (a.orgSlug === currentOrgSlug) {
-        return -1;
-      }
-      if (b.orgSlug === currentOrgSlug) {
-        return 1;
-      }
-      return a.orgName.localeCompare(b.orgName);
-    });
-  }, [currentOrgSlug, organizations]);
   const menuItems = useMemo(
     () => [
       {
@@ -304,21 +139,32 @@ export function AccountMenu({
         active: pathname === "/" && homeHref === "/"
       },
       {
-        href: toTenantBaseHref("/account", tenantBaseOrigin),
-        label: "Account settings",
+        href: toTenantBaseHref("/profiles", tenantBaseOrigin),
+        label: "Profiles",
+        icon: Users,
+        active: pathname === "/profiles" || pathname.startsWith("/profiles/")
+      },
+      {
+        href: toTenantBaseHref("/inbox", tenantBaseOrigin),
+        label: "Inbox",
+        icon: Inbox,
+        active: pathname === "/inbox" || pathname.startsWith("/inbox/")
+      },
+      {
+        href: toTenantBaseHref("/settings", tenantBaseOrigin),
+        label: "Settings",
         icon: Settings2,
-        active: pathname === "/account" || pathname.startsWith("/account/")
+        active: pathname === "/settings" || pathname.startsWith("/settings/")
       }
     ],
     [homeHref, pathname, tenantBaseOrigin]
   );
-  const { mode, resolvedMode, setMode } = useThemeMode();
+  const { mode, setMode } = useThemeMode();
   const themeOptions: { mode: ThemeMode; icon: typeof Sun; label: string }[] = [
     { mode: "light", icon: Sun, label: "Light mode" },
     { mode: "dark", icon: Moon, label: "Dark mode" },
     { mode: "auto", icon: Monitor, label: "Auto theme" }
   ];
-  const secondaryAccountLabel = accountLabel;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -389,15 +235,13 @@ export function AccountMenu({
 
       <Popover
         anchorRef={notificationsButtonRef}
-        className="w-[25rem] overflow-hidden rounded-[22px] border border-border/70 bg-surface/95 p-0 shadow-floating backdrop-blur-xl"
+        className="w-[25rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[22px] border border-border/70 bg-surface/95 p-0 shadow-floating backdrop-blur-xl"
         onClose={() => setNotificationsOpen(false)}
         open={notificationsOpen}
       >
-        <div className="flex items-center justify-between border-b border-border/70 bg-gradient-to-br from-surface to-surface-muted/35 p-4">
-          <div>
-            <p className="text-sm font-semibold text-text">Notifications</p>
-            <p className="text-xs text-text-muted">{unreadCount > 0 ? `${unreadCount} unread` : "All caught up"}</p>
-          </div>
+        <div className="border-b border-border/70 p-4">
+          <p className="text-sm font-semibold text-text">Notifications</p>
+          <p className="text-xs text-text-muted">{unreadCount > 0 ? `${unreadCount} unread` : "All caught up"}</p>
         </div>
 
         <div className="max-h-[22rem] space-y-1 overflow-y-auto p-2.5">
@@ -456,154 +300,114 @@ export function AccountMenu({
         ref={buttonRef}
         type="button"
       >
-        {avatarUrl ? (
-          <img alt={`${fullName} profile`} className="h-8 w-8 rounded-full border object-cover" src={avatarUrl} />
-        ) : (
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border bg-surface-muted text-xs font-semibold text-text">
-            {initials}
-          </span>
-        )}
+        <Avatar alt={`${fullName} profile`} name={fullName} priority sizePx={32} src={avatarUrl} />
         <span className="min-w-0 text-left">
           <span className="block max-w-40 truncate text-sm font-semibold text-text">{fullName}</span>
-          <span className="block max-w-44 truncate text-[11px] text-text-muted">{secondaryAccountLabel}</span>
         </span>
         <ChevronDown className={cn("h-4 w-4 text-text-muted transition-transform duration-200", open ? "rotate-180" : "")} />
       </button>
 
-      <Popover anchorRef={buttonRef} className="w-[22rem] overflow-hidden rounded-[22px] border border-border/70 bg-surface/95 p-0 shadow-floating backdrop-blur-xl" onClose={() => setOpen(false)} open={open}>
-        <div className="border-b border-border/70 bg-gradient-to-br from-surface to-surface-muted/45 p-4">
+      <Popover
+        anchorRef={buttonRef}
+        className="w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[22px] border border-border/70 bg-surface/95 p-0 shadow-floating backdrop-blur-xl"
+        onClose={() => setOpen(false)}
+        open={open}
+      >
+        <div className="border-b border-border/70 px-4 pb-4 pt-5">
           <div className="flex items-center gap-3">
-            {avatarUrl ? (
-              <img alt={`${fullName} profile`} className="h-11 w-11 rounded-full border object-cover" src={avatarUrl} />
-            ) : (
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-full border bg-surface-muted text-sm font-semibold text-text">{initials}</span>
-            )}
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-text">{fullName}</p>
-              <p className="truncate text-xs text-text-muted">{accountLabel}</p>
+            <Avatar alt={`${fullName} profile`} name={fullName} sizePx={52} src={avatarUrl} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[15px] font-semibold leading-tight text-text">{fullName}</p>
+              {email ? <p className="truncate text-xs text-text-muted">{email}</p> : null}
             </div>
           </div>
         </div>
 
-        <div className="space-y-1.5 p-2.5">
-          <CreateOrganizationDialog
-            renderTrigger={({ openDialog }) => (
-              <div className="space-y-1">
-                {menuItems.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <NavItem
-                      accentWhenActive
-                      active={item.active}
-                      href={item.href}
-                      key={item.href}
-                      onClick={() => setOpen(false)}
-                      role="menuitem"
-                      size="md"
-                      variant="sidebar"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-text-muted" />
-                        {item.label}
-                      </span>
-                    </NavItem>
-                  );
-                })}
-                <NavItem
-                  onClick={() => {
-                    setOpen(false);
-                    openDialog();
-                  }}
-                  role="menuitem"
-                  size="md"
-                  variant="sidebar"
+        {profiles.length > 0 ? (
+          <div className="border-b border-border/70 p-2.5">
+            <p className="px-2.5 pb-1.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">Profiles</p>
+            <ul className="space-y-0.5">
+              {profiles.map((profile) => (
+                <li
+                  className="flex items-center gap-2.5 rounded-control px-2.5 py-2"
+                  key={profile.id}
                 >
-                  <span className="flex items-center gap-2">
-                    <Plus className="h-4 w-4 text-text-muted" />
-                    Create organization
+                  <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-muted text-[10px] font-semibold text-text">
+                    {initialsFromName(profile.displayName, null, null)}
                   </span>
-                </NavItem>
-              </div>
-            )}
-          />
-
-          {orderedOrganizations.length > 1 ? (
-            <>
-              <div aria-hidden className="my-1 h-px bg-border/70" />
-              <p className="flex items-center gap-1.5 px-3 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
-                <Building2 className="h-3.5 w-3.5" />
-                Switch Organization
-              </p>
-              {orderedOrganizations.map((organization) => (
-                <NavItem
-                  accentWhenActive
-                  active={organization.orgSlug === currentOrgSlug}
-                  href={orgLinks.get(organization.orgSlug) ?? `/${organization.orgSlug}`}
-                  key={organization.orgId}
-                  onClick={() => setOpen(false)}
-                  role="menuitem"
-                  size="md"
-                  variant="sidebar"
-                >
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    {organization.iconUrl ? (
-                      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center">
-                        <AdaptiveLogo
-                          alt={`${organization.orgName} icon`}
-                          className="h-full w-full object-contain object-center"
-                          src={organization.iconUrl}
-                          svgClassName="block h-full w-full object-contain object-center"
-                        />
-                      </span>
-                    ) : (
-                      <span className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border bg-surface-muted px-1.5 text-[10px] font-semibold text-text-muted">
-                        {initialsFromName(organization.orgName, null, null)}
-                      </span>
-                    )}
-                    <span className="truncate">{organization.orgName}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-text">{profile.displayName}</span>
+                  <span className={cn(
+                    "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                    RELATIONSHIP_TAG_CLASSES[profile.relationshipType]
+                  )}>
+                    {RELATIONSHIP_LABELS[profile.relationshipType]}
                   </span>
-                </NavItem>
+                </li>
               ))}
-            </>
-          ) : null}
+            </ul>
+          </div>
+        ) : null}
 
-          <div aria-hidden className="my-1 h-px bg-border/70" />
-          <div className="flex items-end justify-between gap-2 px-1">
-            <form
-              action={signOutAction}
-              onSubmit={() => {
-                setOpen(false);
-              }}
-            >
-              <NavItem className="text-destructive" role="menuitem" size="md" type="submit" variant="header">
-                <span className="flex items-center gap-2">
-                  <LogOut className="h-4 w-4" />
-                  Sign out
+        <div className="space-y-1 p-2.5">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavItem
+                active={item.active}
+                href={item.href}
+                key={item.href}
+                onClick={() => setOpen(false)}
+                role="menuitem"
+                size="md"
+                variant="sidebar"
+              >
+                <span className="flex items-center gap-2.5">
+                  <Icon className="h-4 w-4 text-text-muted" />
+                  {item.label}
                 </span>
               </NavItem>
-            </form>
+            );
+          })}
+        </div>
 
-            <div aria-label="Theme mode" className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-surface p-1" role="radiogroup">
-                {themeOptions.map((option) => {
-                  const Icon = option.icon;
-                  const isActive = mode === option.mode;
-                  return (
-                    <IconButton
-                      aria-checked={isActive}
-                      className={cn(
-                        "h-8 w-8 border",
-                        isActive ? "border-border/80 bg-surface-muted text-text shadow-sm" : "border-transparent text-text-muted hover:border-border/60"
-                      )}
-                      icon={<Icon />}
-                      key={option.mode}
-                      label={option.label}
-                      onClick={() => setMode(option.mode)}
-                      role="radio"
-                      title={option.label}
-                    />
-                  );
-                })}
-            </div>
+        <div className="flex items-center justify-between gap-2 border-t border-border/70 bg-surface-muted/30 px-3 py-2.5">
+          <form
+            action={signOutAction}
+            onSubmit={() => {
+              setOpen(false);
+            }}
+          >
+            <button
+              className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+              type="submit"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </button>
+          </form>
+
+          <div aria-label="Theme mode" className="inline-flex items-center gap-0.5 rounded-full border border-border/70 bg-surface p-0.5 shadow-sm" role="radiogroup">
+            {themeOptions.map((option) => {
+              const Icon = option.icon;
+              const isActive = mode === option.mode;
+              return (
+                <Button
+                  iconOnly
+                  aria-checked={isActive}
+                  aria-label={option.label}
+                  className={cn(
+                    "h-7 w-7 border",
+                    isActive ? "border-transparent bg-accent/15 text-text" : "border-transparent text-text-muted hover:bg-surface-muted"
+                  )}
+                  key={option.mode}
+                  onClick={() => setMode(option.mode)}
+                  role="radio"
+                  title={option.label}
+                >
+                  <Icon />
+                </Button>
+              );
+            })}
           </div>
         </div>
       </Popover>

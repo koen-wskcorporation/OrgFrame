@@ -320,17 +320,44 @@ a {
     @apply rounded-control border bg-surface p-3;
   }
 
-  .auth-photo-bg {
-    position: absolute;
+  .centered-form-bg {
+    position: fixed;
     inset: 0;
+    z-index: 0;
     pointer-events: none;
+    background-color: hsl(var(--background));
     background-image:
-      linear-gradient(180deg, hsl(220 40% 8% / 0.52), hsl(220 30% 6% / 0.38)),
-      radial-gradient(circle at 20% 20%, hsl(var(--accent) / 0.18), transparent 42%),
-      url("/auth-softball-bg.jpg");
-    background-size: cover, cover, cover;
-    background-position: center, center, center;
-    background-repeat: no-repeat;
+      radial-gradient(circle at 15% 15%, hsl(var(--accent) / 0.55), transparent 55%),
+      radial-gradient(circle at 85% 85%, hsl(var(--accent) / 0.35), transparent 60%),
+      linear-gradient(135deg, hsl(var(--accent) / 0.25), hsl(var(--accent) / 0.05));
+  }
+
+  .dark .centered-form-bg {
+    background-image:
+      radial-gradient(circle at 15% 15%, hsl(var(--accent) / 0.45), transparent 55%),
+      radial-gradient(circle at 85% 85%, hsl(var(--accent) / 0.3), transparent 60%),
+      linear-gradient(135deg, hsl(var(--accent) / 0.2), hsl(var(--accent) / 0.04));
+  }
+
+  @keyframes slug-status-enter {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .slug-status-enter {
+    animation: slug-status-enter 180ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .slug-status-enter {
+      animation: none;
+    }
   }
 
   .ui-inline-toggle {
@@ -355,6 +382,35 @@ a {
 
   .ui-fade-edge {
     mask-image: linear-gradient(to right, transparent 0, black 6px, black calc(100% - 6px), transparent 100%);
+  }
+
+  .ui-accent-wash {
+    background-color: hsl(var(--surface));
+    background-image:
+      radial-gradient(ellipse at 20% 15%, hsl(var(--accent) / 0.18), transparent 55%),
+      radial-gradient(ellipse at 80% 85%, hsl(var(--accent) / 0.12), transparent 60%),
+      linear-gradient(135deg, hsl(var(--accent) / 0.08), transparent 70%);
+    background-size: 180% 180%, 200% 200%, 220% 220%;
+    background-position: 0% 0%, 100% 100%, 0% 100%;
+    animation: ui-accent-wash-drift 22s ease-in-out infinite alternate;
+  }
+
+  @keyframes ui-accent-wash-drift {
+    0% {
+      background-position: 0% 0%, 100% 100%, 0% 100%;
+    }
+    50% {
+      background-position: 40% 30%, 60% 70%, 30% 60%;
+    }
+    100% {
+      background-position: 80% 20%, 20% 80%, 60% 40%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ui-accent-wash {
+      animation: none;
+    }
   }
 }
 

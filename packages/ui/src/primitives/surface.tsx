@@ -1,5 +1,6 @@
 import * as React from "react";
-import { IconButton } from "@orgframe/ui/primitives/icon-button";
+import { Avatar } from "./avatar";
+import { Button } from "@orgframe/ui/primitives/button";
 import { cn } from "./utils";
 
 type SurfaceHeaderProps = {
@@ -13,44 +14,17 @@ type SurfaceHeaderProps = {
   className?: string;
 };
 
-function initialsFor(value: React.ReactNode) {
-  if (typeof value !== "string") {
-    return "??";
-  }
-
-  const parts = value
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2);
-
-  if (parts.length === 0) {
-    return "??";
-  }
-
-  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "??";
-}
-
 export function SurfaceHeader({ title, subtitle, showAvatar = false, avatarUrl = null, avatarAlt, topAction, titleId, className }: SurfaceHeaderProps) {
-  const fallbackInitials = initialsFor(title);
-  const avatarSizeClass = subtitle ? "h-11 w-11" : "h-9 w-9";
+  const avatarSizePx = subtitle ? 44 : 36;
+  const titleString = typeof title === "string" ? title : null;
 
   return (
     <div className={cn("relative shrink-0 border-b px-5 py-4 pr-16 md:px-6", className)}>
       {topAction ? <div className="mb-2">{topAction}</div> : null}
       <div className="flex min-w-0 items-start gap-3">
-        {showAvatar
-          ? avatarUrl
-            ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img alt={avatarAlt ?? "Header avatar"} className={cn("aspect-square shrink-0 rounded-full border object-cover", avatarSizeClass)} src={avatarUrl} />
-              )
-            : (
-                <span className={cn("inline-flex aspect-square shrink-0 items-center justify-center rounded-full border bg-surface-muted text-xs font-semibold text-text-muted", avatarSizeClass)}>
-                  {fallbackInitials}
-                </span>
-              )
-          : null}
+        {showAvatar ? (
+          <Avatar alt={avatarAlt ?? (titleString ? `${titleString} avatar` : "Header avatar")} name={titleString} sizePx={avatarSizePx} src={avatarUrl} />
+        ) : null}
         <div className="min-w-0">
           <h2 className="truncate text-lg font-semibold leading-tight text-text" id={titleId}>
             {title}
@@ -106,5 +80,9 @@ type SurfaceCloseButtonProps = {
 };
 
 export function SurfaceCloseButton({ label, onClick, className }: SurfaceCloseButtonProps) {
-  return <IconButton className={cn("absolute right-3 top-3", className)} icon={<span className="text-lg leading-none">×</span>} label={label} onClick={onClick} />;
+  return (
+    <Button iconOnly aria-label={label} className={cn("absolute right-3 top-3", className)} onClick={onClick}>
+      <span className="text-lg leading-none">×</span>
+    </Button>
+  );
 }

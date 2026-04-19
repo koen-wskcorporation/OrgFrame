@@ -3,6 +3,7 @@ import { getSignedProfileAvatarUrl } from "@/src/features/core/account/storage/g
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
 import { listUserOrgs } from "@/src/shared/org/listUserOrgs";
+import { listProfilesForAccount } from "@/src/features/people/db/queries";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type { HeaderAccountState } from "@/src/features/core/layout/types";
 
@@ -31,8 +32,9 @@ export async function GET() {
     .maybeSingle();
 
   const avatarPath = profile?.avatar_path ?? null;
-  const avatarUrl = avatarPath ? await getSignedProfileAvatarUrl(avatarPath, 60 * 10) : null;
+  const avatarUrl = avatarPath ? await getSignedProfileAvatarUrl(avatarPath) : null;
   const organizations = await listUserOrgs().catch(() => []);
+  const profileRecords = await listProfilesForAccount(sessionUser.id).catch(() => []);
   const payload: HeaderAccountState = {
     authenticated: true,
     user: {
@@ -47,7 +49,18 @@ export async function GET() {
       orgName: membership.orgName,
       orgSlug: membership.orgSlug,
       iconUrl: getOrgAssetPublicUrl(membership.iconPath ?? membership.logoPath)
-    }))
+    })),
+    profiles: profileRecords
+      .map(({ profile: p, links }) => {
+        const primaryLink = links[0];
+        if (!primaryLink) return null;
+        return {
+          id: p.id,
+          displayName: p.displayName,
+          relationshipType: primaryLink.relationshipType
+        };
+      })
+      .filter((p): p is { id: string; displayName: string; relationshipType: "self" | "guardian" | "delegated_manager" } => Boolean(p))
   };
 
   return NextResponse.json(

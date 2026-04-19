@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { extractOrgSlugFromSubdomain, getTenantBaseHosts, normalizeHost } from "@/src/shared/domains/customDomains";
+import { getTenantBaseHosts, normalizeHost } from "@/src/shared/domains/customDomains";
 
 type SupabaseCookieOptions = {
   domain?: string;
@@ -39,57 +39,33 @@ function isIpHost(host: string) {
   return /^\d+\.\d+\.\d+\.\d+$/.test(host);
 }
 
-function looksLikeTenantSubdomain(host: string, candidates: string[]) {
-  for (const candidate of candidates) {
-    if (candidate === host) {
-      continue;
-    }
-
-    if (extractOrgSlugFromSubdomain(host, candidate)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function getDefaultSharedCookieDomain(requestHost: string | null | undefined) {
+function getPlatformSharedCookieDomain(requestHost: string | null | undefined) {
   const host = normalizeHost(requestHost);
   if (!host || isIpHost(host)) {
     return null;
   }
 
-  const tenantBaseHosts = Array.from(getTenantBaseHosts());
-  const candidates = tenantBaseHosts.filter((candidate) => {
-    if (!candidate || isIpHost(candidate)) {
-      return false;
-    }
-
-    return !looksLikeTenantSubdomain(candidate, tenantBaseHosts);
-  });
-
-  let bestMatch: string | null = null;
-
-  for (const candidate of candidates) {
-    if (host !== candidate && !host.endsWith(`.${candidate}`)) {
-      continue;
-    }
-
-    if (!bestMatch || candidate.length > bestMatch.length) {
-      bestMatch = candidate;
+  for (const baseHost of getTenantBaseHosts()) {
+    if (host === baseHost || host.endsWith(`.${baseHost}`)) {
+      return baseHost;
     }
   }
 
-  return bestMatch;
+  return null;
 }
 
 function getSharedAuthCookieDomain(requestHost: string | null | undefined) {
   const explicit = normalizeCookieDomain(process.env.AUTH_COOKIE_DOMAIN ?? "");
   if (explicit) {
-    return explicit;
+    const host = normalizeHost(requestHost);
+    if (!host || host === explicit || host.endsWith(`.${explicit}`)) {
+      return explicit;
+    }
+    // Host is a custom domain outside the platform eTLD; fall through to host-only cookies.
+    return null;
   }
 
-  return getDefaultSharedCookieDomain(requestHost);
+  return getPlatformSharedCookieDomain(requestHost);
 }
 
 function getForwardedProtoValue(value: string | null) {

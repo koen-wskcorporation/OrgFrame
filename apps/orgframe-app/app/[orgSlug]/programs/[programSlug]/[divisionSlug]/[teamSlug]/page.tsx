@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { ManageCalendarSection } from "@/app/[orgSlug]/tools/calendar/ManageCalendarSection";
+import { ManageCalendarSection } from "@/app/[orgSlug]/manage/calendar/ManageCalendarSection";
 import { getCalendarWorkspaceDataAction } from "@/src/features/calendar/actions";
 import { scopeCalendarReadModelByContext } from "@/src/features/calendar/read-model-scope";
 import { getOrgRequestContext } from "@/src/shared/org/getOrgRequestContext";

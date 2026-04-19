@@ -6,6 +6,7 @@ import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { CreateModal } from "@orgframe/ui/primitives/interaction-containers";
 import { Select } from "@orgframe/ui/primitives/select";
+import { X } from "lucide-react";
 
 export type ProfileCreatePayload = {
   accountUserId?: string;
@@ -81,6 +82,7 @@ export function ProfileCreatePopup({
       footer={
         <>
           <Button disabled={loading} onClick={onClose} type="button" variant="ghost">
+            <X className="h-4 w-4" />
             Cancel
           </Button>
           <Button disabled={loading} form="profile-create-form" loading={loading} type="submit">

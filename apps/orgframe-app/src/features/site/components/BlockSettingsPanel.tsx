@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@orgframe/ui/primitives/button";
-import { EditorSettingsDialog } from "@/src/features/core/layout/components/EditorSettingsDialog";
+import { Panel } from "@orgframe/ui/primitives/panel";
 import { getBlockDefinition } from "@/src/features/site/blocks/registry";
 import type { BlockContext, OrgPageBlock, OrgSiteRuntimeData } from "@/src/features/site/types";
 
@@ -23,16 +22,12 @@ export function BlockSettingsPanel({ open, block, context, runtimeData, onClose,
   const Editor = definition.Editor;
 
   return (
-    <EditorSettingsDialog
-      description="Adjust content and options for this section."
-      footer={
-        <Button onClick={onClose} size="sm" variant="secondary">
-          Done
-        </Button>
-      }
+    <Panel
       onClose={onClose}
       open={open}
-      title={`${definition.displayName} Settings`}
+      pushMode="content"
+      subtitle="Adjust content and options for this section."
+      title={`${definition.displayName} settings`}
     >
       <Editor
         block={block as never}
@@ -42,6 +37,6 @@ export function BlockSettingsPanel({ open, block, context, runtimeData, onClose,
           onChange(next as OrgPageBlock);
         }}
       />
-    </EditorSettingsDialog>
+    </Panel>
   );
 }

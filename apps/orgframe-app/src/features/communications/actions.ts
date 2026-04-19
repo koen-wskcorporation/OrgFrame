@@ -140,10 +140,10 @@ async function requireCommunicationsWrite(orgSlug: string) {
 }
 
 function revalidateInboxPaths(orgSlug: string) {
-  revalidatePath(`/${orgSlug}/tools/inbox`);
-  revalidatePath(`/${orgSlug}/tools/inbox`, "layout");
-  revalidatePath(`/${orgSlug}/tools/inbox`);
-  revalidatePath(`/${orgSlug}/tools/inbox`, "layout");
+  revalidatePath(`/${orgSlug}/manage/inbox`);
+  revalidatePath(`/${orgSlug}/manage/inbox`, "layout");
+  revalidatePath(`/${orgSlug}/manage/inbox`);
+  revalidatePath(`/${orgSlug}/manage/inbox`, "layout");
 }
 
 export async function getInboxWorkspaceDataAction(input: z.input<typeof workspaceSchema>): Promise<CommunicationsActionResult<InboxWorkspaceReadModel>> {
@@ -488,8 +488,8 @@ export async function connectFacebookPageAction(
     });
 
     revalidateInboxPaths(org.orgSlug);
-    revalidatePath(`/${org.orgSlug}/tools/inbox/connections`);
-    revalidatePath(`/${org.orgSlug}/tools/inbox/connections`);
+    revalidatePath(`/${org.orgSlug}/manage/inbox/connections`);
+    revalidatePath(`/${org.orgSlug}/manage/inbox/connections`);
 
     return {
       ok: true,
@@ -525,8 +525,8 @@ export async function disconnectInboxIntegrationAction(
     });
 
     revalidateInboxPaths(org.orgSlug);
-    revalidatePath(`/${org.orgSlug}/tools/inbox/connections`);
-    revalidatePath(`/${org.orgSlug}/tools/inbox/connections`);
+    revalidatePath(`/${org.orgSlug}/manage/inbox/connections`);
+    revalidatePath(`/${org.orgSlug}/manage/inbox/connections`);
 
     return {
       ok: true,

@@ -35,8 +35,8 @@ export async function createAccountPaymentMethodCheckoutFromAccountAction(): Pro
 
     const url = await createCheckoutSessionForAccountPaymentMethod({
       user,
-      successPath: "/account?saved=payment_method",
-      cancelPath: "/account?error=payment_method_cancelled"
+      successPath: "/settings?saved=payment_method",
+      cancelPath: "/settings?error=payment_method_cancelled"
     });
 
     return {
@@ -67,7 +67,7 @@ export async function removeAccountPaymentMethodFromAccountAction(input: z.input
       paymentMethodId: parsed.data.paymentMethodId
     });
 
-    revalidatePath("/account");
+    revalidatePath("/settings");
 
     return {
       ok: true,
@@ -97,7 +97,7 @@ export async function setDefaultAccountPaymentMethodFromAccountAction(input: z.i
       paymentMethodId: parsed.data.paymentMethodId
     });
 
-    revalidatePath("/account");
+    revalidatePath("/settings");
 
     return {
       ok: true,

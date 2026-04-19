@@ -63,7 +63,7 @@ export function ReadMoreDescription({ children }: ReadMoreDescriptionProps) {
           type="button"
           variant="ghost"
         >
-          {expanded ? "Read less" : "Read more"}
+          {expanded ? "Read Less" : "Read More"}
         </Button>
       ) : null}
     </div>

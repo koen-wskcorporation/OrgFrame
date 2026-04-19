@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Upload } from "lucide-react";
+import { Upload, X } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { EditorSettingsDialog } from "@/src/features/core/layout/components/EditorSettingsDialog";
 import { cn } from "@/src/shared/utils";
@@ -66,6 +66,7 @@ export function UploadDialog({
       footer={
         <>
           <Button onClick={onClose} size="sm" variant="ghost">
+            <X className="h-4 w-4" />
             Cancel
           </Button>
           <Button disabled={!canSave || isSaving} loading={isSaving} onClick={onSave} size="sm">

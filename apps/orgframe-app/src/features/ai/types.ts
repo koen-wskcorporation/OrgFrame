@@ -36,7 +36,7 @@ export type AiUiContext = {
     queryParams?: Record<string, string>;
   };
   page: {
-    currentModule?: "calendar" | "facilities" | "programs" | "teams" | "communications" | "files" | "account" | "players" | "unknown";
+    currentModule?: "calendar" | "facilities" | "programs" | "teams" | "communications" | "files" | "settings" | "profiles" | "workspace" | "unknown";
     tool?: string;
     entityType?: string;
     entityId?: string;
@@ -64,6 +64,13 @@ export type AiUiContext = {
     language?: string;
     online?: boolean;
     visibilityState?: string;
+  };
+  workspaceContext?: {
+    view?: "overview" | "data_table" | "calendar" | "import_review" | "visualization" | "action_result";
+    entityType?: string;
+    entityIds?: string[];
+    filters?: Record<string, string>;
+    importRunId?: string;
   };
 };
 
@@ -242,7 +249,7 @@ export type AiResolvedContext = {
     }>;
   };
   scope: {
-    currentModule?: "calendar" | "facilities" | "programs" | "teams" | "communications" | "files" | "account" | "players" | "unknown";
+    currentModule?: "calendar" | "facilities" | "programs" | "teams" | "communications" | "files" | "settings" | "profiles" | "workspace" | "unknown";
     entityId?: string;
     entityType?: string;
   };

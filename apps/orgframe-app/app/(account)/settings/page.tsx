@@ -14,7 +14,7 @@ import { AccountProfileCard } from "@/src/features/core/account/components/Accou
 import { requireAuth } from "@/src/features/core/auth/server/requireAuth";
 
 export const metadata: Metadata = {
-  title: "Account"
+  title: "Settings"
 };
 
 const successMessageByCode: Record<string, string> = {
@@ -25,7 +25,7 @@ const successMessageByCode: Record<string, string> = {
 
 const errorMessageByCode: Record<string, string> = {
   profile_save_failed: "Unable to save profile details right now.",
-  service_unavailable: "We could not reach the account service. Please try again in a moment.",
+  service_unavailable: "We could not reach the accounts server. Please try again in a moment.",
   weak_password: "Password must be at least 8 characters.",
   password_update_failed: "Unable to update password right now.",
   payment_method_cancelled: "Payment method setup was cancelled."
@@ -51,7 +51,7 @@ export default async function AccountPage({
   const errorMessage = query.error ? errorMessageByCode[query.error] : null;
   return (
     <PageStack>
-      <PageHeader description="Manage your profile details and account security." showBorder={false} title="Account" />
+      <PageHeader description="Manage your profile details and account security." showBorder={false} title="Settings" />
 
       {successMessage ? <Alert variant="success">{successMessage}</Alert> : null}
       {errorMessage ? <Alert variant="destructive">{errorMessage}</Alert> : null}
@@ -72,7 +72,7 @@ export default async function AccountPage({
           <CardDescription>Set a new password for this account.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action="/account/password" className="flex flex-col gap-3 md:flex-row md:items-end" method="post">
+          <form action="/settings/password" className="flex flex-col gap-3 md:flex-row md:items-end" method="post">
             <FormField className="w-full" hint="Minimum 8 characters" label="New password">
               <Input name="newPassword" required type="password" />
             </FormField>

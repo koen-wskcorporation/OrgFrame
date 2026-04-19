@@ -1,6 +1,7 @@
 "use server";
 
 import { isReservedOrgSlug } from "@/src/shared/org/reservedSlugs";
+import { isOrgType, type OrgType } from "@/src/shared/org/orgTypes";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 
 const orgSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -40,16 +41,34 @@ export type CreateOrganizationActionResult =
         | "org_slug_invalid"
         | "org_slug_reserved"
         | "org_slug_taken"
+        | "org_type_invalid"
         | "org_create_unavailable"
         | "org_create_failed";
       error: string;
     };
 
-export async function createOrganizationAction(input: { orgName: string; orgSlug?: string }): Promise<CreateOrganizationActionResult> {
+export async function createOrganizationAction(input: {
+  orgName: string;
+  orgSlug?: string;
+  orgType?: string;
+}): Promise<CreateOrganizationActionResult> {
   const orgName = cleanValue(input.orgName);
   const rawSlug = cleanValue(input.orgSlug ?? "");
   const slugInput = rawSlug || orgName;
   const normalizedSlug = normalizeOrgSlug(slugInput);
+  const rawOrgType = cleanValue(input.orgType ?? "");
+  let orgType: OrgType | null = null;
+
+  if (rawOrgType) {
+    if (!isOrgType(rawOrgType)) {
+      return {
+        ok: false,
+        code: "org_type_invalid",
+        error: "Select a valid organization type."
+      };
+    }
+    orgType = rawOrgType;
+  }
 
   if (orgName.length < 2 || orgName.length > 120) {
     return {
@@ -90,7 +109,8 @@ export async function createOrganizationAction(input: { orgName: string; orgSlug
 
   const { data, error } = await supabase.rpc("create_org_for_current_user", {
     input_org_name: orgName,
-    input_org_slug: normalizedSlug
+    input_org_slug: normalizedSlug,
+    input_org_type: orgType
   });
 
   if (error) {

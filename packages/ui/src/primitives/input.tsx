@@ -20,6 +20,7 @@ type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   variant?: "default" | "inline";
   slugValidation?: SlugValidationConfig;
   persistentPrefix?: string;
+  persistentSuffix?: string;
   slugAutoSource?: string;
   onSlugAutoChange?: (value: string) => void;
   slugAutoEnabled?: boolean;
@@ -108,6 +109,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       variant = "default",
       slugValidation,
       persistentPrefix,
+      persistentSuffix,
       onChange,
       value,
       defaultValue,
@@ -296,52 +298,76 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const isSlugUnavailable = slugStatus === "taken" || slugStatus === "invalid";
     const shouldShowStatus = isSlugField && hasSlugBeenEdited && inputValue.trim().length > 0 && slugMessage;
     const hasPrefix = Boolean(resolvedPrefix);
-    const inputElement = hasPrefix ? (
-      <div
-        className={cn(
-          inputShellClass,
-          "pr-2 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-canvas",
-          isSlugUnavailable ? "border-destructive focus-within:ring-destructive/40" : null,
-          slugStatus === "available" ? "border-success/40" : null,
-          props.disabled ? "cursor-not-allowed opacity-55" : null,
-          className
-        )}
-      >
-        <span className="shrink-0 pl-3 text-[13px] text-text-muted">{resolvedPrefix}</span>
+    const hasSuffix = Boolean(persistentSuffix);
+
+    const inputElement =
+      variant === "inline" ? (
         <input
           aria-invalid={isSlugUnavailable ? true : props["aria-invalid"]}
-          className="h-full w-full border-0 bg-transparent px-1 py-2 text-sm text-text placeholder:text-text-muted focus-visible:outline-none"
+          className={cn(inlineInputClass, inputDisabledClass, "placeholder:text-text-muted/70", className)}
           defaultValue={defaultValue}
           onChange={handleChange}
           ref={assignRef}
           value={value}
           {...props}
         />
-      </div>
-    ) : (
-      <input
-        aria-invalid={isSlugUnavailable ? true : props["aria-invalid"]}
-        className={cn(
-          variant === "inline" ? null : inputShellClass,
-          variant === "inline" ? inlineInputClass : null,
-          variant === "inline" ? null : inputFocusClass,
-          inputDisabledClass,
-          variant === "inline" ? "placeholder:text-text-muted/70" : "px-3 py-2 placeholder:text-text-muted",
-          isSlugUnavailable ? "border-destructive focus-visible:ring-destructive/40" : null,
-          slugStatus === "available" ? "border-success/40" : null,
-          className
-        )}
-        defaultValue={defaultValue}
-        onChange={handleChange}
-        ref={assignRef}
-        value={value}
-        {...props}
-      />
-    );
+      ) : (
+        <div
+          className={cn(
+            inputShellClass,
+            "focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-canvas",
+            props.disabled ? "cursor-not-allowed opacity-55" : "cursor-text",
+            className
+          )}
+          onMouseDown={(event) => {
+            if (props.disabled) {
+              return;
+            }
+            if (event.target === inputRef.current) {
+              return;
+            }
+            event.preventDefault();
+            inputRef.current?.focus();
+            try {
+              const length = inputRef.current?.value.length ?? 0;
+              inputRef.current?.setSelectionRange(length, length);
+            } catch {
+              // setSelectionRange is not supported on all input types (e.g. email/number)
+            }
+          }}
+        >
+          {hasPrefix ? <span className="shrink-0 pl-3 text-[13px] text-text-muted">{resolvedPrefix}</span> : null}
+          <input
+            aria-invalid={isSlugUnavailable ? true : props["aria-invalid"]}
+            className={cn(
+              "h-full border-0 bg-transparent py-2 text-sm text-text placeholder:text-text-muted focus-visible:outline-none",
+              hasPrefix ? "pl-1" : "pl-3",
+              hasSuffix ? "min-w-[2ch] max-w-full pr-0 [field-sizing:content]" : "w-full pr-3"
+            )}
+            defaultValue={defaultValue}
+            onChange={handleChange}
+            ref={assignRef}
+            value={value}
+            {...props}
+          />
+          {hasSuffix ? <span className="shrink-0 pl-0 pr-3 text-[13px] text-text-muted">{persistentSuffix}</span> : null}
+        </div>
+      );
 
     if (!isSlugField) {
       return inputElement;
     }
+
+    const statusIcon =
+      slugStatus === "available" ? (
+        <svg aria-hidden="true" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+          <path d="M5 12.5l4.5 4.5L19 7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : slugStatus === "taken" || slugStatus === "invalid" ? (
+        <svg aria-hidden="true" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+          <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : null;
 
     return (
       <div className="space-y-1">
@@ -349,13 +375,15 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         {shouldShowStatus ? (
           <p
             className={cn(
-              "text-xs leading-relaxed",
+              "slug-status-enter flex items-center gap-1.5 text-xs leading-relaxed",
               slugStatus === "taken" || slugStatus === "invalid" ? "text-destructive" : null,
               slugStatus === "available" ? "text-success" : null,
               slugStatus === "checking" || slugStatus === "error" ? "text-text-muted" : null
             )}
+            key={`${slugStatus}:${slugMessage}`}
           >
-            {slugMessage}
+            {statusIcon}
+            <span>{slugMessage}</span>
           </p>
         ) : null}
       </div>

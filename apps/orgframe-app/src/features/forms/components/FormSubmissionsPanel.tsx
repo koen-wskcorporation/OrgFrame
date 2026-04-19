@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Filter, GripVertical, Loader2, Plus, RefreshCw, Settings, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, Filter, GripVertical, Loader2, Plus, RefreshCw, Settings, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
@@ -9,7 +9,6 @@ import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { useConfirmDialog } from "@orgframe/ui/primitives/confirm-dialog";
 import { DataTable, type DataTableColumn, type DataTableViewConfig } from "@orgframe/ui/primitives/data-table";
 import { FormField } from "@orgframe/ui/primitives/form-field";
-import { IconButton } from "@orgframe/ui/primitives/icon-button";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Panel } from "@orgframe/ui/primitives/panel";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
@@ -2812,17 +2811,21 @@ function addSummaryCard() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <IconButton
+                <Button
+                  iconOnly
+                  aria-label="Sync Google Sheets now"
                   disabled={!googleSheetState || isSavingGoogleSheet || isGoogleSheetsOauthInFlight}
-                  icon={isSavingGoogleSheet || isRefreshingSubmissions ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                  label="Sync Google Sheets now"
                   onClick={handleSyncGoogleSheetNow}
-                />
-                <IconButton
-                  icon={<Settings />}
-                  label="Google Sheets settings"
+                >
+                  {isSavingGoogleSheet || isRefreshingSubmissions ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                </Button>
+                <Button
+                  iconOnly
+                  aria-label="Google Sheets settings"
                   onClick={() => setIsGoogleSheetsSettingsOpen(true)}
-                />
+                >
+                  <Settings />
+                </Button>
               </div>
             </div>
           {!googleSheetConfigured ? (
@@ -3112,7 +3115,7 @@ function addSummaryCard() {
 
           <Button onClick={addFilterRule} variant="secondary">
             <Plus className="h-4 w-4" />
-            Add rule
+            Add Rule
           </Button>
         </div>
       </Panel>
@@ -3143,11 +3146,13 @@ function addSummaryCard() {
               return (
                 <div className="rounded-control border bg-surface-muted p-3" key={card.id}>
                   <div className="grid gap-2 md:grid-cols-[auto_1fr_320px_auto] md:items-start">
-                    <IconButton
-                      icon={<GripVertical className="h-4 w-4" />}
-                      label={`${card.label} card`}
+                    <Button
+                      iconOnly
+                      aria-label={`${card.label} card`}
                       type="button"
-                    />
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </Button>
                     <FormField label="Card title">
                       <Input
                         onChange={(event) => {
@@ -3201,7 +3206,8 @@ function addSummaryCard() {
               Cancel
             </Button>
             <Button disabled={isSavingView} loading={isSavingView} onClick={handleCreateView} variant="secondary">
-              Save view
+              <Check className="h-4 w-4" />
+              Save View
             </Button>
           </>
         }
@@ -3251,7 +3257,7 @@ function addSummaryCard() {
             </Button>
             {googleSheetState ? (
               <Button disabled={!canWrite || isSavingGoogleSheet} loading={isSavingGoogleSheet} onClick={handleSyncGoogleSheetNow} variant="secondary">
-                Sync now
+                Sync Now
               </Button>
             ) : (
               <Button
@@ -3342,7 +3348,8 @@ function addSummaryCard() {
               Cancel
             </Button>
             <Button disabled={isSavingView || !editingViewId} loading={isSavingView} onClick={handleUpdateViewSettings} variant="secondary">
-              Save view
+              <Check className="h-4 w-4" />
+              Save View
             </Button>
           </>
         }
@@ -3397,7 +3404,7 @@ function addSummaryCard() {
                 onClick={() => handleSave(selectedSubmission.id)}
                 variant="secondary"
               >
-                Save changes
+                Save Changes
               </Button>
             </>
           ) : null
@@ -3544,7 +3551,7 @@ function addSummaryCard() {
               />
             </div>
             <Button disabled={!isEditableMode || !canWrite || isSaving} loading={isSaving} onClick={handleApplyBulkStatus} size="sm" variant="secondary">
-              Apply status to selected
+              Apply Status to Selected
             </Button>
             <Button
               className="ui-button-danger"
@@ -3555,7 +3562,7 @@ function addSummaryCard() {
               variant="secondary"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Delete selected
+              Delete Selected
             </Button>
             <Button
               onClick={() => {

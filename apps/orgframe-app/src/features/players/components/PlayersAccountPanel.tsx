@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, X } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Badge } from "@orgframe/ui/primitives/badge";
@@ -399,6 +399,7 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
         footer={
           <>
             <Button disabled={isSavingEdit} onClick={closeEdit} type="button" variant="ghost">
+              <X className="h-4 w-4" />
               Cancel
             </Button>
             <Button disabled={isSavingEdit} form="edit-player-form" loading={isSavingEdit} type="submit">
@@ -475,6 +476,7 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
         footer={
           <>
             <Button disabled={isLinkingGuardian} onClick={closeGuardianLinkDialog} type="button" variant="ghost">
+              <X className="h-4 w-4" />
               Cancel
             </Button>
             <Button

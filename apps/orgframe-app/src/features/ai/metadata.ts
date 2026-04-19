@@ -24,7 +24,7 @@ function extractTitleFromPrompt(prompt: string) {
 
 function buildPlayerCard(input: { prompt: string; orgSlug?: string }) {
   const title = extractTitleFromPrompt(input.prompt) ?? "Player profile";
-  const href = input.orgSlug ? `/${input.orgSlug}/tools/people` : "/account/players";
+  const href = input.orgSlug ? `/${input.orgSlug}/manage/people` : "/profiles";
 
   const card: AiResultCard = {
     id: makeId("player"),
@@ -40,13 +40,13 @@ function buildPlayerCard(input: { prompt: string; orgSlug?: string }) {
       id: makeId("action"),
       label: "Open player profile",
       actionType: "navigate",
-      payload: { href: "/account/players" }
+      payload: { href: "/profiles" }
     },
     {
       id: makeId("action"),
       label: "Link guardian",
       actionType: "navigate",
-      payload: { href: "/account/players", intent: "link-guardian" }
+      payload: { href: "/profiles", intent: "link-guardian" }
     }
   ];
 
@@ -60,7 +60,7 @@ function buildAccountCard() {
     title: "Account summary",
     subtitle: "Guardian account",
     fields: [{ label: "Area", value: "Profile and access" }],
-    href: "/account"
+    href: "/settings"
   };
 
   const actions: AiSuggestedAction[] = [
@@ -68,7 +68,7 @@ function buildAccountCard() {
       id: makeId("action"),
       label: "Open account",
       actionType: "navigate",
-      payload: { href: "/account" }
+      payload: { href: "/settings" }
     }
   ];
 
@@ -77,7 +77,7 @@ function buildAccountCard() {
 
 function buildEventCard(input: { prompt: string; orgSlug?: string }) {
   const title = extractTitleFromPrompt(input.prompt) ?? "Event";
-  const href = input.orgSlug ? `/${input.orgSlug}/tools/calendar` : "/account";
+  const href = input.orgSlug ? `/${input.orgSlug}/manage/calendar` : "/settings";
 
   const card: AiResultCard = {
     id: makeId("event"),
@@ -107,7 +107,7 @@ function buildEventCard(input: { prompt: string; orgSlug?: string }) {
 }
 
 function buildScheduleCard(input: { orgSlug?: string }) {
-  const href = input.orgSlug ? `/${input.orgSlug}/tools/calendar` : "/account";
+  const href = input.orgSlug ? `/${input.orgSlug}/manage/calendar` : "/settings";
   const card: AiResultCard = {
     id: makeId("schedule"),
     type: "schedule",
@@ -128,7 +128,7 @@ function buildScheduleCard(input: { orgSlug?: string }) {
       id: makeId("action"),
       label: "Notify participants",
       actionType: "navigate",
-      payload: { href: input.orgSlug ? `/${input.orgSlug}/tools/inbox` : "/account" }
+      payload: { href: input.orgSlug ? `/${input.orgSlug}/manage/inbox` : "/settings" }
     }
   ];
 

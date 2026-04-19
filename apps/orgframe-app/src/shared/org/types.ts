@@ -1,5 +1,6 @@
 import type { OrgRole, Permission } from "@/src/features/core/access";
-import type { OrgToolAvailability } from "@/src/shared/org/features";
+import type { OrgToolAvailability } from "@/src/features/core/config/tools";
+import type { OrgType } from "@/src/shared/org/orgTypes";
 
 export type OrgBranding = {
   logoPath: string | null;
@@ -19,6 +20,9 @@ export type OrgPublicContext = {
   orgId: string;
   orgSlug: string;
   orgName: string;
+  orgType: OrgType | null;
+  customDomain: string | null;
+  displayHost: string;
   branding: OrgBranding;
   governingBody: OrgGoverningBody | null;
   toolAvailability: OrgToolAvailability;

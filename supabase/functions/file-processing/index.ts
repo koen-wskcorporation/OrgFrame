@@ -10,12 +10,27 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 type RequestPayload = {
-  action: "start_run" | "process_batch";
+  action: "start_run" | "process_batch" | "preview_file";
   org_id: string;
   org_slug?: string;
   run_id?: string;
+  import_session_id?: string | null;
+  source_platform_key?: string | null;
   profile?: "people_roster" | "program_structure" | "commerce_orders";
   batch_size?: number;
+  page?: number;
+  page_size?: number;
+  search_query?: string;
+  sort_column?: string | null;
+  sort_direction?: "asc" | "desc";
+  options?: {
+    important_fields?: string[];
+    selected_columns?: string[];
+    row_selection_mode?: "all" | "subset";
+    selected_row_numbers?: number[];
+    excluded_row_numbers?: number[];
+    inline_rows?: Array<Record<string, unknown>>;
+  };
   file?: {
     id: string;
     bucket: string;
@@ -227,6 +242,89 @@ function parseWorkbook(bytes: Uint8Array): Array<Record<string, unknown>> {
   }
 }
 
+function collectHeaders(rows: Array<Record<string, unknown>>) {
+  const headers = new Set<string>();
+  for (const row of rows.slice(0, 200)) {
+    for (const key of Object.keys(row)) {
+      if (clean(key)) {
+        headers.add(key);
+      }
+    }
+  }
+  return Array.from(headers);
+}
+
+function sanitizeImportOptions(options: RequestPayload["options"]) {
+  const selectedColumns = Array.isArray(options?.selected_columns)
+    ? options.selected_columns.map((value) => clean(value)).filter(Boolean)
+    : [];
+  const rowSelectionMode = options?.row_selection_mode === "subset" ? "subset" : "all";
+  const selectedRows = Array.isArray(options?.selected_row_numbers)
+    ? options.selected_row_numbers.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+    : [];
+  const excludedRows = Array.isArray(options?.excluded_row_numbers)
+    ? options.excluded_row_numbers.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+    : [];
+  const importantFields = Array.isArray(options?.important_fields)
+    ? options.important_fields.map((value) => clean(value)).filter(Boolean)
+    : [];
+  const inlineRows = Array.isArray(options?.inline_rows)
+    ? options.inline_rows
+        .filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object" && !Array.isArray(row))
+        .slice(0, 25_000)
+    : [];
+
+  return {
+    rowSelectionMode,
+    selectedColumns: Array.from(new Set(selectedColumns)),
+    selectedRows: Array.from(new Set(selectedRows)),
+    excludedRows: Array.from(new Set(excludedRows)),
+    importantFields: Array.from(new Set(importantFields)),
+    inlineRows
+  };
+}
+
+function buildPreviewRows(input: {
+  headers: string[];
+  rows: Array<Record<string, unknown>>;
+  page: number;
+  pageSize: number;
+  searchQuery: string;
+  sortColumn: string | null;
+  sortDirection: "asc" | "desc";
+}) {
+  const { headers, rows, page, pageSize, searchQuery, sortColumn, sortDirection } = input;
+  const normalizedSearch = clean(searchQuery).toLowerCase();
+  const searched =
+    normalizedSearch.length > 0
+      ? rows.filter((row) => headers.some((header) => String(row[header] ?? "").toLowerCase().includes(normalizedSearch)))
+      : rows;
+
+  const sorted = [...searched];
+  if (sortColumn && headers.includes(sortColumn)) {
+    sorted.sort((left, right) => {
+      const leftValue = String(left[sortColumn] ?? "");
+      const rightValue = String(right[sortColumn] ?? "");
+      const compared = leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: "base" });
+      return sortDirection === "desc" ? -compared : compared;
+    });
+  } else {
+    sorted.sort((left, right) => Number(left.__row_number ?? 0) - Number(right.__row_number ?? 0));
+  }
+
+  const totalRows = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const safePage = Math.max(1, Math.min(page, totalPages));
+  const startIndex = (safePage - 1) * pageSize;
+  return {
+    rows: sorted.slice(startIndex, startIndex + pageSize),
+    totalRows,
+    page: safePage,
+    pageSize,
+    totalPages
+  };
+}
+
 async function resolveCandidates(input: {
   service: ReturnType<typeof createClient>;
   orgId: string;
@@ -383,8 +481,62 @@ Deno.serve(async (request: Request) => {
       return auth.error;
     }
 
-    if (payload.action === "start_run") {
+    if (payload.action === "preview_file") {
       if (!payload.file) {
+        return json({ error: "Missing file for preview_file." }, 400);
+      }
+
+      const { data: fileData, error: fileError } = await auth.service.storage.from(payload.file.bucket).download(payload.file.path);
+      if (fileError || !fileData) {
+        return json({ error: "Failed to download source file for preview." }, 500);
+      }
+
+      const fileBytes = new Uint8Array(await fileData.arrayBuffer());
+      const parsedRows = parseWorkbook(fileBytes);
+      const headers = collectHeaders(parsedRows);
+
+      const normalizedRows = parsedRows.map((row, index) => ({
+        __row_number: index + 1,
+        ...Object.fromEntries(
+          headers.map((header) => {
+            const value = row[header];
+            if (typeof value === "string") {
+              return [header, value.trim()];
+            }
+            if (value === null || value === undefined) {
+              return [header, ""];
+            }
+            return [header, String(value)];
+          })
+        )
+      }));
+
+      const paged = buildPreviewRows({
+        headers,
+        rows: normalizedRows,
+        page: Math.max(1, Number(payload.page ?? 1) || 1),
+        pageSize: Math.max(10, Math.min(500, Number(payload.page_size ?? 100) || 100)),
+        searchQuery: payload.search_query ?? "",
+        sortColumn: payload.sort_column ?? null,
+        sortDirection: payload.sort_direction === "desc" ? "desc" : "asc"
+      });
+
+      return json({
+        ok: true,
+        headers,
+        rows: paged.rows,
+        total_rows: paged.totalRows,
+        page: paged.page,
+        page_size: paged.pageSize,
+        total_pages: paged.totalPages
+      });
+    }
+
+    if (payload.action === "start_run") {
+      const sourcePlatformKey = clean(payload.source_platform_key) || "other";
+      const importOptions = sanitizeImportOptions(payload.options);
+      const hasInlineRows = importOptions.inlineRows.length > 0;
+      if (!payload.file && !hasInlineRows) {
         return json({ error: "Missing file for start_run." }, 400);
       }
 
@@ -395,15 +547,27 @@ Deno.serve(async (request: Request) => {
         .insert({
           org_id: payload.org_id,
           created_by_user_id: auth.user.id,
+          import_session_id: clean(payload.import_session_id) || null,
+          source_platform_key: sourcePlatformKey,
           profile_key: profile,
           status: "queued",
           progress: 0,
-          source_bucket: payload.file.bucket,
-          source_path: payload.file.path,
-          source_filename: payload.file.name,
-          source_mime: payload.file.mime_type ?? null,
-          source_size_bytes: payload.file.size_bytes ?? null,
-          summary_json: {}
+          source_bucket: payload.file?.bucket ?? null,
+          source_path: payload.file?.path ?? null,
+          source_filename: payload.file?.name ?? null,
+          source_mime: payload.file?.mime_type ?? null,
+          source_size_bytes: payload.file?.size_bytes ?? null,
+          summary_json: {
+            import_options: {
+              important_fields: importOptions.importantFields,
+              selected_columns: importOptions.selectedColumns,
+              row_selection_mode: importOptions.rowSelectionMode,
+              selected_row_numbers: importOptions.selectedRows,
+              excluded_row_numbers: importOptions.excludedRows,
+              inline_rows: importOptions.inlineRows
+            },
+            source_platform_key: sourcePlatformKey
+          }
         })
         .select("id, status, progress")
         .single();
@@ -426,7 +590,7 @@ Deno.serve(async (request: Request) => {
 
     const { data: run, error: runError } = await auth.service
       .schema("imports").from("import_runs")
-      .select("id, org_id, profile_key, source_bucket, source_path, source_filename, row_count, status")
+      .select("id, org_id, profile_key, source_bucket, source_path, source_filename, row_count, status, summary_json")
       .eq("id", payload.run_id)
       .eq("org_id", payload.org_id)
       .maybeSingle();
@@ -457,25 +621,59 @@ Deno.serve(async (request: Request) => {
       .eq("run_id", run.id);
 
     if ((existingRows.count ?? 0) === 0) {
-      if (!run.source_bucket || !run.source_path) {
-        return json({ error: "Run source file is missing." }, 400);
-      }
-
-      const { data: fileData, error: fileError } = await auth.service.storage.from(run.source_bucket).download(run.source_path);
-      if (fileError || !fileData) {
-        return json({ error: "Failed to download source file." }, 500);
-      }
-
-      const fileBytes = new Uint8Array(await fileData.arrayBuffer());
-      const parsedRows = parseWorkbook(fileBytes);
       const aliases = aliasesByProfile(String(run.profile_key));
+      const importSummary = asObject(run.summary_json);
+      const importOptions = sanitizeImportOptions(asObject(importSummary.import_options) as RequestPayload["options"]);
+      const parsedRows =
+        importOptions.inlineRows.length > 0
+          ? importOptions.inlineRows
+          : (() => {
+              if (!run.source_bucket || !run.source_path) {
+                throw new Error("Run source file is missing.");
+              }
+              return null;
+            })();
+
+      const resolvedRows =
+        parsedRows !== null
+          ? parsedRows
+          : await (async () => {
+              const { data: fileData, error: fileError } = await auth.service.storage.from(run.source_bucket).download(run.source_path);
+              if (fileError || !fileData) {
+                throw new Error("Failed to download source file.");
+              }
+              const fileBytes = new Uint8Array(await fileData.arrayBuffer());
+              return parseWorkbook(fileBytes);
+            })();
+      const selectedColumnSet = new Set(importOptions.selectedColumns);
+      const selectedRowSet = new Set(importOptions.selectedRows);
+      const excludedRowSet = new Set(importOptions.excludedRows);
 
       let directCount = 0;
       let conflictCount = 0;
+      let processedCount = 0;
 
-      for (let index = 0; index < parsedRows.length; index += 1) {
-        const raw = parsedRows[index] ?? {};
-        const canonical = canonicalize(raw, aliases);
+      for (let index = 0; index < resolvedRows.length; index += 1) {
+        const raw = resolvedRows[index] ?? {};
+        const rowNumber = index + 1;
+        if (importOptions.rowSelectionMode === "subset" && selectedRowSet.size > 0 && !selectedRowSet.has(rowNumber)) {
+          continue;
+        }
+        if (importOptions.rowSelectionMode === "all" && excludedRowSet.has(rowNumber)) {
+          continue;
+        }
+
+        const scopedRaw =
+          selectedColumnSet.size > 0
+            ? Object.fromEntries(Object.entries(raw).filter(([key]) => selectedColumnSet.has(key)))
+            : raw;
+
+        if (Object.keys(scopedRaw).length === 0) {
+          continue;
+        }
+
+        processedCount += 1;
+        const canonical = canonicalize(scopedRaw, aliases);
         const candidates = await resolveCandidates({
           service: auth.service,
           orgId: payload.org_id,
@@ -484,7 +682,7 @@ Deno.serve(async (request: Request) => {
         });
 
         const matchStatus = classifyMatch(candidates);
-        const rowHash = await hashRow(raw);
+        const rowHash = await hashRow(scopedRaw);
 
         const { data: rowData, error: rowError } = await auth.service
           .schema("imports").from("import_rows")
@@ -492,9 +690,9 @@ Deno.serve(async (request: Request) => {
             run_id: run.id,
             org_id: payload.org_id,
             profile_key: run.profile_key,
-            row_number: index + 1,
+            row_number: rowNumber,
             row_hash: rowHash,
-            raw_row_json: raw,
+            raw_row_json: scopedRaw,
             normalized_row_json: canonical,
             validation_status: "valid",
             match_status: matchStatus
@@ -537,11 +735,18 @@ Deno.serve(async (request: Request) => {
         .update({
           status,
           progress: 100,
-          row_count: parsedRows.length,
+          row_count: processedCount,
           summary_json: {
-            total_rows: parsedRows.length,
+            total_rows: processedCount,
             direct_rows: directCount,
-            conflict_rows: conflictCount
+            conflict_rows: conflictCount,
+            import_options: {
+              important_fields: importOptions.importantFields,
+              selected_columns: importOptions.selectedColumns,
+              row_selection_mode: importOptions.rowSelectionMode,
+              selected_row_numbers: importOptions.selectedRows,
+              excluded_row_numbers: importOptions.excludedRows
+            }
           }
         })
         .eq("id", run.id);

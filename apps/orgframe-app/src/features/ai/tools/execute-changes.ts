@@ -2,6 +2,7 @@ import { executeChangesInputSchema } from "@/src/features/ai/schemas";
 import type { AiExecutionResult } from "@/src/features/ai/types";
 import { executeFormsChangeset } from "@/src/features/ai/tools/intents/forms-actions";
 import { executeSetOrgGoverningBodyChange } from "@/src/features/ai/tools/intents/set-org-governing-body";
+import { executeWorkspaceChangeset } from "@/src/features/ai/tools/intents/workspace-actions";
 import type { AiToolDefinition } from "@/src/features/ai/tools/base";
 
 export type ExecuteChangesResult = {
@@ -13,7 +14,7 @@ export const executeChangesTool: AiToolDefinition<typeof executeChangesInputSche
   name: "execute_changes",
   description: "Apply a previously proposed changeset after explicit confirmation.",
   inputSchema: executeChangesInputSchema,
-  requiredPermissions: ["org.branding.write"],
+  requiredPermissions: [],
   supportsDryRun: true,
   async execute(context, input) {
     if (!context.requestContext.org || context.requestContext.org.orgSlug !== input.orgSlug) {
@@ -35,6 +36,24 @@ export const executeChangesTool: AiToolDefinition<typeof executeChangesInputSche
 
     if (input.changeset.intentType.startsWith("forms.")) {
       const result = await executeFormsChangeset({
+        context: context.requestContext,
+        changeset: input.changeset,
+        execute: input.execute
+      });
+
+      return {
+        ok: true,
+        result
+      };
+    }
+
+    if (
+      input.changeset.intentType === "players.update_profile_fields" ||
+      input.changeset.intentType === "teams.assign_player" ||
+      input.changeset.intentType === "teams.create_team" ||
+      input.changeset.intentType === "calendar.create_practice"
+    ) {
+      const result = await executeWorkspaceChangeset({
         context: context.requestContext,
         changeset: input.changeset,
         execute: input.execute

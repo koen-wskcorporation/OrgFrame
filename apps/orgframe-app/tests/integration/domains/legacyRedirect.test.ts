@@ -71,7 +71,7 @@ describe("legacy path redirect routing", () => {
   it("does not redirect reserved and non-org paths", () => {
     assert.equal(getLegacyOrgPathRedirect("orgframe.app", "/auth/login", getTenantBaseHosts()), null);
     assert.equal(getLegacyOrgPathRedirect("orgframe.app", "/api/test", getTenantBaseHosts()), null);
-    assert.equal(getLegacyOrgPathRedirect("orgframe.app", "/staging/tools", getTenantBaseHosts()), null);
+    assert.equal(getLegacyOrgPathRedirect("orgframe.app", "/staging/manage", getTenantBaseHosts()), null);
   });
 
   it("preserves query strings during legacy redirects", async () => {
@@ -89,7 +89,7 @@ describe("legacy path redirect routing", () => {
 
   it("removes visible org slug prefix on tenant subdomains", async () => {
     const response = await proxy(
-      new NextRequest("https://localhost/baycitysoccer/tools/calendar?view=month", {
+      new NextRequest("https://localhost/baycitysoccer/manage/calendar?view=month", {
         headers: {
           "x-forwarded-host": "baycitysoccer.orgframe.app",
           "x-forwarded-proto": "https"
@@ -98,12 +98,12 @@ describe("legacy path redirect routing", () => {
     );
 
     assert.equal(response.status, 308);
-    assert.equal(response.headers.get("location"), "https://baycitysoccer.orgframe.app/tools/calendar?view=month");
+    assert.equal(response.headers.get("location"), "https://baycitysoccer.orgframe.app/manage/calendar?view=month");
   });
 
   it("sends platform-only routes on org subdomains to the app host", async () => {
     const response = await proxy(
-      new NextRequest("https://localhost/auth/login?next=%2Ftools", {
+      new NextRequest("https://localhost/auth/login?next=%2Fmanage", {
         headers: {
           "x-forwarded-host": "baycitysoccer.orgframe.app",
           "x-forwarded-proto": "https"
@@ -112,12 +112,12 @@ describe("legacy path redirect routing", () => {
     );
 
     assert.equal(response.status, 307);
-    assert.equal(response.headers.get("location"), "https://orgframe.app/auth/login?next=%2Ftools");
+    assert.equal(response.headers.get("location"), "https://orgframe.app/auth/login?next=%2Fmanage");
   });
 
   it("rewrites local test-domain org subdomains to org path-style routes without redirect loops", async () => {
     const response = await proxy(
-      new NextRequest("http://orgframe.test/tools/calendar?view=month", {
+      new NextRequest("http://orgframe.test/manage/calendar?view=month", {
         headers: {
           "x-forwarded-host": "baycitysoccer.orgframe.test:3000",
           "x-forwarded-proto": "http"
@@ -127,12 +127,12 @@ describe("legacy path redirect routing", () => {
 
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("location"), null);
-    assert.equal(response.headers.get("x-middleware-rewrite"), "http://orgframe.test/baycitysoccer/tools/calendar?view=month");
+    assert.equal(response.headers.get("x-middleware-rewrite"), "http://orgframe.test/baycitysoccer/manage/calendar?view=month");
   });
 
   it("prefers canonical non-local host headers over forwarded host values", () => {
     const parsed = resolveProxyRequestHost(
-      new NextRequest("https://orgframe.app/auth/login?next=%2Ftools", {
+      new NextRequest("https://orgframe.app/auth/login?next=%2Fmanage", {
         headers: {
           host: "orgframe.app",
           "x-forwarded-host": "baycitysoccer.orgframe.app"
@@ -159,7 +159,7 @@ describe("legacy path redirect routing", () => {
 
   it("sends account routes on org subdomains to the app host", async () => {
     const accountResponse = await proxy(
-      new NextRequest("https://localhost/account", {
+      new NextRequest("https://localhost/settings", {
         headers: {
           "x-forwarded-host": "baycitysoccer.orgframe.app",
           "x-forwarded-proto": "https"
@@ -168,7 +168,7 @@ describe("legacy path redirect routing", () => {
     );
 
     assert.equal(accountResponse.status, 307);
-    assert.equal(accountResponse.headers.get("location"), "https://orgframe.app/account");
+    assert.equal(accountResponse.headers.get("location"), "https://orgframe.app/settings");
   });
 
   it("keeps api routes on org subdomains same-origin", async () => {
@@ -202,11 +202,11 @@ describe("legacy path redirect routing", () => {
 
   it("sends platform-only routes on custom domains to the app host", () => {
     assert.equal(getCustomDomainRedirectHost("/auth/login", "baycitysoccer"), "orgframe.app");
-    assert.equal(getCustomDomainRedirectHost("/account", "baycitysoccer"), "orgframe.app");
+    assert.equal(getCustomDomainRedirectHost("/settings", "baycitysoccer"), "orgframe.app");
   });
 
   it("sends authenticated org routes on custom domains to canonical org subdomains", () => {
-    assert.equal(getCustomDomainRedirectHost("/tools/calendar", "baycitysoccer"), "baycitysoccer.orgframe.app");
+    assert.equal(getCustomDomainRedirectHost("/manage/calendar", "baycitysoccer"), "baycitysoccer.orgframe.app");
   });
 
   it("keeps nested paths on custom domains within org scope", () => {

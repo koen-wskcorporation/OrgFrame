@@ -4,6 +4,7 @@ import { Button } from "@orgframe/ui/primitives/button";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Popup } from "@orgframe/ui/primitives/popup";
+import { Check, X } from "lucide-react";
 import type { ProgramNode } from "@/src/features/programs/types";
 import type { OccurrenceEditDraft } from "@/src/features/programs/schedule/components/types";
 
@@ -33,6 +34,7 @@ export function OccurrenceEditDialog({
       footer={
         <>
           <Button onClick={onClose} type="button" variant="ghost">
+            <X className="h-4 w-4" />
             Cancel
           </Button>
           <Button
@@ -42,7 +44,8 @@ export function OccurrenceEditDialog({
             type="button"
             variant="secondary"
           >
-            Save occurrence
+            <Check className="h-4 w-4" />
+            Save Occurrence
           </Button>
         </>
       }

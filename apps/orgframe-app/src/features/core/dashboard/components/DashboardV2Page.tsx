@@ -1,10 +1,13 @@
 import { Badge } from "@orgframe/ui/primitives/badge";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { AdaptiveLogo } from "@orgframe/ui/primitives/adaptive-logo";
+import { Plus } from "lucide-react";
 import type { DashboardV2Context, PersonalHubModule } from "@/src/features/core/dashboard/types-v2";
-import { DashboardPreferencesEditor } from "@/src/features/core/dashboard/components/DashboardPreferencesEditor";
+import { DashboardOrgManageButton } from "@/src/features/core/dashboard/components/DashboardOrgManageButton";
+import { DashboardHeader } from "@/src/features/core/dashboard/components/DashboardHeader";
+import { getOrgAdminNavTree, prefixAdminNavHrefs } from "@/src/features/core/navigation/config/adminNav";
+import { ORG_TYPE_LABELS } from "@/src/shared/org/orgTypes";
 
 function formatRelativeDateTime(value: string) {
   const date = new Date(value);
@@ -32,15 +35,15 @@ function formatRelativeDateTime(value: string) {
 function resolveModuleCta(module: PersonalHubModule) {
   switch (module.key) {
     case "notifications":
-      return { href: "/account", label: "Open account" };
+      return { href: "/inbox", label: "Open inbox" };
     case "schedule":
-      return { href: "/account", label: "Open schedule" };
+      return { href: "/settings", label: "Open schedule" };
     case "registrations":
-      return { href: "/account/players", label: "Open registrations" };
+      return { href: "/profiles", label: "Open registrations" };
     case "inbox":
-      return { href: "/account", label: "Open inbox" };
+      return { href: "/inbox", label: "Open inbox" };
     default:
-      return { href: "/account", label: "Open" };
+      return { href: "/settings", label: "Open" };
   }
 }
 
@@ -58,7 +61,7 @@ function renderModuleBody(module: PersonalHubModule) {
       return (
         <div className="space-y-2">
           {module.items.slice(0, 8).map((item) => (
-            <a className="ui-list-item ui-list-item-hover block" href={item.href ?? `/${item.orgSlug}/tools`} key={item.id}>
+            <a className="ui-list-item ui-list-item-hover block" href={item.href ?? `/${item.orgSlug}/manage`} key={item.id}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-text">{item.title}</p>
@@ -148,25 +151,49 @@ function renderModuleSummary(module: PersonalHubModule) {
 }
 
 export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
-  const firstName = context.user.firstName?.trim();
-  const title = firstName ? `${firstName}'s Dashboard` : "Dashboard";
-
   return (
     <main className="app-page-shell pb-10 pt-0">
       <div className="app-page-stack">
-        <PageHeader description="Your cross-org personal hub, with admin tools separated by organization." title={title} />
+        <DashboardHeader
+          avatarUrl={context.user.avatarUrl}
+          email={context.user.email}
+          firstName={context.user.firstName}
+          lastName={context.user.lastName}
+          orgCount={context.organizations.length}
+        />
 
         <Card>
           <CardHeader>
-            <CardTitle>Organizations</CardTitle>
-            <CardDescription>Switch org context and open management tools when available.</CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Organizations</CardTitle>
+                <CardDescription>Switch org context and open management modules when available.</CardDescription>
+              </div>
+              {context.organizations.length > 0 ? (
+                <Button href="/create" size="sm" variant="secondary">
+                  <Plus className="h-4 w-4" />
+                  New Organization
+                </Button>
+              ) : null}
+            </div>
           </CardHeader>
           <CardContent className="space-y-2 pt-0">
-            {context.organizations.length === 0 ? <p className="text-sm text-text-muted">No organizations found.</p> : null}
+            {context.organizations.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-border/70 bg-surface-muted/30 px-6 py-10 text-center">
+                <p className="text-sm font-semibold text-text">Create your first organization</p>
+                <p className="max-w-sm text-sm text-text-muted">
+                  Set up a workspace to start managing programs, events, and members.
+                </p>
+                <Button href="/create" size="md">
+                  <Plus className="h-4 w-4" />
+                  Create Organization
+                </Button>
+              </div>
+            ) : null}
             {context.organizations.map((organization) => (
               <div className="ui-list-item flex items-center justify-between gap-3" key={organization.orgId}>
                 <div className="flex min-w-0 items-center gap-3">
-                  <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border bg-surface-muted">
+                  <span className="inline-flex h-9 w-9 items-center justify-center">
                     {organization.iconUrl ? (
                       <AdaptiveLogo
                         alt={`${organization.orgName} icon`}
@@ -179,8 +206,13 @@ export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
                     )}
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-text">{organization.orgName}</p>
-                    <p className="truncate text-xs text-text-muted">/{organization.orgSlug}</p>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-text">{organization.orgName}</p>
+                      {organization.orgType ? (
+                        <Badge variant="neutral">{ORG_TYPE_LABELS[organization.orgType]}</Badge>
+                      ) : null}
+                    </div>
+                    <p className="truncate text-xs text-text-muted">{organization.displayHost}</p>
                   </div>
                 </div>
 
@@ -189,9 +221,16 @@ export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
                     Open
                   </Button>
                   {organization.capabilities.manage.canAccessArea ? (
-                    <Button href={`/${organization.orgSlug}/tools`} size="sm" variant="secondary">
-                      Tools
-                    </Button>
+                    <DashboardOrgManageButton
+                      manageHref={`/${organization.orgSlug}/manage`}
+                      manageNavItems={prefixAdminNavHrefs(
+                        getOrgAdminNavTree(organization.orgSlug, {
+                          capabilities: organization.capabilities,
+                          toolAvailability: organization.toolAvailability
+                        }),
+                        organization.orgSlug
+                      )}
+                    />
                   ) : null}
                 </div>
               </div>
@@ -199,43 +238,34 @@ export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
           </CardContent>
         </Card>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <section className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              {context.personalHub.modules.map((module) => {
-                const cta = resolveModuleCta(module);
-                const isWide = module.key === "notifications" || module.key === "inbox";
+        <section className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            {context.personalHub.modules.map((module) => {
+              const cta = resolveModuleCta(module);
+              const isWide = module.key === "notifications" || module.key === "inbox";
 
-                return (
-                  <Card className={isWide ? "md:col-span-2" : undefined} key={module.key}>
-                    <CardHeader>
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <CardTitle>{module.title}</CardTitle>
-                          <CardDescription>{module.description}</CardDescription>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge>{renderModuleSummary(module)}</Badge>
-                          <Button href={cta.href} size="sm" variant="secondary">
-                            {cta.label}
-                          </Button>
-                        </div>
+              return (
+                <Card className={isWide ? "md:col-span-2" : undefined} key={module.key}>
+                  <CardHeader>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <CardTitle>{module.title}</CardTitle>
+                        <CardDescription>{module.description}</CardDescription>
                       </div>
-                    </CardHeader>
-                    <CardContent className="max-h-[24rem] overflow-auto pt-0">{renderModuleBody(module)}</CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </section>
-
-          <aside className="space-y-4 lg:sticky lg:top-[calc(var(--layout-gap)+4rem)] lg:self-start">
-            <DashboardPreferencesEditor
-              initialPreferences={context.preferences}
-              orgOptions={context.organizations.map((org) => ({ orgId: org.orgId, orgName: org.orgName }))}
-            />
-          </aside>
-        </div>
+                      <div className="flex items-center gap-2">
+                        <Badge>{renderModuleSummary(module)}</Badge>
+                        <Button href={cta.href} size="sm" variant="secondary">
+                          {cta.label}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="max-h-[24rem] overflow-auto pt-0">{renderModuleBody(module)}</CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
       </div>
     </main>
   );

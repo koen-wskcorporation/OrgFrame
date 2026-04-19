@@ -1,0 +1,238 @@
+/* Marketing-only design tokens and utilities. Scoped to the marketing layout
+   so the login route and product app are unaffected. */
+
+.marketing {
+  --ink: 220 28% 12%;
+  --paper: 200 33% 98%;
+  --paper-2: 0 0% 100%;
+  --paper-3: 200 26% 95%;
+  --rule: 220 15% 90%;
+  --rule-strong: 220 15% 82%;
+  --muted-ink: 220 11% 43%;
+  --accent-ink: 185 100% 36%;
+  --accent-bg: 185 100% 50%;
+  --accent-fg: 220 35% 10%;
+
+  background-color: hsl(var(--paper));
+  color: hsl(var(--ink));
+}
+
+@media (prefers-color-scheme: dark) {
+  .marketing {
+    --ink: 210 20% 96%;
+    --paper: 220 28% 7%;
+    --paper-2: 220 25% 10%;
+    --paper-3: 220 22% 13%;
+    --rule: 220 15% 20%;
+    --rule-strong: 220 15% 28%;
+    --muted-ink: 220 10% 65%;
+    --accent-ink: 185 85% 62%;
+    --accent-bg: 185 85% 58%;
+    --accent-fg: 220 35% 8%;
+  }
+}
+
+.marketing a {
+  color: inherit;
+}
+
+.marketing ::selection {
+  background-color: hsl(var(--accent-bg) / 0.35);
+}
+
+/* Display type. Tight tracking, paper/ink tonality. */
+.display {
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  font-size: clamp(2.75rem, 5.5vw + 1rem, 6rem);
+  color: hsl(var(--ink));
+}
+
+.headline {
+  font-weight: 600;
+  letter-spacing: -0.028em;
+  line-height: 1.05;
+  font-size: clamp(2rem, 3vw + 1rem, 3.5rem);
+  color: hsl(var(--ink));
+}
+
+.subhead {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+  font-size: clamp(1.5rem, 1.5vw + 1rem, 2.25rem);
+  color: hsl(var(--ink));
+}
+
+.eyebrow {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-ink));
+}
+
+.eyebrow-accent {
+  color: hsl(var(--accent-ink));
+}
+
+.lede {
+  font-size: 1.125rem;
+  line-height: 1.6;
+  color: hsl(var(--muted-ink));
+  max-width: 36rem;
+}
+
+@media (min-width: 768px) {
+  .lede {
+    font-size: 1.25rem;
+    line-height: 1.55;
+  }
+}
+
+.rule {
+  border-color: hsl(var(--rule));
+}
+
+.rule-strong {
+  border-color: hsl(var(--rule-strong));
+}
+
+/* Hairline grid — a subtle editorial texture behind heroes. No orbs. */
+.paper-grid {
+  background-image:
+    linear-gradient(to right, hsl(var(--rule) / 0.55) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(var(--rule) / 0.55) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse at 50% 30%, black 30%, transparent 80%);
+}
+
+/* Reveal on scroll primitive. Fade + 8px rise, 300ms. */
+.reveal {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition: opacity 300ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.reveal[data-reveal="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Editorial link underline, cyan accent. */
+.marketing-link {
+  position: relative;
+  font-weight: 500;
+  color: hsl(var(--ink));
+  text-decoration: none;
+  background-image: linear-gradient(to right, hsl(var(--accent-ink)), hsl(var(--accent-ink)));
+  background-size: 0% 1px;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  transition: background-size 200ms ease-out, color 200ms ease-out;
+  padding-bottom: 2px;
+}
+
+.marketing-link:hover {
+  background-size: 100% 1px;
+  color: hsl(var(--accent-ink));
+}
+
+/* Primary CTA surface override for marketing (cyan on ink). */
+.marketing .btn-primary-cyan {
+  background-color: hsl(var(--ink));
+  color: hsl(var(--paper));
+  border-color: hsl(var(--ink));
+}
+
+.marketing .btn-primary-cyan:hover {
+  background-color: hsl(var(--accent-ink));
+  border-color: hsl(var(--accent-ink));
+  color: hsl(var(--paper));
+}
+
+.marketing .btn-secondary-paper {
+  background-color: transparent;
+  color: hsl(var(--ink));
+  border-color: hsl(var(--rule-strong));
+}
+
+.marketing .btn-secondary-paper:hover {
+  background-color: hsl(var(--paper-3));
+}
+
+/* Container */
+.container-editorial {
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .container-editorial {
+    padding-inline: 2.5rem;
+  }
+}
+
+.prose-editorial {
+  max-width: 38rem;
+  color: hsl(var(--ink));
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
+
+.prose-editorial > * + * {
+  margin-top: 1.25em;
+}
+
+.prose-editorial h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-top: 2.25em;
+}
+
+.prose-editorial h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-top: 1.75em;
+}
+
+.prose-editorial a {
+  color: hsl(var(--accent-ink));
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.prose-editorial code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background-color: hsl(var(--paper-3));
+  padding: 0.15em 0.35em;
+  border-radius: 6px;
+}
+
+/* Sticky header translucent backdrop */
+.header-shell {
+  background-color: hsl(var(--paper) / 0.72);
+  backdrop-filter: saturate(1.2) blur(12px);
+  -webkit-backdrop-filter: saturate(1.2) blur(12px);
+  border-bottom: 1px solid transparent;
+  transition: border-color 200ms ease-out, background-color 200ms ease-out;
+}
+
+.header-shell[data-scrolled="true"] {
+  border-bottom-color: hsl(var(--rule));
+}

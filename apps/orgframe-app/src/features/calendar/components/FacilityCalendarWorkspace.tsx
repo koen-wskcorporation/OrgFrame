@@ -9,6 +9,7 @@ import { Input } from "@orgframe/ui/primitives/input";
 import { Panel } from "@orgframe/ui/primitives/panel";
 import { Select } from "@orgframe/ui/primitives/select";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { Check } from "lucide-react";
 import { Calendar, type CalendarQuickAddDraft } from "@/src/features/calendar/components/Calendar";
 import {
   createCalendarEntryAction,
@@ -1139,7 +1140,7 @@ export function FacilityCalendarWorkspace({
           onSelectionsChange={setFacilitySelections}
           occurrenceWindows={bookingWindows}
           open={facilityDialogOpen}
-          saveLabel={bookingMode === "edit-occurrence" ? "Update booking" : "Apply booking"}
+          saveLabel={bookingMode === "edit-occurrence" ? "Update Booking" : "Apply Booking"}
           selections={facilitySelections}
           spaces={facilityReadModel.spaces}
           ignoreOccurrenceId={bookingMode === "edit-occurrence" ? selectedOccurrence?.id ?? null : null}
@@ -1243,10 +1244,11 @@ export function FacilityCalendarWorkspace({
                 type="button"
                 variant="secondary"
               >
-                Invite team to join
+                Invite Team to Join
               </Button>
               <Button disabled={!canWrite} onClick={submitEditComposer} type="button">
-                Save changes
+                <Check className="h-4 w-4" />
+                Save Changes
               </Button>
             </ScrollableSheetBody>
           ) : null}

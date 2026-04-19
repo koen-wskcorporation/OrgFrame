@@ -17,4 +17,9 @@ export type HeaderAccountState =
         orgSlug: string;
         iconUrl: string | null;
       }[];
+      profiles: {
+        id: string;
+        displayName: string;
+        relationshipType: "self" | "guardian" | "delegated_manager";
+      }[];
     };

@@ -10,7 +10,7 @@ function cleanValue(value: FormDataEntryValue | null) {
 }
 
 export async function POST(request: NextRequest) {
-  const response = NextResponse.redirect(new URL("/account?saved=profile", request.url), { status: 303 });
+  const response = NextResponse.redirect(new URL("/settings?saved=profile", request.url), { status: 303 });
   const supabase = createSupabaseServerForRequest(request, response);
   const {
     data: { user }
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
-    return NextResponse.redirect(new URL("/account?error=profile_save_failed", request.url), { status: 303 });
+    return NextResponse.redirect(new URL("/settings?error=profile_save_failed", request.url), { status: 303 });
   }
 
   return response;

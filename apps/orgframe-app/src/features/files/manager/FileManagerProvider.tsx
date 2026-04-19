@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Building2, ChevronRight, FileIcon, FolderIcon, FolderOpenIcon, MoveRight, Plus, Search, Upload, User, X } from "lucide-react";
+import { ArrowLeft, Building2, FileIcon, FolderIcon, FolderOpenIcon, MoveRight, Plus, Search, Upload, User, X } from "lucide-react";
 import { Popup } from "@orgframe/ui/primitives/popup";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
@@ -61,11 +61,19 @@ type BrowserItem =
       file: FileManagerFile;
     };
 
-type FileContextCardState = {
-  fileId: string;
-  x: number;
-  y: number;
-};
+type FileContextCardState =
+  | {
+      kind: "file";
+      fileId: string;
+      x: number;
+      y: number;
+    }
+  | {
+      kind: "folder";
+      folderId: string;
+      x: number;
+      y: number;
+    };
 
 const FileManagerContext = createContext<FileManagerContextValue | null>(null);
 
@@ -82,6 +90,13 @@ const scopeOptions: Array<{ value: FileManagerScope; label: string }> = [
   { value: "personal", label: "Personal" },
   { value: "organization", label: "Organization" }
 ];
+
+function createLocalId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 function scopeIcon(scope: FileManagerScope, organizationScopeIconUrl: string | null, personalScopeAvatarUrl: string | null) {
   if (scope === "organization") {
@@ -640,7 +655,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     return new Promise<FileManagerFile[] | null>((resolve) => {
       activeRequest?.resolve(null);
       const next: ActiveRequest = {
-        id: crypto.randomUUID(),
+        id: createLocalId(),
         options,
         resolve
       };
@@ -887,7 +902,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     }
 
     for (const file of acceptedFiles) {
-      const taskId = crypto.randomUUID();
+      const taskId = createLocalId();
       setUploads((current) => [
         ...current,
         {
@@ -1006,23 +1021,31 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
       return;
     }
 
-    const fileNode = target.closest<HTMLElement>("[data-file-id]");
-    if (!fileNode) {
+    const node = target.closest<HTMLElement>("[data-file-id], [data-folder-id]");
+    if (!node) {
       return;
     }
 
-    const fileId = fileNode.dataset.fileId;
-    if (!fileId) {
-      return;
-    }
+    const fileId = node.dataset.fileId;
+    const folderId = node.dataset.folderId;
 
     event.preventDefault();
     event.stopPropagation();
-    setFileContextCard({
-      fileId,
-      x: event.clientX,
-      y: event.clientY
-    });
+    if (fileId) {
+      setFileContextCard({
+        kind: "file",
+        fileId,
+        x: event.clientX,
+        y: event.clientY
+      });
+    } else if (folderId) {
+      setFileContextCard({
+        kind: "folder",
+        folderId,
+        x: event.clientX,
+        y: event.clientY
+      });
+    }
   }, []);
 
   const contextValue = useMemo<FileManagerContextValue>(() => {
@@ -1041,11 +1064,17 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
   const title = activeRequest?.options.title ?? (activeRequest?.options.mode === "select" ? "Select Files" : "File Manager");
   const subtitle = activeRequest?.options.subtitle ?? "Browse organization and personal files, upload, and manage folders in one place.";
   const contextCardFile = useMemo(() => {
-    if (!fileContextCard) {
+    if (!fileContextCard || fileContextCard.kind !== "file") {
       return null;
     }
     return files.find((entry) => entry.id === fileContextCard.fileId) ?? null;
   }, [fileContextCard, files]);
+  const contextCardFolder = useMemo(() => {
+    if (!fileContextCard || fileContextCard.kind !== "folder") {
+      return null;
+    }
+    return folderById.get(fileContextCard.folderId) ?? null;
+  }, [fileContextCard, folderById]);
   const contextCardPosition = useMemo(() => {
     if (!fileContextCard || typeof window === "undefined") {
       return null;
@@ -1121,7 +1150,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     setExpandedFolderIds((current) => [...new Set([...current, ...ancestors])]);
   }, [currentFolderId, folderById]);
 
-  function renderTree(parentId: string | null, depth: number): React.ReactNode {
+  function renderTree(parentId: string | null): React.ReactNode {
     const nodes = childrenByParent.get(parentId) ?? [];
     if (nodes.length === 0) {
       return null;
@@ -1132,41 +1161,29 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
       const hasChildren = (childrenByParent.get(folder.id) ?? []).length > 0;
       const isExpanded = expandedFolderIds.includes(folder.id);
       return (
-        <div key={folder.id}>
-          <div className="flex items-center gap-1">
-            <button
-              aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
-              className="inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-full text-text-muted hover:bg-surface-muted hover:text-text"
-              onClick={() => {
-                if (!hasChildren) {
-                  return;
-                }
-                setExpandedFolderIds((current) => {
-                  if (current.includes(folder.id)) {
-                    return current.filter((id) => id !== folder.id);
-                  }
-                  return [...current, folder.id];
-                });
-              }}
-              style={{ marginLeft: `${depth * 12}px` }}
-              type="button"
-            >
-              {hasChildren ? <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-90" : "rotate-0"}`} /> : null}
-            </button>
-            <NavItem
-              active={isActive}
-              className="rounded-full"
-              contentClassName="text-left"
-              icon={folderIcon(folder, "h-4 w-4", { open: isActive })}
-              onClick={() => navigateFolder(folder.id, true)}
-              type="button"
-              variant="sidebar"
-            >
-              <FolderTitle folder={folder} showDynamicTag={false} />
-            </NavItem>
-          </div>
-          {isExpanded ? renderTree(folder.id, depth + 1) : null}
-        </div>
+        <NavItem
+          active={isActive}
+          chevronPosition="start"
+          className="rounded-full"
+          contentClassName="text-left"
+          dropdown={hasChildren ? renderTree(folder.id) : null}
+          dropdownOpen={isExpanded}
+          icon={folderIcon(folder, "h-4 w-4", { open: isActive })}
+          key={folder.id}
+          onClick={() => navigateFolder(folder.id, true)}
+          onDropdownOpenChange={(next) => {
+            setExpandedFolderIds((current) => {
+              if (next) {
+                return current.includes(folder.id) ? current : [...current, folder.id];
+              }
+              return current.filter((id) => id !== folder.id);
+            });
+          }}
+          type="button"
+          variant="sidebar"
+        >
+          <FolderTitle folder={folder} showDynamicTag={false} />
+        </NavItem>
       );
     });
   }
@@ -1231,7 +1248,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                 </div>
 
                 {activeScope === "organization" ? (
-                  <div className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">{renderTree(sidebarTreeStartId, 0)}</div>
+                  <div className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">{renderTree(sidebarTreeStartId)}</div>
                 ) : null}
               </OrgAreaSidebarSection>
             </OrgAreaSidebarShell>
@@ -1262,6 +1279,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
             >
               <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
                 <Button disabled={historyIndex <= 0} onClick={goBack} size="sm" variant="ghost">
+                  <ArrowLeft className="h-4 w-4" />
                   Back
                 </Button>
                 <Button disabled={historyIndex >= history.length - 1} onClick={goForward} size="sm" variant="ghost">
@@ -1411,7 +1429,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                         const folder = item.folder;
                         if (view === "grid") {
                           return (
-                            <div className="rounded-card border bg-surface p-3">
+                            <div className="rounded-card border bg-surface p-3" data-folder-id={folder.id}>
                               <button className="w-full text-left" onClick={() => navigateFolder(folder.id, true)} type="button">
                                 <div className="mb-2 flex h-28 items-center justify-center rounded border bg-surface-muted/40">
                                   {folderIcon(folder, "h-8 w-8 text-text-muted")}
@@ -1421,36 +1439,18 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                                 </p>
                                 <p className="text-xs text-text-muted">Folder</p>
                               </button>
-                              {canManage ? (
-                                <div className="mt-2 flex flex-wrap gap-1">
-                                  <Button onClick={() => setMoveDraft({ type: "folder", id: folder.id, name: folder.name, targetFolderId: folder.parentId ?? "__root__" })} size="sm" variant="ghost">
-                                    Move
-                                  </Button>
-                                  {!folder.isSystem ? <Button onClick={() => void renameFolder(folder)} size="sm" variant="ghost">Rename</Button> : null}
-                                  {!folder.isSystem ? <Button onClick={() => void deleteFolder(folder)} size="sm" variant="ghost">Delete</Button> : null}
-                                </div>
-                              ) : null}
                             </div>
                           );
                         }
 
                         return (
-                          <div className="flex items-center gap-2 rounded-control border px-2 py-1.5">
+                          <div className="flex items-center gap-2 rounded-control border px-2 py-1.5" data-folder-id={folder.id}>
                             <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => navigateFolder(folder.id, true)} type="button">
                               {folderIcon(folder, "h-4 w-4 shrink-0 text-text-muted")}
                               <span className="text-sm text-text">
                                 <FolderTitle folder={folder} />
                               </span>
                             </button>
-                            {canManage ? (
-                              <div className="flex items-center gap-1">
-                                <Button onClick={() => setMoveDraft({ type: "folder", id: folder.id, name: folder.name, targetFolderId: folder.parentId ?? "__root__" })} size="sm" variant="ghost">
-                                  Move
-                                </Button>
-                                {!folder.isSystem ? <Button onClick={() => void renameFolder(folder)} size="sm" variant="ghost">Rename</Button> : null}
-                                {!folder.isSystem ? <Button onClick={() => void deleteFolder(folder)} size="sm" variant="ghost">Delete</Button> : null}
-                              </div>
-                            ) : null}
                           </div>
                         );
                       }
@@ -1486,44 +1486,6 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                             <p className="break-all text-xs text-text-muted">
                               {file.mime || "Unknown"} • {formatFileSize(file.size)}
                             </p>
-
-                            {canManage ? (
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                <Button
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    setMoveDraft({ type: "file", id: file.id, name: file.name, targetFolderId: file.folderId });
-                                  }}
-                                  size="sm"
-                                  variant="ghost"
-                                >
-                                  <MoveRight className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    void renameFile(file);
-                                  }}
-                                  size="sm"
-                                  variant="ghost"
-                                >
-                                  Rename
-                                </Button>
-                                <Button
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    void deleteFile(file);
-                                  }}
-                                  size="sm"
-                                  variant="ghost"
-                                >
-                                  Delete
-                                </Button>
-                              </div>
-                            ) : null}
                           </div>
                         );
                       }
@@ -1551,44 +1513,6 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                               {file.mime || "Unknown"} • {formatFileSize(file.size)}
                             </p>
                           </div>
-
-                          {canManage ? (
-                            <div className="flex items-center gap-1">
-                              <Button
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  setMoveDraft({ type: "file", id: file.id, name: file.name, targetFolderId: file.folderId });
-                                }}
-                                size="sm"
-                                variant="ghost"
-                              >
-                                <MoveRight className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  void renameFile(file);
-                                }}
-                                size="sm"
-                                variant="ghost"
-                              >
-                                Rename
-                              </Button>
-                              <Button
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  void deleteFile(file);
-                                }}
-                                size="sm"
-                                variant="ghost"
-                              >
-                                Delete
-                              </Button>
-                            </div>
-                          ) : null}
                         </div>
                       );
                     }}
@@ -1624,6 +1548,42 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                 <p className="truncate text-sm font-semibold text-text">{contextCardFile.name}</p>
                 <p className="truncate text-xs text-text-muted">{contextCardFile.mime || "Unknown type"}</p>
               </div>
+
+              {canManage ? (
+                <div className="mt-2 flex flex-wrap gap-1 border-b pb-2">
+                  <Button
+                    onClick={() => {
+                      setMoveDraft({ type: "file", id: contextCardFile.id, name: contextCardFile.name, targetFolderId: contextCardFile.folderId });
+                      setFileContextCard(null);
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    <MoveRight className="mr-1 h-3.5 w-3.5" />
+                    Move
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      void renameFile(contextCardFile);
+                      setFileContextCard(null);
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Rename
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      void deleteFile(contextCardFile);
+                      setFileContextCard(null);
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Delete
+                  </Button>
+                </div>
+              ) : null}
 
               <div className="mt-3 grid grid-cols-[120px_minmax(0,1fr)] gap-y-1 text-xs">
                 <p className="text-text-muted">Size</p>
@@ -1668,6 +1628,77 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                   return editedBy ? <PersonChip avatarUrl={editedBy.avatarUrl} name={editedBy.name} /> : <p className="text-xs text-text-muted">Unknown</p>;
                 })()}
               </div>
+            </div>,
+            document.body
+          )
+        : null}
+      {contextCardFolder && contextCardPosition
+        ? createPortal(
+            <div
+              className="fixed z-[3000] w-[260px] max-w-[calc(100vw-24px)] rounded-card border bg-surface p-2 shadow-floating"
+              onClick={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.preventDefault()}
+              ref={contextCardRef}
+              style={{
+                left: contextCardPosition.left,
+                top: contextCardPosition.top
+              }}
+            >
+              <div className="border-b px-1 pb-2">
+                <p className="truncate text-sm font-semibold text-text">
+                  <FolderTitle folder={contextCardFolder} />
+                </p>
+                <p className="text-xs text-text-muted">Folder</p>
+              </div>
+              {canManage ? (
+                <div className="mt-2 flex flex-col">
+                  <Button
+                    className="justify-start"
+                    onClick={() => {
+                      setMoveDraft({
+                        type: "folder",
+                        id: contextCardFolder.id,
+                        name: contextCardFolder.name,
+                        targetFolderId: contextCardFolder.parentId ?? "__root__"
+                      });
+                      setFileContextCard(null);
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    <MoveRight className="mr-1 h-3.5 w-3.5" />
+                    Move
+                  </Button>
+                  {!contextCardFolder.isSystem ? (
+                    <Button
+                      className="justify-start"
+                      onClick={() => {
+                        void renameFolder(contextCardFolder);
+                        setFileContextCard(null);
+                      }}
+                      size="sm"
+                      variant="ghost"
+                    >
+                      Rename
+                    </Button>
+                  ) : null}
+                  {!contextCardFolder.isSystem ? (
+                    <Button
+                      className="justify-start"
+                      onClick={() => {
+                        void deleteFolder(contextCardFolder);
+                        setFileContextCard(null);
+                      }}
+                      size="sm"
+                      variant="ghost"
+                    >
+                      Delete
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-2 px-1 text-xs text-text-muted">No actions available.</p>
+              )}
             </div>,
             document.body
           )

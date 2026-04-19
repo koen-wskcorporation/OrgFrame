@@ -12,6 +12,7 @@ import { Select } from "@orgframe/ui/primitives/select";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { cn } from "@orgframe/ui/primitives/utils";
+import { Check, Plus } from "lucide-react";
 import type { ProgramNode, ProgramTeamMember, ProgramTeamStaff, ProgramTeamSummary } from "@/src/features/programs/types";
 import {
   addTeamMemberAction,
@@ -594,7 +595,8 @@ export function TeamDetailPanel({ orgSlug, teamId, open, canWrite, nodes, onClos
                   </div>
                   <div className="mt-2 flex justify-end">
                     <Button disabled={!newMemberPlayerId} onClick={handleAddMember} size="sm" type="button">
-                      Add player
+                      <Plus className="h-4 w-4" />
+                      Add Player
                     </Button>
                   </div>
                 </div>
@@ -706,7 +708,8 @@ export function TeamDetailPanel({ orgSlug, teamId, open, canWrite, nodes, onClos
                   </div>
                   <div className="mt-2 flex justify-end">
                     <Button disabled={!newStaffUserId} onClick={handleAddStaff} size="sm" type="button">
-                      Add staff
+                      <Plus className="h-4 w-4" />
+                      Add Staff
                     </Button>
                   </div>
                 </div>
@@ -890,7 +893,8 @@ export function TeamDetailPanel({ orgSlug, teamId, open, canWrite, nodes, onClos
               {canWrite ? (
                 <div className="flex justify-end">
                   <Button onClick={handleSaveSettings} type="button" variant="secondary">
-                    Save settings
+                    <Check className="h-4 w-4" />
+                    Save Settings
                   </Button>
                 </div>
               ) : null}

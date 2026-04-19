@@ -4,7 +4,9 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
-import { getPlatformHost, normalizeHost } from "@/src/shared/domains/customDomains";
+import { getCanonicalAuthHost, getPlatformHost, normalizeHost } from "@/src/shared/domains/customDomains";
+import { parseHostWithPort } from "@/src/shared/domains/hostHeaders";
+import { mintHandoffToken, resolveAllowedReturnOrigin, revokeHandoffTokensForUser } from "@/src/shared/auth/handoff";
 
 function cleanValue(value: FormDataEntryValue | null) {
   if (typeof value !== "string") {
@@ -192,16 +194,127 @@ export async function lookupAuthAccountAction(formData: FormData): Promise<AuthA
   };
 }
 
-async function getRequestOrigin() {
+async function getRequestContext() {
   const headerStore = await headers();
   const forwardedProto = headerStore.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
   const protocol = forwardedProto === "https" || forwardedProto === "http" ? forwardedProto : process.env.NODE_ENV === "production" ? "https" : "http";
-  const canonicalHost = normalizeHost(getPlatformHost());
-  if (canonicalHost) {
-    return `${protocol}://${canonicalHost}`;
+  const forwardedHost = headerStore.get("x-forwarded-host")?.split(",")[0]?.trim() ?? "";
+  const hostHeader = headerStore.get("host")?.split(",")[0]?.trim() ?? "";
+  const parsed = parseHostWithPort(forwardedHost || hostHeader);
+  const host = parsed.host || normalizeHost(getCanonicalAuthHost());
+  const hostWithPort = parsed.hostWithPort || host;
+  const origin = `${protocol}://${hostWithPort}`;
+  return { protocol, host, hostWithPort, origin };
+}
+
+function buildCanonicalAuthUrl(pathAndQuery: string, protocol: string, currentHostWithPort: string) {
+  const canonicalHost = normalizeHost(getCanonicalAuthHost());
+  // In dev, canonical host may equal the current hostname; keep port for convenience.
+  const currentHostOnly = currentHostWithPort.split(":")[0] ?? "";
+  if (canonicalHost && currentHostOnly === canonicalHost) {
+    return `${protocol}://${currentHostWithPort}${pathAndQuery}`;
+  }
+  return `${protocol}://${canonicalHost}${pathAndQuery}`;
+}
+
+function mergeQuery(path: string, params: Record<string, string | undefined>) {
+  const [base, existingQuery] = path.split("?");
+  const search = new URLSearchParams(existingQuery ?? "");
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === "string" && value.length > 0) {
+      search.set(key, value);
+    }
+  }
+  const qs = search.toString();
+  return qs ? `${base}?${qs}` : (base ?? "/");
+}
+
+async function redirectToCanonicalIfNeeded(params: {
+  targetPath: string;
+  nextPath: string;
+  email?: string;
+  prefill?: Record<string, string>;
+}): Promise<{ context: Awaited<ReturnType<typeof getRequestContext>>; isCanonical: boolean }> {
+  const context = await getRequestContext();
+  const canonicalHost = normalizeHost(getCanonicalAuthHost());
+  const isCanonical = !canonicalHost || context.host === canonicalHost;
+
+  if (!isCanonical) {
+    const returnTo = `${context.origin}${params.nextPath}`;
+    const targetUrl = buildCanonicalAuthUrl(
+      mergeQuery(params.targetPath, {
+        return_to: returnTo,
+        email: params.email,
+        ...params.prefill
+      }),
+      context.protocol,
+      context.hostWithPort
+    );
+    redirect(targetUrl);
   }
 
-  return (process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://orgframe.test:3000").replace(/\/+$/, "");
+  return { context, isCanonical };
+}
+
+function getPlatformOrigin(context: Awaited<ReturnType<typeof getRequestContext>>): string {
+  const platformHost = normalizeHost(getPlatformHost());
+  if (!platformHost) {
+    return context.origin;
+  }
+
+  const hostWithPort = context.hostWithPort.split(":")[0] === platformHost
+    ? context.hostWithPort
+    : context.hostWithPort.includes(":")
+      ? `${platformHost}:${context.hostWithPort.split(":")[1]}`
+      : platformHost;
+
+  return `${context.protocol}://${hostWithPort}`;
+}
+
+async function handlePostAuthRedirect(params: {
+  formData: FormData;
+  nextPath: string;
+}): Promise<never> {
+  const context = await getRequestContext();
+  const canonicalHost = normalizeHost(getCanonicalAuthHost());
+  const returnToRaw = cleanValue(params.formData.get("return_to"));
+
+  if (returnToRaw) {
+    const allowed = await resolveAllowedReturnOrigin(returnToRaw);
+    if (allowed && allowed.host !== canonicalHost) {
+      if (allowed.isPlatform) {
+        // Shared eTLD+1 with canonical — cookie is already valid. Redirect directly.
+        redirect(`${allowed.origin}${params.nextPath}`);
+      }
+
+      const supabase = await createSupabaseServer();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (session) {
+        let handoffUrl: string | null = null;
+        try {
+          const minted = await mintHandoffToken({
+            session: {
+              accessToken: session.access_token,
+              refreshToken: session.refresh_token
+            },
+            targetOrigin: allowed.origin,
+            nextPath: params.nextPath,
+            userId: session.user.id
+          });
+          handoffUrl = minted.url;
+        } catch {
+          handoffUrl = null;
+        }
+        if (handoffUrl) {
+          redirect(handoffUrl);
+        }
+      }
+    }
+  }
+
+  // No usable return_to — send user off the auth host to the platform.
+  redirect(`${getPlatformOrigin(context)}${params.nextPath}`);
 }
 
 export async function signInAction(formData: FormData) {
@@ -213,6 +326,12 @@ export async function signInAction(formData: FormData) {
     redirect(withNext("/auth?error=1", nextPath));
   }
 
+  await redirectToCanonicalIfNeeded({
+    targetPath: "/auth",
+    nextPath,
+    email
+  });
+
   const supabase = await createSupabaseServer();
   const { error } = await supabase.auth.signInWithPassword({
     email,
@@ -223,7 +342,7 @@ export async function signInAction(formData: FormData) {
     redirect(withNext("/auth?error=1", nextPath));
   }
 
-  redirect(nextPath);
+  await handlePostAuthRedirect({ formData, nextPath });
 }
 
 export async function signUpAction(formData: FormData) {
@@ -234,6 +353,13 @@ export async function signUpAction(formData: FormData) {
   if (!isLikelyEmail(email) || password.length < 8) {
     redirect(withNext("/auth?mode=signup&error=1", nextPath));
   }
+
+  await redirectToCanonicalIfNeeded({
+    targetPath: "/auth",
+    nextPath,
+    email,
+    prefill: { mode: "signup" }
+  });
 
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase.auth.signUp({
@@ -249,13 +375,36 @@ export async function signUpAction(formData: FormData) {
     redirect(withNext("/auth?mode=signin&message=signup_check_email", nextPath));
   }
 
-  redirect(nextPath);
+  await handlePostAuthRedirect({ formData, nextPath });
 }
 
 export async function signOutAction(_formData: FormData) {
   const supabase = await createSupabaseServer();
-  await supabase.auth.signOut();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  await supabase.auth.signOut({ scope: "global" });
+
+  if (user) {
+    await revokeHandoffTokensForUser(user.id).catch(() => undefined);
+  }
+
   redirect("/auth");
+}
+
+function buildCallbackRedirectTo(context: { protocol: string; host: string; hostWithPort: string; origin: string }) {
+  const canonicalHost = normalizeHost(getCanonicalAuthHost());
+  const canonicalHostWithPort = context.host === canonicalHost ? context.hostWithPort : canonicalHost;
+  const canonicalOrigin = canonicalHost ? `${context.protocol}://${canonicalHostWithPort}` : context.origin;
+
+  const params = new URLSearchParams();
+  params.set("next", "/auth/reset?mode=update");
+  if (context.host !== canonicalHost) {
+    params.set("return_to", context.origin);
+  }
+
+  return `${canonicalOrigin}/auth/callback?${params.toString()}`;
 }
 
 export async function requestPasswordResetAction(formData: FormData) {
@@ -265,8 +414,9 @@ export async function requestPasswordResetAction(formData: FormData) {
     redirect("/auth/reset?error=invalid_email");
   }
 
-  const origin = await getRequestOrigin();
-  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent("/auth/reset?mode=update")}`;
+  const context = await getRequestContext();
+  const redirectTo = buildCallbackRedirectTo(context);
+
   const supabase = await createSupabaseServer();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo
@@ -289,8 +439,8 @@ export async function sendActivationEmail(input: { email: string }): Promise<Sen
   }
 
   try {
-    const origin = await getRequestOrigin();
-    const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent("/auth/reset?mode=update")}`;
+    const context = await getRequestContext();
+    const redirectTo = buildCallbackRedirectTo(context);
     const supabase = await createSupabaseServer();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo

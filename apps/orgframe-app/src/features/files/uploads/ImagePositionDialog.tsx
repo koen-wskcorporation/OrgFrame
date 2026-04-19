@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { FormField } from "@orgframe/ui/primitives/form-field";
+import { ArrowLeft, X } from "lucide-react";
 import { EditorSettingsDialog } from "@/src/features/core/layout/components/EditorSettingsDialog";
 import type { UploadAspectMode, UploadCrop } from "@/src/features/files/uploads/types";
 
@@ -117,9 +118,11 @@ export function ImagePositionDialog({
       footer={
         <>
           <Button onClick={onClose} size="sm" variant="ghost">
+            <X className="h-4 w-4" />
             Cancel
           </Button>
           <Button onClick={onBack} size="sm" variant="secondary">
+            <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
           <Button disabled={!file || isSaving} loading={isSaving} onClick={onSave} size="sm">
@@ -195,7 +198,7 @@ export function ImagePositionDialog({
 
         <div className="flex flex-wrap gap-2">
           <Button onClick={onReset} size="sm" variant="secondary">
-            Reset crop
+            Reset Crop
           </Button>
         </div>
 

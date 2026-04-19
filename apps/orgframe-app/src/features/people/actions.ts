@@ -25,7 +25,7 @@ import type {
   PeopleRelationshipType
 } from "@/src/features/people/types";
 import type { Permission } from "@/src/features/core/access";
-import type { OrgToolAvailability } from "@/src/shared/org/features";
+import type { OrgToolAvailability } from "@/src/features/core/config/tools";
 
 const profileTypeSchema = z.enum(["player", "staff"]);
 const relationshipTypeSchema = z.enum(["self", "guardian", "delegated_manager"]);
@@ -334,7 +334,7 @@ export async function createProfileAction(input: z.input<typeof createProfileSch
       });
     }
 
-    revalidatePath(`/${payload.orgSlug}/tools/people`);
+    revalidatePath(`/${payload.orgSlug}/manage/people`);
     const directory = await listPeopleDirectoryForOrg({ orgId: orgContext.orgId });
 
     return {
@@ -367,7 +367,7 @@ export async function updateProfileAction(input: z.input<typeof updateProfileSch
       dob: normalizeOptional(payload.dob)
     });
 
-    revalidatePath(`/${payload.orgSlug}/tools/people`);
+    revalidatePath(`/${payload.orgSlug}/manage/people`);
 
     return {
       ok: true,
@@ -404,9 +404,12 @@ export async function linkProfileAction(input: z.input<typeof linkProfileSchema>
         pendingInviteEmail = payload.email.trim().toLowerCase();
         inviteStatus = "pending";
 
-        const inviteResult = await serviceClient.auth.admin.inviteUserByEmail(pendingInviteEmail);
-        if (inviteResult.error) {
-          return asFailure("action_failed", inviteResult.error.message);
+        const createResult = await serviceClient.auth.admin.createUser({
+          email: pendingInviteEmail,
+          email_confirm: false
+        });
+        if (createResult.error) {
+          return asFailure("action_failed", createResult.error.message);
         }
       } else {
         accountUserId = user.id;
@@ -423,7 +426,7 @@ export async function linkProfileAction(input: z.input<typeof linkProfileSchema>
       inviteStatus
     });
 
-    revalidatePath(`/${payload.orgSlug}/tools/people`);
+    revalidatePath(`/${payload.orgSlug}/manage/people`);
     return {
       ok: true,
       data: { link }
@@ -451,7 +454,7 @@ export async function transitionProfileStatusAction(
       source: payload.source ?? "people_ui"
     });
 
-    revalidatePath(`/${payload.orgSlug}/tools/people`);
+    revalidatePath(`/${payload.orgSlug}/manage/people`);
     return {
       ok: true,
       data: { profile }
@@ -505,7 +508,7 @@ export async function acceptProfileClaimAction(
       source: "claim_accept"
     });
 
-    revalidatePath(`/${payload.orgSlug}/tools/people`);
+    revalidatePath(`/${payload.orgSlug}/manage/people`);
     return {
       ok: true,
       data: { link, profile }

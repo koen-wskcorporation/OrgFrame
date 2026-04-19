@@ -30,7 +30,7 @@ export default async function OrgPublicPageBySlug({
   const { orgSlug, pageSlug } = await params;
 
   if (pageSlug.toLowerCase() === "home") {
-    redirect("/");
+    redirect(`/${orgSlug}`);
   }
 
   const pageData = await getOrgSitePageForRender({

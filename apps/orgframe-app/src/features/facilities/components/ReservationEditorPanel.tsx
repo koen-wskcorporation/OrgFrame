@@ -8,6 +8,7 @@ import { Input } from "@orgframe/ui/primitives/input";
 import { Panel } from "@orgframe/ui/primitives/panel";
 import { Select } from "@orgframe/ui/primitives/select";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
+import { X } from "lucide-react";
 import type { FacilityReservation, FacilityReservationStatus, FacilitySpace } from "@/src/features/facilities/types";
 
 export type ReservationEditorSubmitInput = {
@@ -68,6 +69,7 @@ export function ReservationEditorPanel({ open, onClose, onSubmit, canWrite, spac
       footer={
         <>
           <Button onClick={onClose} type="button" variant="ghost">
+            <X className="h-4 w-4" />
             Cancel
           </Button>
           <Button

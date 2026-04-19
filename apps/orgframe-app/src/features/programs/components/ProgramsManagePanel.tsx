@@ -22,6 +22,7 @@ import type { Program } from "@/src/features/programs/types";
 
 type ProgramsManagePanelProps = {
   orgSlug: string;
+  orgDisplayHost: string;
   programs: Program[];
   canWrite?: boolean;
 };
@@ -35,7 +36,7 @@ function slugify(value: string) {
     .replace(/^-|-$/g, "");
 }
 
-export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: ProgramsManagePanelProps) {
+export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrite = true }: ProgramsManagePanelProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -173,7 +174,7 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
       setStartDate("");
       setEndDate("");
       setCoverImagePath("");
-      router.push(`/tools/programs/${result.data.programId}`);
+      router.push(`/manage/programs/${result.data.programId}`);
     });
   }
 
@@ -203,7 +204,7 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
           title: "Program duplicated",
           variant: "success"
         });
-        router.push(`/tools/programs/${result.data.programId}`);
+        router.push(`/manage/programs/${result.data.programId}`);
       } finally {
         setDuplicateProgramId(null);
       }
@@ -235,17 +236,17 @@ export function ProgramsManagePanel({ orgSlug, programs, canWrite = true }: Prog
                   onToggle={() => toggleProgramStatus(program)}
                   statusLabel={program.status === "published" ? `Published status for ${program.name}` : `Unpublished status for ${program.name}`}
                 />
-                <Link className="ui-list-row-title hover:underline" href={`/tools/programs/${program.id}`}>
+                <Link className="ui-list-row-title hover:underline" href={`/manage/programs/${program.id}`}>
                   {program.name}
                 </Link>
               </div>
               <p className="ui-list-row-meta">
                 {program.programType === "custom" ? program.customTypeLabel ?? "Custom" : program.programType} · {program.status}
               </p>
-              <p className="text-sm text-text-muted">/{orgSlug}/programs/{program.slug}</p>
+              <p className="text-sm text-text-muted">{orgDisplayHost}/programs/{program.slug}</p>
             </div>
             <div className="ui-list-row-actions">
-              <Button href={`/tools/programs/${program.id}`} size="sm" variant="secondary">
+              <Button href={`/manage/programs/${program.id}`} size="sm" variant="secondary">
                 Open
               </Button>
               <Button

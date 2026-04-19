@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Trash2, X } from "lucide-react";
 import { LinkPickerDialog } from "@/src/features/core/editor/buttons/LinkPickerDialog";
 import { buttonVariantOptions, type ButtonConfig } from "@/src/features/core/editor/buttons/types";
 import { Alert } from "@orgframe/ui/primitives/alert";
@@ -123,24 +123,26 @@ export function ButtonConfigDialog({
               {mode === "edit" && onMoveUp ? (
                 <Button disabled={!canMoveUp} onClick={onMoveUp} size="sm" variant="ghost">
                   <ArrowUp className="h-4 w-4" />
-                  Move up
+                  Move Up
                 </Button>
               ) : null}
 
               {mode === "edit" && onMoveDown ? (
                 <Button disabled={!canMoveDown} onClick={onMoveDown} size="sm" variant="ghost">
                   <ArrowDown className="h-4 w-4" />
-                  Move down
+                  Move Down
                 </Button>
               ) : null}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <Button onClick={onClose} size="sm" variant="ghost">
+                <X className="h-4 w-4" />
                 Cancel
               </Button>
               <Button onClick={handleSave} size="sm">
-                Save button
+                <Check className="h-4 w-4" />
+                Save Button
               </Button>
             </div>
           </div>

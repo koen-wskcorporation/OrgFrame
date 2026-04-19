@@ -13,7 +13,14 @@ const nextConfig = {
     }
   },
   images: {
-    remotePatterns: []
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "jmihjlikdxfhdnuhypue.supabase.co",
+        pathname: "/storage/v1/**"
+      }
+    ],
+    minimumCacheTTL: 3600
   }
 
 };

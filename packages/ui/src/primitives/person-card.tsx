@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Avatar } from "./avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./card";
 import { cn } from "./utils";
 
@@ -21,20 +22,6 @@ export type PersonCardProps = {
   layout?: "default" | "panel-edge";
 };
 
-function initialsFor(name: string) {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2);
-
-  if (parts.length === 0) {
-    return "??";
-  }
-
-  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "??";
-}
-
 export function PersonCard({
   name,
   subtitle,
@@ -47,7 +34,6 @@ export function PersonCard({
   className,
   layout = "default"
 }: PersonCardProps) {
-  const initials = initialsFor(name);
   const panelEdge = layout === "panel-edge";
 
   return (
@@ -56,11 +42,7 @@ export function PersonCard({
         <CardHeader className={cn(panelEdge ? "px-5 py-3 md:px-6" : "")}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              {avatarUrl ? (
-                <img alt={`${name} avatar`} className="h-10 w-10 rounded-full border object-cover" src={avatarUrl} />
-              ) : (
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-surface-muted text-sm font-semibold text-text-muted">{initials}</div>
-              )}
+              <Avatar alt={`${name} avatar`} name={name} sizePx={40} src={avatarUrl} />
               <div className="min-w-0">
                 <CardTitle className="truncate">{name}</CardTitle>
                 {subtitle ? <CardDescription className="truncate">{subtitle}</CardDescription> : null}

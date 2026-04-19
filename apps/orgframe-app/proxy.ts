@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
   normalizeHost,
+  getCanonicalAuthHost,
   getPlatformHost,
   getPlatformHosts,
   getTenantBaseHosts,
@@ -123,54 +124,135 @@ function getGlobalPlatformRedirectHost(pathname: string) {
   return null;
 }
 
+const AUTH_PASS_THROUGH_PATHS = new Set(["/auth/handoff"]);
+
+function shouldRedirectAuthToCanonical(pathname: string) {
+  if (!pathname.startsWith("/auth")) {
+    return false;
+  }
+
+  if (AUTH_PASS_THROUGH_PATHS.has(pathname)) {
+    return false;
+  }
+
+  for (const prefix of AUTH_PASS_THROUGH_PATHS) {
+    if (pathname.startsWith(`${prefix}/`)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function buildCanonicalAuthRedirect(request: NextRequest, parsedHost: ParsedHostHeader, protocol: string) {
+  const canonicalHost = normalizeHost(getCanonicalAuthHost());
+  if (!canonicalHost || !parsedHost.host || parsedHost.host === canonicalHost) {
+    return null;
+  }
+
+  const currentAuthority = parsedHost.port ? `${parsedHost.host}:${parsedHost.port}` : parsedHost.host;
+  const currentOrigin = `${protocol}://${currentAuthority}`;
+  const canonicalAuthority = parsedHost.port ? `${canonicalHost}:${parsedHost.port}` : canonicalHost;
+  const targetUrl = new URL(request.nextUrl.pathname, `${protocol}://${canonicalAuthority}`);
+
+  request.nextUrl.searchParams.forEach((value, key) => {
+    targetUrl.searchParams.set(key, value);
+  });
+
+  if (!targetUrl.searchParams.has("return_to")) {
+    targetUrl.searchParams.set("return_to", `${currentOrigin}${request.nextUrl.pathname}`);
+  }
+
+  return targetUrl;
+}
+
+const CANONICAL_AUTH_ALLOWED_PREFIXES = ["/auth", "/api", "/_next", "/favicon", "/brand"];
+
+function isPathAllowedOnCanonicalAuthHost(pathname: string) {
+  for (const prefix of CANONICAL_AUTH_ALLOWED_PREFIXES) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function proxy(request: NextRequest) {
   const tenantBaseHosts = getTenantBaseHosts();
   const parsedHost = resolveProxyRequestHostForRouting(request, tenantBaseHosts);
   const host = parsedHost.host;
   const platformHosts = getPlatformHosts();
+  const canonicalAuthHost = normalizeHost(getCanonicalAuthHost());
+
+  if (canonicalAuthHost && host === canonicalAuthHost && !isPathAllowedOnCanonicalAuthHost(request.nextUrl.pathname)) {
+    const protocol = getRequestProtocol(request);
+    const platformHost = getPlatformHost();
+    if (platformHost && platformHost !== host) {
+      const redirectUrl = buildAbsoluteRequestUrl(protocol, platformHost, parsedHost.port, request.nextUrl.pathname, request.nextUrl.search);
+      return redirectAbsolute(redirectUrl, 307);
+    }
+  }
+
+  if (shouldRedirectAuthToCanonical(request.nextUrl.pathname)) {
+    const protocol = getRequestProtocol(request);
+    const canonicalRedirect = buildCanonicalAuthRedirect(request, parsedHost, protocol);
+    if (canonicalRedirect) {
+      return redirectAbsolute(canonicalRedirect, 307);
+    }
+  }
   const orgSubdomain = resolveOrgSubdomain(host, tenantBaseHosts);
-  const globalPlatformRedirectHost = getGlobalPlatformRedirectHost(request.nextUrl.pathname);
+  const manageRouteDecision = getManageRouteDecision(request.nextUrl.pathname);
+  if (manageRouteDecision.redirectPathname) {
+    const redirectUrl = request.nextUrl.clone();
+    applyRedirectHostname(redirectUrl, host, parsedHost.port);
+    redirectUrl.pathname = manageRouteDecision.redirectPathname;
+    return redirectAbsolute(redirectUrl, 308);
+  }
+
+  const routedPathname = manageRouteDecision.rewritePathname ?? request.nextUrl.pathname;
+  const globalPlatformRedirectHost = getGlobalPlatformRedirectHost(routedPathname);
   const protocol = getRequestProtocol(request);
 
   if (globalPlatformRedirectHost && normalizeHost(globalPlatformRedirectHost) !== host) {
-    const redirectUrl = buildAbsoluteRequestUrl(protocol, globalPlatformRedirectHost, parsedHost.port, request.nextUrl.pathname, request.nextUrl.search);
+    const redirectUrl = buildAbsoluteRequestUrl(protocol, globalPlatformRedirectHost, parsedHost.port, routedPathname, request.nextUrl.search);
     if (!isSameUrlTargetForRequest(request, parsedHost, protocol, redirectUrl)) {
       return redirectAbsolute(redirectUrl, 307);
     }
   }
 
-  const legacyOrgPathRedirect = getLegacyOrgPathRedirect(host, request.nextUrl.pathname, tenantBaseHosts);
+  const legacyOrgPathRedirect = getLegacyOrgPathRedirect(host, routedPathname, tenantBaseHosts);
   if (legacyOrgPathRedirect) {
     const redirectUrl = buildAbsoluteRequestUrl(
       protocol,
       `${legacyOrgPathRedirect.orgSlug}.${legacyOrgPathRedirect.baseHost}`,
       parsedHost.port,
-      request.nextUrl.pathname,
+      routedPathname,
       request.nextUrl.search
     );
     redirectUrl.pathname = legacyOrgPathRedirect.pathname;
-    return redirectAbsolute(redirectUrl, 301);
+    return redirectAbsolute(redirectUrl, 307);
   }
 
   let rewriteUrl: URL | null = null;
 
   if (orgSubdomain) {
-    const redirectHost = getPlatformRedirectHostForSubdomain(request.nextUrl.pathname, orgSubdomain.baseHost);
+    const redirectHost = getPlatformRedirectHostForSubdomain(routedPathname, orgSubdomain.baseHost);
 
     if (redirectHost && normalizeHost(redirectHost) !== host) {
-      const redirectUrl = buildAbsoluteRequestUrl(protocol, redirectHost, parsedHost.port, request.nextUrl.pathname, request.nextUrl.search);
+      const redirectUrl = buildAbsoluteRequestUrl(protocol, redirectHost, parsedHost.port, routedPathname, request.nextUrl.search);
       return redirectAbsolute(redirectUrl, 307);
     }
 
-    if (!shouldSkipCustomDomainRoutingPath(request.nextUrl.pathname)) {
+    if (!shouldSkipCustomDomainRoutingPath(routedPathname)) {
       const prefix = `/${orgSubdomain.orgSlug}`;
-      const currentPathname = request.nextUrl.pathname;
-      const alreadyOrgPrefixed = currentPathname === prefix || currentPathname.startsWith(`${prefix}/`);
+      const visiblePathname = request.nextUrl.pathname;
+      const currentPathname = routedPathname;
+      const visibleAlreadyOrgPrefixed = visiblePathname === prefix || visiblePathname.startsWith(`${prefix}/`);
 
-      if (alreadyOrgPrefixed) {
+      if (visibleAlreadyOrgPrefixed) {
         const redirectUrl = request.nextUrl.clone();
         applyRedirectHostname(redirectUrl, host, parsedHost.port);
-        redirectUrl.pathname = stripOrgPrefixPath(currentPathname, prefix);
+        redirectUrl.pathname = stripOrgPrefixPath(visiblePathname, prefix);
         return redirectAbsolute(redirectUrl, 308);
       }
 
@@ -181,22 +263,23 @@ export async function proxy(request: NextRequest) {
     const orgSlug = await resolveOrgSlugForDomain(host);
 
     if (orgSlug) {
-      const redirectHost = getCustomDomainRedirectHost(request.nextUrl.pathname, orgSlug);
+      const redirectHost = getCustomDomainRedirectHost(routedPathname, orgSlug);
 
       if (redirectHost && normalizeHost(redirectHost) !== host) {
-        const redirectUrl = buildAbsoluteRequestUrl(protocol, redirectHost, parsedHost.port, request.nextUrl.pathname, request.nextUrl.search);
+        const redirectUrl = buildAbsoluteRequestUrl(protocol, redirectHost, parsedHost.port, routedPathname, request.nextUrl.search);
         return redirectAbsolute(redirectUrl, 307);
       }
 
-      if (!shouldSkipCustomDomainRoutingPath(request.nextUrl.pathname)) {
+      if (!shouldSkipCustomDomainRoutingPath(routedPathname)) {
         const prefix = `/${orgSlug}`;
-        const currentPathname = request.nextUrl.pathname;
-        const alreadyOrgPrefixed = currentPathname === prefix || currentPathname.startsWith(`${prefix}/`);
+        const visiblePathname = request.nextUrl.pathname;
+        const currentPathname = routedPathname;
+        const visibleAlreadyOrgPrefixed = visiblePathname === prefix || visiblePathname.startsWith(`${prefix}/`);
 
-        if (alreadyOrgPrefixed) {
+        if (visibleAlreadyOrgPrefixed) {
           const redirectUrl = request.nextUrl.clone();
           applyRedirectHostname(redirectUrl, host, parsedHost.port);
-          redirectUrl.pathname = stripOrgPrefixPath(currentPathname, prefix);
+          redirectUrl.pathname = stripOrgPrefixPath(visiblePathname, prefix);
           return redirectAbsolute(redirectUrl, 308);
         }
 
@@ -215,7 +298,7 @@ export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|heic|heif|ico)$).*)"]
 };
 
-const NON_ORG_PATH_SEGMENTS = new Set(["account", "api", "auth", "brand", "forbidden", "x"]);
+const NON_ORG_PATH_SEGMENTS = new Set(["account", "api", "auth", "brand", "create", "forbidden", "inbox", "profiles", "settings", "x"]);
 const ORG_SEGMENT_PATTERN = /^[a-z0-9-]+$/;
 
 export function getLegacyOrgPathRedirect(host: string, pathname: string, tenantBaseHosts: Set<string>) {
@@ -263,7 +346,7 @@ function getRequestProtocol(request: NextRequest) {
   return request.nextUrl.protocol === "https:" ? "https" : "http";
 }
 
-const PLATFORM_ONLY_ROOT_SEGMENTS = new Set(["account", "auth", "brand", "forbidden", "x"]);
+const PLATFORM_ONLY_ROOT_SEGMENTS = new Set(["account", "brand", "create", "forbidden", "x"]);
 
 export function getPlatformRedirectHostForSubdomain(pathname: string, baseHost: string) {
   const trimmedPath = pathname.replace(/^\/+/, "");
@@ -293,7 +376,7 @@ export function getCustomDomainRedirectHost(pathname: string, _orgSlug: string) 
     return platformHost;
   }
 
-  if (firstSegment === "tools") {
+  if (firstSegment === "manage" || firstSegment === "tools" || firstSegment === "workspace") {
     return canonicalOrgHost;
   }
 
@@ -310,4 +393,37 @@ function getDomainLookupCandidates(host: string) {
   }
 
   return Array.from(candidates).filter(Boolean);
+}
+
+type ManageRouteDecision = {
+  redirectPathname?: string;
+  rewritePathname?: string;
+};
+
+function getManageRouteDecision(pathname: string): ManageRouteDecision {
+  const segments = pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+  if (segments.length === 0) {
+    return {};
+  }
+
+  const first = segments[0] ?? "";
+  const hasOrgPrefix =
+    segments.length > 1 &&
+    first !== "manage" &&
+    first !== "tools" &&
+    first !== "workspace" &&
+    !PLATFORM_ONLY_ROOT_SEGMENTS.has(first) &&
+    !NON_ORG_PATH_SEGMENTS.has(first) &&
+    ORG_SEGMENT_PATTERN.test(first) &&
+    !isReservedSubdomain(first);
+  const rootIndex = hasOrgPrefix ? 1 : 0;
+  const root = segments[rootIndex];
+
+  if (root === "tools" || root === "workspace") {
+    const redirected = [...segments];
+    redirected[rootIndex] = "manage";
+    return { redirectPathname: `/${redirected.join("/")}` };
+  }
+
+  return {};
 }

@@ -1,3 +1,4 @@
+export { Avatar, initialsAvatarDataUri } from "./primitives/avatar";
 export { Button, buttonVariants } from "./primitives/button";
 export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardHeaderCompact, CardTitle } from "./primitives/card";
 export { AppPage, CardGrid, PageStack, SectionStack } from "./primitives/layout";
@@ -6,5 +7,6 @@ export { Popover } from "./primitives/popover";
 export { Popup } from "./primitives/popup";
 export { PersonChip } from "./primitives/person-chip";
 export { PersonCard, type PersonCardProps } from "./primitives/person-card";
+export { SelectionBox, type SelectionBoxProps } from "./primitives/selection-box";
 export { Tooltip } from "./primitives/tooltip";
 export { ConfirmDialogProvider, useConfirmDialog } from "./primitives/confirm-dialog";

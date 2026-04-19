@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgf
 import { Input } from "@orgframe/ui/primitives/input";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { Plus, Search } from "lucide-react";
 import {
   createContactFromConversationAction,
   dismissConversationSuggestionsAction,
@@ -477,6 +478,7 @@ export function InboxWorkspace({ orgSlug, canWrite, initialReadModel }: InboxWor
                           <div className="flex gap-2">
                             <Input onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search contact" value={searchQuery} />
                             <Button disabled={isMutating} onClick={runContactSearch} size="sm" type="button" variant="secondary">
+                              <Search className="h-4 w-4" />
                               Search
                             </Button>
                           </div>
@@ -520,19 +522,20 @@ export function InboxWorkspace({ orgSlug, canWrite, initialReadModel }: InboxWor
                           <Input onChange={(event) => setNewContactPhone(event.target.value)} placeholder="Phone" value={newContactPhone} />
                           <Textarea onChange={(event) => setNewContactNotes(event.target.value)} placeholder="Notes" value={newContactNotes} />
                           <Button disabled={!canWrite} onClick={createContactFromConversation} size="sm" type="button">
+                            <Plus className="h-4 w-4" />
                             Create + Link
                           </Button>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
                           <Button disabled={!canWrite} onClick={rerunSuggestions} size="sm" type="button" variant="secondary">
-                            Re-run suggestions
+                            Re-Run Suggestions
                           </Button>
                           <Button disabled={!canWrite} onClick={dismissSuggestions} size="sm" type="button" variant="secondary">
-                            Not now
+                            Not Now
                           </Button>
                           <Button disabled={!canWrite || !selectedConversation.identity} onClick={unlinkIdentity} size="sm" type="button" variant="ghost">
-                            Unlink identity
+                            Unlink Identity
                           </Button>
                         </div>
                       </CardContent>
@@ -555,7 +558,7 @@ export function InboxWorkspace({ orgSlug, canWrite, initialReadModel }: InboxWor
                           <Input onChange={(event) => setMergePhone(event.target.value)} placeholder="Canonical phone" value={mergePhone} />
                           <Textarea onChange={(event) => setMergeNotes(event.target.value)} placeholder="Canonical notes" value={mergeNotes} />
                           <Button disabled={!canWrite || !mergeTargetContactId} onClick={mergeSelectedContact} size="sm" type="button">
-                            Merge into target
+                            Merge into Target
                           </Button>
                         </CardContent>
                       </Card>

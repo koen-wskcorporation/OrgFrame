@@ -8,6 +8,7 @@ import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { cn } from "@orgframe/ui/primitives/utils";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { Check, Plus } from "lucide-react";
 import {
   deleteProgramScheduleRuleAction,
   restoreProgramOccurrenceAction,
@@ -494,7 +495,7 @@ export function ScheduleBuilderPage({
         <div className="space-y-4">
           <Card className="border-border bg-surface">
             <CardHeader className="space-y-1">
-              <CardTitle className="text-base">Schedule Tools</CardTitle>
+              <CardTitle className="text-base">Schedule Manage</CardTitle>
               <CardDescription>The saved schedule is exactly the selected dates on the calendar.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -523,10 +524,11 @@ export function ScheduleBuilderPage({
 
               <div className="flex flex-wrap items-center gap-2">
                 <Button disabled={!canWrite || selectedDateKeys.length === 0} onClick={handleClearDates} size="sm" type="button" variant="ghost">
-                  Clear dates
+                  Clear Dates
                 </Button>
                 <Button disabled={!canWrite || selectedDateKeys.length === 0} loading={isSavingSchedule} onClick={handleSaveSchedule} size="sm" type="button">
-                  Save schedule
+                  <Check className="h-4 w-4" />
+                  Save Schedule
                 </Button>
               </div>
             </CardContent>
@@ -534,7 +536,7 @@ export function ScheduleBuilderPage({
 
           <Card className="border-border bg-surface">
             <CardHeader className="space-y-1">
-              <CardTitle className="text-base">Repeat Pattern Tool</CardTitle>
+              <CardTitle className="text-base">Repeat Pattern Manager</CardTitle>
               <CardDescription>Generate recurring dates and merge them into your current calendar selection.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -607,7 +609,8 @@ export function ScheduleBuilderPage({
               </div>
 
               <Button disabled={!canWrite} loading={isApplyingPattern} onClick={handleApplyPattern} size="sm" type="button" variant="secondary">
-                Add pattern dates
+                <Plus className="h-4 w-4" />
+                Add Pattern Dates
               </Button>
             </CardContent>
           </Card>

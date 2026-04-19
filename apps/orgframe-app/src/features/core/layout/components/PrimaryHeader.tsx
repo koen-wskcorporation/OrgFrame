@@ -22,7 +22,7 @@ export function PrimaryHeader({ homeHref = "/", currentOrgSlug = null, tenantBas
               alt="OrgFrame logo"
               className="block max-w-full object-contain"
               src="/brand/logo.svg"
-              style={{ height: "auto", maxHeight: "auto", maxWidth: "150px", width: "auto" }}
+              style={{ height: "auto", maxHeight: "auto", maxWidth: "110px", width: "auto" }}
             />
           </Link>
         </div>

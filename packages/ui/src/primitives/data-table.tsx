@@ -65,6 +65,7 @@ export type DataTableViewConfig = {
 export type DataTableColumn<TItem> = {
   key: string;
   label: string;
+  renderHeader?: () => ReactNode;
   group?: string;
   pinDefault?: "left" | "right";
   defaultVisible?: boolean;
@@ -284,6 +285,7 @@ const headerIconButtonClassName =
 type SortableHeaderCellProps = {
   columnKey: string;
   label: string;
+  renderHeader?: () => ReactNode;
   sortable: boolean;
   isSorted: boolean;
   sortDirection: SortDirection;
@@ -300,6 +302,7 @@ type SortableHeaderCellProps = {
 function SortableHeaderCell({
   columnKey,
   label,
+  renderHeader,
   sortable,
   isSorted,
   sortDirection,
@@ -381,6 +384,8 @@ function SortableHeaderCell({
                 <ArrowUpDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-muted/70" />
               )}
             </button>
+          ) : renderHeader ? (
+            <div className="min-w-0">{renderHeader()}</div>
           ) : (
             <span className="block truncate whitespace-nowrap text-[12px] font-semibold tracking-wide text-text">{label}</span>
           )}
@@ -1495,6 +1500,7 @@ export function DataTable<TItem>({
                         isSorted={sortColumnKey === column.key}
                         key={column.key}
                         label={column.label}
+                        renderHeader={column.renderHeader}
                         onMount={(node) => setHeaderCellRef(column.key, node)}
                         onContextMenu={handleHeaderContextMenu}
                         onResizeStart={handleColumnResizeStart}
@@ -1657,6 +1663,8 @@ export function DataTable<TItem>({
                               <ArrowUpDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-muted/70" />
                             )}
                           </button>
+                        ) : column.renderHeader ? (
+                          <div className="min-w-0">{column.renderHeader()}</div>
                         ) : (
                           <span className="block truncate whitespace-nowrap text-[12px] font-semibold tracking-wide text-text">{column.label}</span>
                         )}

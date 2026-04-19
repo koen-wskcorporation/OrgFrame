@@ -252,7 +252,7 @@ export function FormSharingPanel({ open, onClose, orgSlug, formId, formSlug }: F
               />
               <Button disabled={!selectedPageId || isAdding} loading={isAdding} onClick={handleAddToPage} size="sm" type="button" variant="secondary">
                 <Plus className="h-4 w-4" />
-                Add to page
+                Add to Page
               </Button>
             </div>
           ) : null}

@@ -115,7 +115,7 @@ export function CtaCardBlockEditorClient({ block, onChange, context }: BlockEdit
             size="sm"
             variant="secondary"
           >
-            Reset crop
+            Reset Crop
           </Button>
         </div>
       </div>

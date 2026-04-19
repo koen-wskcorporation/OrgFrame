@@ -3,6 +3,7 @@
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Popup } from "@orgframe/ui/primitives/popup";
+import { Check, X } from "lucide-react";
 import type { CalendarReadModel, FacilitySpaceConfiguration } from "@/src/features/calendar/types";
 import type { FacilityReservationReadModel, FacilitySpace } from "@/src/features/facilities/types";
 import type { FacilityBookingSelection, FacilityBookingWindow } from "@/src/features/calendar/components/facility-booking-utils";
@@ -24,27 +25,29 @@ type FacilityBookingDialogProps = {
   onSave: () => void;
 };
 
-export function FacilityBookingDialog({ open, onClose, saveLabel = "Apply booking", onSave }: FacilityBookingDialogProps) {
+export function FacilityBookingDialog({ open, onClose, saveLabel = "Apply Booking", onSave }: FacilityBookingDialogProps) {
   return (
     <Popup
       closeOnBackdrop={false}
       onClose={onClose}
       open={open}
       size="lg"
-      subtitle="Facility map booking is temporarily disabled."
+      subtitle="Facility booking panel placeholder."
       title="Facility booking placeholder"
       footer={
         <div className="flex items-center justify-end gap-2">
           <Button onClick={onClose} type="button" variant="ghost">
+            <X className="h-4 w-4" />
             Cancel
           </Button>
           <Button onClick={onSave} type="button">
+            <Check className="h-4 w-4" />
             {saveLabel}
           </Button>
         </div>
       }
     >
-      <Alert variant="info">Canvas-based facility booking has been removed for now. Use this as a placeholder.</Alert>
+      <Alert variant="info">Facility booking UI is currently simplified while facility map v1 is being rolled out.</Alert>
     </Popup>
   );
 }

@@ -159,7 +159,7 @@ export async function createPlayerAction(input: z.input<typeof createPlayerSchem
         : {}
     });
 
-    revalidatePath("/account/players");
+    revalidatePath("/profiles");
 
     return {
       ok: true,
@@ -206,7 +206,7 @@ export async function updatePlayerAction(input: z.input<typeof updatePlayerSchem
       medicalNotes: normalizeOptional(payload.medicalNotes)
     });
 
-    revalidatePath("/account/players");
+    revalidatePath("/profiles");
 
     return {
       ok: true,
@@ -247,7 +247,7 @@ export async function linkGuardianByEmailAction(input: z.input<typeof linkGuardi
       relationship: normalizeOptional(payload.relationship)
     });
 
-    revalidatePath("/account/players");
+    revalidatePath("/profiles");
 
     return {
       ok: true,

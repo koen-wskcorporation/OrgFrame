@@ -4,9 +4,11 @@ import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { getOrgAdminNavItems } from "@/src/features/core/navigation/config/adminNav";
 import { getOrgCapabilities } from "@/src/shared/permissions/orgCapabilities";
-import { filterPermissionsByOrgTools, resolveOrgToolAvailability } from "@/src/shared/org/features";
+import { filterPermissionsByOrgTools, resolveOrgToolAvailability } from "@/src/features/core/config/tools";
 import { resolveOrgRolePermissions } from "@/src/shared/org/customRoles";
 import { normalizeDashboardUserPreferences } from "@/src/features/core/dashboard/preferences";
+import { normalizeOrgType } from "@/src/shared/org/orgTypes";
+import { getOrgDisplayHost } from "@/src/shared/org/orgDisplayHost";
 import type {
   DashboardV2Context,
   DashboardV2OrgMembership,
@@ -29,6 +31,7 @@ type OrgMembershipRow = {
         id: string;
         slug: string;
         name: string;
+        org_type: string | null;
         logo_path: string | null;
         icon_path: string | null;
         features_json: unknown;
@@ -37,6 +40,7 @@ type OrgMembershipRow = {
         id: string;
         slug: string;
         name: string;
+        org_type: string | null;
         logo_path: string | null;
         icon_path: string | null;
         features_json: unknown;
@@ -78,7 +82,7 @@ async function listMembershipsWithCapabilities(userId: string): Promise<Dashboar
   const { data, error } = await supabase
     .schema("orgs")
     .from("memberships")
-    .select("role, org:orgs!inner(id, slug, name, logo_path, icon_path, features_json)")
+    .select("role, org:orgs!inner(id, slug, name, org_type, logo_path, icon_path, features_json)")
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
 
@@ -87,6 +91,23 @@ async function listMembershipsWithCapabilities(userId: string): Promise<Dashboar
   }
 
   const rows = (data ?? []) as OrgMembershipRow[];
+
+  const orgIds = rows
+    .map((row) => (Array.isArray(row.org) ? row.org[0]?.id : row.org?.id))
+    .filter((id): id is string => Boolean(id));
+
+  const customDomainByOrgId = new Map<string, string>();
+  if (orgIds.length > 0) {
+    const { data: domainRows } = await supabase
+      .schema("orgs").from("custom_domains")
+      .select("org_id, domain")
+      .in("org_id", orgIds)
+      .eq("status", "verified");
+
+    for (const row of domainRows ?? []) {
+      customDomainByOrgId.set(row.org_id as string, row.domain as string);
+    }
+  }
 
   const membershipPromises = rows.map(async (row): Promise<DashboardV2OrgMembership | null> => {
     const org = Array.isArray(row.org) ? row.org[0] : row.org;
@@ -97,11 +118,14 @@ async function listMembershipsWithCapabilities(userId: string): Promise<Dashboar
     const toolAvailability = resolveOrgToolAvailability(org.features_json);
     const rawPermissions = await resolveOrgRolePermissions(supabase, org.id, row.role);
     const membershipPermissions = filterPermissionsByOrgTools(rawPermissions, toolAvailability);
+    const customDomain = customDomainByOrgId.get(org.id) ?? null;
 
     return {
       orgId: org.id,
       orgSlug: org.slug,
       orgName: org.name,
+      orgType: normalizeOrgType(org.org_type),
+      displayHost: getOrgDisplayHost(org.slug, customDomain),
       role: row.role,
       iconUrl: getOrgAssetPublicUrl(org.icon_path),
       logoUrl: getOrgAssetPublicUrl(org.logo_path),
@@ -416,7 +440,7 @@ async function fetchInbox(orgsById: Map<string, DashboardV2OrgMembership>) {
           subject: typeof row.subject === "string" ? row.subject : null,
           previewText: typeof row.preview_text === "string" ? row.preview_text : null,
           lastMessageAt: String(row.last_message_at),
-          href: `/${org.orgSlug}/tools/inbox`
+          href: `/${org.orgSlug}/manage/inbox`
         }
       ];
     });

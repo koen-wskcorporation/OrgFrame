@@ -18,14 +18,14 @@ export function PeoplePageTabs({
           key: "directory",
           label: "Directory",
           description: "Accounts and linked profiles",
-          href: `/${orgSlug}/tools/people`,
+          href: `/${orgSlug}/manage/people`,
           prefetch: false
         },
         {
           key: "groups",
           label: "Groups",
           description: "System-generated dynamic groups",
-          href: `/${orgSlug}/tools/people/groups`,
+          href: `/${orgSlug}/manage/people/groups`,
           prefetch: false
         }
       ]}

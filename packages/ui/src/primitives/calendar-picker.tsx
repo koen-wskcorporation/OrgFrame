@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { IconButton } from "@orgframe/ui/primitives/icon-button";
+import { Button } from "@orgframe/ui/primitives/button";
 import { cn } from "./utils";
 
 type CalendarPickerProps = {
@@ -381,42 +381,52 @@ export function CalendarPicker({
           type="text"
           value={usDigitsToMaskedValue(inputDigits)}
         />
-        <IconButton
+        <Button
+          iconOnly
           aria-expanded={open}
+          aria-label="Open calendar"
           disabled={disabled}
-          icon={<CalendarDays aria-hidden className="h-4 w-4 shrink-0" />}
-          label="Open calendar"
           onClick={() => setOpen((current) => !current)}
-        />
+        >
+          <CalendarDays aria-hidden className="h-4 w-4 shrink-0" />
+        </Button>
       </div>
 
       {open ? (
         <div className="absolute z-50 mt-2 w-[18rem] rounded-card border bg-surface p-3 shadow-floating">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <IconButton
-                icon={<ChevronsLeft aria-hidden className="h-4 w-4" />}
-                label="Previous year"
+              <Button
+                iconOnly
+                aria-label="Previous year"
                 onClick={() => setVisibleMonth((current) => new Date(current.getFullYear() - 1, current.getMonth(), 1))}
-              />
-              <IconButton
-                icon={<ChevronLeft aria-hidden className="h-4 w-4" />}
-                label="Previous month"
+              >
+                <ChevronsLeft aria-hidden className="h-4 w-4" />
+              </Button>
+              <Button
+                iconOnly
+                aria-label="Previous month"
                 onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
-              />
+              >
+                <ChevronLeft aria-hidden className="h-4 w-4" />
+              </Button>
             </div>
             <p className="text-sm font-semibold text-text">{formatMonthLabel(monthStart)}</p>
             <div className="flex items-center gap-1">
-              <IconButton
-                icon={<ChevronRight aria-hidden className="h-4 w-4" />}
-                label="Next month"
+              <Button
+                iconOnly
+                aria-label="Next month"
                 onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
-              />
-              <IconButton
-                icon={<ChevronsRight aria-hidden className="h-4 w-4" />}
-                label="Next year"
+              >
+                <ChevronRight aria-hidden className="h-4 w-4" />
+              </Button>
+              <Button
+                iconOnly
+                aria-label="Next year"
                 onClick={() => setVisibleMonth((current) => new Date(current.getFullYear() + 1, current.getMonth(), 1))}
-              />
+              >
+                <ChevronsRight aria-hidden className="h-4 w-4" />
+              </Button>
             </div>
           </div>
 

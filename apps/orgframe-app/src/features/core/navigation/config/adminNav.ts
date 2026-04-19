@@ -1,5 +1,5 @@
 import type { OrgCapabilities } from "@/src/shared/permissions/orgCapabilities";
-import { isOrgToolEnabled, type OrgToolAvailability } from "@/src/shared/org/features";
+import { isOrgToolEnabled, type OrgToolAvailability } from "@/src/features/core/config/tools";
 
 export type OrgAdminNavIcon =
   | "wrench"
@@ -13,7 +13,10 @@ export type OrgAdminNavIcon =
   | "calendar"
   | "file-text"
   | "map"
-  | "inbox";
+  | "inbox"
+  | "bar-chart";
+
+export type OrgAdminNavMatch = "exact" | "prefix";
 
 export type OrgAdminNavItem = {
   key: string;
@@ -23,6 +26,11 @@ export type OrgAdminNavItem = {
   icon: OrgAdminNavIcon;
   parentKey?: string;
   showInHome?: boolean;
+  match?: OrgAdminNavMatch;
+};
+
+export type OrgAdminNavNode = OrgAdminNavItem & {
+  children: OrgAdminNavItem[];
 };
 
 type OrgAdminNavVisibility = {
@@ -42,6 +50,8 @@ function isNavItemVisible(item: OrgAdminNavItem, visibility?: OrgAdminNavVisibil
   const { capabilities, toolAvailability } = visibility;
 
   switch (item.key) {
+    case "data":
+      return Boolean(capabilities?.manage.canRead);
     case "manage-general":
       return isOrgToolEnabled(toolAvailability, "info") && Boolean(capabilities?.manage.canRead);
     case "manage-domains":
@@ -78,6 +88,8 @@ function isNavItemVisible(item: OrgAdminNavItem, visibility?: OrgAdminNavVisibil
       return isOrgToolEnabled(toolAvailability, "inbox") && Boolean(capabilities?.communications.canAccess);
     case "manage":
       return Boolean(capabilities?.manage.canRead);
+    case "dashboard":
+      return Boolean(capabilities?.manage.canRead);
     default:
       return true;
   }
@@ -86,9 +98,26 @@ function isNavItemVisible(item: OrgAdminNavItem, visibility?: OrgAdminNavVisibil
 export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVisibility): OrgAdminNavItem[] {
   const items: OrgAdminNavItem[] = [
     {
+      key: "dashboard",
+      label: "Dashboard",
+      href: "/manage",
+      description: "Your AI-powered command center with customizable cards.",
+      icon: "layout",
+      showInHome: true,
+      match: "exact"
+    },
+    {
+      key: "data",
+      label: "Data",
+      href: "/manage/data",
+      description: "Organization dashboards, data overview, and AI-assisted import tools.",
+      icon: "bar-chart",
+      showInHome: true
+    },
+    {
       key: "manage-general",
       label: "General",
-      href: "/tools/info",
+      href: "/manage/info",
       description: "View organization metadata and governing body settings.",
       icon: "building",
       parentKey: "manage",
@@ -97,7 +126,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "manage-domains",
       label: "Domains",
-      href: "/tools/domains",
+      href: "/manage/domains",
       description: "Connect and manage your custom organization domain.",
       icon: "globe",
       parentKey: "manage",
@@ -106,7 +135,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "manage-branding",
       label: "Branding",
-      href: "/tools/branding",
+      href: "/manage/branding",
       description: "Update logo, icon, and organization accent color.",
       icon: "palette",
       parentKey: "manage",
@@ -115,7 +144,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "manage-imports",
       label: "Smart Import",
-      href: "/tools/imports",
+      href: "/manage/imports",
       description: "Run staged imports for people, programs, and commerce data.",
       icon: "file-text",
       parentKey: "manage",
@@ -124,7 +153,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "people",
       label: "People",
-      href: "/tools/people",
+      href: "/manage/people",
       description: "Manage accounts, linked player/staff profiles, and relationships.",
       icon: "users",
       showInHome: true
@@ -132,7 +161,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "people-overview",
       label: "Overview",
-      href: "/tools/people",
+      href: "/manage/people",
       description: "Accounts and linked profiles.",
       icon: "users",
       parentKey: "people",
@@ -141,7 +170,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "people-groups",
       label: "Groups",
-      href: "/tools/people/groups",
+      href: "/manage/people/groups",
       description: "Relationship groups and reusable sets.",
       icon: "users",
       parentKey: "people",
@@ -150,15 +179,15 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "programs",
       label: "Programs",
-      href: "/tools/programs",
+      href: "/manage/programs",
       description: "Create and edit programs, divisions, and schedules.",
-      icon: "wrench",
+      icon: "layout",
       showInHome: true
     },
     {
       key: "calendar",
       label: "Calendar",
-      href: "/tools/calendar",
+      href: "/manage/calendar",
       description: "Manage events, practices, games, facility bookings, and team invites.",
       icon: "calendar",
       showInHome: true
@@ -166,7 +195,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "facilities",
       label: "Facilities",
-      href: "/tools/facilities",
+      href: "/manage/facilities",
       description: "Manage spaces, bookings, blackouts, and facility availability.",
       icon: "map",
       showInHome: true
@@ -174,15 +203,15 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "forms",
       label: "Forms",
-      href: "/tools/forms",
+      href: "/manage/forms",
       description: "Build forms and process submissions.",
       icon: "file-text",
       showInHome: true
     },
     {
       key: "inbox",
-      label: "Inbox",
-      href: "/tools/inbox",
+      label: "Communications",
+      href: "/manage/inbox",
       description: "Resolve and manage unified conversations across channels.",
       icon: "inbox",
       showInHome: true
@@ -190,7 +219,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "payments",
       label: "Payments",
-      href: "/tools/payments",
+      href: "/manage/payments",
       description: "Review transactions and manage Stripe payment settings.",
       icon: "credit-card",
       showInHome: true
@@ -198,7 +227,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "payments-overview",
       label: "Overview",
-      href: "/tools/payments",
+      href: "/manage/payments",
       description: "All payment transactions for this organization.",
       icon: "credit-card",
       parentKey: "payments",
@@ -207,7 +236,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "payments-settings",
       label: "Settings",
-      href: "/tools/payments/settings",
+      href: "/manage/payments/settings",
       description: "Stripe Connect onboarding and tax compliance defaults.",
       icon: "settings",
       parentKey: "payments",
@@ -216,7 +245,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     {
       key: "payments-links",
       label: "Links",
-      href: "/tools/payments/links",
+      href: "/manage/payments/links",
       description: "Generate and manage ad hoc payment links.",
       icon: "credit-card",
       parentKey: "payments",
@@ -224,11 +253,12 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
     },
     {
       key: "manage",
-      label: "Manage",
-      href: "/tools",
+      label: "Settings",
+      href: "/manage/info",
       description: "Organization management settings and access controls.",
       icon: "settings",
-      showInHome: true
+      showInHome: true,
+      match: "exact"
     }
   ];
 
@@ -241,6 +271,25 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
 
     return hasAnyVisibleChild(visibleItems, "manage");
   });
+}
+
+export function getOrgAdminNavTree(orgSlug: string, visibility?: OrgAdminNavVisibility): OrgAdminNavNode[] {
+  const items = getOrgAdminNavItems(orgSlug, visibility);
+  const topLevel = items.filter((item) => !item.parentKey);
+
+  return topLevel.map((item) => ({
+    ...item,
+    children: items.filter((candidate) => candidate.parentKey === item.key)
+  }));
+}
+
+export function prefixAdminNavHrefs(nodes: OrgAdminNavNode[], orgSlug: string): OrgAdminNavNode[] {
+  const prefix = `/${orgSlug}`;
+  return nodes.map((node) => ({
+    ...node,
+    href: `${prefix}${node.href}`,
+    children: node.children.map((child) => ({ ...child, href: `${prefix}${child.href}` }))
+  }));
 }
 
 export type OrgToolsNavIcon = OrgAdminNavIcon;
