@@ -5,6 +5,8 @@ import { Camera } from "lucide-react";
 import { Avatar } from "@orgframe/ui/primitives/avatar";
 import { cn } from "@orgframe/ui/primitives/utils";
 import { ImageCropDialog, type ImageCropResult } from "@/src/features/files/uploads/ImageCropDialog";
+import { useUploader } from "@/src/features/files/uploads/useUploader";
+import type { UploadedAsset } from "@/src/features/files/uploads/types";
 
 export type EditableAvatarProps = {
   src: string | null;
@@ -13,14 +15,24 @@ export type EditableAvatarProps = {
   className?: string;
   priority?: boolean;
   /**
-   * Called with the cropped File after the user confirms. The handler is responsible for the upload
-   * and any downstream wiring (e.g. saving the resulting storage path on the user record).
+   * Called with the cropped File after the user confirms the crop. The handler is responsible for the
+   * final upload (e.g. of the cropped image) and any downstream wiring such as updating the user record.
    */
   onSelect: (result: ImageCropResult) => Promise<void> | void;
   disabled?: boolean;
   ariaLabel?: string;
   cropAspect?: number | "free";
 };
+
+async function fetchAssetAsFile(asset: UploadedAsset): Promise<File> {
+  const response = await fetch(asset.publicUrl);
+  if (!response.ok) {
+    throw new Error("Could not load the selected image.");
+  }
+  const blob = await response.blob();
+  const baseName = asset.path.split("/").pop() || "image";
+  return new File([blob], baseName, { type: asset.mime || blob.type });
+}
 
 export function EditableAvatar({
   src,
@@ -33,26 +45,32 @@ export function EditableAvatar({
   ariaLabel = "Change profile picture",
   cropAspect = 1
 }: EditableAvatarProps) {
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const { openUpload } = useUploader();
   const [pendingFile, setPendingFile] = React.useState<File | null>(null);
+  const [opening, setOpening] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  function openPicker() {
-    if (disabled || saving) return;
+  async function handleClick() {
+    if (disabled || saving || opening) return;
     setError(null);
-    inputRef.current?.click();
-  }
-
-  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const next = event.target.files?.[0] ?? null;
-    event.target.value = "";
-    if (!next) return;
-    if (!next.type.startsWith("image/")) {
-      setError("Please choose an image file.");
-      return;
+    setOpening(true);
+    try {
+      const asset = await openUpload({
+        kind: "account",
+        purpose: "profile-photo",
+        title: "Choose a profile picture",
+        description: "Select an existing image or upload a new one. You'll crop it next.",
+        constraints: { accept: "image/*", maxSizeMB: 10 }
+      });
+      if (!asset) return;
+      const file = await fetchAssetAsFile(asset);
+      setPendingFile(file);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load the selected image.");
+    } finally {
+      setOpening(false);
     }
-    setPendingFile(next);
   }
 
   async function handleSave(result: ImageCropResult) {
@@ -69,6 +87,7 @@ export function EditableAvatar({
   }
 
   const iconSize = Math.max(14, Math.round(sizePx * 0.32));
+  const isBusy = disabled || saving || opening;
 
   return (
     <>
@@ -76,11 +95,11 @@ export function EditableAvatar({
         aria-label={ariaLabel}
         className={cn(
           "group relative shrink-0 rounded-full p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas",
-          disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+          isBusy ? "cursor-not-allowed opacity-60" : "cursor-pointer",
           className
         )}
-        disabled={disabled || saving}
-        onClick={openPicker}
+        disabled={isBusy}
+        onClick={() => void handleClick()}
         style={{ width: sizePx, height: sizePx }}
         type="button"
       >
@@ -95,13 +114,6 @@ export function EditableAvatar({
           <Camera style={{ width: iconSize, height: iconSize }} />
         </span>
       </button>
-      <input
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileChange}
-        ref={inputRef}
-        type="file"
-      />
       <ImageCropDialog
         aspect={cropAspect}
         error={error}

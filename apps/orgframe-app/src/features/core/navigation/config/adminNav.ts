@@ -51,7 +51,7 @@ function isNavItemVisible(item: OrgAdminNavItem, visibility?: OrgAdminNavVisibil
 
   switch (item.key) {
     case "data":
-      return Boolean(capabilities?.manage.canRead);
+      return isOrgToolEnabled(toolAvailability, "data") && Boolean(capabilities?.dataCenter.canAccess);
     case "manage-general":
       return isOrgToolEnabled(toolAvailability, "info") && Boolean(capabilities?.manage.canRead);
     case "manage-domains":
@@ -110,7 +110,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
       key: "data",
       label: "Data",
       href: "/manage/data",
-      description: "Organization dashboards, data overview, and AI-assisted import tools.",
+      description: "Unified dashboards and tables across every tool.",
       icon: "bar-chart",
       showInHome: true
     },

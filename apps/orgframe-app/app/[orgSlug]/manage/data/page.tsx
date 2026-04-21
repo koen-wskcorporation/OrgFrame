@@ -1,46 +1,68 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { PageStack } from "@orgframe/ui/primitives/layout";
-import { loadWorkspacePageData } from "@/src/features/workspace/loadWorkspacePageData";
-import { OrgWorkspaceHub } from "@/src/features/workspace/components/OrgWorkspaceHub";
+import { Button } from "@orgframe/ui/primitives/button";
+import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
+import { listAccessibleDataSources } from "@/src/features/data/registry";
+import { SourcesRepeater, type SourceItem } from "@/src/features/data/components/SourcesRepeater";
+import { can } from "@/src/shared/permissions/can";
+import type { ResolvedDataSource } from "@/src/features/data/registry/types";
+
+function kindOrder(source: ResolvedDataSource): number {
+  if (source.kind === "collection") return source.pinned ? 0 : 1;
+  if (source.kind === "tool") return 2;
+  return 3;
+}
+
+function toSourceItem(orgSlug: string, src: ResolvedDataSource): SourceItem {
+  return {
+    fqKey: src.fqKey,
+    label: src.label,
+    description: src.description ?? null,
+    tags: src.tags,
+    dashboardsCount: src.dashboards.length,
+    tablesCount: src.tables.length,
+    kindOrder: kindOrder(src),
+    pinned: Boolean(src.pinned),
+    href: `/${orgSlug}/manage/data/${encodeURIComponent(src.fqKey)}`,
+    searchText: [src.label, src.description ?? "", ...src.tags.map((t) => t.label)].join(" "),
+  };
+}
 
 export const metadata: Metadata = {
-  title: "Data"
+  title: "Data",
 };
 
-export default async function OrgManageDataPage({
+export default async function DataPage({
   params,
-  searchParams
 }: {
   params: Promise<{ orgSlug: string }>;
-  searchParams: Promise<{ from?: string; tool?: string; view?: string }>;
 }) {
   const { orgSlug } = await params;
-  const query = await searchParams;
-  const data = await loadWorkspacePageData(orgSlug);
+  const orgContext = await requireOrgPermission(orgSlug, "data.read");
 
-  const view = query.view === "data" ? "data" : "dashboard";
+  const sources = await listAccessibleDataSources({
+    orgId: orgContext.orgId,
+    permissions: orgContext.membershipPermissions,
+  });
+
+  const canWrite = can(orgContext.membershipPermissions, "data.write");
 
   return (
-    <PageStack className="px-3 sm:px-4 md:px-6">
+    <PageStack>
       <PageHeader
-        className="py-3 md:py-4"
-        description="Organization data overview, dashboards, and AI-assisted import tools."
+        description="Unified dashboards, tables, and your own pinned collections."
         showBorder={false}
         title="Data"
+        actions={
+          canWrite ? (
+            <Button href={`/${orgSlug}/manage/data/new`} size="sm">
+              New collection
+            </Button>
+          ) : null
+        }
       />
-      <OrgWorkspaceHub
-        canAccessImports={data.canAccessImports}
-        importRuns={data.importData.runs}
-        initialConflicts={data.importData.activeRunConflicts}
-        initialOverview={data.overview}
-        orgName={data.orgContext.orgName}
-        orgSlug={data.orgContext.orgSlug}
-        page={view}
-        redirectedFromTool={query.from === "legacy-disabled" ? query.tool ?? null : null}
-        unresolvedConflicts={data.importData.unresolvedConflicts}
-        activeRunId={data.importData.activeRunId}
-      />
+      <SourcesRepeater items={sources.map((src) => toSourceItem(orgSlug, src))} />
     </PageStack>
   );
 }

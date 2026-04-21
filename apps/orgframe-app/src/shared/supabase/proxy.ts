@@ -9,10 +9,13 @@ type ProxyResponseOptions = {
 };
 
 export async function updateSupabaseSessionFromProxy(request: NextRequest, options: ProxyResponseOptions = {}) {
+  const forwardedHeaders = new Headers(request.headers);
+  forwardedHeaders.set("x-pathname", request.nextUrl.pathname);
+
   let response = options.rewriteUrl
-    ? NextResponse.rewrite(options.rewriteUrl)
+    ? NextResponse.rewrite(options.rewriteUrl, { request: { headers: forwardedHeaders } })
     : NextResponse.next({
-        request
+        request: { headers: forwardedHeaders }
       });
   const isHttps = isHttpsRequest(request);
   const requestHost = parseHostWithPort(request.headers.get("x-forwarded-host") || request.headers.get("host") || request.nextUrl.host).host;

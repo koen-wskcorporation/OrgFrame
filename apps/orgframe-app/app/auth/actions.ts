@@ -378,6 +378,77 @@ export async function signUpAction(formData: FormData) {
   await handlePostAuthRedirect({ formData, nextPath });
 }
 
+function normalizeReturnToOrigin(value: FormDataEntryValue | null): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return null;
+    }
+    return `${parsed.protocol}//${parsed.host}${parsed.pathname === "/" ? "" : parsed.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+function buildCanonicalOrigin(context: Awaited<ReturnType<typeof getRequestContext>>) {
+  const canonicalHost = normalizeHost(getCanonicalAuthHost());
+  if (!canonicalHost) {
+    return context.origin;
+  }
+
+  if (context.host === canonicalHost) {
+    return context.origin;
+  }
+
+  const existingPort = context.hostWithPort.includes(":") ? context.hostWithPort.split(":")[1] : "";
+  const hostWithPort = existingPort ? `${canonicalHost}:${existingPort}` : canonicalHost;
+  return `${context.protocol}://${hostWithPort}`;
+}
+
+type StartOAuthResult = { ok: true; url: string } | { ok: false; error: string };
+
+export async function startGoogleOAuthAction(params: { nextPath?: string; returnTo?: string | null }): Promise<StartOAuthResult> {
+  const nextPath = normalizeNextPath(params.nextPath ?? null);
+  const returnTo = normalizeReturnToOrigin(params.returnTo ?? null);
+
+  const context = await getRequestContext();
+  const canonicalOrigin = buildCanonicalOrigin(context);
+
+  const callbackUrl = new URL("/auth/callback", canonicalOrigin);
+  callbackUrl.searchParams.set("next", nextPath);
+  if (returnTo) {
+    callbackUrl.searchParams.set("return_to", returnTo);
+  }
+
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: callbackUrl.toString(),
+      skipBrowserRedirect: true,
+      queryParams: {
+        access_type: "offline",
+        prompt: "select_account"
+      }
+    }
+  });
+
+  if (error || !data?.url) {
+    return { ok: false, error: error?.message ?? "Unable to start Google sign-in." };
+  }
+
+  return { ok: true, url: data.url };
+}
+
 export async function signOutAction(_formData: FormData) {
   const supabase = await createSupabaseServer();
   const {

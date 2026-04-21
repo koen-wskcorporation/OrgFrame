@@ -27,6 +27,7 @@ export const orgToolKeys = [
   "forms",
   "inbox",
   "imports",
+  "data",
 ] as const;
 
 export type OrgToolKey = (typeof orgToolKeys)[number];
@@ -128,6 +129,13 @@ export const ORG_TOOLS: Record<OrgToolKey, OrgToolMetadata> = {
     icon: "file-text",
     enabledByDefault: true,
   },
+  "data": {
+    key: "data",
+    label: "Data",
+    description: "Unified dashboards and tables pulling from every tool.",
+    icon: "bar-chart",
+    enabledByDefault: true,
+  },
 };
 
 // ============================================================================
@@ -149,6 +157,7 @@ export const DEFAULT_TOOL_AVAILABILITY: OrgToolAvailability = {
   forms: true,
   inbox: true,
   imports: true,
+  "data": true,
 };
 
 export function isOrgToolEnabled(toolAvailability: OrgToolAvailability, tool: OrgToolKey): boolean {
@@ -172,6 +181,7 @@ export const TOOL_PERMISSION_MAP: Record<OrgToolKey, Permission[]> = {
   calendar: ["calendar.read", "calendar.write", "events.read", "events.write"],
   facilities: ["facilities.read", "facilities.write"],
   inbox: ["communications.read", "communications.write"],
+  "data": ["data.read", "data.write"],
   // These tools don't have specific permission mappings - access is controlled by tool availability alone
   info: [],
   domains: [],
@@ -210,6 +220,7 @@ export type OrgCapabilities = {
   facilities?: { canAccess?: boolean };
   forms?: { canAccess?: boolean };
   communications?: { canAccess?: boolean };
+  dataCenter?: { canAccess?: boolean; canWrite?: boolean };
 };
 
 export function isToolVisible(
@@ -246,6 +257,8 @@ export function isToolVisible(
       return Boolean(capabilities?.communications?.canAccess);
     case "imports":
       return Boolean(capabilities?.manage?.canRead);
+    case "data":
+      return Boolean(capabilities?.dataCenter?.canAccess);
     default:
       return true;
   }
@@ -303,6 +316,10 @@ export function normalizeToolKey(value: string): OrgToolKey | null {
     case "imports":
     case "smart-import":
       return "imports";
+    case "data":
+    case "datacenter":
+    case "data":
+      return "data";
     default:
       return null;
   }

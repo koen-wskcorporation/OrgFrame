@@ -22,13 +22,15 @@ export type Permission =
   | "communications.read"
   | "communications.write"
   | "people.read"
-  | "people.write";
+  | "people.write"
+  | "data.read"
+  | "data.write";
 
 export type PermissionDefinition = {
   permission: Permission;
   label: string;
   description: string;
-  group: "Organization" | "Site Builder" | "Programs" | "Forms" | "Calendar" | "Events" | "Facilities" | "Communications" | "People";
+  group: "Organization" | "Site Builder" | "Programs" | "Forms" | "Calendar" | "Events" | "Facilities" | "Communications" | "People" | "Data";
 };
 
 export type CustomRolePermissionSource = {
@@ -56,7 +58,9 @@ export const allPermissions: Permission[] = [
   "communications.read",
   "communications.write",
   "people.read",
-  "people.write"
+  "people.write",
+  "data.read",
+  "data.write"
 ];
 
 const permissionSet = new Set(allPermissions);
@@ -181,6 +185,18 @@ export const permissionDefinitions: PermissionDefinition[] = [
     label: "People write",
     description: "Create and manage linked profiles, relationship links, invites, and profile status.",
     group: "People"
+  },
+  {
+    permission: "data.read",
+    label: "Data read",
+    description: "View unified dashboards and tables across all tools.",
+    group: "Data"
+  },
+  {
+    permission: "data.write",
+    label: "Data write",
+    description: "Customize Data dashboards and saved layouts.",
+    group: "Data"
   }
 ];
 
