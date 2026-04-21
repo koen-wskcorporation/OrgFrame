@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { getSupabasePublicConfig } from "@/src/shared/supabase/config";
+import { getOptionalSupabasePublicConfig } from "@/src/shared/supabase/config";
 import { isHttpsRequest, normalizeSupabaseCookieOptions, type SupabaseCookieToSet } from "@/src/shared/supabase/cookies";
 
 export async function updateSupabaseSessionFromProxy(request: NextRequest) {
@@ -8,7 +8,11 @@ export async function updateSupabaseSessionFromProxy(request: NextRequest) {
     request
   });
   const isHttps = isHttpsRequest(request);
-  const { supabaseUrl, supabasePublishableKey } = getSupabasePublicConfig();
+  const config = getOptionalSupabasePublicConfig();
+  if (!config) {
+    return response;
+  }
+  const { supabaseUrl, supabasePublishableKey } = config;
 
   const supabase = createServerClient(supabaseUrl, supabasePublishableKey, {
     cookieOptions: {

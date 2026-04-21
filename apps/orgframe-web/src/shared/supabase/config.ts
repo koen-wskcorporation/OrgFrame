@@ -10,7 +10,7 @@ function readEnv(name: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function getSupabasePublicConfig(): SupabasePublicConfig {
+export function getOptionalSupabasePublicConfig(): SupabasePublicConfig | null {
   if (cachedPublicConfig) {
     return cachedPublicConfig;
   }
@@ -18,12 +18,8 @@ export function getSupabasePublicConfig(): SupabasePublicConfig {
   const supabaseUrl = readEnv("NEXT_PUBLIC_SUPABASE_URL");
   const supabasePublishableKey = readEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY");
 
-  if (!supabaseUrl) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL.");
-  }
-
-  if (!supabasePublishableKey) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY.");
+  if (!supabaseUrl || !supabasePublishableKey) {
+    return null;
   }
 
   cachedPublicConfig = {
@@ -32,4 +28,16 @@ export function getSupabasePublicConfig(): SupabasePublicConfig {
   };
 
   return cachedPublicConfig;
+}
+
+export function getSupabasePublicConfig(): SupabasePublicConfig {
+  const config = getOptionalSupabasePublicConfig();
+  if (!config) {
+    const supabaseUrl = readEnv("NEXT_PUBLIC_SUPABASE_URL");
+    if (!supabaseUrl) {
+      throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL.");
+    }
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY.");
+  }
+  return config;
 }
