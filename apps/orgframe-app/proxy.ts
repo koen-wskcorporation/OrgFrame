@@ -201,6 +201,17 @@ export async function proxy(request: NextRequest) {
     }
   }
   const orgSubdomain = resolveOrgSubdomain(host, tenantBaseHosts);
+
+  if (!orgSubdomain && (!canonicalAuthHost || host !== canonicalAuthHost)) {
+    for (const baseHost of tenantBaseHosts) {
+      if (host !== baseHost && host.endsWith(`.${baseHost}`)) {
+        const protocol = getRequestProtocol(request);
+        const redirectUrl = buildAbsoluteRequestUrl(protocol, baseHost, parsedHost.port, request.nextUrl.pathname, request.nextUrl.search);
+        return redirectAbsolute(redirectUrl, 307);
+      }
+    }
+  }
+
   const manageRouteDecision = getManageRouteDecision(request.nextUrl.pathname);
   if (manageRouteDecision.redirectPathname) {
     const redirectUrl = request.nextUrl.clone();
@@ -346,7 +357,7 @@ function getRequestProtocol(request: NextRequest) {
   return request.nextUrl.protocol === "https:" ? "https" : "http";
 }
 
-const PLATFORM_ONLY_ROOT_SEGMENTS = new Set(["account", "brand", "create", "forbidden", "x"]);
+const PLATFORM_ONLY_ROOT_SEGMENTS = new Set(["account", "brand", "create", "forbidden", "inbox", "profiles", "settings", "x"]);
 
 export function getPlatformRedirectHostForSubdomain(pathname: string, baseHost: string) {
   const trimmedPath = pathname.replace(/^\/+/, "");

@@ -121,11 +121,17 @@ function Hero({ primaryLabel, primaryHref }: { primaryLabel: string; primaryHref
       <div className="relative container-editorial pt-20 pb-24 md:pt-32 md:pb-36 lg:pt-44 lg:pb-44">
         <div className="grid gap-16 lg:grid-cols-[1.2fr_1fr] lg:items-center">
           <div className="flex max-w-3xl flex-col gap-8">
-            <span className="eyebrow eyebrow-accent">Sports operations, reimagined</span>
-            <h1 className="display text-balance">Run your sports organization like it&rsquo;s one thing.</h1>
+            <span className="eyebrow eyebrow-accent">OrgFrame · Sports operations, reimagined</span>
+            <h1 className="display text-balance">OrgFrame — run your sports organization like it&rsquo;s one thing.</h1>
             <p className="lede max-w-2xl">
-              OrgFrame replaces the registration tool, the scheduling tool, the payment tool, the communications tool, and the shared drive
-              — with one workspace that understands how your organization actually operates.
+              OrgFrame is an operations platform for clubs, leagues, associations, and facilities. It replaces the registration tool, the
+              scheduling tool, the payment tool, the communications tool, and the shared drive — with one workspace that understands how your
+              organization actually operates.
+            </p>
+            <p className="max-w-2xl text-base leading-relaxed text-[hsl(var(--muted-ink))]">
+              Built for the people who run sports organizations: directors, registrars, treasurers, coaches, and volunteers. OrgFrame keeps
+              your people, programs, calendars, registrations, payments, and communications connected to a single roster — so work stops
+              falling between tools.
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <Link
@@ -143,7 +149,15 @@ function Hero({ primaryLabel, primaryHref }: { primaryLabel: string; primaryHref
               </Link>
             </div>
             <p className="pt-2 text-sm text-[hsl(var(--muted-ink))]">
-              Private beta. Access is limited to partner organizations through early 2026.
+              Private beta. Access is limited to partner organizations through early 2026. Read our{" "}
+              <Link className="underline underline-offset-2 hover:text-[hsl(var(--ink))]" href="/legal/privacy">
+                privacy policy
+              </Link>{" "}
+              and{" "}
+              <Link className="underline underline-offset-2 hover:text-[hsl(var(--ink))]" href="/legal/terms">
+                terms of service
+              </Link>
+              .
             </p>
           </div>
 

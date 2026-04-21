@@ -7,7 +7,7 @@ import { ConfirmDialogProvider } from "@orgframe/ui/primitives/confirm-dialog";
 import { ThemeModeProvider } from "@orgframe/ui/primitives/theme-mode";
 import { ToastProvider } from "@orgframe/ui/primitives/toast";
 import { shouldShowBranchHeaders } from "@/src/shared/env/branchVisibility";
-import { getCanonicalAuthHost, getTenantBaseHosts, normalizeHost, resolveOrgSubdomain } from "@/src/shared/domains/customDomains";
+import { getTenantBaseHosts, resolveOrgSubdomain } from "@/src/shared/domains/customDomains";
 import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
 import { listUserOrgs } from "@/src/shared/org/listUserOrgs";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
@@ -66,12 +66,10 @@ async function getHeaderRoutingContext() {
   };
 }
 
-async function isCanonicalAuthRequest() {
+async function isAuthRouteRequest() {
   const headerStore = await headers();
-  const hostHeader = headerStore.get("host") || headerStore.get("x-forwarded-host");
-  const parsedHost = parseHostWithPort(hostHeader);
-  const canonicalHost = normalizeHost(getCanonicalAuthHost());
-  return Boolean(canonicalHost && parsedHost.host && parsedHost.host === canonicalHost);
+  const pathname = headerStore.get("x-pathname") ?? "";
+  return pathname === "/auth" || pathname.startsWith("/auth/");
 }
 
 export default async function RootLayout({
@@ -79,8 +77,8 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const onCanonicalAuthHost = await isCanonicalAuthRequest();
-  const showHeaders = shouldShowBranchHeaders() && !onCanonicalAuthHost;
+  const onAuthRoute = await isAuthRouteRequest();
+  const showHeaders = shouldShowBranchHeaders() && !onAuthRoute;
   const headerRouting = showHeaders ? await getHeaderRoutingContext() : { currentOrgSlug: null, homeHref: "/", tenantBaseOrigin: null };
   const memberships = showHeaders ? await listUserOrgs().catch(() => []) : [];
   const sessionUser = showHeaders ? await getSessionUser().catch(() => null) : null;

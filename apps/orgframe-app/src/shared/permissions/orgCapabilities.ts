@@ -46,6 +46,11 @@ export type OrgCapabilities = {
     canWrite: boolean;
     canAccess: boolean;
   };
+  dataCenter: {
+    canRead: boolean;
+    canWrite: boolean;
+    canAccess: boolean;
+  };
 };
 
 function resolveReadWriteAccess(permissions: Permission[], readPermission: Permission, writePermission: Permission) {
@@ -68,6 +73,7 @@ export function getOrgCapabilities(permissions: Permission[]): OrgCapabilities {
   const facilities = resolveReadWriteAccess(permissions, "facilities.read", "facilities.write");
   const communications = resolveReadWriteAccess(permissions, "communications.read", "communications.write");
   const people = resolveReadWriteAccess(permissions, "people.read", "people.write");
+  const dataCenter = resolveReadWriteAccess(permissions, "data.read", "data.write");
   const canManage = can(permissions, "org.manage.read");
 
   return {
@@ -91,6 +97,7 @@ export function getOrgCapabilities(permissions: Permission[]): OrgCapabilities {
     events,
     facilities,
     communications,
-    people
+    people,
+    dataCenter
   };
 }

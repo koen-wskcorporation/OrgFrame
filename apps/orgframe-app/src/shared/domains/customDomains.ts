@@ -36,6 +36,11 @@ export function getCanonicalAuthHost() {
     }
   }
 
+  const platformHost = getPlatformHost();
+  if (platformHost) {
+    return `auth.${platformHost}`;
+  }
+
   return "";
 }
 
@@ -104,8 +109,11 @@ export function getPlatformHosts() {
 
 const RESERVED_SUBDOMAINS = new Set(["www", "admin", "api", "auth", "docs", "status", "staging"]);
 
+const NON_ORG_SUBDOMAIN_LABELS = new Set(["account", "create", "debug", "forbidden", "inbox", "not-found", "profiles", "settings", "_next", "favicon.ico", "robots.txt", "sitemap.xml"]);
+
 export function isReservedSubdomain(value: string) {
-  return RESERVED_SUBDOMAINS.has(value.toLowerCase());
+  const normalized = value.toLowerCase();
+  return RESERVED_SUBDOMAINS.has(normalized) || NON_ORG_SUBDOMAIN_LABELS.has(normalized);
 }
 
 export function extractOrgSlugFromSubdomain(host: string, platformHost: string) {
