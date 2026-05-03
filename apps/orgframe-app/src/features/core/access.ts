@@ -1,6 +1,6 @@
 export type OrgRole = string;
 
-export type DefaultOrgRole = "admin" | "member" | "participant";
+export type DefaultOrgRole = "admin" | "member";
 
 export type Permission =
   | "org.dashboard.read"
@@ -24,13 +24,14 @@ export type Permission =
   | "people.read"
   | "people.write"
   | "data.read"
-  | "data.write";
+  | "data.write"
+  | "audit.read";
 
 export type PermissionDefinition = {
   permission: Permission;
   label: string;
   description: string;
-  group: "Organization" | "Site Builder" | "Programs" | "Forms" | "Calendar" | "Events" | "Facilities" | "Communications" | "People" | "Data";
+  group: "Organization" | "Site Builder" | "Programs" | "Forms" | "Calendar" | "Events" | "Facilities" | "Communications" | "People" | "Data" | "Audit";
 };
 
 export type CustomRolePermissionSource = {
@@ -60,7 +61,8 @@ export const allPermissions: Permission[] = [
   "people.read",
   "people.write",
   "data.read",
-  "data.write"
+  "data.write",
+  "audit.read"
 ];
 
 const permissionSet = new Set(allPermissions);
@@ -197,6 +199,12 @@ export const permissionDefinitions: PermissionDefinition[] = [
     label: "Data write",
     description: "Customize Data dashboards and saved layouts.",
     group: "Data"
+  },
+  {
+    permission: "audit.read",
+    label: "Audit log access",
+    description: "View the org audit log of every action taken across the app, including AI-driven actions.",
+    group: "Audit"
   }
 ];
 
@@ -212,18 +220,17 @@ const defaultRolePermissions: Record<DefaultOrgRole, Permission[]> = {
     "calendar.read",
     "facilities.read",
     "communications.read",
-    "people.read"
-  ],
-  participant: ["org.dashboard.read", "people.read"]
+    "people.read",
+    "data.read"
+  ]
 };
 
 const defaultRoleLabels: Record<DefaultOrgRole, string> = {
   admin: "Admin",
-  member: "Member",
-  participant: "Participant"
+  member: "Member"
 };
 
-export const reservedOrgRoleKeys = new Set<DefaultOrgRole>(["admin", "member", "participant"]);
+export const reservedOrgRoleKeys = new Set<string>(["admin", "member", "manager", "owner", "user", "participant"]);
 const adminLikeRoles = new Set(["owner", "admin", "manager"]);
 
 const roleKeyPattern = /^[a-z][a-z0-9-]{1,31}$/;
@@ -233,11 +240,11 @@ export function isPermission(value: string): value is Permission {
 }
 
 export function isDefaultOrgRole(role: string): role is DefaultOrgRole {
-  return role === "admin" || role === "member" || role === "participant";
+  return role === "admin" || role === "member";
 }
 
 export function isReservedOrgRoleKey(roleKey: string) {
-  return reservedOrgRoleKeys.has(roleKey as DefaultOrgRole);
+  return reservedOrgRoleKeys.has(roleKey);
 }
 
 export function isValidRoleKey(roleKey: string) {
@@ -254,7 +261,8 @@ export function normalizeRoleKey(value: string) {
 }
 
 export function getDefaultRolePermissions(role: string): Permission[] | null {
-  const normalizedRole = role === "user" ? "member" : role;
+  // "user" and "participant" are legacy aliases that collapse to "member".
+  const normalizedRole = role === "user" || role === "participant" ? "member" : role;
   if (!isDefaultOrgRole(normalizedRole)) {
     return null;
   }
@@ -271,12 +279,8 @@ export function getRoleLabel(roleKey: string) {
     return "Admin";
   }
 
-  if (roleKey === "member" || roleKey === "user") {
+  if (roleKey === "member" || roleKey === "user" || roleKey === "participant") {
     return "Member";
-  }
-
-  if (roleKey === "participant") {
-    return "Participant";
   }
 
   if (isDefaultOrgRole(roleKey)) {

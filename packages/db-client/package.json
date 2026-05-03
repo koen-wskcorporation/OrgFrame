@@ -1,0 +1,19 @@
+{
+  "name": "@orgframe/db-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./action": "./src/action.ts",
+    "./permissions": "./src/permissions.ts",
+    "./errors": "./src/errors.ts",
+    "./audit": "./src/audit.ts",
+    "./rate-limit": "./src/rate-limit.ts"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  }
+}

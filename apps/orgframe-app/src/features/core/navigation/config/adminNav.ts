@@ -76,6 +76,8 @@ function isNavItemVisible(item: OrgAdminNavItem, visibility?: OrgAdminNavVisibil
       return isOrgToolEnabled(toolAvailability, "billing") && Boolean(capabilities?.manage.canRead);
     case "manage-imports":
       return isOrgToolEnabled(toolAvailability, "imports") && Boolean(capabilities?.manage.canRead);
+    case "manage-audit":
+      return Boolean(capabilities?.audit.canRead);
     case "programs":
       return isOrgToolEnabled(toolAvailability, "programs") && Boolean(capabilities?.programs.canAccess);
     case "calendar":
@@ -87,7 +89,7 @@ function isNavItemVisible(item: OrgAdminNavItem, visibility?: OrgAdminNavVisibil
     case "inbox":
       return isOrgToolEnabled(toolAvailability, "inbox") && Boolean(capabilities?.communications.canAccess);
     case "manage":
-      return Boolean(capabilities?.manage.canRead);
+      return Boolean(capabilities?.manage.canRead || capabilities?.audit.canRead);
     case "dashboard":
       return Boolean(capabilities?.manage.canRead);
     default:
@@ -146,6 +148,15 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
       label: "Smart Import",
       href: "/manage/imports",
       description: "Run staged imports for people, programs, and commerce data.",
+      icon: "file-text",
+      parentKey: "manage",
+      showInHome: false
+    },
+    {
+      key: "manage-audit",
+      label: "Audit log",
+      href: "/manage/audit",
+      description: "Every action across the org, including AI on behalf of users.",
       icon: "file-text",
       parentKey: "manage",
       showInHome: false

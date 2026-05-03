@@ -1,0 +1,418 @@
+
+> orgframe-app@0.1.0 test
+> node --import tsx --experimental-test-module-mocks --test "tests/**/*.test.ts"
+
+(node:84826) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ communications identity resolution service
+  ✔ exact identity match resolves conversation automatically (2.462458ms)
+  ✔ exact normalized email auto-links only when top candidate is unique (9.299291ms)
+  ✔ weak display-name-only match does not auto-link (0.536709ms)
+  ✔ unresolved inbound retains unlinked identity and pending suggestions (0.265833ms)
+  ✔ manual link persists identity mapping and future inbound auto-resolves (0.559875ms)
+  ✔ create-contact-from-conversation creates contact, links identity, and resolves conversation (0.385666ms)
+  ✔ merge reassigns identities, conversations, and messages and soft-retires source (0.328166ms)
+  ✔ org isolation prevents cross-org links (0.387ms)
+  ✔ merge handles duplicate channel identity collisions safely (0.144459ms)
+  ✖ writes audit and resolution history for admin actions (0.290083ms)
+✖ communications identity resolution service (54917.215333ms)
+▶ legacy path redirect routing
+  ✔ redirects apex production path tenant URLs to production subdomains (2.066625ms)
+  ✔ redirects apex staging path tenant URLs to staging subdomains (0.372666ms)
+  ✔ redirects local test-domain path tenant URLs to subdomains (0.190208ms)
+  ✔ does not redirect reserved and non-org paths (0.246417ms)
+  ✖ preserves query strings during legacy redirects (7.207959ms)
+  ✔ removes visible org slug prefix on tenant subdomains (0.861917ms)
+  ✖ sends platform-only routes on org subdomains to the app host (0.959834ms)
+  ✔ rewrites local test-domain org subdomains to org path-style routes without redirect loops (6.285667ms)
+  ✔ prefers canonical non-local host headers over forwarded host values (0.518375ms)
+  ✔ prefers org-subdomain host candidates for routing in local dev (0.377875ms)
+  ✔ sends account routes on org subdomains to the app host (0.628208ms)
+  ✔ keeps api routes on org subdomains same-origin (1.037625ms)
+  ✔ keeps api fetch requests on org subdomains same-origin to avoid cross-origin fetch failures (1.346125ms)
+  ✖ sends platform-only routes on custom domains to the app host (0.585458ms)
+  ✔ sends authenticated org routes on custom domains to canonical org subdomains (0.090958ms)
+  ✔ keeps nested paths on custom domains within org scope (0.060375ms)
+  ✖ always sends auth routes from unknown hosts to the root app host (0.575417ms)
+✖ legacy path redirect routing (25.837417ms)
+(node:84828) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ buildAIContext
+  ✖ resolves valid user + org via subdomain
+  ✖ resolves valid user + org via path fallback
+  ✖ throws explicit error when org is missing
+  ✖ throws explicit error when membership is missing
+  ✖ resolves account context without org on account routes
+✖ buildAIContext (75.964167ms)
+▶ withAIContext
+  ✖ passes built context to the handler
+  ✖ rethrows typed errors for missing user, org, and membership
+  ✖ normalizes unknown internal errors
+✖ withAIContext (0.273375ms)
+▶ deriveCapabilities
+  ✔ maps alias permissions correctly (0.943708ms)
+  ✔ maps dot permissions correctly (0.1285ms)
+  ✔ throws explicit invalid permissions error for unknown values (0.273209ms)
+✔ deriveCapabilities (2.308ms)
+▶ resolveScope
+  ✔ parses /calendar (1.540625ms)
+  ✔ parses /programs/:id (0.789542ms)
+  ✔ parses /teams/:id (0.158083ms)
+  ✔ parses /manage/facilities/:id (0.190834ms)
+  ✔ parses /profiles (0.140958ms)
+  ✖ parses /workspace (1.325042ms)
+  ✔ returns unknown for unsupported routes (0.084917ms)
+✖ resolveScope (5.850042ms)
+▶ command surface state machine
+  ✔ follows idle -> typing -> streaming -> awaiting_followup (0.639792ms)
+  ✔ stays streaming while input changes mid-stream (0.103833ms)
+  ✔ supports sidebar handoff and close (0.058625ms)
+✔ command surface state machine (1.425625ms)
+▶ command surface helpers
+  ✔ trims conversation to max turn count (0.638792ms)
+  ✔ maps action types to button variants (0.085208ms)
+✔ command surface helpers (0.80925ms)
+▶ deriveAssistantMeta
+  ✔ builds player and account cards with actions (1.896ms)
+  ✔ builds schedule and event actions for calendar prompts (0.299ms)
+  ✔ returns fallback action when no card context matches (0.088042ms)
+✔ deriveAssistantMeta (2.765875ms)
+▶ billing connect status mapping
+  ✔ marks account ready when charges/payouts are enabled and tax is acknowledged (1.230833ms)
+  ✔ marks account restricted when tax is not acknowledged (0.075166ms)
+  ✔ computes payouts ready only for ready connected account and acknowledged tax (0.077458ms)
+✔ billing connect status mapping (1.812042ms)
+✔ resolveDefaultLens picks context-aware defaults (0.897833ms)
+✔ resolveAvailableScopeTypes reprioritizes by page context (0.835208ms)
+✔ resolveLensSourceIds for team this_page includes team plus parent scopes (0.170292ms)
+✔ filterCalendarReadModelByLens respects purpose and audience (0.221125ms)
+✔ explainOccurrenceVisibility includes source and reason codes (0.163583ms)
+▶ facebook oauth state
+  ✔ signs and verifies oauth state (0.995125ms)
+  ✔ rejects tampered state (0.532209ms)
+✔ facebook oauth state (2.375292ms)
+▶ facebook oauth dialog url
+  ✔ builds dialog url with required fields (0.354834ms)
+✔ facebook oauth dialog url (0.495125ms)
+▶ facebook webhook signature
+  ✔ accepts a valid x-hub-signature-256 (0.984458ms)
+  ✔ rejects an invalid signature (0.232458ms)
+✔ facebook webhook signature (2.102875ms)
+▶ facebook messenger payload parsing
+  ✔ parses inbound and echo messages with deterministic thread keys (1.651208ms)
+  ✔ returns no records for non-page payloads (0.374708ms)
+✔ facebook messenger payload parsing (2.167167ms)
+▶ resolveOrgToolAvailability (AI-first)
+  ✖ disables sports-ops tools when ORGFRAME_AI_FIRST_MODE=true (1.274208ms)
+✖ resolveOrgToolAvailability (AI-first) (1.716041ms)
+▶ tenant base host parsing
+  ✔ resolves production and staging org subdomains (1.4885ms)
+  ✔ does not resolve reserved subdomains or apex hosts as orgs (0.166458ms)
+  ✔ does not treat custom domains as platform subdomains (0.077125ms)
+✔ tenant base host parsing (2.53425ms)
+▶ parseHostWithPort
+  ✔ keeps localhost dev port from host header (0.717042ms)
+  ✔ uses the first forwarded host entry (0.105583ms)
+  ✔ returns empty values for missing headers (0.056542ms)
+✔ parseHostWithPort (1.34925ms)
+▶ facility map geometry normalization
+  ✔ snaps rectangle geometry to grid and canonical radius (0.5705ms)
+  ✔ normalizes polygon points and derives valid bounds (0.241458ms)
+✔ facility map geometry normalization (1.798208ms)
+▶ facility map layout normalization
+  ✔ pushes overlapping nodes apart deterministically (10.00025ms)
+  ✔ keeps deterministic order by z-index then id (0.543917ms)
+✔ facility map layout normalization (11.03125ms)
+▶ facility map persistence normalization
+  ✔ enforces snapped geometry and canonical radius before persistence (0.6745ms)
+  ✔ normalizes invalid polygon payloads into valid persisted geometry (0.270792ms)
+✔ facility map persistence normalization (1.442125ms)
+(node:84888) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ facility structure route data
+  ✔ loads seeded map nodes for structure page (0.773292ms)
+✔ facility structure route data (35522.700208ms)
+▶ smart import auto-apply threshold
+  ✔ uses 0.85 as the minimum auto-apply confidence (0.370792ms)
+✔ smart import auto-apply threshold (0.818875ms)
+▶ imports profile normalization
+  ✔ maps people roster header aliases to canonical fields (0.556917ms)
+  ✔ classifies near-match program candidates as conflict (0.123875ms)
+✔ imports profile normalization (1.116125ms)
+▶ sportsengine oauth state
+  ✔ signs and verifies oauth state (0.566833ms)
+  ✔ rejects tampered state (0.162792ms)
+✔ sportsengine oauth state (1.157958ms)
+▶ sportsengine oauth dialog url
+  ✔ builds dialog url with required fields (0.110584ms)
+✔ sportsengine oauth dialog url (0.1595ms)
+▶ sportsengine dataset normalization
+  ✔ normalizes roster payload to people_roster schema (10.876916ms)
+✔ sportsengine dataset normalization (10.948375ms)
+▶ Account menu org switch hrefs
+  ✔ uses subdomain hrefs on local tenant base hosts (0.3285ms)
+✔ Account menu org switch hrefs (0.725917ms)
+▶ org share dynamic groups
+  ✔ builds expected groups and dedupes repeated users (0.81225ms)
+  ✔ builds people system groups for all members and hierarchy groups (10.165167ms)
+✔ org share dynamic groups (11.470333ms)
+▶ universal share suggestions
+  ✔ filters by allowed type and excludes selected targets (0.5335ms)
+  ✔ matches search text against label and subtitle (0.713291ms)
+✔ universal share suggestions (2.101792ms)
+▶ normalizeSupabaseCookieOptions
+  ✔ shares auth cookies across production org subdomains by default (0.5685ms)
+  ✖ shares auth cookies across staging org subdomains by default (1.092958ms)
+  ✔ shares auth cookies across local test-domain org subdomains (0.086292ms)
+  ✔ does not force a shared domain for unrelated hosts (0.102792ms)
+  ✖ respects explicit AUTH_COOKIE_DOMAIN override (0.215167ms)
+✖ normalizeSupabaseCookieOptions (2.544208ms)
+ℹ tests 99
+ℹ suites 30
+ℹ pass 82
+ℹ fail 9
+ℹ cancelled 8
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 111186.677333
+
+✖ failing tests:
+
+test at tests/integration/communications/service.test.ts:2:26622
+✖ writes audit and resolution history for admin actions (0.290083ms)
+  Error: SUGGESTIONS_DISABLED
+      at Object.rejectSuggestion (/Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app/src/features/communications/service.ts:560:9)
+      at TestContext.<anonymous> (/Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app/tests/integration/communications/service.test.ts:1114:19)
+      at async Test.run (node:internal/test_runner/test:1069:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:752:7)
+
+test at tests/integration/domains/legacyRedirect.test.ts:2:3650
+✖ preserves query strings during legacy redirects (7.207959ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  307 !== 301
+  
+      at TestContext.<anonymous> (/Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app/tests/integration/domains/legacyRedirect.test.ts:86:12)
+      at async Test.run (node:internal/test_runner/test:1069:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:752:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 307,
+    expected: 301,
+    operator: 'strictEqual'
+  }
+
+test at tests/integration/domains/legacyRedirect.test.ts:2:4597
+✖ sends platform-only routes on org subdomains to the app host (0.959834ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'https://auth.orgframe.app/auth/login?next=%2Fmanage&return_to=https%3A%2F%2Fbaycitysoccer.orgframe.app%2Fauth%2Flogin'
+  - 'https://orgframe.app/auth/login?next=%2Fmanage'
+  
+      at TestContext.<anonymous> (/Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app/tests/integration/domains/legacyRedirect.test.ts:115:12)
+      at async Test.run (node:internal/test_runner/test:1069:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:752:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'https://auth.orgframe.app/auth/login?next=%2Fmanage&return_to=https%3A%2F%2Fbaycitysoccer.orgframe.app%2Fauth%2Flogin',
+    expected: 'https://orgframe.app/auth/login?next=%2Fmanage',
+    operator: 'strictEqual'
+  }
+
+test at tests/integration/domains/legacyRedirect.test.ts:2:7787
+✖ sends platform-only routes on custom domains to the app host (0.585458ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + null
+  - 'orgframe.app'
+  
+      at TestContext.<anonymous> (/Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app/tests/integration/domains/legacyRedirect.test.ts:204:12)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1062:25)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:752:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: 'orgframe.app',
+    operator: 'strictEqual'
+  }
+
+test at tests/integration/domains/legacyRedirect.test.ts:2:8612
+✖ always sends auth routes from unknown hosts to the root app host (0.575417ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'https://auth.orgframe.app/auth/login?return_to=https%3A%2F%2Funknown.example.com%2Fauth%2Flogin'
+  - 'https://orgframe.app/auth/login'
+  
+      at TestContext.<anonymous> (/Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app/tests/integration/domains/legacyRedirect.test.ts:228:12)
+      at async Test.run (node:internal/test_runner/test:1069:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:752:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'https://auth.orgframe.app/auth/login?return_to=https%3A%2F%2Funknown.example.com%2Fauth%2Flogin',
+    expected: 'https://orgframe.app/auth/login',
+    operator: 'strictEqual'
+  }
+
+test at tests/unit/ai-context/buildAIContext.test.ts:2:3524
+✖ resolves valid user + org via subdomain
+  'test did not finish before its parent and was cancelled'
+
+test at tests/unit/ai-context/buildAIContext.test.ts:2:4674
+✖ resolves valid user + org via path fallback
+  'test did not finish before its parent and was cancelled'
+
+test at tests/unit/ai-context/buildAIContext.test.ts:2:5459
+✖ throws explicit error when org is missing
+  'test did not finish before its parent and was cancelled'
+
+test at tests/unit/ai-context/buildAIContext.test.ts:2:5718
+✖ throws explicit error when membership is missing
+  'test did not finish before its parent and was cancelled'
+
+test at tests/unit/ai-context/buildAIContext.test.ts:2:6057
+✖ resolves account context without org on account routes
+  'test did not finish before its parent and was cancelled'
+
+test at tests/unit/ai-context/buildAIContext.test.ts:2:3478
+✖ buildAIContext (75.964167ms)
+  Error: This module cannot be imported from a Client Component module. It should only be used from a Server Component.
+      at Object.<anonymous> (/Users/koenstewart/Documents/Projects/OrgFrame/node_modules/server-only/index.js:1:7)
+      at Module._compile (node:internal/modules/cjs/loader:1734:14)
+      at Object.transformer (/Users/koenstewart/Documents/Projects/OrgFrame/node_modules/tsx/dist/register-D46fvsV_.cjs:3:1104)
+      at Module.load (node:internal/modules/cjs/loader:1469:32)
+      at node:internal/modules/cjs/loader:1286:12
+      at Object.cjsMockModuleLoad (node:internal/test_runner/mock/mock:707:12)
+      at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+      at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+      at Module.require (node:internal/modules/cjs/loader:1491:12)
+      at require (node:internal/modules/helpers:135:16)
+
+test at tests/unit/ai-context/buildAIContext.test.ts:2:6726
+✖ passes built context to the handler
+  'test did not finish before its parent and was cancelled'
+
+test at tests/unit/ai-context/buildAIContext.test.ts:2:7265
+✖ rethrows typed errors for missing user, org, and membership
+  'test did not finish before its parent and was cancelled'
+
+test at tests/unit/ai-context/buildAIContext.test.ts:2:8059
+✖ normalizes unknown internal errors
+  'test did not finish before its parent and was cancelled'
+
+test at tests/unit/ai-context/buildAIContext.test.ts:2:6681
+✖ withAIContext (0.273375ms)
+  Error: This module cannot be imported from a Client Component module. It should only be used from a Server Component.
+      at Object.<anonymous> (/Users/koenstewart/Documents/Projects/OrgFrame/node_modules/server-only/index.js:1:7)
+      at Module._compile (node:internal/modules/cjs/loader:1734:14)
+      at Object.transformer (/Users/koenstewart/Documents/Projects/OrgFrame/node_modules/tsx/dist/register-D46fvsV_.cjs:3:1104)
+      at Module.load (node:internal/modules/cjs/loader:1469:32)
+      at node:internal/modules/cjs/loader:1286:12
+      at Object.cjsMockModuleLoad (node:internal/test_runner/mock/mock:707:12)
+      at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+      at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+      at Module.require (node:internal/modules/cjs/loader:1491:12)
+      at require (node:internal/modules/helpers:135:16)
+
+test at tests/unit/ai-context/resolveScope.test.ts:2:2003
+✖ parses /workspace (1.325042ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    {
+  +   currentModule: 'unknown'
+  -   currentModule: 'workspace'
+    }
+  
+      at TestContext.<anonymous> (/Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app/tests/unit/ai-context/resolveScope.test.ts:45:12)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1062:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:752:18)
+      at Test.postRun (node:internal/test_runner/test:1191:19)
+      at Test.run (node:internal/test_runner/test:1119:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:752:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { currentModule: 'unknown' },
+    expected: { currentModule: 'workspace' },
+    operator: 'deepStrictEqual'
+  }
+
+test at tests/unit/core/config/tools.ai-first.test.ts:2:1020
+✖ disables sports-ops tools when ORGFRAME_AI_FIRST_MODE=true (1.274208ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  true !== false
+  
+      at TestContext.<anonymous> (/Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app/tests/unit/core/config/tools.ai-first.test.ts:11:12)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1062:25)
+      at Test.start (node:internal/test_runner/test:959:17)
+      at node:internal/test_runner/test:1464:71
+      at node:internal/per_context/primordials:483:82
+      at new Promise (<anonymous>)
+      at new SafePromise (node:internal/per_context/primordials:451:29)
+      at node:internal/per_context/primordials:483:9
+      at Array.map (<anonymous>) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual'
+  }
+
+test at tests/unit/supabase/cookies.test.ts:2:1697
+✖ shares auth cookies across staging org subdomains by default (1.092958ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'orgframe.app'
+  - 'staging.orgframe.app'
+  
+      at TestContext.<anonymous> (/Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app/tests/unit/supabase/cookies.test.ts:30:12)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1062:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:752:18)
+      at Test.postRun (node:internal/test_runner/test:1191:19)
+      at Test.run (node:internal/test_runner/test:1119:12)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1466:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:332:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'orgframe.app',
+    expected: 'staging.orgframe.app',
+    operator: 'strictEqual'
+  }
+
+test at tests/unit/supabase/cookies.test.ts:2:2562
+✖ respects explicit AUTH_COOKIE_DOMAIN override (0.215167ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'orgframe.test'
+  
+      at TestContext.<anonymous> (/Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app/tests/unit/supabase/cookies.test.ts:51:12)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1062:25)
+      at Suite.processPendingSubtests (node:internal/test_runner/test:752:18)
+      at Test.postRun (node:internal/test_runner/test:1191:19)
+      at Test.run (node:internal/test_runner/test:1119:12)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:752:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'orgframe.test',
+    operator: 'strictEqual'
+  }
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app
+npm error workspace orgframe-app@0.1.0
+npm error location /Users/koenstewart/Documents/Projects/OrgFrame/apps/orgframe-app
+npm error command failed
+npm error command sh -c node --import tsx --experimental-test-module-mocks --test "tests/**/*.test.ts"
