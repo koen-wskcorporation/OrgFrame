@@ -11,6 +11,7 @@ import { Panel, PanelScreens } from "@orgframe/ui/primitives/panel";
 import { Select } from "@orgframe/ui/primitives/select";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { Calendar, type CalendarQuickAddDraft } from "@/src/features/calendar/components/Calendar";
+import { useCalendarEntryComposer } from "@/src/features/calendar/components/CalendarEntryComposer";
 import {
   createCalendarEntryAction,
   createManualOccurrenceAction,
@@ -380,6 +381,18 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
       return next;
     });
   }, [readModel.sources]);
+
+  const composer = useCalendarEntryComposer({
+    orgSlug,
+    canWrite,
+    readModel,
+    setReadModel,
+    facilityReadModel,
+    refreshWorkspace,
+    onSelectedOccurrenceChange: setSelectedOccurrenceId,
+    removeOptimistic,
+    createdViaTag: "manage_calendar"
+  });
 
   function createFromDraft(draft: CalendarQuickAddDraft) {
     const now = new Date().toISOString();
@@ -1436,7 +1449,7 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
       </CardHeader>
       <Calendar
         canEdit={canWrite}
-        disableHoverGhost={Boolean(selectedOccurrenceId) || Boolean(quickAddDraft?.open) || facilityDialogOpen}
+        disableHoverGhost={Boolean(selectedOccurrenceId) || composer.isOpen || facilityDialogOpen}
         framed={false}
         quickAddUx="external"
         referenceTimezone={Intl.DateTimeFormat().resolvedOptions().timeZone}
@@ -1455,25 +1468,22 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
           if (hasOverlap) {
             return "This time overlaps an existing item.";
           }
-          if (!ruleDraft.repeatEnabled && quickAddFacilityConflicts?.hasBlockingConflicts) {
-            return "Selected facility spaces are already booked.";
-          }
           return null;
         }}
         items={calendarItems}
         onCreateRange={(range) =>
-          openCreateComposer({
-            title: `New ${quickEntryType}`,
+          composer.open({
+            title: "New event",
             startsAtUtc: range.startsAtUtc,
             endsAtUtc: range.endsAtUtc
           })
         }
         onMoveItem={(input) => moveOccurrence(input.itemId, input.startsAtUtc, input.endsAtUtc)}
-        onCancelCreate={() => setQuickAddDraft(null)}
-        onQuickAddIntent={openCreateComposer}
+        onCancelCreate={composer.close}
+        onQuickAddIntent={composer.open}
         onResizeItem={(input) => resizeOccurrence(input.itemId, input.endsAtUtc)}
         onSelectItem={(occurrenceId) => {
-          setQuickAddDraft(null);
+          composer.close();
           setSelectedOccurrenceId(occurrenceId);
         }}
       />
@@ -1493,223 +1503,7 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
         spaces={facilityReadModel.spaces}
         ignoreOccurrenceId={bookingMode === "edit-occurrence" ? selectedOccurrence?.id ?? null : null}
       />
-      <CreateModal
-        footer={
-          createMode ? (
-            <>
-              <Button onClick={closeComposer} type="button" variant="ghost">
-                Cancel
-              </Button>
-              {createScreen !== "basics" ? (
-                <Button
-                  onClick={() => setCreateScreen(createScreens[Math.max(0, createScreenIndex - 1)]?.key ?? "basics")}
-                  type="button"
-                  variant="ghost"
-                >
-                  Back
-                </Button>
-              ) : null}
-              {createScreen !== "schedule" ? (
-                <Button
-                  onClick={() => setCreateScreen(createScreens[Math.min(createScreens.length - 1, createScreenIndex + 1)]?.key ?? "schedule")}
-                  type="button"
-                >
-                  Next
-                </Button>
-              ) : (
-                <Button disabled={!canWrite || !quickAddDraft?.title?.trim()} onClick={submitCreateComposer} type="button">
-                  Create event
-                </Button>
-              )}
-            </>
-          ) : undefined
-        }
-        onClose={closeComposer}
-        open={composerOpen}
-        subtitle={composerSubtitle}
-        title={composerTitle}
-      >
-        {createMode && quickAddDraft ? (
-          <ScrollableSheetBody className="space-y-4 pr-1">
-            <PanelScreens activeKey={createScreen} onChange={(key) => setCreateScreen(key as typeof createScreen)} screens={createScreens as unknown as { key: string; label: string }[]} />
-
-            {createScreen === "basics" ? (
-              <>
-                <label className="space-y-1 text-xs text-text-muted">
-                  <span>Title</span>
-                  <Input
-                    onChange={(event) => setQuickAddDraft((current) => (current ? { ...current, title: event.target.value, open: true } : current))}
-                    placeholder="Event title"
-                    value={quickAddDraft.title}
-                  />
-                </label>
-
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Type</p>
-                  <div className="flex flex-wrap gap-2">
-                    {(["event", "practice", "game"] as const).map((type) => (
-                      <Button
-                        key={type}
-                        onClick={() => setQuickEntryType(type)}
-                        size="sm"
-                        type="button"
-                        variant={quickEntryType === type ? "primary" : "ghost"}
-                      >
-                        {type}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                {quickEntryType === "practice" ? (
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Host Team</p>
-                    <div className="flex flex-wrap gap-2">
-                      {activeTeams.map((team) => (
-                        <Button
-                          key={team.id}
-                          onClick={() => setQuickHostTeamId(team.id)}
-                          size="sm"
-                          type="button"
-                          variant={quickHostTeamId === team.id ? "primary" : "ghost"}
-                        >
-                          {team.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-
-            {createScreen === "location" ? (
-              <>
-                <label className="space-y-1 text-xs text-text-muted">
-                  <span>Location</span>
-                  <Select
-                    disabled={!canWrite}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      if (next === "tbd") {
-                        setLocationMode("tbd");
-                        setLocationDraft("");
-                        setSelectedFacilityId("");
-                        setFacilitySelections([]);
-                        return;
-                      }
-                      if (next === "other") {
-                        setLocationMode("other");
-                        setSelectedFacilityId("");
-                        setFacilitySelections([]);
-                        return;
-                      }
-                      setLocationMode("facility");
-                      setSelectedFacilityId(next);
-                    }}
-                    options={[
-                      ...facilityOptions.map((space) => ({
-                        label: space.name,
-                        value: space.id,
-                        statusDot: resolveFacilityStatusDot(space.status),
-                        meta: space.status
-                      })),
-                      { label: "Other", value: "other" },
-                      { label: "TBD", value: "tbd" }
-                    ]}
-                    value={locationMode === "facility" ? selectedFacilityId : locationMode}
-                  />
-                </label>
-
-                {locationMode === "other" ? (
-                  <label className="space-y-1 text-xs text-text-muted">
-                    <span>Address</span>
-                    <UniversalAddressField onChange={setLocationDraft} value={locationDraft} />
-                  </label>
-                ) : null}
-
-                {locationMode === "facility" && selectedFacility ? (
-                  <div className="space-y-2 rounded-control border p-3">
-                    {facilitySelections.length === 0 ? (
-                      <Button
-                        onClick={() => {
-                          setBookingMode("quick-add");
-                          setFacilityDialogOpen(true);
-                        }}
-                        size="sm"
-                        type="button"
-                        variant="secondary"
-                      >
-                        Book Spaces
-                      </Button>
-                    ) : (
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Selected spaces</p>
-                        <div className="flex flex-wrap gap-2">
-                          {facilitySelections.map((selection) => (
-                            <Chip className="normal-case tracking-normal" color="neutral" key={selection.spaceId} size="compact">
-                              {spaceById.get(selection.spaceId)?.name ?? selection.spaceId}
-                            </Chip>
-                          ))}
-                        </div>
-                        <Button
-                          onClick={() => {
-                            setBookingMode("quick-add");
-                            setFacilityDialogOpen(true);
-                          }}
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          Edit spaces
-                        </Button>
-                      </div>
-                    )}
-                    {selectedFacilityAddress ? <p className="text-xs text-text-muted">{selectedFacilityAddress}</p> : null}
-                    {selectedFacility.status === "closed" ? <p className="text-xs text-destructive">This facility is currently marked closed.</p> : null}
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-
-            {createScreen === "schedule" ? (
-              <>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <label className="space-y-1 text-xs text-text-muted">
-                    <span>Starts</span>
-                    <CalendarPicker
-                      includeTime
-                      onChange={(nextValue) => {
-                        const next = localInputToUtcIso(nextValue);
-                        if (!next) {
-                          return;
-                        }
-                        setQuickAddDraft((current) => (current ? { ...current, startsAtUtc: next, open: true } : current));
-                      }}
-                      value={toLocalInputValue(quickAddDraft.startsAtUtc)}
-                    />
-                  </label>
-                  <label className="space-y-1 text-xs text-text-muted">
-                    <span>Ends</span>
-                    <CalendarPicker
-                      includeTime
-                      onChange={(nextValue) => {
-                        const next = localInputToUtcIso(nextValue);
-                        if (!next) {
-                          return;
-                        }
-                        setQuickAddDraft((current) => (current ? { ...current, endsAtUtc: next, open: true } : current));
-                      }}
-                      value={toLocalInputValue(quickAddDraft.endsAtUtc)}
-                    />
-                  </label>
-                </div>
-
-                <RecurringEventEditor canWrite={canWrite} draft={ruleDraft} onChange={setRuleDraft} />
-              </>
-            ) : null}
-          </ScrollableSheetBody>
-        ) : null}
-      </CreateModal>
+      {composer.element}
       <Panel onClose={() => setSelectedOccurrenceId(null)} open={editMode} subtitle={eventPanelSubtitle} title={selectedEntry?.title ?? "Event details"}>
         {selectedOccurrence && selectedEntry ? (
           <ScrollableSheetBody className="space-y-3 pr-1">

@@ -2,6 +2,14 @@ export type FacilitySpaceKind = "building" | "floor" | "room" | "field" | "court
 
 export type FacilitySpaceStatus = "open" | "closed" | "archived";
 
+// Stub for in-progress org-customizable space-status definitions. The full
+// shape (label, color, ordering) lives in the lost session and will replace
+// this when recovered.
+export type FacilitySpaceStatusDef = {
+  id: string;
+  label: string;
+};
+
 export type FacilityReservationKind = "booking" | "blackout";
 
 export type FacilityReservationStatus = "pending" | "approved" | "rejected" | "cancelled";

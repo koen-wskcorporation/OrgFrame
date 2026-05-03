@@ -300,6 +300,36 @@ export async function toggleFacilitySpaceOpenClosedAction(input: z.input<typeof 
   }
 }
 
+// Booking-step shape consumed by FacilityBookingFullscreen. Wraps
+// getFacilityMapManageDetail so the wizard's facility step can render the
+// availability map. The full lost-session implementation surfaced
+// org-customizable space-status definitions; until that work is recovered,
+// `spaceStatuses` is empty and `geoAnchor` is unset.
+export async function getFacilityBookingMapAction(input: { orgSlug: string; spaceId: string }): Promise<
+  | { ok: true; data: { orgId: string; nodes: FacilityMapNode[]; spaces: Awaited<ReturnType<typeof listFacilitySpacesForManage>>; spaceStatuses: never[]; geoAnchor: { lat: number; lng: number } | null } }
+  | { ok: false; error: string }
+> {
+  try {
+    const detail = await getFacilityMapManageDetail(input.orgSlug, input.spaceId);
+    if (!detail) {
+      return { ok: false, error: "Facility not found." };
+    }
+    return {
+      ok: true,
+      data: {
+        orgId: detail.org.orgId,
+        nodes: detail.nodes,
+        spaces: detail.spaces,
+        spaceStatuses: [],
+        geoAnchor: null
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return { ok: false, error: "Unable to load facility map." };
+  }
+}
+
 export async function getFacilityMapManageDetail(orgSlug: string, spaceId: string) {
   const org = await requireFacilitiesReadOrWrite(orgSlug);
   const [space, spaces] = await Promise.all([getFacilitySpaceById(org.orgId, spaceId), listFacilitySpacesForManage(org.orgId)]);
