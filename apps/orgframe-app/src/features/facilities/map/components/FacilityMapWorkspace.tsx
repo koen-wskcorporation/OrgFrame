@@ -95,8 +95,11 @@ export function FacilityMapWorkspace({
   const [spaces, setSpaces] = useState<FacilitySpace[]>(initialSpaces);
   const [spaceStatuses, setSpaceStatuses] = useState<FacilitySpaceStatusDef[]>(initialStatuses);
 
-  // Restrict the editor to spaces that live underneath the active facility.
-  const visibleSpaceIds = useMemo(() => {
+  // The active facility is the CANVAS, not a shape ON the canvas — only its
+  // descendants render as nodes. (`visibleSpaceIds` controls node filtering;
+  // `visibleSpaces` keeps the active facility in the lookup map so label /
+  // status / parent-id resolution still work.)
+  const descendantSpaceIds = useMemo(() => {
     const childrenByParent = new Map<string, string[]>();
     for (const space of spaces) {
       const parent = space.parentSpaceId;
@@ -105,7 +108,7 @@ export function FacilityMapWorkspace({
       list.push(space.id);
       childrenByParent.set(parent, list);
     }
-    const result = new Set<string>([activeSpaceId]);
+    const result = new Set<string>();
     const queue = [activeSpaceId];
     while (queue.length > 0) {
       const current = queue.shift()!;
@@ -118,6 +121,12 @@ export function FacilityMapWorkspace({
     }
     return result;
   }, [spaces, activeSpaceId]);
+
+  const visibleSpaceIds = useMemo(() => {
+    const set = new Set<string>(descendantSpaceIds);
+    set.add(activeSpaceId);
+    return set;
+  }, [descendantSpaceIds, activeSpaceId]);
 
   const visibleSpaces = useMemo(
     () => spaces.filter((space) => visibleSpaceIds.has(space.id)),
@@ -193,15 +202,16 @@ export function FacilityMapWorkspace({
   }
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() => {
-    const active = initialNodes.find((node) => node.entityId === activeSpaceId);
-    return active?.id ?? initialNodes.find((node) => visibleSpaceIds.has(node.entityId))?.id ?? null;
+    return initialNodes.find((node) => descendantSpaceIds.has(node.entityId))?.id ?? null;
   });
 
   // Trust persisted geometry — the `mapRowToNode` load path already returns
   // sane points & bounds. Running through `normalizeLayout` here would re-snap
   // every polygon vertex to the 24px grid, destroying satellite-aligned shapes.
+  // Filter to descendants ONLY (not the active facility itself) — the active
+  // facility is the canvas, not a shape on it.
   const [nodes, setNodes] = useState<FacilityMapNode[]>(() =>
-    initialNodes.filter((node) => visibleSpaceIds.has(node.entityId))
+    initialNodes.filter((node) => descendantSpaceIds.has(node.entityId))
   );
   const [deletedNodeIds, setDeletedNodeIds] = useState<string[]>([]);
 

@@ -18,6 +18,7 @@ import type { CanvasPoint } from "@/src/features/canvas/core/types";
 import type { FacilitySpace, FacilitySpaceKind } from "@/src/features/facilities/types";
 import {
   deleteFacilityMapNodes,
+  deleteOrphanTopLevelFacilityMapNodes,
   listFacilityMapNodes,
   normalizeFacilityMapNodesForPersistence,
   seedFacilityMapNodesForMissingSpaces,
@@ -589,6 +590,9 @@ export async function getFacilityMapManageDetail(orgSlug: string, spaceId: strin
     return null;
   }
 
+  // One-shot cleanup of nodes that an earlier version of the seeder
+  // created for top-level facilities (canvases shouldn't render as shapes).
+  await deleteOrphanTopLevelFacilityMapNodes(org.orgId, spaces);
   await seedFacilityMapNodesForMissingSpaces(org.orgId, spaces);
   const nodes = await listFacilityMapNodes(org.orgId, spaces);
 

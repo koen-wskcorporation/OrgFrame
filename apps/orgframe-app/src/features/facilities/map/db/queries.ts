@@ -123,7 +123,19 @@ export async function listFacilityMapNodes(orgId: string, spaces: FacilitySpace[
   const spaceById = new Map(spaces.map((space) => [space.id, space]));
   const rows = (data ?? []) as FacilityMapNodeRow[];
 
-  return rows.map((row) => mapRowToNode(row, spaceById.get(row.space_id)?.name ?? row.space_id));
+  // A facility (top-level space, no parent) is the canvas itself, not a
+  // shape ON the canvas. Filter out any nodes that point at top-level
+  // spaces — these are stale rows from an earlier seeder that created
+  // them indiscriminately. Also drop nodes whose space is missing
+  // entirely (deleted out from under us).
+  return rows
+    .filter((row) => {
+      const space = spaceById.get(row.space_id);
+      if (!space) return false;
+      if (space.parentSpaceId === null) return false;
+      return true;
+    })
+    .map((row) => mapRowToNode(row, spaceById.get(row.space_id)?.name ?? row.space_id));
 }
 
 export async function seedFacilityMapNodesForMissingSpaces(orgId: string, spaces: FacilitySpace[]): Promise<void> {
@@ -135,7 +147,11 @@ export async function seedFacilityMapNodesForMissingSpaces(orgId: string, spaces
   }
 
   const existing = new Set((data ?? []).map((row) => String((row as { space_id: string }).space_id)));
-  const missing = spaces.filter((space) => !existing.has(space.id));
+  // Top-level facilities (parentSpaceId === null) are CANVASES, not nodes —
+  // they're the surface that other nodes get drawn on. Seeding a node for
+  // them would put a meaningless rectangle on the facility's own map (and
+  // worse, on every sibling facility's map).
+  const missing = spaces.filter((space) => space.parentSpaceId !== null && !existing.has(space.id));
   if (missing.length === 0) {
     return;
   }
@@ -220,6 +236,30 @@ export async function upsertFacilityMapNodes(input: {
     parentSpaceId: node.parentEntityId,
     label: labelBySpaceId.get(node.entityId) ?? node.label
   }));
+}
+
+/**
+ * Delete map nodes that point at top-level facilities. These were created
+ * by an earlier version of `seedFacilityMapNodesForMissingSpaces` that
+ * seeded every space; they leak as visible rectangles on the facility's
+ * own canvas (the facility-rendering-as-a-shape bug). One-shot cleanup
+ * runs from `getFacilityMapManageDetail` on every load so existing orgs
+ * heal themselves the first time they open the map after this fix.
+ */
+export async function deleteOrphanTopLevelFacilityMapNodes(orgId: string, spaces: FacilitySpace[]): Promise<void> {
+  const topLevelSpaceIds = spaces.filter((s) => s.parentSpaceId === null).map((s) => s.id);
+  if (topLevelSpaceIds.length === 0) return;
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase
+    .schema("facilities")
+    .from("facility_map_nodes")
+    .delete()
+    .eq("org_id", orgId)
+    .in("space_id", topLevelSpaceIds);
+  if (error) {
+    // Non-fatal: the read-time filter still hides them. Log and continue.
+    console.error("Failed to delete orphan top-level facility map nodes", error);
+  }
 }
 
 export async function deleteFacilityMapNodes(input: { orgId: string; nodeIds: string[] }): Promise<void> {
