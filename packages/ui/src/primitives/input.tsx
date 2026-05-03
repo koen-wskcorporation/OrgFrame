@@ -4,7 +4,7 @@ import * as React from "react";
 import { formControlDisabledClass, formControlFocusClass, formControlInlineClass, formControlShellClass } from "./form-control";
 import { cn } from "./utils";
 
-type SlugValidationKind = "org" | "page" | "program" | "form";
+export type SlugValidationKind = "org" | "page" | "program" | "form" | "space";
 
 type SlugValidationConfig = {
   kind: SlugValidationKind;
@@ -70,7 +70,7 @@ function isValidAvailabilityResponse(value: unknown): value is SlugAvailabilityR
 
   return (
     payload.ok === true &&
-    (payload.kind === "org" || payload.kind === "page" || payload.kind === "program" || payload.kind === "form") &&
+    (payload.kind === "org" || payload.kind === "page" || payload.kind === "program" || payload.kind === "form" || payload.kind === "space") &&
     typeof payload.normalizedSlug === "string" &&
     typeof payload.available === "boolean" &&
     (typeof payload.message === "string" || payload.message === null)

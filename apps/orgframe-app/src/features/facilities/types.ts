@@ -1,4 +1,16 @@
-export type FacilitySpaceKind = "building" | "floor" | "room" | "field" | "court" | "custom";
+export type FacilitySpaceKind =
+  | "building"
+  | "floor"
+  | "room"
+  | "field"
+  | "court"
+  | "lobby"
+  | "office"
+  | "kitchen"
+  | "bathroom"
+  | "storage"
+  | "parking_lot"
+  | "custom";
 
 export type FacilitySpaceStatus = "open" | "closed" | "archived";
 
@@ -11,6 +23,18 @@ export type FacilitySpaceStatusDef = {
   id: string;
   label: string;
   color: string;
+  /**
+   * Built-in statuses (open / closed / archived) are flagged `isSystem: true`
+   * so the UI can disable rename/delete on them. Org-defined statuses are
+   * `false`.
+   */
+  isSystem?: boolean;
+  /**
+   * Which built-in status this org-defined status behaves like for booking
+   * gating: a custom "Tournament-only" status might `behavesAs: "open"` so
+   * the calendar still considers it bookable.
+   */
+  behavesAs?: FacilitySpaceStatus;
 };
 
 export type FacilityReservationKind = "booking" | "blackout";
@@ -38,6 +62,14 @@ export type FacilitySpace = {
    * status labels. Stub — full feature lives in the lost session.
    */
   statusId?: string | null;
+  /** Latitude of the canvas (0,0) origin for the satellite layer. */
+  geoAnchorLat?: number | null;
+  /** Longitude of the canvas (0,0) origin for the satellite layer. */
+  geoAnchorLng?: number | null;
+  /** Human-readable address shown in the location editor. */
+  geoAddress?: string | null;
+  /** When true the editor renders the satellite layer underneath the canvas. */
+  geoShowMap?: boolean;
   isBookable: boolean;
   timezone: string;
   capacity: number | null;
@@ -125,6 +157,7 @@ export type FacilityReservationException = {
 
 export type FacilityReservationReadModel = {
   spaces: FacilitySpace[];
+  spaceStatuses: FacilitySpaceStatusDef[];
   rules: FacilityReservationRule[];
   reservations: FacilityReservation[];
   exceptions: FacilityReservationException[];

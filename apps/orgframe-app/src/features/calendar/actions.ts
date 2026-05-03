@@ -832,11 +832,12 @@ export async function getCalendarWorkspaceDataAction(input: {
 
     const readModelRaw = readModelResult.value;
     const activeTeams = activeTeamsResult.status === "fulfilled" ? activeTeamsResult.value : [];
-    const facilityReadModel =
+    const facilityReadModel: Awaited<ReturnType<typeof listFacilityReservationReadModel>> =
       facilityReadModelResult.status === "fulfilled"
         ? facilityReadModelResult.value
         : {
             spaces: [],
+            spaceStatuses: [],
             rules: [],
             reservations: [],
             exceptions: []

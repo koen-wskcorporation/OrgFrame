@@ -123,6 +123,16 @@ function asObject(value: unknown): Record<string, unknown> {
 }
 
 function mapSpace(row: SpaceRow): FacilitySpace {
+  const metadata = asObject(row.metadata_json);
+  // statusId / geo* live in metadata_json until their dedicated columns are
+  // recovered. `statusId` falls back to the built-in matching the row's
+  // existing `status` so the UI's status picker stays consistent.
+  const metaStatusId = typeof metadata.statusId === "string" ? metadata.statusId : null;
+  const statusId = metaStatusId ?? row.status;
+  const geoLat = typeof metadata.geoAnchorLat === "number" ? metadata.geoAnchorLat : null;
+  const geoLng = typeof metadata.geoAnchorLng === "number" ? metadata.geoAnchorLng : null;
+  const geoAddress = typeof metadata.geoAddress === "string" ? metadata.geoAddress : null;
+  const geoShowMap = metadata.geoShowMap === true;
   return {
     id: row.id,
     orgId: row.org_id,
@@ -131,12 +141,17 @@ function mapSpace(row: SpaceRow): FacilitySpace {
     slug: row.slug,
     spaceKind: row.space_kind,
     status: row.status,
+    statusId,
     isBookable: row.is_bookable,
     timezone: row.timezone,
     capacity: row.capacity,
-    metadataJson: asObject(row.metadata_json),
+    metadataJson: metadata,
     // Column not yet in DB; default to empty so status.ts falls back to built-ins.
     statusLabelsJson: {},
+    geoAnchorLat: geoLat,
+    geoAnchorLng: geoLng,
+    geoAddress,
+    geoShowMap,
     sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -844,9 +859,24 @@ export async function upsertRuleGeneratedReservations(
   }
 }
 
+// Built-in space-status definitions used until the org-customizable
+// `facility_space_statuses` migration is recovered. Keep these stable —
+// `id === FacilitySpaceStatus`, with `behavesAs` set so anything that
+// gates on "open" / "closed" / "archived" still works.
+export const BUILT_IN_FACILITY_SPACE_STATUSES = [
+  { id: "open", label: "Open", color: "green", isSystem: true, behavesAs: "open" as const },
+  { id: "closed", label: "Closed", color: "gray", isSystem: true, behavesAs: "closed" as const },
+  { id: "archived", label: "Archived", color: "neutral", isSystem: true, behavesAs: "archived" as const }
+];
+
+export async function listFacilitySpaceStatuses(_orgId: string) {
+  return BUILT_IN_FACILITY_SPACE_STATUSES;
+}
+
 export async function listFacilityReservationReadModel(orgId: string) {
-  const [spaces, rules, reservations, exceptions] = await Promise.all([
+  const [spaces, spaceStatuses, rules, reservations, exceptions] = await Promise.all([
     listFacilitySpacesForManage(orgId),
+    listFacilitySpaceStatuses(orgId),
     listFacilityReservationRules(orgId),
     listFacilityReservations(orgId, { includeInactive: true }),
     listFacilityReservationExceptions(orgId)
@@ -854,6 +884,7 @@ export async function listFacilityReservationReadModel(orgId: string) {
 
   return {
     spaces,
+    spaceStatuses,
     rules,
     reservations,
     exceptions

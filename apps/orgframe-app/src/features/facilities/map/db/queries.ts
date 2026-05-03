@@ -222,6 +222,20 @@ export async function upsertFacilityMapNodes(input: {
   }));
 }
 
+export async function deleteFacilityMapNodes(input: { orgId: string; nodeIds: string[] }): Promise<void> {
+  if (input.nodeIds.length === 0) return;
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase
+    .schema("facilities")
+    .from("facility_map_nodes")
+    .delete()
+    .eq("org_id", input.orgId)
+    .in("id", input.nodeIds);
+  if (error) {
+    throw new Error(`Failed to delete facility map nodes: ${error.message}`);
+  }
+}
+
 export function normalizeFacilityMapNodesForPersistence(nodes: FacilityMapNode[]): FacilityMapNode[] {
   // Recompute bounds from the freshest points but DON'T pass through
   // `normalizeNodeGeometry` — that snaps every polygon vertex to the 24px

@@ -115,6 +115,7 @@ export function FacilityCalendarWorkspace({
   const [facilityReadModel, setFacilityReadModel] = useState<FacilityReservationReadModel>(
     initialFacilityReadModel ?? {
       spaces: [],
+      spaceStatuses: [],
       rules: [],
       reservations: [],
       exceptions: []

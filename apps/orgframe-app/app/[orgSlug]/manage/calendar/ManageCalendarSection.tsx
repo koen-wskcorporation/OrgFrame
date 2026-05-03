@@ -111,6 +111,7 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
   const [facilityReadModel, setFacilityReadModel] = useState<FacilityReservationReadModel>(
     initialFacilityReadModel ?? {
       spaces: [],
+      spaceStatuses: [],
       rules: [],
       reservations: [],
       exceptions: []

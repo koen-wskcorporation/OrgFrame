@@ -14,7 +14,7 @@ export type StatusPickerOption = {
 };
 
 type StatusPickerProps = {
-  value: string | null;
+  value: string | null | undefined;
   options: StatusPickerOption[];
   onChange: (value: string) => void;
   placeholder?: string;

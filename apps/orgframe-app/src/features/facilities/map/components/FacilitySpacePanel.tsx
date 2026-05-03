@@ -43,7 +43,7 @@ function toDraft(space: FacilitySpace): Draft {
     name: space.name,
     slug: space.slug,
     spaceKind: space.spaceKind,
-    statusId: space.statusId,
+    statusId: space.statusId ?? null,
     isBookable: space.isBookable,
     timezone: space.timezone,
     capacity: space.capacity != null ? String(space.capacity) : "",

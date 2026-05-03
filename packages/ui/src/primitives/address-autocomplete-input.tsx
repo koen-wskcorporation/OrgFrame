@@ -5,9 +5,25 @@ import { MapPin, Search } from "lucide-react";
 import { cn } from "./utils";
 import { loadGooglePlacesApi } from "./load-google-places-api";
 
+export type SelectedPlace = {
+  /** Free-text description as shown in the predictions list. */
+  description: string;
+  /** Google `place_id` for downstream lookups (Details / Photos). */
+  placeId: string;
+  /** Resolved geometry — undefined if Places Details lookup failed. */
+  location?: { lat: number; lng: number };
+};
+
 type AddressAutocompleteInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
   value: string;
   onChange: (value: string) => void;
+  /**
+   * Fires once per selected prediction with the resolved geometry attached
+   * when the Places Details lookup succeeds. Use this when the caller needs
+   * lat/lng (e.g. dropping a marker on a map). For pure text input, use
+   * `onChange`.
+   */
+  onSelectPlace?: (place: SelectedPlace) => void;
   apiKey?: string;
 };
 
@@ -47,6 +63,7 @@ export function AddressAutocompleteInput({
   className,
   value,
   onChange,
+  onSelectPlace,
   disabled,
   placeholder = "Start typing an address",
   apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
@@ -193,6 +210,41 @@ export function AddressAutocompleteInput({
     setPredictions([]);
     setIsOpen(false);
     setActiveIndex(-1);
+
+    if (!onSelectPlace) return;
+
+    // Resolve geometry via Places Details so callers (location pickers etc.)
+    // can drop a marker. Fail silently — the caller still gets the
+    // description-only `SelectedPlace` and can fall back gracefully.
+    const googleValue = (window as Window & { google?: any }).google;
+    const PlacesService = googleValue?.maps?.places?.PlacesService;
+    if (!PlacesService) {
+      onSelectPlace({ description: prediction.description, placeId: prediction.placeId });
+      return;
+    }
+    try {
+      const dummyDiv = document.createElement("div");
+      const service = new PlacesService(dummyDiv);
+      service.getDetails(
+        { placeId: prediction.placeId, fields: ["geometry.location", "formatted_address", "name"] },
+        (place: any, status: string) => {
+          const okStatus = googleValue?.maps?.places?.PlacesServiceStatus?.OK;
+          if (status === okStatus && place?.geometry?.location) {
+            const lat = place.geometry.location.lat();
+            const lng = place.geometry.location.lng();
+            onSelectPlace({
+              description: prediction.description,
+              placeId: prediction.placeId,
+              location: { lat, lng }
+            });
+          } else {
+            onSelectPlace({ description: prediction.description, placeId: prediction.placeId });
+          }
+        }
+      );
+    } catch {
+      onSelectPlace({ description: prediction.description, placeId: prediction.placeId });
+    }
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {

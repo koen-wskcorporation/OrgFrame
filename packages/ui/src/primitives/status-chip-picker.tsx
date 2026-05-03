@@ -13,7 +13,7 @@ export type StatusChipPickerOption = {
 };
 
 type StatusChipPickerProps = {
-  value: string | null;
+  value: string | null | undefined;
   options: StatusChipPickerOption[];
   onChange: (value: string) => void;
   disabled?: boolean;

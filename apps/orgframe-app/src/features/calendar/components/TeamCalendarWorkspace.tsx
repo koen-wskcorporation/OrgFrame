@@ -118,6 +118,7 @@ export function TeamCalendarWorkspace({
   const [facilityReadModel, setFacilityReadModel] = useState<FacilityReservationReadModel>(
     initialFacilityReadModel ?? {
       spaces: [],
+      spaceStatuses: [],
       rules: [],
       reservations: [],
       exceptions: []

@@ -58,6 +58,7 @@ export default async function ManageCalendarPage({
   };
   const emptyFacilityReadModel: FacilityReservationReadModel = {
     spaces: [],
+    spaceStatuses: [],
     rules: [],
     reservations: [],
     exceptions: []

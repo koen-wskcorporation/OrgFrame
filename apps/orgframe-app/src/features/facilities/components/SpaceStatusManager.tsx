@@ -52,7 +52,7 @@ function fromExisting(status: FacilitySpaceStatusDef): DraftState {
     statusId: status.id,
     label: status.label,
     color: (status.color as StatusColor) ?? "slate",
-    behavesAs: status.behavesAs
+    behavesAs: status.behavesAs ?? "open"
   };
 }
 

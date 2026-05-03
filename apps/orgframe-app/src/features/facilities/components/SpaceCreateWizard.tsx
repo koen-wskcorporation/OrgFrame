@@ -32,7 +32,7 @@ export type SpaceCreateInput = {
   geoAnchorLng: number | null;
   geoAddress: string | null;
   /** Drives satellite vs grid map for the facility. */
-  environment: "indoor" | "outdoor" | null;
+  environment: "indoor" | "outdoor";
 };
 
 type WizardState = {
@@ -74,7 +74,7 @@ function buildEditState(space: FacilitySpace): WizardState {
   return {
     name: space.name,
     slug: space.slug,
-    statusId: space.statusId,
+    statusId: space.statusId ?? null,
     isBookable: space.isBookable,
     location,
     environment: env === "indoor" ? "indoor" : "outdoor"

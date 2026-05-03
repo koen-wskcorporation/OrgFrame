@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Plus } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
+import { Button } from "@orgframe/ui/primitives/button";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import {
   archiveFacilitySpaceAction,
@@ -11,6 +13,7 @@ import {
   updateFacilitySpaceAction
 } from "@/src/features/facilities/actions";
 import { FacilityTreeEditor } from "@/src/features/facilities/components/FacilityTreeEditor";
+import { SpaceCreateWizard } from "@/src/features/facilities/components/SpaceCreateWizard";
 import type { FacilityReservationReadModel } from "@/src/features/facilities/types";
 
 type FacilitiesManagePanelProps = {
@@ -23,6 +26,7 @@ export function FacilitiesManagePanel({ orgSlug, canWrite, initialReadModel }: F
   const { toast } = useToast();
   const [readModel, setReadModel] = useState(initialReadModel);
   const [isMutating, startTransition] = useTransition();
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
 
   function applyReadModel(next: FacilityReservationReadModel) {
     setReadModel(next);
@@ -65,6 +69,26 @@ export function FacilitiesManagePanel({ orgSlug, canWrite, initialReadModel }: F
   return (
     <div className="ui-stack-page">
       {isMutating ? <Alert variant="info">Saving facilities changes...</Alert> : null}
+
+      <div className="flex items-center justify-end">
+        <Button disabled={!canWrite} onClick={() => setIsWizardOpen(true)} variant="primary">
+          <Plus />
+          New facility
+        </Button>
+      </div>
+
+      <SpaceCreateWizard
+        onClose={() => setIsWizardOpen(false)}
+        onCreated={(next) => {
+          applyReadModel(next);
+          setIsWizardOpen(false);
+          toast({ title: "Facility created", variant: "success" });
+        }}
+        open={isWizardOpen}
+        orgSlug={orgSlug}
+        spaces={readModel.spaces}
+        spaceStatuses={readModel.spaceStatuses}
+      />
 
       <FacilityTreeEditor
         canWrite={canWrite}
