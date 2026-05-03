@@ -211,53 +211,62 @@ async function listProgramTeamNodes(orgId: string): Promise<Array<{
   programName: string;
 }>> {
   const supabase = createOptionalSupabaseServiceRoleClient() ?? (await createSupabaseServer());
-  const { data: teamNodesData, error: teamNodesError } = await supabase
+
+  // See `listOrgHierarchyTargets` for why we avoid the embedded
+  // `programs!inner(...)` join. The relation name (`programs`) collides with
+  // the schema name (`programs`), surfacing as a misleading
+  // "Could not find the table 'programs.program_structure_nodes' in the
+  //  schema cache" error from the PostgREST resolver.
+  const { data: programRows, error: programsError } = await supabase
+    .schema("programs").from("programs")
+    .select("id, name")
+    .eq("org_id", orgId);
+
+  if (programsError) {
+    throw new Error(`Failed to load programs for people groups: ${programsError.message}`);
+  }
+
+  const programs = (programRows ?? []) as Array<{ id: string; name: string }>;
+  if (programs.length === 0) {
+    return [];
+  }
+
+  const programById = new Map(programs.map((program) => [program.id, program]));
+  const programIds = programs.map((program) => program.id);
+
+  const { data: structureNodes, error: structureError } = await supabase
     .schema("programs").from("program_structure_nodes")
-    .select("id, name, parent_id, program_id, programs!inner(id, name, org_id)")
-    .eq("node_kind", "team")
-    .eq("programs.org_id", orgId);
+    .select("id, name, parent_id, program_id, node_kind")
+    .in("program_id", programIds);
 
-  if (teamNodesError) {
-    throw new Error(`Failed to load teams for people groups: ${teamNodesError.message}`);
+  if (structureError) {
+    throw new Error(`Failed to load teams for people groups: ${structureError.message}`);
   }
 
-  const teamNodes = (teamNodesData ?? []) as ProgramNodeRow[];
-  const divisionIds = Array.from(new Set(teamNodes.map((node) => node.parent_id).filter((value): value is string => Boolean(value))));
-  const divisionById = new Map<string, ProgramDivisionRow>();
+  const nodes = (structureNodes ?? []) as Array<{
+    id: string;
+    name: string;
+    parent_id: string | null;
+    program_id: string;
+    node_kind: string | null;
+  }>;
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
 
-  if (divisionIds.length > 0) {
-    const { data: divisionsData, error: divisionsError } = await supabase
-      .schema("programs").from("program_structure_nodes")
-      .select("id, name")
-      .in("id", divisionIds);
+  return nodes
+    .filter((node) => node.node_kind === "team")
+    .map((teamNode) => {
+      const program = programById.get(teamNode.program_id);
+      const division = teamNode.parent_id ? nodeById.get(teamNode.parent_id) ?? null : null;
 
-    if (divisionsError) {
-      throw new Error(`Failed to load divisions for people groups: ${divisionsError.message}`);
-    }
-
-    for (const division of divisionsData ?? []) {
-      if (typeof division.id === "string") {
-        divisionById.set(division.id, {
-          id: division.id,
-          name: typeof division.name === "string" ? division.name : division.id
-        });
-      }
-    }
-  }
-
-  return teamNodes.map((teamNode) => {
-    const program = asRelationObject(teamNode.programs);
-    const division = teamNode.parent_id ? divisionById.get(teamNode.parent_id) ?? null : null;
-
-    return {
-      teamId: teamNode.id,
-      teamName: teamNode.name,
-      divisionId: teamNode.parent_id,
-      divisionName: division?.name ?? null,
-      programId: program?.id ?? teamNode.program_id,
-      programName: program?.name ?? "Program"
-    };
-  });
+      return {
+        teamId: teamNode.id,
+        teamName: teamNode.name,
+        divisionId: teamNode.parent_id,
+        divisionName: division?.name ?? null,
+        programId: program?.id ?? teamNode.program_id,
+        programName: program?.name ?? "Program"
+      };
+    });
 }
 
 export async function listDynamicOrgGroups(orgId: string): Promise<DynamicOrgGroup[]> {
