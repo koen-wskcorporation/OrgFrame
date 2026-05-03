@@ -9,12 +9,14 @@ type SurfaceHeaderProps = {
   showAvatar?: boolean;
   avatarUrl?: string | null;
   avatarAlt?: string;
+  /** Custom avatar element (e.g. EditableAvatar). Wins over avatarUrl when provided. */
+  avatarSlot?: React.ReactNode;
   topAction?: React.ReactNode;
   titleId?: string;
   className?: string;
 };
 
-export function SurfaceHeader({ title, subtitle, showAvatar = false, avatarUrl = null, avatarAlt, topAction, titleId, className }: SurfaceHeaderProps) {
+export function SurfaceHeader({ title, subtitle, showAvatar = false, avatarUrl = null, avatarAlt, avatarSlot, topAction, titleId, className }: SurfaceHeaderProps) {
   const avatarSizePx = subtitle ? 44 : 36;
   const titleString = typeof title === "string" ? title : null;
 
@@ -23,7 +25,9 @@ export function SurfaceHeader({ title, subtitle, showAvatar = false, avatarUrl =
       {topAction ? <div className="mb-2">{topAction}</div> : null}
       <div className="flex min-w-0 items-start gap-3">
         {showAvatar ? (
-          <Avatar alt={avatarAlt ?? (titleString ? `${titleString} avatar` : "Header avatar")} name={titleString} sizePx={avatarSizePx} src={avatarUrl} />
+          avatarSlot ?? (
+            <Avatar alt={avatarAlt ?? (titleString ? `${titleString} avatar` : "Header avatar")} name={titleString} sizePx={avatarSizePx} src={avatarUrl} />
+          )
         ) : null}
         <div className="min-w-0">
           <h2 className="truncate text-lg font-semibold leading-tight text-text" id={titleId}>
