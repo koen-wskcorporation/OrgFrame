@@ -28,6 +28,34 @@ import type { Permission } from "@/src/features/core/access";
 import type { OrgToolAvailability } from "@/src/features/core/config/tools";
 
 const profileTypeSchema = z.enum(["player", "staff"]);
+const orgRoleSchema = z.string().trim().min(2).max(32);
+
+const lookupAccountByEmailSchema = z.object({
+  orgSlug: z.string().trim().min(1),
+  email: z.string().trim().email()
+});
+
+export type AccountLookupResult =
+  | { status: "new" }
+  | {
+      status: "existing";
+      userId: string;
+      firstName: string | null;
+      lastName: string | null;
+      avatarUrl: string | null;
+    }
+  | { status: "existing_member" };
+
+const createAccountSchema = z.object({
+  orgSlug: z.string().trim().min(1),
+  email: z.string().trim().email(),
+  firstName: z.string().trim().max(80).optional(),
+  lastName: z.string().trim().max(80).optional(),
+  phone: z.string().trim().max(40).optional(),
+  role: orgRoleSchema,
+  avatarPath: z.string().trim().max(500).optional(),
+  sendInvite: z.boolean().optional()
+});
 const relationshipTypeSchema = z.enum(["self", "guardian", "delegated_manager"]);
 const profileStatusSchema = z.enum(["draft", "pending_claim", "active", "archived"]);
 
@@ -85,7 +113,7 @@ const getDirectorySchema = z.object({
   pageSize: z.number().int().positive().optional()
 });
 
-type PeopleErrorCode = "invalid_input" | "forbidden" | "service_not_configured" | "not_found" | "action_failed";
+type PeopleErrorCode = "invalid_input" | "forbidden" | "service_not_configured" | "not_found" | "already_member" | "action_failed";
 
 type PeopleResult<TData = undefined> =
   | {
@@ -296,6 +324,229 @@ export async function getPeopleDirectoryPageData(input: z.input<typeof getDirect
       directory: emptyDirectory,
       toolAvailability: orgContext.toolAvailability
     };
+  }
+}
+
+export async function lookupAccountByEmailAction(
+  input: z.input<typeof lookupAccountByEmailSchema>
+): Promise<PeopleResult<AccountLookupResult>> {
+  const parsed = lookupAccountByEmailSchema.safeParse(input);
+  if (!parsed.success) {
+    return asFailure("invalid_input", "Please provide a valid email.");
+  }
+
+  try {
+    const orgContext = await requirePeopleWriteContext(parsed.data.orgSlug);
+    const serviceClient = getConfiguredServiceClient();
+    if (!serviceClient) {
+      return asFailure("service_not_configured", "Looking up accounts requires SUPABASE_SERVICE_ROLE_KEY on the server.");
+    }
+
+    const email = parsed.data.email.trim().toLowerCase();
+    const existing = await findAuthUserByEmail(serviceClient, email);
+
+    if (!existing) {
+      return { ok: true, data: { status: "new" } };
+    }
+
+    const { data: membership } = await serviceClient
+      .schema("orgs")
+      .from("memberships")
+      .select("id")
+      .eq("org_id", orgContext.orgId)
+      .eq("user_id", existing.id)
+      .maybeSingle();
+
+    if (membership) {
+      return { ok: true, data: { status: "existing_member" } };
+    }
+
+    const { data: profileRow } = await serviceClient
+      .schema("people")
+      .from("users")
+      .select("first_name, last_name, avatar_path")
+      .eq("user_id", existing.id)
+      .maybeSingle();
+
+    let avatarUrl: string | null = null;
+    if (profileRow?.avatar_path) {
+      const { data: signed } = await serviceClient.storage
+        .from("account-assets")
+        .createSignedUrl(profileRow.avatar_path, 60 * 10);
+      avatarUrl = signed?.signedUrl ?? null;
+    }
+
+    return {
+      ok: true,
+      data: {
+        status: "existing",
+        userId: existing.id,
+        firstName: profileRow?.first_name ?? null,
+        lastName: profileRow?.last_name ?? null,
+        avatarUrl
+      }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asFailure("action_failed", "Unable to look up that email right now.");
+  }
+}
+
+export async function createAccountAction(
+  input: z.input<typeof createAccountSchema>
+): Promise<PeopleResult<{ userId: string }>> {
+  const parsed = createAccountSchema.safeParse(input);
+  if (!parsed.success) {
+    return asFailure("invalid_input", "Please provide a valid email and role.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const orgContext = await requirePeopleWriteContext(payload.orgSlug);
+
+    const serviceClient = getConfiguredServiceClient();
+    if (!serviceClient) {
+      return asFailure("service_not_configured", "Creating accounts requires SUPABASE_SERVICE_ROLE_KEY on the server.");
+    }
+
+    const email = payload.email.trim().toLowerCase();
+    const phone = normalizeOptional(payload.phone);
+    const firstName = normalizeOptional(payload.firstName);
+    const lastName = normalizeOptional(payload.lastName);
+    const avatarPath = normalizeOptional(payload.avatarPath);
+
+    const existingUser = await findAuthUserByEmail(serviceClient, email);
+
+    let userId: string | null = existingUser?.id ?? null;
+
+    if (!existingUser) {
+      const { data: created, error: createError } = await serviceClient.auth.admin.createUser({
+        email,
+        ...(phone ? { phone } : {}),
+        email_confirm: false
+      });
+
+      if (createError) {
+        return asFailure("action_failed", createError.message);
+      }
+
+      userId = created?.user?.id ?? null;
+    } else if (phone && !existingUser.phone) {
+      await serviceClient.auth.admin.updateUserById(existingUser.id, { phone });
+    }
+
+    if (!userId) {
+      return asFailure("action_failed", "Unable to resolve created account.");
+    }
+
+    const { data: existingMembership, error: membershipLookupError } = await serviceClient
+      .schema("orgs")
+      .from("memberships")
+      .select("id")
+      .eq("org_id", orgContext.orgId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (membershipLookupError) {
+      return asFailure("action_failed", membershipLookupError.message);
+    }
+
+    if (existingMembership) {
+      return asFailure("already_member", "That email already has an account in this organization.");
+    }
+
+    const { error: insertError } = await serviceClient
+      .schema("orgs")
+      .from("memberships")
+      .insert({
+        org_id: orgContext.orgId,
+        user_id: userId,
+        role: payload.role
+      });
+
+    if (insertError) {
+      return asFailure("action_failed", insertError.message);
+    }
+
+    if (!existingUser) {
+      const { error: profileError } = await serviceClient
+        .schema("people")
+        .from("users")
+        .upsert(
+          {
+            user_id: userId,
+            first_name: firstName,
+            last_name: lastName,
+            avatar_path: avatarPath
+          },
+          { onConflict: "user_id" }
+        );
+
+      if (profileError) {
+        return asFailure("action_failed", profileError.message);
+      }
+
+      if (payload.sendInvite) {
+        await serviceClient.auth.admin.inviteUserByEmail(email).catch(() => undefined);
+      }
+    }
+
+    revalidatePath(`/${payload.orgSlug}/manage/people`);
+
+    return {
+      ok: true,
+      data: { userId }
+    };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    const reason = error instanceof Error ? error.message : "Unknown error";
+    return asFailure("action_failed", `Unable to create account right now. (${reason})`);
+  }
+}
+
+const updateAccountRoleSchema = z.object({
+  orgSlug: z.string().trim().min(1),
+  userId: z.string().uuid(),
+  role: orgRoleSchema
+});
+
+export async function updateAccountRoleAction(
+  input: z.input<typeof updateAccountRoleSchema>
+): Promise<PeopleResult<{ userId: string; role: string }>> {
+  const parsed = updateAccountRoleSchema.safeParse(input);
+  if (!parsed.success) {
+    return asFailure("invalid_input", parsed.error.issues[0]?.message ?? "Invalid input");
+  }
+
+  try {
+    const orgContext = await requirePeopleWriteContext(parsed.data.orgSlug);
+    const serviceClient = getConfiguredServiceClient();
+    if (!serviceClient) {
+      return asFailure("service_not_configured", "Updating roles requires SUPABASE_SERVICE_ROLE_KEY on the server.");
+    }
+
+    const { data: updated, error } = await serviceClient
+      .schema("orgs")
+      .from("memberships")
+      .update({ role: parsed.data.role })
+      .eq("org_id", orgContext.orgId)
+      .eq("user_id", parsed.data.userId)
+      .select("user_id, role")
+      .maybeSingle();
+
+    if (error) {
+      return asFailure("action_failed", error.message);
+    }
+    if (!updated) {
+      return asFailure("not_found", "That account is not a member of this organization.");
+    }
+
+    revalidatePath(`/${parsed.data.orgSlug}/manage/people`);
+    return { ok: true, data: { userId: parsed.data.userId, role: updated.role } };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    const reason = error instanceof Error ? error.message : "Unknown error";
+    return asFailure("action_failed", `Unable to update role right now. (${reason})`);
   }
 }
 

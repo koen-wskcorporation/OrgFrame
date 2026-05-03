@@ -19,16 +19,17 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Eye, EyeOff, GripVertical, Pencil, Pin
 import { Button } from "@orgframe/ui/primitives/button";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { Input } from "@orgframe/ui/primitives/input";
+import { Panel } from "@orgframe/ui/primitives/panel";
 import { Popover } from "@orgframe/ui/primitives/popover";
-import { Popup } from "@orgframe/ui/primitives/popup";
 import { cn } from "./utils";
 
 export type SortDirection = "asc" | "desc";
 
 function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
-  // Bare <table> — no inner overflow-x-auto wrapper. The DataTable's
-  // outer shell is the scroll container (overflow-auto on both axes),
-  // so a wrapper here would steal sticky pinning from the thead.
+  // Bare <table> — no wrapping `overflow-x-auto` div. The shell that
+  // hosts the table already does both x and y scrolling, and an
+  // intermediate scrollport here would steal sticky-thead pinning
+  // away from the shell (sticky pins to the nearest scroll ancestor).
   return <table className={cn("w-full caption-bottom text-sm", className)} {...props} />;
 }
 
@@ -105,11 +106,15 @@ type DataTableProps<TItem> = {
   rowActionsLabel?: string;
   renderRowActions?: (item: TItem) => ReactNode;
   enableCellSelection?: boolean;
+  enableRowSelection?: boolean;
+  selectedRowKeys?: string[];
+  onSelectedRowKeysChange?: (keys: string[]) => void;
   showCellGrid?: boolean;
   onVisibleRowsChange?: (rows: TItem[]) => void;
   viewConfig?: Partial<DataTableViewConfig> | null;
   onConfigChange?: (config: DataTableViewConfig) => void;
   renderToolbarActions?: ReactNode;
+  renderSelectionActions?: (selectedKeys: string[]) => ReactNode;
   showReadOnlyToggle?: boolean;
   readOnlyMode?: boolean;
   onReadOnlyModeChange?: (nextReadOnlyMode: boolean) => void;
@@ -405,7 +410,7 @@ function SortableHeaderCell({
 export function DataTable<TItem>({
   ariaLabel,
   data,
-  columns,
+  columns: incomingColumns,
   rowKey,
   storageKey,
   emptyState,
@@ -418,11 +423,15 @@ export function DataTable<TItem>({
   rowActionsLabel = "Actions",
   renderRowActions,
   enableCellSelection = false,
+  enableRowSelection = false,
+  selectedRowKeys,
+  onSelectedRowKeysChange,
   showCellGrid = false,
   onVisibleRowsChange,
   viewConfig,
   onConfigChange,
   renderToolbarActions,
+  renderSelectionActions,
   showReadOnlyToggle = false,
   readOnlyMode = true,
   onReadOnlyModeChange,
@@ -446,6 +455,102 @@ export function DataTable<TItem>({
       coordinateGetter: sortableKeyboardCoordinates
     })
   );
+
+  const selectionColumn = useMemo<DataTableColumn<TItem> | null>(() => {
+    if (!enableRowSelection) return null;
+    const handleHeaderToggle = () => {
+      const ctx = rowSelectionContextRef.current;
+      const allKeys = ctx.visibleRows.map((row) => ctx.rowKeyFn(row));
+      const allSelected = allKeys.length > 0 && allKeys.every((key) => ctx.selectedKeys.has(key));
+      ctx.apply(allSelected ? [] : allKeys);
+    };
+    const handleRowToggle = (rowIndex: number, key: string, event: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean }) => {
+      const ctx = rowSelectionContextRef.current;
+      const isShift = "shiftKey" in event && Boolean(event.shiftKey);
+      const isMeta = "metaKey" in event && (Boolean(event.metaKey) || Boolean(event.ctrlKey));
+      let next: string[];
+      if (isShift && rowSelectionAnchorIndexRef.current !== null) {
+        const anchor = rowSelectionAnchorIndexRef.current;
+        const start = Math.min(anchor, rowIndex);
+        const end = Math.max(anchor, rowIndex);
+        const rangeKeys = ctx.visibleRows.slice(start, end + 1).map((row) => ctx.rowKeyFn(row));
+        const merged = new Set(ctx.selectedKeys);
+        rangeKeys.forEach((rangeKey) => merged.add(rangeKey));
+        next = Array.from(merged);
+      } else if (isMeta) {
+        const merged = new Set(ctx.selectedKeys);
+        if (merged.has(key)) merged.delete(key);
+        else merged.add(key);
+        next = Array.from(merged);
+        rowSelectionAnchorIndexRef.current = rowIndex;
+      } else {
+        const merged = new Set(ctx.selectedKeys);
+        if (merged.has(key)) merged.delete(key);
+        else merged.add(key);
+        next = Array.from(merged);
+        rowSelectionAnchorIndexRef.current = rowIndex;
+      }
+      ctx.apply(next);
+    };
+    return {
+      key: "__selected",
+      label: "",
+      pinDefault: "left",
+      defaultVisible: true,
+      sortable: false,
+      searchable: false,
+      className: "!w-[44px] !min-w-[44px] !max-w-[44px] !px-2",
+      headerClassName: "!w-[44px] !min-w-[44px] !max-w-[44px] !px-2",
+      renderHeader: () => {
+        const ctx = rowSelectionContextRef.current;
+        const allKeys = ctx.visibleRows.map((row) => ctx.rowKeyFn(row));
+        const selectedCountInVisible = allKeys.filter((key) => ctx.selectedKeys.has(key)).length;
+        const allSelected = allKeys.length > 0 && selectedCountInVisible === allKeys.length;
+        const someSelected = selectedCountInVisible > 0 && !allSelected;
+        return (
+          <span className="inline-flex items-center justify-center" data-row-action="true">
+            <Checkbox
+              aria-label={allSelected ? "Deselect all rows" : "Select all rows"}
+              checked={allSelected}
+              indeterminate={someSelected}
+              onChange={handleHeaderToggle}
+            />
+          </span>
+        );
+      },
+      renderCell: (item, context) => {
+        const ctx = rowSelectionContextRef.current;
+        const key = ctx.rowKeyFn(item);
+        const checked = ctx.selectedKeys.has(key);
+        const rowIndex = context?.rowIndex ?? 0;
+        return (
+          <span
+            className="inline-flex items-center justify-center"
+            data-row-action="true"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleRowToggle(rowIndex, key, event);
+            }}
+          >
+            <Checkbox
+              aria-label={checked ? "Deselect row" : "Select row"}
+              checked={checked}
+              onChange={() => {
+                /* handled by wrapper click */
+              }}
+            />
+          </span>
+        );
+      }
+    };
+  }, [enableRowSelection]);
+
+  const columns = useMemo(() => {
+    if (!selectionColumn) return incomingColumns;
+    const filtered = incomingColumns.filter((column) => column.key !== "__selected");
+    return [selectionColumn, ...filtered];
+  }, [incomingColumns, selectionColumn]);
+
 
   const allColumnKeys = useMemo(() => columns.map((column) => column.key), [columns]);
 
@@ -477,6 +582,17 @@ export function DataTable<TItem>({
   const [columnWidthOverrides, setColumnWidthOverrides] = useState<Record<string, number>>({});
   const [selectionAnchor, setSelectionAnchor] = useState<CellPoint | null>(null);
   const [selectionFocus, setSelectionFocus] = useState<CellPoint | null>(null);
+  const [internalSelectedRowKeys, setInternalSelectedRowKeys] = useState<string[]>([]);
+  const isRowSelectionControlled = typeof selectedRowKeys !== "undefined";
+  const effectiveSelectedRowKeys = isRowSelectionControlled ? (selectedRowKeys ?? []) : internalSelectedRowKeys;
+  const effectiveSelectedRowKeysSet = useMemo(() => new Set(effectiveSelectedRowKeys), [effectiveSelectedRowKeys]);
+  const rowSelectionAnchorIndexRef = useRef<number | null>(null);
+  const rowSelectionContextRef = useRef<{
+    selectedKeys: Set<string>;
+    visibleRows: TItem[];
+    rowKeyFn: (item: TItem) => string;
+    apply: (next: string[]) => void;
+  }>({ selectedKeys: new Set(), visibleRows: [], rowKeyFn: rowKey, apply: () => {} });
   const tableShellRef = useRef<HTMLDivElement | null>(null);
   const columnWidthByKeyRef = useRef<Record<string, number>>({});
   const headerCellRefByKey = useRef<Record<string, HTMLTableCellElement | null>>({});
@@ -819,6 +935,52 @@ export function DataTable<TItem>({
   useEffect(() => {
     onVisibleRowsChange?.(filteredAndSortedRows);
   }, [filteredAndSortedRows, onVisibleRowsChange]);
+
+  rowSelectionContextRef.current = {
+    selectedKeys: effectiveSelectedRowKeysSet,
+    visibleRows: filteredAndSortedRows,
+    rowKeyFn: rowKey,
+    apply: (next: string[]) => {
+      if (!isRowSelectionControlled) {
+        setInternalSelectedRowKeys(next);
+      }
+      onSelectedRowKeysChange?.(next);
+    }
+  };
+
+  // Prune selection of any rows that no longer exist in data when uncontrolled.
+  useEffect(() => {
+    if (isRowSelectionControlled || !enableRowSelection) return;
+    const dataKeys = new Set(data.map((item) => rowKey(item)));
+    const filtered = effectiveSelectedRowKeys.filter((key) => dataKeys.has(key));
+    if (filtered.length !== effectiveSelectedRowKeys.length) {
+      setInternalSelectedRowKeys(filtered);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  rowSelectionContextRef.current = {
+    selectedKeys: effectiveSelectedRowKeysSet,
+    visibleRows: filteredAndSortedRows,
+    rowKeyFn: rowKey,
+    apply: (next: string[]) => {
+      if (!isRowSelectionControlled) {
+        setInternalSelectedRowKeys(next);
+      }
+      onSelectedRowKeysChange?.(next);
+    }
+  };
+
+  // Prune selection of any rows that no longer exist in data when uncontrolled.
+  useEffect(() => {
+    if (isRowSelectionControlled || !enableRowSelection) return;
+    const dataKeys = new Set(data.map((item) => rowKey(item)));
+    const filtered = effectiveSelectedRowKeys.filter((key) => dataKeys.has(key));
+    if (filtered.length !== effectiveSelectedRowKeys.length) {
+      setInternalSelectedRowKeys(filtered);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   useEffect(() => {
     if (!enableCellSelection) {
@@ -1398,7 +1560,7 @@ export function DataTable<TItem>({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <>
       <style>{`
         @keyframes datatable-marching-ants {
           to {
@@ -1406,6 +1568,16 @@ export function DataTable<TItem>({
           }
         }
       `}</style>
+      {/*
+       * Layout root for the table. `h-full min-h-0 flex-col` lets the
+       * toolbar take its natural height and the shell below take the
+       * rest, scrolling internally — when the parent provides a real
+       * height (via `app-card-fill__content` etc). In a non-fill
+       * parent `h-full` resolves against an unconstrained ancestor
+       * and the column simply sizes to its content with no scroll,
+       * so this is safe to apply universally at the component level.
+       */}
+      <div className="flex h-full min-h-0 flex-col">
       <div className="mb-3 flex items-center gap-3 overflow-x-auto pb-1">
         <div className="relative w-[16rem] shrink-0 md:w-[20rem]">
           <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
@@ -1429,6 +1601,21 @@ export function DataTable<TItem>({
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
+          {enableRowSelection && effectiveSelectedRowKeys.length > 0 ? (
+            <>
+              <p aria-live="polite" className="text-xs font-semibold text-text">
+                {effectiveSelectedRowKeys.length.toLocaleString()} selected
+              </p>
+              <Button
+                onClick={() => rowSelectionContextRef.current.apply([])}
+                size="sm"
+                variant="ghost"
+              >
+                Clear
+              </Button>
+              {renderSelectionActions ? renderSelectionActions(effectiveSelectedRowKeys) : null}
+            </>
+          ) : null}
           <p aria-live="polite" className="mr-1 text-xs font-medium text-text-muted">
             {rowSummary}
           </p>
@@ -1459,13 +1646,21 @@ export function DataTable<TItem>({
       </div>
 
       <div
-        // Component-owned scroll: this shell fills the available height
-        // (its parent CardContent is `app-card-fill__content` = flex 1
-        // with min-height:0) and overflows on BOTH axes. The thead's
-        // `sticky top-0` then pins to the shell's top edge.
         className="flex-1 min-h-0 overflow-auto rounded-control border border-border/80 bg-surface"
         onKeyDown={(event) => {
-          if (!enableCellSelection || isInteractiveTarget(event.target)) {
+          if (isInteractiveTarget(event.target)) {
+            return;
+          }
+
+          if (enableRowSelection && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+            event.preventDefault();
+            const ctx = rowSelectionContextRef.current;
+            const allKeys = ctx.visibleRows.map((row) => ctx.rowKeyFn(row));
+            ctx.apply(allKeys);
+            return;
+          }
+
+          if (!enableCellSelection) {
             return;
           }
 
@@ -1475,7 +1670,7 @@ export function DataTable<TItem>({
           }
         }}
         ref={tableShellRef}
-        tabIndex={enableCellSelection ? 0 : -1}
+        tabIndex={enableCellSelection || enableRowSelection ? 0 : -1}
       >
 
         {isHydrated ? (
@@ -1624,7 +1819,7 @@ export function DataTable<TItem>({
             )}
             onMouseDownCapture={suppressNativeTextSelection}
           >
-            <TableHeader className="sticky top-0 z-10 border-b border-border bg-surface-muted/95 backdrop-blur supports-[backdrop-filter]:bg-surface-muted/80">
+            <TableHeader className="sticky top-0 z-[5] border-b border-border bg-surface-muted/95 backdrop-blur supports-[backdrop-filter]:bg-surface-muted/80">
               <TableRow>
                 {visibleColumns.map((column) => (
                   <th
@@ -1783,6 +1978,7 @@ export function DataTable<TItem>({
           </Table>
         )}
       </div>
+      </div>
 
       <Popover
         anchorPoint={columnContextMenu?.anchorPoint ?? null}
@@ -1857,7 +2053,7 @@ export function DataTable<TItem>({
         ) : null}
       </Popover>
 
-      <Popup
+      <Panel
         footer={
           <>
             <Button
@@ -1879,7 +2075,7 @@ export function DataTable<TItem>({
         }
         onClose={() => setIsColumnsDialogOpen(false)}
         open={isColumnsDialogOpen}
-        size="lg"
+        panelKey={storageKey ? `columns:${storageKey}` : "data-table-columns"}
         subtitle="Show or hide columns. Drag headers inline to reorder. Sort from each column label."
         title="Table columns"
       >
@@ -1939,7 +2135,7 @@ export function DataTable<TItem>({
             </section>
           ))}
         </div>
-      </Popup>
-    </div>
+      </Panel>
+    </>
   );
 }
