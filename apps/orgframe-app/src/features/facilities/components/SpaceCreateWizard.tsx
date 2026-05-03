@@ -7,38 +7,19 @@ import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { useConfirmDialog } from "@orgframe/ui/primitives/confirm-dialog";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
-import { StatusPicker } from "@orgframe/ui/primitives/status-picker";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { CreateWizard, type CreateWizardSubmitResult, type WizardStep } from "@/src/shared/components/CreateWizard";
 import { LocationPicker, type LocationValue } from "@/src/features/facilities/map/components/LocationPicker";
 import {
-  archiveFacilitySpaceAction,
-  createFacilitySpaceAction,
-  updateFacilitySpaceAction
+  archiveFacilityAction,
+  createFacilityAction,
+  updateFacilityAction
 } from "@/src/features/facilities/actions";
-import type { FacilityReservationReadModel, FacilitySpace, FacilitySpaceKind, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
-
-export type SpaceCreateInput = {
-  parentSpaceId: string | null;
-  name: string;
-  slug: string;
-  spaceKind: FacilitySpaceKind;
-  statusId: string | null;
-  isBookable: boolean;
-  timezone: string;
-  capacity: number | null;
-  sortIndex: number;
-  geoAnchorLat: number | null;
-  geoAnchorLng: number | null;
-  geoAddress: string | null;
-  /** Drives satellite vs grid map for the facility. */
-  environment: "indoor" | "outdoor";
-};
+import type { Facility, FacilityReservationReadModel, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
 
 type WizardState = {
   name: string;
   slug: string;
-  statusId: string | null;
   isBookable: boolean;
   location: LocationValue | null;
   environment: "indoor" | "outdoor";
@@ -54,30 +35,31 @@ function defaultTimezone() {
   }
 }
 
-function buildCreateState(defaultStatusId: string | null): WizardState {
+function buildCreateState(): WizardState {
   return {
     name: "",
     slug: "",
-    statusId: defaultStatusId,
     isBookable: true,
     location: null,
     environment: "outdoor"
   };
 }
 
-function buildEditState(space: FacilitySpace): WizardState {
-  const env = (space.metadataJson as Record<string, unknown> | undefined)?.environment;
+function buildEditState(facility: Facility): WizardState {
   const location: LocationValue | null =
-    space.geoAnchorLat != null && space.geoAnchorLng != null
-      ? { lat: space.geoAnchorLat, lng: space.geoAnchorLng, address: space.geoAddress ?? "" }
+    facility.geoAnchorLat != null && facility.geoAnchorLng != null
+      ? { lat: facility.geoAnchorLat, lng: facility.geoAnchorLng, address: facility.geoAddress ?? "" }
       : null;
   return {
-    name: space.name,
-    slug: space.slug,
-    statusId: space.statusId ?? null,
-    isBookable: space.isBookable,
+    name: facility.name,
+    slug: facility.slug,
+    // `isBookable` doesn't exist on Facility yet — we treat it as a UI toggle
+    // that only matters at the per-space level. Defaulting to true keeps the
+    // checkbox checked in the wizard's Configuration step without backing it
+    // by real data.
+    isBookable: true,
     location,
-    environment: env === "indoor" ? "indoor" : "outdoor"
+    environment: facility.environment
   };
 }
 
@@ -90,24 +72,6 @@ function slugify(value: string) {
     .replace(/^-|-$/g, "");
 }
 
-function toCreatePayload(state: WizardState): SpaceCreateInput {
-  return {
-    parentSpaceId: null,
-    name: state.name.trim(),
-    slug: state.slug.trim() || slugify(state.name),
-    spaceKind: "building",
-    statusId: state.statusId,
-    isBookable: state.isBookable,
-    timezone: defaultTimezone(),
-    capacity: null,
-    sortIndex: 0,
-    geoAnchorLat: state.location?.lat ?? null,
-    geoAnchorLng: state.location?.lng ?? null,
-    geoAddress: state.location?.address?.trim() || null,
-    environment: state.environment
-  };
-}
-
 type CreateProps = {
   mode?: "create";
   onCreated?: (readModel: FacilityReservationReadModel) => void;
@@ -115,7 +79,7 @@ type CreateProps = {
 
 type EditProps = {
   mode: "edit";
-  space: FacilitySpace;
+  facility: Facility;
   canWrite: boolean;
   onSaved?: (readModel: FacilityReservationReadModel) => void;
   onArchived?: () => void;
@@ -125,7 +89,6 @@ type SharedProps = {
   open: boolean;
   onClose: () => void;
   orgSlug: string;
-  spaces: FacilitySpace[];
   spaceStatuses: FacilitySpaceStatusDef[];
   onManageStatuses?: () => void;
 };
@@ -133,35 +96,25 @@ type SharedProps = {
 type SpaceWizardProps = SharedProps & (CreateProps | EditProps);
 
 export function SpaceCreateWizard(props: SpaceWizardProps) {
-  const { open, onClose, orgSlug, spaceStatuses, onManageStatuses } = props;
+  const { open, onClose, orgSlug } = props;
   const isEdit = props.mode === "edit";
-  const editSpace = isEdit ? props.space : null;
+  const editFacility = isEdit ? props.facility : null;
   const canWrite = isEdit ? props.canWrite : true;
   const { toast } = useToast();
   const { confirm } = useConfirmDialog();
   const router = useRouter();
 
-  const defaultStatusId = React.useMemo(() => {
-    const openStatus = spaceStatuses.find((s) => s.isSystem && s.behavesAs === "open");
-    return openStatus?.id ?? spaceStatuses[0]?.id ?? null;
-  }, [spaceStatuses]);
-
   const initialState = React.useMemo<WizardState>(
-    () => (editSpace ? buildEditState(editSpace) : buildCreateState(defaultStatusId)),
-    [editSpace, defaultStatusId]
-  );
-
-  const pickerOptions = React.useMemo(
-    () => spaceStatuses.map((status) => ({ value: status.id, label: status.label, color: status.color })),
-    [spaceStatuses]
+    () => (editFacility ? buildEditState(editFacility) : buildCreateState()),
+    [editFacility]
   );
 
   const [archiving, setArchiving] = React.useState(false);
 
   async function handleArchive() {
-    if (!isEdit || !editSpace) return;
+    if (!isEdit || !editFacility) return;
     const confirmed = await confirm({
-      title: `Archive "${editSpace.name}"?`,
+      title: `Archive "${editFacility.name}"?`,
       description: "This hides the facility from active lists. You can restore it later.",
       confirmLabel: "Archive facility",
       cancelLabel: "Cancel",
@@ -170,7 +123,7 @@ export function SpaceCreateWizard(props: SpaceWizardProps) {
     if (!confirmed) return;
     setArchiving(true);
     try {
-      const result = await archiveFacilitySpaceAction({ orgSlug, spaceId: editSpace.id });
+      const result = await archiveFacilityAction({ orgSlug, facilityId: editFacility.id });
       if (!result.ok) {
         toast({ title: "Couldn't archive", description: result.error, variant: "destructive" });
         return;
@@ -223,7 +176,7 @@ export function SpaceCreateWizard(props: SpaceWizardProps) {
                 kind: "space",
                 orgSlug,
                 debounceMs: 300,
-                currentSlug: editSpace?.slug
+                currentSlug: editFacility?.slug
               }}
               value={state.slug}
             />
@@ -279,19 +232,10 @@ export function SpaceCreateWizard(props: SpaceWizardProps) {
     {
       id: "config",
       label: "Configuration",
-      description: "Set status and booking behavior.",
+      description: "Set booking behavior.",
       validate: () => null,
       render: ({ state, setField }) => (
         <div className="space-y-4">
-          <FormField label="Status">
-            <StatusPicker
-              disabled={!canWrite}
-              onChange={(value) => setField("statusId", value)}
-              onManage={onManageStatuses}
-              options={pickerOptions}
-              value={state.statusId}
-            />
-          </FormField>
           <label className="ui-inline-toggle">
             <Checkbox
               checked={state.isBookable}
@@ -333,23 +277,18 @@ export function SpaceCreateWizard(props: SpaceWizardProps) {
   ];
 
   async function handleSubmit(state: WizardState): Promise<CreateWizardSubmitResult> {
-    if (isEdit && editSpace) {
-      const result = await updateFacilitySpaceAction({
+    if (isEdit && editFacility) {
+      const result = await updateFacilityAction({
         orgSlug,
-        spaceId: editSpace.id,
-        parentSpaceId: editSpace.parentSpaceId,
+        facilityId: editFacility.id,
         name: state.name.trim(),
         slug: state.slug.trim() || slugify(state.name),
-        spaceKind: editSpace.spaceKind,
-        statusId: state.statusId,
-        isBookable: state.isBookable,
-        timezone: editSpace.timezone,
-        capacity: editSpace.capacity,
-        sortIndex: editSpace.sortIndex,
+        timezone: editFacility.timezone,
+        environment: state.environment,
         geoAnchorLat: state.location?.lat ?? null,
         geoAnchorLng: state.location?.lng ?? null,
         geoAddress: state.location?.address?.trim() || null,
-        environment: state.environment
+        geoShowMap: state.environment === "outdoor" && state.location != null
       });
       if (!result.ok) {
         toast({ title: "Couldn't save", description: result.error, variant: "destructive" });
@@ -361,18 +300,21 @@ export function SpaceCreateWizard(props: SpaceWizardProps) {
     }
 
     // create mode
-    const payload = toCreatePayload(state);
-    const result = await createFacilitySpaceAction({ orgSlug, ...payload });
+    const result = await createFacilityAction({
+      orgSlug,
+      name: state.name.trim(),
+      slug: state.slug.trim() || slugify(state.name),
+      timezone: defaultTimezone(),
+      environment: state.environment,
+      geoAnchorLat: state.location?.lat ?? null,
+      geoAnchorLng: state.location?.lng ?? null,
+      geoAddress: state.location?.address?.trim() || null,
+      geoShowMap: state.environment === "outdoor" && state.location != null
+    });
     if (!result.ok) {
       toast({ title: "Couldn't create", description: result.error, variant: "destructive" });
       const fieldErrors = "fieldErrors" in result ? result.fieldErrors : undefined;
-      const stepId = fieldErrors?.slug
-        ? "identity"
-        : fieldErrors?.location
-          ? "location"
-          : fieldErrors
-            ? "config"
-            : undefined;
+      const stepId = fieldErrors?.slug ? "identity" : fieldErrors?.location ? "location" : fieldErrors ? "config" : undefined;
       return { ok: false, fieldErrors, message: result.error, stepId };
     }
     toast({ title: "Facility created", variant: "success" });

@@ -104,7 +104,7 @@ describe("facility structure route data", () => {
     const detail = await getFacilityMapManageDetail("acme", "space-1");
     assert.equal(Boolean(detail), true);
     assert.equal(state.seedCalled, true);
-    assert.equal(detail?.space.id, "space-1");
+    assert.equal(detail?.facility.id, "space-1");
     assert.equal(detail?.nodes.length, 1);
   });
 });

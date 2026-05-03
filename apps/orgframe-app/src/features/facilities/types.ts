@@ -37,6 +37,35 @@ export type FacilitySpaceStatusDef = {
   behavesAs?: FacilitySpaceStatus;
 };
 
+/**
+ * A real-world venue. Lives in `facilities.facilities`. Top-level container
+ * for `FacilitySpace` rows (which represent shapes on the facility's map).
+ *
+ * NB: facilities used to be conflated with spaces — top-level rows in the
+ * `spaces` table with `parent_space_id IS NULL`. The 202605030001 migration
+ * promoted them out into their own table.
+ */
+export type Facility = {
+  id: string;
+  orgId: string;
+  name: string;
+  slug: string;
+  /** Facility lifecycle. Independent from per-space status. */
+  status: "active" | "archived";
+  timezone: string;
+  /** Indoor facilities render on the design grid only; outdoor enables the satellite layer. */
+  environment: "indoor" | "outdoor";
+  /** Lat/lng anchor used as canvas (0,0) when the satellite layer is on. */
+  geoAnchorLat: number | null;
+  geoAnchorLng: number | null;
+  geoAddress: string | null;
+  geoShowMap: boolean;
+  metadataJson: Record<string, unknown>;
+  sortIndex: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type FacilityReservationKind = "booking" | "blackout";
 
 export type FacilityReservationStatus = "pending" | "approved" | "rejected" | "cancelled";
@@ -52,6 +81,9 @@ export type FacilityReservationExceptionKind = "skip" | "override";
 export type FacilitySpace = {
   id: string;
   orgId: string;
+  /** Required: every space belongs to a Facility. */
+  facilityId: string;
+  /** Parent space within the same facility, when nested (e.g. room inside a building floor). */
   parentSpaceId: string | null;
   name: string;
   slug: string;
@@ -156,6 +188,7 @@ export type FacilityReservationException = {
 };
 
 export type FacilityReservationReadModel = {
+  facilities: Facility[];
   spaces: FacilitySpace[];
   spaceStatuses: FacilitySpaceStatusDef[];
   rules: FacilityReservationRule[];

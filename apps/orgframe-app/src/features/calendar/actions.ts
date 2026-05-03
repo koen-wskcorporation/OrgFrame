@@ -836,6 +836,7 @@ export async function getCalendarWorkspaceDataAction(input: {
       facilityReadModelResult.status === "fulfilled"
         ? facilityReadModelResult.value
         : {
+      facilities: [],
             spaces: [],
             spaceStatuses: [],
             rules: [],

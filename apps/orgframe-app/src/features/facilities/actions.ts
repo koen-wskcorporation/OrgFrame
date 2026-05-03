@@ -7,15 +7,20 @@ import { can } from "@/src/shared/permissions/can";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import {
   BUILT_IN_FACILITY_SPACE_STATUSES,
+  createFacilityRecord,
   createFacilitySpaceRecord,
+  deleteFacilityRecord,
   deleteFacilitySpaceRecord,
+  getFacilityById,
   getFacilitySpaceById,
+  listFacilitiesForManage,
   listFacilityReservationReadModel,
   listFacilitySpacesForManage,
+  updateFacilityRecord,
   updateFacilitySpaceRecord
 } from "@/src/features/facilities/db/queries";
 import type { CanvasPoint } from "@/src/features/canvas/core/types";
-import type { FacilitySpace, FacilitySpaceKind } from "@/src/features/facilities/types";
+import type { Facility, FacilitySpace, FacilitySpaceKind } from "@/src/features/facilities/types";
 import {
   deleteFacilityMapNodes,
   deleteOrphanTopLevelFacilityMapNodes,
@@ -32,6 +37,8 @@ const uuidSchema = z.string().uuid();
 const facilitySpaceSchema = z.object({
   orgSlug: textSchema.min(1),
   spaceId: uuidSchema.optional(),
+  /** Required for create; for update we look it up from the existing row. */
+  facilityId: uuidSchema.optional(),
   parentSpaceId: uuidSchema.nullable().optional(),
   name: textSchema.min(2).max(120),
   slug: textSchema.min(2).max(120),
@@ -190,6 +197,154 @@ type SpaceMutationResult = FacilitiesActionResult<{
   space: FacilitySpace;
 }> & { fieldErrors?: Record<string, string> };
 
+// ---- Facility (top-level container) CRUD --------------------------------
+//
+// A Facility is the real-world venue. It used to be a top-level row in the
+// `spaces` table — see migration 202605030001 for the split.
+
+const facilitySchema = z.object({
+  orgSlug: textSchema.min(1),
+  facilityId: uuidSchema.optional(),
+  name: textSchema.min(2).max(120),
+  slug: textSchema.min(2).max(120),
+  status: z.enum(["active", "archived"]).optional(),
+  timezone: textSchema.min(1).max(80).optional(),
+  environment: z.enum(["indoor", "outdoor"]).optional(),
+  geoAnchorLat: z.number().nullable().optional(),
+  geoAnchorLng: z.number().nullable().optional(),
+  geoAddress: z.string().nullable().optional(),
+  geoShowMap: z.boolean().optional(),
+  sortIndex: z.number().int().min(0).optional()
+});
+
+type FacilityMutationResult = FacilitiesActionResult<{
+  readModel: Awaited<ReturnType<typeof listFacilityReservationReadModel>>;
+  facility: Facility;
+}> & { fieldErrors?: Record<string, string> };
+
+export async function createFacilityAction(input: z.input<typeof facilitySchema>): Promise<FacilityMutationResult> {
+  const parsed = facilitySchema.safeParse(input);
+  if (!parsed.success) return asError("Please review the facility details.");
+  try {
+    const org = await requireFacilitiesWrite(parsed.data.orgSlug);
+    const created = await createFacilityRecord({
+      orgId: org.orgId,
+      name: parsed.data.name,
+      slug: parsed.data.slug,
+      status: parsed.data.status ?? "active",
+      timezone: parsed.data.timezone ?? "UTC",
+      environment: parsed.data.environment ?? "outdoor",
+      geoAnchorLat: parsed.data.geoAnchorLat ?? null,
+      geoAnchorLng: parsed.data.geoAnchorLng ?? null,
+      geoAddress: parsed.data.geoAddress ?? null,
+      geoShowMap: parsed.data.geoShowMap ?? false,
+      sortIndex: parsed.data.sortIndex
+    });
+    const readModel = await listFacilityReservationReadModel(org.orgId);
+    revalidatePath(`/${org.orgSlug}/manage/facilities`);
+    return { ok: true, data: { readModel, facility: readModel.facilities.find((f) => f.id === created.id) ?? created } };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    const message = error instanceof Error ? error.message : "Unable to create the facility.";
+    if (message.toLowerCase().includes("slug")) {
+      return { ok: false, error: message, fieldErrors: { slug: message } };
+    }
+    return asError("Unable to create the facility.");
+  }
+}
+
+export async function updateFacilityAction(input: z.input<typeof facilitySchema>): Promise<FacilityMutationResult> {
+  const parsed = facilitySchema.safeParse(input);
+  if (!parsed.success || !parsed.data.facilityId) return asError("Please review the facility details.");
+  try {
+    const org = await requireFacilitiesWrite(parsed.data.orgSlug);
+    const existing = await getFacilityById(org.orgId, parsed.data.facilityId);
+    if (!existing) return asError("Facility not found.");
+    const updated = await updateFacilityRecord({
+      orgId: org.orgId,
+      facilityId: existing.id,
+      name: parsed.data.name,
+      slug: parsed.data.slug,
+      status: parsed.data.status ?? existing.status,
+      timezone: parsed.data.timezone ?? existing.timezone,
+      environment: parsed.data.environment ?? existing.environment,
+      geoAnchorLat: parsed.data.geoAnchorLat !== undefined ? parsed.data.geoAnchorLat : existing.geoAnchorLat,
+      geoAnchorLng: parsed.data.geoAnchorLng !== undefined ? parsed.data.geoAnchorLng : existing.geoAnchorLng,
+      geoAddress: parsed.data.geoAddress !== undefined ? parsed.data.geoAddress : existing.geoAddress,
+      geoShowMap: parsed.data.geoShowMap !== undefined ? parsed.data.geoShowMap : existing.geoShowMap,
+      metadataJson: existing.metadataJson,
+      sortIndex: parsed.data.sortIndex
+    });
+    const readModel = await listFacilityReservationReadModel(org.orgId);
+    revalidatePath(`/${org.orgSlug}/manage/facilities`);
+    return { ok: true, data: { readModel, facility: readModel.facilities.find((f) => f.id === updated.id) ?? updated } };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    const message = error instanceof Error ? error.message : "Unable to update the facility.";
+    if (message.toLowerCase().includes("slug")) {
+      return { ok: false, error: message, fieldErrors: { slug: message } };
+    }
+    return asError("Unable to update the facility.");
+  }
+}
+
+const deleteFacilityActionSchema = z.object({
+  orgSlug: textSchema.min(1),
+  facilityId: uuidSchema
+});
+
+export async function deleteFacilityAction(input: z.input<typeof deleteFacilityActionSchema>): Promise<FacilitiesActionResult<{ readModel: Awaited<ReturnType<typeof listFacilityReservationReadModel>> }>> {
+  const parsed = deleteFacilityActionSchema.safeParse(input);
+  if (!parsed.success) return asError("Invalid delete request.");
+  try {
+    const org = await requireFacilitiesWrite(parsed.data.orgSlug);
+    await deleteFacilityRecord({ orgId: org.orgId, facilityId: parsed.data.facilityId });
+    const readModel = await listFacilityReservationReadModel(org.orgId);
+    revalidatePath(`/${org.orgSlug}/manage/facilities`);
+    return { ok: true, data: { readModel } };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to delete the facility.");
+  }
+}
+
+const archiveFacilityActionSchema = z.object({
+  orgSlug: textSchema.min(1),
+  facilityId: uuidSchema
+});
+
+export async function archiveFacilityAction(input: z.input<typeof archiveFacilityActionSchema>): Promise<FacilityMutationResult> {
+  const parsed = archiveFacilityActionSchema.safeParse(input);
+  if (!parsed.success) return asError("Invalid archive request.");
+  try {
+    const org = await requireFacilitiesWrite(parsed.data.orgSlug);
+    const existing = await getFacilityById(org.orgId, parsed.data.facilityId);
+    if (!existing) return asError("Facility not found.");
+    const updated = await updateFacilityRecord({
+      orgId: org.orgId,
+      facilityId: existing.id,
+      name: existing.name,
+      slug: existing.slug,
+      status: "archived",
+      timezone: existing.timezone,
+      environment: existing.environment,
+      geoAnchorLat: existing.geoAnchorLat,
+      geoAnchorLng: existing.geoAnchorLng,
+      geoAddress: existing.geoAddress,
+      geoShowMap: existing.geoShowMap,
+      metadataJson: existing.metadataJson
+    });
+    const readModel = await listFacilityReservationReadModel(org.orgId);
+    revalidatePath(`/${org.orgSlug}/manage/facilities`);
+    return { ok: true, data: { readModel, facility: readModel.facilities.find((f) => f.id === updated.id) ?? updated } };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to archive the facility.");
+  }
+}
+
+// ---- Facility-space (shape on a facility's map) CRUD --------------------
+
 export async function createFacilitySpaceAction(input: z.input<typeof facilitySpaceSchema>): Promise<SpaceMutationResult> {
   const parsed = facilitySpaceSchema.safeParse(input);
   if (!parsed.success) {
@@ -212,8 +367,12 @@ export async function createFacilitySpaceAction(input: z.input<typeof facilitySp
       }
     );
 
+    if (!parsed.data.facilityId) {
+      return asError("Spaces must belong to a facility.");
+    }
     const created = await createFacilitySpaceRecord({
       orgId: org.orgId,
+      facilityId: parsed.data.facilityId,
       parentSpaceId: parsed.data.parentSpaceId ?? null,
       name: parsed.data.name,
       slug: parsed.data.slug,
@@ -582,23 +741,29 @@ export async function getFacilityBookingMapAction(input: { orgSlug: string; spac
   }
 }
 
-export async function getFacilityMapManageDetail(orgSlug: string, spaceId: string) {
+export async function getFacilityMapManageDetail(orgSlug: string, facilityId: string) {
   const org = await requireFacilitiesReadOrWrite(orgSlug);
-  const [space, spaces] = await Promise.all([getFacilitySpaceById(org.orgId, spaceId), listFacilitySpacesForManage(org.orgId)]);
+  const [facility, spaces] = await Promise.all([
+    getFacilityById(org.orgId, facilityId),
+    // Scope spaces to this facility — no more cross-facility bleed at the
+    // query layer.
+    listFacilitySpacesForManage(org.orgId, { facilityId })
+  ]);
 
-  if (!space) {
+  if (!facility) {
     return null;
   }
 
-  // One-shot cleanup of nodes that an earlier version of the seeder
-  // created for top-level facilities (canvases shouldn't render as shapes).
+  // Belt-and-suspenders cleanup of stale node rows. After the facility/spaces
+  // table split this is mostly a no-op, but it keeps existing orgs' canvases
+  // clean if they had legacy rows from the pre-split era.
   await deleteOrphanTopLevelFacilityMapNodes(org.orgId, spaces);
   await seedFacilityMapNodesForMissingSpaces(org.orgId, spaces);
   const nodes = await listFacilityMapNodes(org.orgId, spaces);
 
   return {
     org,
-    space,
+    facility,
     spaces,
     nodes,
     canWrite: can(org.membershipPermissions, "facilities.write")

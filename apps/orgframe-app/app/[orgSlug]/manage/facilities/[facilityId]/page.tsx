@@ -11,10 +11,10 @@ export const metadata: Metadata = {
 export default async function OrgManageFacilityPage({
   params
 }: {
-  params: Promise<{ orgSlug: string; spaceId: string }>;
+  params: Promise<{ orgSlug: string; facilityId: string }>;
 }) {
-  const { orgSlug, spaceId } = await params;
-  const detail = await getFacilityMapManageDetail(orgSlug, spaceId);
+  const { orgSlug, facilityId } = await params;
+  const detail = await getFacilityMapManageDetail(orgSlug, facilityId);
   if (!detail) {
     notFound();
   }
@@ -22,9 +22,8 @@ export default async function OrgManageFacilityPage({
 
   return (
     <FacilityMapWorkspace
-      activeSpaceId={detail.space.id}
-      activeSpaceName={detail.space.name}
       canWrite={detail.canWrite}
+      facility={detail.facility}
       initialNodes={detail.nodes}
       orgId={detail.org.orgId}
       orgSlug={detail.org.orgSlug}

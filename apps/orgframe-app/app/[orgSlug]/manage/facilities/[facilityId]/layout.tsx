@@ -9,10 +9,10 @@ export default async function FacilityManageLayout({
   params
 }: {
   children: React.ReactNode;
-  params: Promise<{ orgSlug: string; spaceId: string }>;
+  params: Promise<{ orgSlug: string; facilityId: string }>;
 }) {
-  const { orgSlug, spaceId } = await params;
-  const detail = await getFacilityMapManageDetail(orgSlug, spaceId);
+  const { orgSlug, facilityId } = await params;
+  const detail = await getFacilityMapManageDetail(orgSlug, facilityId);
   if (!detail) {
     notFound();
   }
@@ -22,9 +22,8 @@ export default async function FacilityManageLayout({
     <PageStack>
       <FacilityItemShell
         canWrite={detail.canWrite}
-        initialSpace={detail.space}
+        initialFacility={detail.facility}
         orgSlug={orgSlug}
-        spaces={detail.spaces}
         spaceStatuses={spaceStatuses}
       >
         {children}

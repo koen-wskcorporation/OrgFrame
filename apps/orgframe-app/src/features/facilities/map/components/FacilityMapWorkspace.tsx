@@ -8,10 +8,12 @@ import { WorkspaceCardShell } from "@/src/features/core/layout/components/Worksp
 import {
   createFacilitySpaceAction,
   saveFacilityMapAction,
-  setFacilitySpaceGeoAnchorAction
+  setFacilitySpaceGeoAnchorAction,
+  updateFacilityAction
 } from "@/src/features/facilities/actions";
 import { getSpaceKindIcon } from "@/src/features/facilities/lib/spaceKindIcon";
 import type {
+  Facility,
   FacilityReservationReadModel,
   FacilitySpace,
   FacilitySpaceStatusDef
@@ -25,9 +27,9 @@ import { SpaceStatusManager } from "@/src/features/facilities/components/SpaceSt
 type FacilityMapWorkspaceProps = {
   orgSlug: string;
   orgId: string;
-  activeSpaceId: string;
-  activeSpaceName: string;
+  facility: Facility;
   canWrite: boolean;
+  /** Spaces scoped to this facility — query layer filters by `facility_id`. */
   spaces: FacilitySpace[];
   spaceStatuses: FacilitySpaceStatusDef[];
   initialNodes: FacilityMapNode[];
@@ -62,8 +64,7 @@ function defaultTimezone() {
 export function FacilityMapWorkspace({
   orgSlug,
   orgId,
-  activeSpaceId,
-  activeSpaceName: _activeSpaceName,
+  facility: initialFacility,
   canWrite,
   spaces: initialSpaces,
   spaceStatuses: initialStatuses,
@@ -72,6 +73,11 @@ export function FacilityMapWorkspace({
   const { toast } = useToast();
   const [isSaving, startSaving] = useTransition();
   const [isMapOpen, setIsMapOpen] = useState(false);
+  const [facility, setFacility] = useState<Facility>(initialFacility);
+  useEffect(() => {
+    setFacility(initialFacility);
+  }, [initialFacility]);
+  const facilityId = facility.id;
   // Increment whenever the popup opens so the editor remounts and runs its
   // initial-fit effect again. Without this the user's last zoom/pan would
   // persist across close→reopen.
@@ -95,66 +101,21 @@ export function FacilityMapWorkspace({
   const [spaces, setSpaces] = useState<FacilitySpace[]>(initialSpaces);
   const [spaceStatuses, setSpaceStatuses] = useState<FacilitySpaceStatusDef[]>(initialStatuses);
 
-  // The active facility is the CANVAS, not a shape ON the canvas — only its
-  // descendants render as nodes. (`visibleSpaceIds` controls node filtering;
-  // `visibleSpaces` keeps the active facility in the lookup map so label /
-  // status / parent-id resolution still work.)
-  const descendantSpaceIds = useMemo(() => {
-    const childrenByParent = new Map<string, string[]>();
-    for (const space of spaces) {
-      const parent = space.parentSpaceId;
-      if (!parent) continue;
-      const list = childrenByParent.get(parent) ?? [];
-      list.push(space.id);
-      childrenByParent.set(parent, list);
-    }
-    const result = new Set<string>();
-    const queue = [activeSpaceId];
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      for (const child of childrenByParent.get(current) ?? []) {
-        if (!result.has(child)) {
-          result.add(child);
-          queue.push(child);
-        }
-      }
-    }
-    return result;
-  }, [spaces, activeSpaceId]);
-
-  const visibleSpaceIds = useMemo(() => {
-    const set = new Set<string>(descendantSpaceIds);
-    set.add(activeSpaceId);
-    return set;
-  }, [descendantSpaceIds, activeSpaceId]);
-
+  // Spaces are already scoped to this facility by the loader. We still
+  // exclude archived spaces from the canvas (they stay in the DB so they
+  // can be un-archived later, but no point cluttering the map).
   const visibleSpaces = useMemo(
-    () => spaces.filter((space) => visibleSpaceIds.has(space.id)),
-    [spaces, visibleSpaceIds]
+    () => spaces.filter((space) => space.status !== "archived"),
+    [spaces]
   );
+  const visibleSpaceIdSet = useMemo(() => new Set(visibleSpaces.map((s) => s.id)), [visibleSpaces]);
 
-  const activeSpace = spaces.find((s) => s.id === activeSpaceId) ?? null;
-  // Walk up to the root building to read its `environment` metadata. Indoor
-  // facilities render on the design grid only; we hide the satellite + map-
-  // pin toolbar buttons so users don't try to set a location.
-  const rootBuilding = useMemo(() => {
-    let cursor: FacilitySpace | null = activeSpace;
-    const guard = new Set<string>();
-    while (cursor && cursor.parentSpaceId && !guard.has(cursor.id)) {
-      guard.add(cursor.id);
-      const parent: FacilitySpace | undefined = spaces.find((s) => s.id === cursor!.parentSpaceId);
-      if (!parent) break;
-      cursor = parent;
-    }
-    return cursor;
-  }, [activeSpace, spaces]);
-
-  const isIndoor = (rootBuilding?.metadataJson as { environment?: string } | undefined)?.environment === "indoor";
+  const isIndoor = facility.environment === "indoor";
   const geoAnchor =
-    activeSpace?.geoAnchorLat != null && activeSpace?.geoAnchorLng != null
-      ? { lat: activeSpace.geoAnchorLat, lng: activeSpace.geoAnchorLng }
+    facility.geoAnchorLat != null && facility.geoAnchorLng != null
+      ? { lat: facility.geoAnchorLat, lng: facility.geoAnchorLng }
       : null;
-  const geoShowMap = Boolean(activeSpace?.geoShowMap && geoAnchor) && !isIndoor;
+  const geoShowMap = Boolean(facility.geoShowMap && geoAnchor) && !isIndoor;
 
   async function handleToggleGeoMap() {
     if (!canWrite) return;
@@ -163,27 +124,35 @@ export function FacilityMapWorkspace({
       setIsLocationPopupOpen(true);
       return;
     }
-    const result = await setFacilitySpaceGeoAnchorAction({
+    const result = await updateFacilityAction({
       orgSlug,
-      spaceId: activeSpaceId,
-      geoAnchorLat: geoAnchor.lat,
-      geoAnchorLng: geoAnchor.lng,
-      geoAddress: activeSpace?.geoAddress ?? null,
+      facilityId,
+      name: facility.name,
+      slug: facility.slug,
+      timezone: facility.timezone,
+      environment: facility.environment,
+      geoAnchorLat: facility.geoAnchorLat,
+      geoAnchorLng: facility.geoAnchorLng,
+      geoAddress: facility.geoAddress,
       geoShowMap: !geoShowMap
     });
     if (!result.ok) {
       toast({ title: "Couldn't update map", description: result.error, variant: "destructive" });
       return;
     }
-    setSpaces(result.data.readModel.spaces);
+    setFacility(result.data.facility);
   }
 
   async function handleSaveLocation(lat: number, lng: number, address?: string) {
     setSavingLocation(true);
     try {
-      const result = await setFacilitySpaceGeoAnchorAction({
+      const result = await updateFacilityAction({
         orgSlug,
-        spaceId: activeSpaceId,
+        facilityId,
+        name: facility.name,
+        slug: facility.slug,
+        timezone: facility.timezone,
+        environment: "outdoor",
         geoAnchorLat: lat,
         geoAnchorLng: lng,
         geoAddress: address ?? null,
@@ -193,35 +162,40 @@ export function FacilityMapWorkspace({
         toast({ title: "Couldn't save location", description: result.error, variant: "destructive" });
         return;
       }
-      setSpaces(result.data.readModel.spaces);
+      setFacility(result.data.facility);
       setIsLocationPopupOpen(false);
       toast({ title: "Satellite map enabled", variant: "success" });
     } finally {
       setSavingLocation(false);
     }
   }
+  // Stub kept so other handlers that still take this signature compile.
+  // Will be removed in a follow-up. eslint-disable-next-line @typescript-eslint/no-unused-vars
+  void setFacilitySpaceGeoAnchorAction;
 
+  // The query layer already scopes spaces (and therefore nodes) to this
+  // facility — `getFacilityMapManageDetail` filters by `facility_id`. Here
+  // we just need to keep the in-memory node list aligned with the visible
+  // (non-archived) spaces.
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() => {
-    return initialNodes.find((node) => descendantSpaceIds.has(node.entityId))?.id ?? null;
+    return initialNodes.find((node) => visibleSpaceIdSet.has(node.entityId))?.id ?? null;
   });
 
   // Trust persisted geometry — the `mapRowToNode` load path already returns
   // sane points & bounds. Running through `normalizeLayout` here would re-snap
   // every polygon vertex to the 24px grid, destroying satellite-aligned shapes.
-  // Filter to descendants ONLY (not the active facility itself) — the active
-  // facility is the canvas, not a shape on it.
   const [nodes, setNodes] = useState<FacilityMapNode[]>(() =>
-    initialNodes.filter((node) => descendantSpaceIds.has(node.entityId))
+    initialNodes.filter((node) => visibleSpaceIdSet.has(node.entityId))
   );
   const [deletedNodeIds, setDeletedNodeIds] = useState<string[]>([]);
 
-  const ActiveKindIcon = activeSpace ? getSpaceKindIcon(activeSpace.spaceKind) : null;
   const titleNode = (
     <span className="inline-flex items-center gap-2">
-      {ActiveKindIcon ? <ActiveKindIcon className="h-4 w-4 text-text-muted" /> : null}
       <span>Facility Map</span>
     </span>
   );
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  void getSpaceKindIcon;
 
   function handleDeleteNode(nodeId: string) {
     setNodes((current) => current.filter((node) => node.id !== nodeId));
@@ -272,12 +246,12 @@ export function FacilityMapWorkspace({
         ? crypto.randomUUID()
         : `temp-${Math.random().toString(36).slice(2)}`;
     const now = new Date().toISOString();
-    const parent = spaces.find((s) => s.id === activeSpaceId) ?? null;
 
     const optimistic: FacilitySpace = {
       id: tempId,
       orgId,
-      parentSpaceId: activeSpaceId,
+      facilityId,
+      parentSpaceId: null,
       name,
       slug,
       spaceKind: "custom",
@@ -289,10 +263,10 @@ export function FacilityMapWorkspace({
       metadataJson: {},
       statusLabelsJson: {},
       sortIndex: 0,
-      geoAnchorLat: parent?.geoAnchorLat ?? null,
-      geoAnchorLng: parent?.geoAnchorLng ?? null,
-      geoAddress: parent?.geoAddress ?? null,
-      geoShowMap: parent?.geoShowMap ?? false,
+      geoAnchorLat: null,
+      geoAnchorLng: null,
+      geoAddress: null,
+      geoShowMap: false,
       createdAt: now,
       updatedAt: now
     };
@@ -301,7 +275,8 @@ export function FacilityMapWorkspace({
 
     void createFacilitySpaceAction({
       orgSlug,
-      parentSpaceId: activeSpaceId,
+      facilityId,
+      parentSpaceId: null,
       name,
       slug,
       spaceKind: "custom",
@@ -328,7 +303,7 @@ export function FacilityMapWorkspace({
           return;
         }
         const realSpace = result.data.space;
-        setSpaces(result.data.readModel.spaces);
+        setSpaces(result.data.readModel.spaces.filter((s) => s.facilityId === facilityId));
         setSpaceStatuses(result.data.readModel.spaceStatuses);
         setNodes((current) =>
           current.map((n) =>
@@ -352,9 +327,9 @@ export function FacilityMapWorkspace({
   }
 
   const handleReadModel = useCallback((next: FacilityReservationReadModel) => {
-    setSpaces(next.spaces);
+    setSpaces(next.spaces.filter((s) => s.facilityId === facilityId));
     setSpaceStatuses(next.spaceStatuses);
-  }, []);
+  }, [facilityId]);
 
   function handleSave() {
     if (!canWrite) {
@@ -493,7 +468,7 @@ export function FacilityMapWorkspace({
       />
 
       <SetLocationPopup
-        initialAddress={activeSpace?.geoAddress ?? ""}
+        initialAddress={facility.geoAddress ?? ""}
         initialLat={geoAnchor?.lat ?? null}
         initialLng={geoAnchor?.lng ?? null}
         onClose={() => setIsLocationPopupOpen(false)}
