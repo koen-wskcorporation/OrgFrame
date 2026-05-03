@@ -18,6 +18,8 @@ type PopoverProps = {
   viewportPadding?: number;
   dismissOnAnchorPointerDown?: boolean;
   portal?: boolean;
+  /** When true, sets the popover's min-width to the anchor's width (e.g. for Select dropdowns). */
+  matchAnchorWidth?: boolean;
 };
 
 function resolveVerticalPlacement(preferred: PopoverPlacement, anchorRect: DOMRect, popoverHeight: number, viewportPadding: number, offset: number) {
@@ -48,14 +50,16 @@ export function Popover({
   offset = 8,
   viewportPadding = 12,
   dismissOnAnchorPointerDown = false,
-  portal = true
+  portal = true,
+  matchAnchorWidth = false
 }: PopoverProps) {
   const popoverRef = React.useRef<HTMLDivElement | null>(null);
   const onCloseRef = React.useRef(onClose);
   const [mounted, setMounted] = React.useState(false);
-  const [position, setPosition] = React.useState<{ top: number; left: number; visible: boolean }>({
+  const [position, setPosition] = React.useState<{ top: number; left: number; minWidth: number | null; visible: boolean }>({
     top: 0,
     left: 0,
+    minWidth: null,
     visible: false
   });
 
@@ -103,10 +107,13 @@ export function Popover({
       const top =
         verticalPlacement === "bottom" ? anchorRect.bottom + offset : Math.max(viewportPadding, anchorRect.top - offset - popoverHeight);
 
+      const minWidth = matchAnchorWidth ? Math.round(anchorRect.width) : null;
+
       window.requestAnimationFrame(() => {
         setPosition({
           top,
           left: clampedLeft,
+          minWidth,
           visible: true
         });
       });
@@ -142,7 +149,7 @@ export function Popover({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("pointerdown", onPointerDown);
     };
-  }, [anchorPoint, anchorRef, dismissOnAnchorPointerDown, mounted, offset, open, placement, viewportPadding]);
+  }, [anchorPoint, anchorRef, dismissOnAnchorPointerDown, matchAnchorWidth, mounted, offset, open, placement, viewportPadding]);
 
   if (!open || !mounted) {
     return null;
@@ -159,7 +166,8 @@ export function Popover({
       role="menu"
       style={{
         top: position.top,
-        left: position.left
+        left: position.left,
+        ...(position.minWidth !== null ? { minWidth: position.minWidth } : null)
       }}
     >
       {children}

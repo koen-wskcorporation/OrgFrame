@@ -86,6 +86,19 @@ export function Panel({
     setPortalTarget(resolvePortalTarget());
   }, [mounted, open, resolvePortalTarget]);
 
+  // Listen for `panel-dock-changed` so already-open panels can re-portal into
+  // a popup-panel-dock that appears mid-life (e.g. when a fullscreen editor
+  // popup mounts and wants the wizard panel docked inside it).
+  React.useEffect(() => {
+    if (!mounted) return;
+    const onDockChanged = () => {
+      const next = resolvePortalTarget();
+      setPortalTarget((current) => (current === next ? current : next));
+    };
+    window.addEventListener("panel-dock-changed", onDockChanged);
+    return () => window.removeEventListener("panel-dock-changed", onDockChanged);
+  }, [mounted, resolvePortalTarget]);
+
   const isPopupContext = portalTarget?.getAttribute("data-panel-context") === "popup";
 
   const ready = open && mounted && Boolean(portalTarget);

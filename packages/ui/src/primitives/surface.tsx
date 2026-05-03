@@ -46,7 +46,11 @@ export function SurfaceBody({ children, className, padded = true }: SurfaceBodyP
   return (
     <div
       className={cn(
-        "min-h-0 flex-1 overflow-y-auto [overflow-wrap:anywhere]",
+        // The scroll viewport must always reserve enough room for child focus
+        // rings (`ring-2` + `ring-offset-2` = 4px each side) — `overflow-y: auto`
+        // clips anything that pokes outside, so an unpadded body would crop
+        // the green halo on inputs at the top/bottom edges of the scroll area.
+        "min-h-0 flex-1 overflow-y-auto px-1 py-1 [overflow-wrap:anywhere]",
         padded ? "overflow-x-hidden px-5 py-4 md:px-6" : null,
         className
       )}

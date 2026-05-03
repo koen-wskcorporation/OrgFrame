@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { formControlDisabledClass, formControlFocusClass, formControlInlineClass, formControlShellClass } from "./form-control";
+import { Popover } from "./popover";
 import { cn } from "./utils";
 
 export type SelectOption = {
@@ -287,57 +288,61 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           <ChevronDown className={cn(variant === "inline" ? "h-3.5 w-3.5" : "h-4 w-4", "shrink-0 text-text-muted transition-transform", open ? "rotate-180" : "")} />
         </button>
 
-        {open ? (
-          <div
-            className={cn(
-              "absolute top-[calc(100%+0.35rem)] z-50 overflow-hidden rounded-control border bg-surface shadow-floating",
-              variant === "inline" ? "left-0 min-w-[12rem] max-w-[18rem]" : "left-0 right-0"
-            )}
-          >
-            <ul className="max-h-60 overflow-y-auto py-1.5" id={listboxId} role="listbox">
-              {options.map((option, index) => {
-                const isSelected = option.value === selectedValue;
-                const isHighlighted = index === highlightedIndex;
-                const itemDisabled = Boolean(option.disabled);
+        <Popover
+          anchorRef={triggerRef}
+          className={cn(
+            "rounded-control border bg-surface p-0 shadow-floating",
+            variant === "inline" ? "min-w-[12rem] max-w-[18rem]" : "max-w-none"
+          )}
+          matchAnchorWidth={variant !== "inline"}
+          offset={6}
+          onClose={() => setOpen(false)}
+          open={open}
+          placement="bottom-start"
+        >
+          <ul className="max-h-60 overflow-y-auto py-1.5" id={listboxId} role="listbox">
+            {options.map((option, index) => {
+              const isSelected = option.value === selectedValue;
+              const isHighlighted = index === highlightedIndex;
+              const itemDisabled = Boolean(option.disabled);
 
-                return (
-                  <li aria-selected={isSelected} key={option.value} role="option">
-                    <button
-                      className={cn(
-                        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text transition-colors",
-                        itemDisabled ? "cursor-not-allowed opacity-55" : "hover:bg-surface-muted",
-                        isHighlighted ? "bg-surface-muted" : ""
-                      )}
-                      disabled={itemDisabled}
-                      onClick={() => {
-                        selectValue(option.value);
-                      }}
-                      onMouseEnter={() => {
-                        if (!itemDisabled) {
-                          setHighlightedIndex(index);
-                        }
-                      }}
-                      type="button"
-                    >
-                      {option.imageSrc ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          alt={option.imageAlt ?? ""}
-                          className="h-4 w-4 shrink-0 rounded-[4px] border border-border/70 object-cover"
-                          src={option.imageSrc}
-                        />
-                      ) : null}
-                      {option.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(option.statusDot))} /> : null}
-                      <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                      {option.meta ? <span className="shrink-0 text-xs text-text-muted">{option.meta}</span> : null}
-                      {isSelected ? <Check className="h-4 w-4 shrink-0 text-text-muted" /> : null}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ) : null}
+              return (
+                <li aria-selected={isSelected} key={option.value} role="option">
+                  <button
+                    className={cn(
+                      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text transition-colors",
+                      itemDisabled ? "cursor-not-allowed opacity-55" : "hover:bg-surface-muted",
+                      isHighlighted ? "bg-surface-muted" : ""
+                    )}
+                    disabled={itemDisabled}
+                    onClick={() => {
+                      selectValue(option.value);
+                    }}
+                    onMouseEnter={() => {
+                      if (!itemDisabled) {
+                        setHighlightedIndex(index);
+                      }
+                    }}
+                    type="button"
+                  >
+                    {option.imageSrc ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        alt={option.imageAlt ?? ""}
+                        className="h-4 w-4 shrink-0 rounded-[4px] border border-border/70 object-cover"
+                        src={option.imageSrc}
+                      />
+                    ) : null}
+                    {option.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(option.statusDot))} /> : null}
+                    <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                    {option.meta ? <span className="shrink-0 text-xs text-text-muted">{option.meta}</span> : null}
+                    {isSelected ? <Check className="h-4 w-4 shrink-0 text-text-muted" /> : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Popover>
       </div>
     );
   }
