@@ -10,7 +10,9 @@ import { useToast } from "@orgframe/ui/primitives/toast";
 import { Calendar } from "@/src/features/calendar/components/Calendar";
 import { FacilityMapEditor } from "@/src/features/facilities/map/components/FacilityMapEditor";
 import { getFacilityBookingMapAction } from "@/src/features/facilities/actions";
-import type { FacilityMapNode } from "@/src/features/facilities/map/types";
+import { type MapShape, shapeFromSpace } from "@/src/features/facilities/map/types";
+import { CANVAS_PADDING, CANVAS_MIN_NODE_SIZE } from "@/src/features/canvas/core/constants";
+import { rectPoints } from "@/src/features/canvas/core/geometry";
 import type { CalendarReadModel } from "@/src/features/calendar/types";
 import type { FacilityReservationReadModel, FacilitySpace, FacilitySpaceKind, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
 import type { FacilityBookingSelection, FacilityBookingWindow } from "@/src/features/calendar/components/facility-booking-utils";
@@ -159,7 +161,6 @@ export function FacilityBookingFullscreen(props: FacilityBookingFullscreenProps)
   const { toast } = useToast();
   const [mapData, setMapData] = React.useState<{
     orgId: string;
-    nodes: FacilityMapNode[];
     spaces: FacilitySpace[];
     spaceStatuses: FacilitySpaceStatusDef[];
     geoAnchor: { lat: number; lng: number } | null;
@@ -190,14 +191,14 @@ export function FacilityBookingFullscreen(props: FacilityBookingFullscreenProps)
     let cancelled = false;
     setLoading(true);
     setMapData(null);
-    getFacilityBookingMapAction({ orgSlug, spaceId: facilityRootId })
+    getFacilityBookingMapAction({ orgSlug, facilityId: facilityRootId })
       .then((result) => {
         if (cancelled) return;
         if (!result.ok) {
           toast({ title: "Unable to load facility map", description: result.error, variant: "destructive" });
           return;
         }
-        setMapData(result.data);
+        setMapData({ ...result.data, spaceStatuses: [] });
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -353,13 +354,31 @@ export function FacilityBookingFullscreen(props: FacilityBookingFullscreenProps)
   const unbookableNodeIds = React.useMemo(() => {
     const set = new Set<string>();
     if (!mapData) return set;
-    for (const node of mapData.nodes) {
-      const space = mapData.spaces.find((candidate) => candidate.id === node.entityId);
-      if (!space || !isBookableKind(space)) {
-        set.add(node.id);
-      }
+    for (const space of mapData.spaces) {
+      if (!isBookableKind(space)) set.add(space.id);
     }
     return set;
+  }, [mapData]);
+
+  // Derive editor shapes from the loaded spaces. The booking flow doesn't
+  // mutate geometry — this is a read-only render — so a fallback default
+  // rectangle is fine for any space that hasn't been placed on the map yet.
+  const bookingShapes: MapShape[] = React.useMemo(() => {
+    if (!mapData) return [];
+    let i = 0;
+    return mapData.spaces
+      .filter((s) => s.status !== "archived")
+      .map((space) => {
+        const col = i % 6;
+        const row = Math.floor(i / 6);
+        const x = CANVAS_PADDING + col * (CANVAS_MIN_NODE_SIZE * 3);
+        const y = CANVAS_PADDING + row * (CANVAS_MIN_NODE_SIZE * 2);
+        i++;
+        return shapeFromSpace(space, {
+          points: rectPoints({ x, y, width: CANVAS_MIN_NODE_SIZE * 3, height: CANVAS_MIN_NODE_SIZE * 2 }),
+          zIndex: i
+        });
+      });
   }, [mapData]);
 
   const aiSuggestions = React.useMemo(() => {
@@ -463,30 +482,24 @@ export function FacilityBookingFullscreen(props: FacilityBookingFullscreenProps)
               geoShowMap={Boolean(mapData.geoAnchor)}
               indoor={!mapData.geoAnchor}
               isSaving={false}
-              multiSelectedNodeIds={
-                new Set(mapData.nodes.filter((node) => selectedSpaceIds.has(node.entityId)).map((node) => node.id))
-              }
+              multiSelectedNodeIds={selectedSpaceIds}
               nodeBadgeBySpaceId={nodeBadgeBySpaceId}
-              nodes={mapData.nodes}
+              nodes={bookingShapes}
               onChangeNodes={() => undefined}
-              onCreateSpace={() => null}
+              onCreateShape={() => null}
               onDeleteNode={() => undefined}
               onEditGeoLocation={() => undefined}
               onSave={() => undefined}
               onSelectNode={(nodeId) => {
                 if (!nodeId) return;
                 if (unbookableNodeIds.has(nodeId)) return;
-                const node = mapData.nodes.find((candidate) => candidate.id === nodeId);
-                if (!node) return;
-                handleSpaceClick(node.entityId);
+                handleSpaceClick(nodeId);
               }}
               onToggleGeoMap={() => undefined}
-              orgId={mapData.orgId}
               readOnly
               replaceStatusChipBySpaceId={replaceStatusChipBySpaceId}
               selectedNodeId={null}
               spaceStatuses={mapData.spaceStatuses}
-              spaces={mapData.spaces}
             />
           )}
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, type LucideIcon } from "lucide-react";
 import { formControlDisabledClass, formControlFocusClass, formControlInlineClass, formControlShellClass } from "./form-control";
 import { Popover } from "./popover";
 import { cn } from "./utils";
@@ -12,6 +12,8 @@ export type SelectOption = {
   disabled?: boolean;
   imageSrc?: string;
   imageAlt?: string;
+  /** Lucide icon rendered inline before the label (trigger + listbox). */
+  icon?: LucideIcon;
   statusDot?: "success" | "warning" | "destructive" | "muted";
   meta?: string;
 };
@@ -121,9 +123,17 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
 
       const onPointerDown = (event: PointerEvent) => {
         const target = event.target as Node | null;
-        if (target && rootRef.current?.contains(target)) {
-          return;
-        }
+        if (!target) return;
+        // Inside the trigger / hidden <select> wrapper.
+        if (rootRef.current?.contains(target)) return;
+        // Inside our own listbox, which `Popover` portals to <body> — so
+        // a `contains()` check against rootRef alone always misses it.
+        // Without this branch, clicking any option fires this handler
+        // first, which closes the popover; React then unmounts it before
+        // the option's `onClick` can run, so the new value never reaches
+        // `selectValue` and the field appears stuck on its previous pick.
+        const targetEl = target instanceof Element ? target : null;
+        if (targetEl?.closest(`#${CSS.escape(listboxId)}`)) return;
         setOpen(false);
       };
 
@@ -131,7 +141,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       return () => {
         document.removeEventListener("pointerdown", onPointerDown);
       };
-    }, [open]);
+    }, [open, listboxId]);
 
     React.useEffect(() => {
       if (!open) {
@@ -282,6 +292,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                 src={selectedOption.imageSrc}
               />
             ) : null}
+            {selectedOption?.icon ? <selectedOption.icon className="h-4 w-4 shrink-0 text-text-muted" /> : null}
             {selectedOption?.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(selectedOption.statusDot))} /> : null}
             <span className="truncate">{selectedOption?.label ?? placeholder}</span>
           </span>
@@ -333,6 +344,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                         src={option.imageSrc}
                       />
                     ) : null}
+                    {option.icon ? <option.icon className="h-4 w-4 shrink-0 text-text-muted" /> : null}
                     {option.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(option.statusDot))} /> : null}
                     <span className="min-w-0 flex-1 truncate">{option.label}</span>
                     {option.meta ? <span className="shrink-0 text-xs text-text-muted">{option.meta}</span> : null}

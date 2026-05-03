@@ -1,12 +1,12 @@
+/**
+ * Round-trips the facility manage page loader. After the schema collapse
+ * there is no separate map_nodes table — geometry lives on `spaces` —
+ * so the loader is just `getFacilityById` + `listFacilitySpacesForManage`.
+ *
+ * No seeder, no orphan cleanup, no separate node list to read back.
+ */
 import assert from "node:assert/strict";
-import { before, beforeEach, describe, it, mock } from "node:test";
-
-const state = {
-  reset() {
-    this.seedCalled = false;
-  },
-  seedCalled: false
-};
+import { before, describe, it, mock } from "node:test";
 
 mock.module("@/src/shared/org/getOrgAuthContext", {
   namedExports: {
@@ -20,71 +20,69 @@ mock.module("@/src/shared/org/getOrgAuthContext", {
 
 mock.module("@/src/features/facilities/db/queries", {
   namedExports: {
-    getFacilitySpaceById: async (_orgId: string, spaceId: string) => ({
-      id: spaceId,
+    BUILT_IN_FACILITY_SPACE_STATUSES: [],
+    createFacilityRecord: async () => ({}),
+    createFacilitySpaceRecord: async () => ({}),
+    deleteFacilityRecord: async () => undefined,
+    deleteFacilitySpaceRecord: async () => undefined,
+    getFacilityById: async (_orgId: string, facilityId: string) => ({
+      id: facilityId,
       orgId: "org-1",
-      parentSpaceId: null,
-      name: "Field 1",
-      slug: "field-1",
-      spaceKind: "field",
-      status: "open",
-      isBookable: true,
+      name: "Main Park",
+      slug: "main-park",
+      status: "active",
       timezone: "America/Detroit",
-      capacity: null,
+      environment: "outdoor",
+      geoAnchorLat: null,
+      geoAnchorLng: null,
+      geoAddress: null,
+      geoShowMap: false,
       metadataJson: {},
-      statusLabelsJson: {},
-      sortIndex: 1,
-      createdAt: "",
-      updatedAt: ""
+      sortIndex: 0,
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z"
+    }),
+    getFacilitySpaceById: async () => null,
+    listFacilitiesForManage: async () => [],
+    listFacilityReservationReadModel: async () => ({
+      facilities: [],
+      spaces: [],
+      spaceStatuses: [],
+      rules: [],
+      reservations: [],
+      exceptions: []
     }),
     listFacilitySpacesForManage: async () => [
       {
         id: "space-1",
         orgId: "org-1",
+        facilityId: "fac-1",
         parentSpaceId: null,
         name: "Field 1",
         slug: "field-1",
         spaceKind: "field",
         status: "open",
+        statusId: null,
         isBookable: true,
         timezone: "America/Detroit",
         capacity: null,
         metadataJson: {},
         statusLabelsJson: {},
         sortIndex: 1,
-        createdAt: "",
-        updatedAt: ""
-      }
-    ]
-  }
-});
-
-mock.module("@/src/features/facilities/map/db/queries", {
-  namedExports: {
-    seedFacilityMapNodesForMissingSpaces: async () => {
-      state.seedCalled = true;
-    },
-    listFacilityMapNodes: async () => [
-      {
-        id: "node-1",
-        entityId: "space-1",
-        parentEntityId: null,
-        label: "Field 1",
-        points: [
+        mapPoints: [
           { x: 24, y: 24 },
           { x: 168, y: 24 },
           { x: 168, y: 120 },
           { x: 24, y: 120 }
         ],
-        bounds: { x: 24, y: 24, width: 144, height: 96 },
-        zIndex: 1,
-        cornerRadius: 12,
-        status: "active",
-        orgId: "org-1",
-        spaceId: "space-1",
-        parentSpaceId: null
+        mapZIndex: 1,
+        createdAt: "2024-01-01T00:00:00Z",
+        updatedAt: "2024-01-01T00:00:00Z"
       }
-    ]
+    ],
+    updateFacilityRecord: async () => ({}),
+    updateFacilitySpaceMapRecord: async () => undefined,
+    updateFacilitySpaceRecord: async () => undefined
   }
 });
 
@@ -94,16 +92,14 @@ before(async () => {
   ({ getFacilityMapManageDetail } = await import("@/src/features/facilities/actions"));
 });
 
-beforeEach(() => {
-  state.reset();
-});
-
-describe("facility structure route data", () => {
-  it("loads seeded map nodes for structure page", async () => {
-    const detail = await getFacilityMapManageDetail("acme", "space-1");
-    assert.equal(Boolean(detail), true);
-    assert.equal(state.seedCalled, true);
-    assert.equal(detail?.facility.id, "space-1");
-    assert.equal(detail?.nodes.length, 1);
+describe("facility manage route loader", () => {
+  it("returns the facility and its scoped spaces (geometry on the row)", async () => {
+    const detail = await getFacilityMapManageDetail("acme", "fac-1");
+    assert.ok(detail, "loader returned a detail object");
+    assert.equal(detail!.facility.id, "fac-1");
+    assert.equal(detail!.spaces.length, 1);
+    assert.equal(detail!.spaces[0].id, "space-1");
+    assert.ok(Array.isArray(detail!.spaces[0].mapPoints));
+    assert.equal(detail!.spaces[0].mapPoints!.length, 4);
   });
 });

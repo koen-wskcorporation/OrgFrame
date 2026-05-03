@@ -228,7 +228,7 @@ export function OrgHeader({
   const manageHref = `/${orgSlug}/manage`;
 
   return (
-    <div className="app-container sticky top-[var(--layout-gap)] z-40 pb-[var(--layout-gap)] pt-0" ref={rootRef}>
+    <div className="w-full min-w-0" ref={rootRef}>
       <div className={cn("rounded-card border bg-surface shadow-floating transition-shadow", isScrolled ? "shadow-lg" : "")}>
         <div className="flex min-h-[64px] items-center gap-3 pb-2.5 pl-4 pr-2.5 pt-2.5 md:pb-4 md:pl-6 md:pr-4 md:pt-4">
           <div className="flex shrink-0 items-center gap-1 self-stretch">

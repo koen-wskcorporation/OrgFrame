@@ -24,7 +24,6 @@ export default async function OrgManageFacilityPage({
     <FacilityMapWorkspace
       canWrite={detail.canWrite}
       facility={detail.facility}
-      initialNodes={detail.nodes}
       orgId={detail.org.orgId}
       orgSlug={detail.org.orgSlug}
       spaceStatuses={spaceStatuses}

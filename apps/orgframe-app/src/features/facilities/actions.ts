@@ -17,19 +17,11 @@ import {
   listFacilityReservationReadModel,
   listFacilitySpacesForManage,
   updateFacilityRecord,
+  updateFacilitySpaceMapRecord,
   updateFacilitySpaceRecord
 } from "@/src/features/facilities/db/queries";
-import type { CanvasPoint } from "@/src/features/canvas/core/types";
 import type { Facility, FacilitySpace, FacilitySpaceKind } from "@/src/features/facilities/types";
-import {
-  deleteFacilityMapNodes,
-  deleteOrphanTopLevelFacilityMapNodes,
-  listFacilityMapNodes,
-  normalizeFacilityMapNodesForPersistence,
-  seedFacilityMapNodesForMissingSpaces,
-  upsertFacilityMapNodes
-} from "@/src/features/facilities/map/db/queries";
-import type { FacilityMapNode } from "@/src/features/facilities/map/types";
+import { isKindBookable } from "@/src/features/facilities/lib/spaceKindIcon";
 
 const textSchema = z.string().trim();
 const uuidSchema = z.string().uuid();
@@ -44,13 +36,11 @@ const facilitySpaceSchema = z.object({
   slug: textSchema.min(2).max(120),
   spaceKind: z.enum([
     "building",
-    "floor",
-    "room",
     "field",
     "court",
+    "pavilion",
+    "concessions",
     "lobby",
-    "office",
-    "kitchen",
     "bathroom",
     "storage",
     "parking_lot",
@@ -68,12 +58,6 @@ const facilitySpaceSchema = z.object({
   timezone: textSchema.min(1).max(80),
   capacity: z.number().int().min(0).nullable().optional(),
   sortIndex: z.number().int().min(0).optional(),
-  /** Lat/lng anchor for the satellite layer (canvas origin). */
-  geoAnchorLat: z.number().nullable().optional(),
-  geoAnchorLng: z.number().nullable().optional(),
-  geoAddress: z.string().nullable().optional(),
-  /** Indoor facilities render on the design grid; outdoor enables satellite. */
-  environment: z.enum(["indoor", "outdoor"]).optional(),
   statusLabels: z
     .object({
       open: z.string().optional(),
@@ -84,29 +68,16 @@ const facilitySpaceSchema = z.object({
 });
 
 /**
- * Build the `metadata_json` payload that carries lost-session-only fields
- * (`statusId`, `geoAnchorLat/Lng`, `geoAddress`, `geoShowMap`, `environment`)
- * until their dedicated columns are recovered. Pass the previous metadata so
- * unrelated keys aren't wiped on every update.
+ * Build the `metadata_json` payload for a space. Currently only carries
+ * the org-customizable `statusId` until its dedicated column lands.
+ * Geo and environment now live on the parent `Facility`.
  */
 function mergeMetadataForSpace(
   previous: Record<string, unknown>,
-  patch: {
-    statusId?: string | null;
-    geoAnchorLat?: number | null;
-    geoAnchorLng?: number | null;
-    geoAddress?: string | null;
-    geoShowMap?: boolean;
-    environment?: "indoor" | "outdoor";
-  }
+  patch: { statusId?: string | null }
 ) {
   const next: Record<string, unknown> = { ...previous };
   if (patch.statusId !== undefined) next.statusId = patch.statusId;
-  if (patch.geoAnchorLat !== undefined) next.geoAnchorLat = patch.geoAnchorLat;
-  if (patch.geoAnchorLng !== undefined) next.geoAnchorLng = patch.geoAnchorLng;
-  if (patch.geoAddress !== undefined) next.geoAddress = patch.geoAddress;
-  if (patch.geoShowMap !== undefined) next.geoShowMap = patch.geoShowMap;
-  if (patch.environment !== undefined) next.environment = patch.environment;
   return next;
 }
 
@@ -129,34 +100,52 @@ const setStatusSchema = z.object({
   status: z.enum(["open", "closed", "archived"])
 });
 
+const mapPointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  smooth: z.boolean().optional()
+});
+
 const saveFacilityMapSchema = z.object({
   orgSlug: textSchema.min(1),
-  nodes: z.array(
-    z.object({
-      id: z.string().min(1),
-      entityId: uuidSchema,
-      parentEntityId: uuidSchema.nullable(),
-      label: z.string().min(1),
-      points: z.array(
-        z.object({
-          x: z.number(),
-          y: z.number(),
-          smooth: z.boolean().optional()
-        })
-      ),
-      bounds: z.object({
-        x: z.number(),
-        y: z.number(),
-        width: z.number(),
-        height: z.number()
-      }),
-      zIndex: z.number().int(),
-      cornerRadius: z.number(),
-      status: z.enum(["active", "archived"])
-    })
-  ),
-  /** Node ids the user removed locally; we delete the corresponding rows. */
-  deletedNodeIds: z.array(z.string().min(1)).optional()
+  facilityId: uuidSchema,
+  /**
+   * Spaces created locally in this editor session that need a server row.
+   * The client supplies the UUID so the round-trip stays simple — no
+   * tempId-to-realId remap. The server accepts it verbatim (postgres takes
+   * client-supplied UUIDs).
+   */
+  creates: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        name: textSchema.min(1).max(120),
+        spaceKind: z.enum([
+          "building", "field", "court", "pavilion", "concessions",
+          "lobby", "bathroom", "storage", "parking_lot", "custom"
+        ]),
+        statusId: textSchema.min(1).nullable().optional(),
+        isBookable: z.boolean(),
+        timezone: textSchema.min(1).max(80),
+        capacity: z.number().int().min(0).nullable().optional(),
+        sortIndex: z.number().int().min(0).optional(),
+        points: z.array(mapPointSchema).min(3),
+        zIndex: z.number().int()
+      })
+    )
+    .default([]),
+  /** Geometry-only updates to existing spaces. */
+  updates: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        points: z.array(mapPointSchema).min(3),
+        zIndex: z.number().int()
+      })
+    )
+    .default([]),
+  /** Space ids to hard-delete (cascades to all child data via FK). */
+  deletes: z.array(uuidSchema).default([])
 });
 
 export type FacilitiesActionResult<TData = undefined> =
@@ -354,30 +343,29 @@ export async function createFacilitySpaceAction(input: z.input<typeof facilitySp
     const org = await requireFacilitiesWrite(parsed.data.orgSlug);
     const fallbackStatus = parsed.data.status ?? "open";
     const status = resolveStatusFromStatusId(parsed.data.statusId, fallbackStatus);
-    const metadata = mergeMetadataForSpace(
-      {},
-      {
-        statusId: parsed.data.statusId ?? null,
-        geoAnchorLat: parsed.data.geoAnchorLat ?? null,
-        geoAnchorLng: parsed.data.geoAnchorLng ?? null,
-        geoAddress: parsed.data.geoAddress ?? null,
-        geoShowMap: parsed.data.environment === "outdoor" && parsed.data.geoAnchorLat != null && parsed.data.geoAnchorLng != null,
-        environment: parsed.data.environment
-      }
-    );
+    const metadata = mergeMetadataForSpace({}, { statusId: parsed.data.statusId ?? null });
 
     if (!parsed.data.facilityId) {
       return asError("Spaces must belong to a facility.");
     }
+    // Auto-resolve slug collisions server-side. The user-provided slug
+    // is the preferred candidate; if it's taken we suffix `-2`, `-3`,
+    // ... so retries-after-partial-failure stop bombing on the same row.
+    const siblings = await listFacilitySpacesForManage(org.orgId, { facilityId: parsed.data.facilityId });
+    const usedSlugs = new Set(siblings.map((s) => s.slug));
+    const slug = uniqueSlug(parsed.data.slug, usedSlugs);
     const created = await createFacilitySpaceRecord({
       orgId: org.orgId,
       facilityId: parsed.data.facilityId,
       parentSpaceId: parsed.data.parentSpaceId ?? null,
       name: parsed.data.name,
-      slug: parsed.data.slug,
+      slug,
       spaceKind: parsed.data.spaceKind,
       status,
-      isBookable: parsed.data.isBookable,
+      // Server-side enforcement of the kind's intrinsic bookability.
+      // A bathroom can never be marked bookable, regardless of what
+      // the client claims — gives us one canonical source of truth.
+      isBookable: isKindBookable(parsed.data.spaceKind) ? parsed.data.isBookable : false,
       timezone: parsed.data.timezone,
       capacity: parsed.data.capacity ?? null,
       sortIndex: parsed.data.sortIndex ?? 0,
@@ -415,11 +403,7 @@ export async function updateFacilitySpaceAction(input: z.input<typeof facilitySp
     const fallbackStatus = parsed.data.status ?? existing.status;
     const status = resolveStatusFromStatusId(parsed.data.statusId, fallbackStatus);
     const metadata = mergeMetadataForSpace(existing.metadataJson, {
-      statusId: parsed.data.statusId ?? existing.statusId ?? null,
-      geoAnchorLat: parsed.data.geoAnchorLat !== undefined ? parsed.data.geoAnchorLat : existing.geoAnchorLat ?? null,
-      geoAnchorLng: parsed.data.geoAnchorLng !== undefined ? parsed.data.geoAnchorLng : existing.geoAnchorLng ?? null,
-      geoAddress: parsed.data.geoAddress !== undefined ? parsed.data.geoAddress : existing.geoAddress ?? null,
-      environment: parsed.data.environment
+      statusId: parsed.data.statusId ?? existing.statusId ?? null
     });
 
     await updateFacilitySpaceRecord({
@@ -430,7 +414,10 @@ export async function updateFacilitySpaceAction(input: z.input<typeof facilitySp
       slug: parsed.data.slug,
       spaceKind: parsed.data.spaceKind,
       status,
-      isBookable: parsed.data.isBookable,
+      // Server-side enforcement of the kind's intrinsic bookability.
+      // A bathroom can never be marked bookable, regardless of what
+      // the client claims — gives us one canonical source of truth.
+      isBookable: isKindBookable(parsed.data.spaceKind) ? parsed.data.isBookable : false,
       timezone: parsed.data.timezone,
       capacity: parsed.data.capacity ?? null,
       sortIndex: parsed.data.sortIndex ?? 0,
@@ -450,59 +437,6 @@ export async function updateFacilitySpaceAction(input: z.input<typeof facilitySp
       return { ok: false, error: message, fieldErrors: { slug: message } };
     }
     return asError("Unable to update the facility space.");
-  }
-}
-
-const setGeoAnchorSchema = z.object({
-  orgSlug: textSchema.min(1),
-  spaceId: uuidSchema,
-  geoAnchorLat: z.number().nullable(),
-  geoAnchorLng: z.number().nullable(),
-  geoAddress: z.string().nullable().optional(),
-  geoShowMap: z.boolean().optional()
-});
-
-/**
- * Save / clear the per-space geo anchor + address used for the satellite
- * layer. Stored under `metadata_json` until the dedicated columns are
- * recovered.
- */
-export async function setFacilitySpaceGeoAnchorAction(input: z.input<typeof setGeoAnchorSchema>): Promise<FacilitiesActionResult<{ readModel: Awaited<ReturnType<typeof listFacilityReservationReadModel>> }>> {
-  const parsed = setGeoAnchorSchema.safeParse(input);
-  if (!parsed.success) {
-    return asError("Invalid location payload.");
-  }
-  try {
-    const org = await requireFacilitiesWrite(parsed.data.orgSlug);
-    const existing = await getFacilitySpaceById(org.orgId, parsed.data.spaceId);
-    if (!existing) return asError("Facility space not found.");
-    const metadata = mergeMetadataForSpace(existing.metadataJson, {
-      geoAnchorLat: parsed.data.geoAnchorLat,
-      geoAnchorLng: parsed.data.geoAnchorLng,
-      geoAddress: parsed.data.geoAddress ?? null,
-      geoShowMap: parsed.data.geoShowMap ?? Boolean(parsed.data.geoAnchorLat && parsed.data.geoAnchorLng)
-    });
-    await updateFacilitySpaceRecord({
-      orgId: org.orgId,
-      spaceId: existing.id,
-      parentSpaceId: existing.parentSpaceId,
-      name: existing.name,
-      slug: existing.slug,
-      spaceKind: existing.spaceKind,
-      status: existing.status,
-      isBookable: existing.isBookable,
-      timezone: existing.timezone,
-      capacity: existing.capacity,
-      sortIndex: existing.sortIndex,
-      statusLabelsJson: existing.statusLabelsJson,
-      metadataJson: metadata
-    });
-    const readModel = await listFacilityReservationReadModel(org.orgId);
-    revalidatePath(`/${org.orgSlug}/manage/facilities`);
-    return { ok: true, data: { readModel } };
-  } catch (error) {
-    rethrowIfNavigationError(error);
-    return asError("Unable to save location.");
   }
 }
 
@@ -555,7 +489,7 @@ export async function deleteFacilitySpaceStatusAction(_input: z.input<typeof sta
 export type FacilitySpaceSuggestion = {
   name: string;
   kind: FacilitySpaceKind;
-  points: CanvasPoint[];
+  points: { x: number; y: number; smooth?: boolean }[];
 };
 
 const segmentSchema = z.object({
@@ -653,7 +587,10 @@ export async function toggleFacilitySpaceBookableAction(
       slug: space.slug,
       spaceKind: space.spaceKind,
       status: space.status,
-      isBookable: parsed.data.isBookable,
+      // Server-side enforcement of the kind's intrinsic bookability.
+      // A bathroom can never be marked bookable, regardless of what
+      // the client claims — gives us one canonical source of truth.
+      isBookable: isKindBookable(parsed.data.spaceKind) ? parsed.data.isBookable : false,
       timezone: space.timezone,
       capacity: space.capacity,
       sortIndex: space.sortIndex,
@@ -710,96 +647,152 @@ export async function toggleFacilitySpaceOpenClosedAction(input: z.input<typeof 
   }
 }
 
-// Booking-step shape consumed by FacilityBookingFullscreen. Wraps
-// getFacilityMapManageDetail so the wizard's facility step can render the
-// availability map. The full lost-session implementation surfaced
-// org-customizable space-status definitions; until that work is recovered,
-// `spaceStatuses` is empty and `geoAnchor` is unset.
-export async function getFacilityBookingMapAction(input: { orgSlug: string; spaceId: string }): Promise<
-  | { ok: true; data: { orgId: string; nodes: FacilityMapNode[]; spaces: Awaited<ReturnType<typeof listFacilitySpacesForManage>>; spaceStatuses: never[]; geoAnchor: { lat: number; lng: number } | null } }
+/**
+ * Used by the calendar booking wizard's facility step. Just loads the
+ * facility map detail and reshapes it for the booking flow. There is no
+ * separate node table anymore — the spaces themselves carry their
+ * geometry.
+ */
+export async function getFacilityBookingMapAction(input: { orgSlug: string; facilityId: string }): Promise<
+  | { ok: true; data: { orgId: string; spaces: FacilitySpace[]; geoAnchor: { lat: number; lng: number } | null } }
   | { ok: false; error: string }
 > {
   try {
-    const detail = await getFacilityMapManageDetail(input.orgSlug, input.spaceId);
-    if (!detail) {
-      return { ok: false, error: "Facility not found." };
-    }
-    return {
-      ok: true,
-      data: {
-        orgId: detail.org.orgId,
-        nodes: detail.nodes,
-        spaces: detail.spaces,
-        spaceStatuses: [],
-        geoAnchor: null
-      }
-    };
+    const detail = await getFacilityMapManageDetail(input.orgSlug, input.facilityId);
+    if (!detail) return { ok: false, error: "Facility not found." };
+    const geoAnchor = detail.facility.geoAnchorLat != null && detail.facility.geoAnchorLng != null
+      ? { lat: detail.facility.geoAnchorLat, lng: detail.facility.geoAnchorLng }
+      : null;
+    return { ok: true, data: { orgId: detail.org.orgId, spaces: detail.spaces, geoAnchor } };
   } catch (error) {
     rethrowIfNavigationError(error);
     return { ok: false, error: "Unable to load facility map." };
   }
 }
 
+/**
+ * Loader for the facility-detail page. After the schema collapse there
+ * is nothing to seed and no orphan rows to clean up — geometry lives
+ * on the spaces themselves.
+ */
 export async function getFacilityMapManageDetail(orgSlug: string, facilityId: string) {
   const org = await requireFacilitiesReadOrWrite(orgSlug);
   const [facility, spaces] = await Promise.all([
     getFacilityById(org.orgId, facilityId),
-    // Scope spaces to this facility — no more cross-facility bleed at the
-    // query layer.
     listFacilitySpacesForManage(org.orgId, { facilityId })
   ]);
-
-  if (!facility) {
-    return null;
-  }
-
-  // Belt-and-suspenders cleanup of stale node rows. After the facility/spaces
-  // table split this is mostly a no-op, but it keeps existing orgs' canvases
-  // clean if they had legacy rows from the pre-split era.
-  await deleteOrphanTopLevelFacilityMapNodes(org.orgId, spaces);
-  await seedFacilityMapNodesForMissingSpaces(org.orgId, spaces);
-  const nodes = await listFacilityMapNodes(org.orgId, spaces);
-
+  if (!facility) return null;
   return {
     org,
     facility,
     spaces,
-    nodes,
     canWrite: can(org.membershipPermissions, "facilities.write")
   };
 }
 
-export async function saveFacilityMapAction(input: z.input<typeof saveFacilityMapSchema>): Promise<FacilitiesActionResult<{ nodes: FacilityMapNode[] }>> {
+/**
+ * Single transactional batch save for the facility map editor.
+ *
+ * Accepts {creates, updates, deletes} from the client. Resolves slug
+ * collisions server-side (auto-suffixes `-2`, `-3`, ... on conflict) so
+ * a partial-failure retry never bombs on an already-claimed slug. On
+ * any error before all writes complete the partial work that already
+ * landed stays — the client's draft model is the source of truth and a
+ * subsequent save converges to a clean state.
+ */
+export async function saveFacilityMapAction(
+  input: z.input<typeof saveFacilityMapSchema>
+): Promise<FacilitiesActionResult<{ spaces: FacilitySpace[] }>> {
   const parsed = saveFacilityMapSchema.safeParse(input);
-  if (!parsed.success) {
-    return asError("Invalid map payload.");
-  }
+  if (!parsed.success) return asError("Invalid map payload.");
 
   try {
     const org = await requireFacilitiesWrite(parsed.data.orgSlug);
 
-    // Use the gentle persistence path (recomputes bounds, no grid snap) so
-    // satellite-positioned vertices survive a save.
-    const cleaned = normalizeFacilityMapNodesForPersistence(parsed.data.nodes as FacilityMapNode[]);
-
-    if (parsed.data.deletedNodeIds && parsed.data.deletedNodeIds.length > 0) {
-      await deleteFacilityMapNodes({ orgId: org.orgId, nodeIds: parsed.data.deletedNodeIds });
+    // 1. Deletions first. FK CASCADE pulls reservations/rules/etc.
+    for (const id of parsed.data.deletes) {
+      await deleteFacilitySpaceRecord({ orgId: org.orgId, spaceId: id });
     }
 
-    const saved = await upsertFacilityMapNodes({
-      orgId: org.orgId,
-      nodes: cleaned
-    });
-
-    revalidatePath(`/${org.orgSlug}/manage/facilities`);
-    return {
-      ok: true,
-      data: {
-        nodes: saved
+    // 2. Creates. Each carries a client-issued UUID and a slug we
+    //    auto-resolve on conflict. The `id` and `slug` checks against
+    //    `allSpaces` make this idempotent: if a previous save attempt
+    //    partially landed (creates wrote, updates threw), retrying
+    //    must NOT throw on the already-created rows. We treat an
+    //    existing-id row as "already created — fall through to the
+    //    geometry update step below" rather than re-inserting.
+    const allSpaces = await listFacilitySpacesForManage(org.orgId, { facilityId: parsed.data.facilityId });
+    const existingIds = new Set(allSpaces.map((s) => s.id));
+    const usedSlugs = new Set(allSpaces.map((s) => s.slug));
+    const recoveredCreates: typeof parsed.data.creates = [];
+    for (const draft of parsed.data.creates) {
+      if (existingIds.has(draft.id)) {
+        // Row is already there from a prior partial save. Geometry
+        // gets reconciled by the update step (we synthesize an update
+        // entry below).
+        recoveredCreates.push(draft);
+        continue;
       }
-    };
+      const slug = uniqueSlug(slugifyName(draft.name), usedSlugs);
+      usedSlugs.add(slug);
+      await createFacilitySpaceRecord({
+        id: draft.id,
+        orgId: org.orgId,
+        facilityId: parsed.data.facilityId,
+        parentSpaceId: null,
+        name: draft.name,
+        slug,
+        spaceKind: draft.spaceKind,
+        status: "open",
+        isBookable: isKindBookable(draft.spaceKind) ? draft.isBookable : false,
+        timezone: draft.timezone,
+        capacity: draft.capacity ?? null,
+        sortIndex: draft.sortIndex ?? 0,
+        metadataJson: draft.statusId ? { statusId: draft.statusId } : {},
+        mapPoints: draft.points,
+        mapZIndex: draft.zIndex
+      });
+    }
+
+    // 3. Geometry-only updates for spaces that already existed —
+    //    plus any "recovered" creates that turned out to already exist
+    //    server-side (so the client's latest points/zIndex still win).
+    const allUpdates = [
+      ...parsed.data.updates,
+      ...recoveredCreates.map((draft) => ({ id: draft.id, points: draft.points, zIndex: draft.zIndex }))
+    ];
+    for (const update of allUpdates) {
+      await updateFacilitySpaceMapRecord({
+        orgId: org.orgId,
+        spaceId: update.id,
+        mapPoints: update.points,
+        mapZIndex: update.zIndex
+      });
+    }
+
+    const finalSpaces = await listFacilitySpacesForManage(org.orgId, { facilityId: parsed.data.facilityId });
+    revalidatePath(`/${org.orgSlug}/manage/facilities/${parsed.data.facilityId}`);
+    return { ok: true, data: { spaces: finalSpaces } };
   } catch (error) {
     rethrowIfNavigationError(error);
-    return asError("Unable to save facility map.");
+    const message = error instanceof Error ? error.message : "Unable to save facility map.";
+    console.error("saveFacilityMapAction failed", error);
+    return asError(message);
   }
+}
+
+function slugifyName(name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return base.length >= 2 ? base : "space";
+}
+
+function uniqueSlug(base: string, used: Set<string>): string {
+  if (!used.has(base)) return base;
+  let i = 2;
+  while (used.has(`${base}-${i}`)) i += 1;
+  return `${base}-${i}`;
 }

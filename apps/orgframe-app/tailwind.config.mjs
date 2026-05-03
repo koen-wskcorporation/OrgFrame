@@ -28,7 +28,10 @@ const config = {
         },
         ring: "hsl(var(--ring))",
         warning: "hsl(var(--warning))",
-        destructive: "hsl(var(--destructive))",
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))"
+        },
         success: "hsl(var(--success))"
       },
       borderRadius: {

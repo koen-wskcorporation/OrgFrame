@@ -16,7 +16,7 @@ import type { GeneratedFacilityReservationInput } from "@/src/features/facilitie
 // `column spaces.status_labels_json does not exist`. Until the migration
 // lands, we omit the column and synthesize an empty object in `mapSpace`.
 const spaceSelect =
-  "id, org_id, facility_id, parent_space_id, name, slug, space_kind, status, is_bookable, timezone, capacity, metadata_json, sort_index, created_at, updated_at";
+  "id, org_id, facility_id, parent_space_id, name, slug, space_kind, status, is_bookable, timezone, capacity, metadata_json, sort_index, map_points_json, map_z_index, created_at, updated_at";
 const facilitySelect =
   "id, org_id, name, slug, status, timezone, environment, geo_anchor_lat, geo_anchor_lng, geo_address, geo_show_map, metadata_json, sort_index, created_at, updated_at";
 const ruleSelect =
@@ -40,6 +40,8 @@ type SpaceRow = {
   capacity: number | null;
   metadata_json: unknown;
   sort_index: number;
+  map_points_json: unknown;
+  map_z_index: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -146,15 +148,11 @@ function asObject(value: unknown): Record<string, unknown> {
 
 function mapSpace(row: SpaceRow): FacilitySpace {
   const metadata = asObject(row.metadata_json);
-  // statusId / geo* live in metadata_json until their dedicated columns are
-  // recovered. `statusId` falls back to the built-in matching the row's
-  // existing `status` so the UI's status picker stays consistent.
+  // statusId lives in metadata_json until its dedicated column is recovered.
+  // It falls back to the built-in matching the row's `status` so the picker
+  // stays consistent.
   const metaStatusId = typeof metadata.statusId === "string" ? metadata.statusId : null;
   const statusId = metaStatusId ?? row.status;
-  const geoLat = typeof metadata.geoAnchorLat === "number" ? metadata.geoAnchorLat : null;
-  const geoLng = typeof metadata.geoAnchorLng === "number" ? metadata.geoAnchorLng : null;
-  const geoAddress = typeof metadata.geoAddress === "string" ? metadata.geoAddress : null;
-  const geoShowMap = metadata.geoShowMap === true;
   return {
     id: row.id,
     orgId: row.org_id,
@@ -169,16 +167,27 @@ function mapSpace(row: SpaceRow): FacilitySpace {
     timezone: row.timezone,
     capacity: row.capacity,
     metadataJson: metadata,
-    // Column not yet in DB; default to empty so status.ts falls back to built-ins.
     statusLabelsJson: {},
-    geoAnchorLat: geoLat,
-    geoAnchorLng: geoLng,
-    geoAddress,
-    geoShowMap,
     sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
+    mapPoints: asMapPoints(row.map_points_json),
+    mapZIndex: typeof row.map_z_index === "number" ? row.map_z_index : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+function asMapPoints(input: unknown): FacilitySpace["mapPoints"] {
+  if (!Array.isArray(input)) return null;
+  const result: NonNullable<FacilitySpace["mapPoints"]> = [];
+  for (const point of input) {
+    if (!point || typeof point !== "object") continue;
+    const x = Number((point as { x?: unknown }).x);
+    const y = Number((point as { y?: unknown }).y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    const smooth = (point as { smooth?: unknown }).smooth === true;
+    result.push(smooth ? { x, y, smooth: true } : { x, y });
+  }
+  return result.length >= 3 ? result : null;
 }
 
 function mapFacility(row: FacilityRow): Facility {
@@ -439,6 +448,8 @@ export async function getFacilitySpaceById(orgId: string, spaceId: string): Prom
 }
 
 export async function createFacilitySpaceRecord(input: {
+  /** Optional client-supplied UUID. When omitted the DB generates one. */
+  id?: string;
   orgId: string;
   facilityId: string;
   parentSpaceId: string | null;
@@ -452,11 +463,14 @@ export async function createFacilitySpaceRecord(input: {
   metadataJson?: Record<string, unknown>;
   statusLabelsJson?: Record<string, unknown>;
   sortIndex?: number;
+  mapPoints?: FacilitySpace["mapPoints"];
+  mapZIndex?: number | null;
 }): Promise<FacilitySpace> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
     .schema("facilities").from("spaces")
     .insert({
+      ...(input.id ? { id: input.id } : {}),
       org_id: input.orgId,
       facility_id: input.facilityId,
       parent_space_id: input.parentSpaceId,
@@ -468,8 +482,9 @@ export async function createFacilitySpaceRecord(input: {
       timezone: input.timezone,
       capacity: input.capacity,
       metadata_json: input.metadataJson ?? {},
-      // status_labels_json column not yet in DB; skip until migration lands.
-      sort_index: input.sortIndex ?? 0
+      sort_index: input.sortIndex ?? 0,
+      map_points_json: input.mapPoints ?? null,
+      map_z_index: input.mapZIndex ?? null
     })
     .select(spaceSelect)
     .single();
@@ -479,6 +494,33 @@ export async function createFacilitySpaceRecord(input: {
   }
 
   return mapSpace(data as SpaceRow);
+}
+
+/**
+ * Update the polygon geometry of an existing space. The dedicated entry
+ * point keeps the heavyweight "edit metadata" primitive
+ * (`updateFacilitySpaceRecord`) decoupled from map-editor saves: a save
+ * batch can update geometry on dozens of spaces without serializing the
+ * whole metadata payload for each row.
+ */
+export async function updateFacilitySpaceMapRecord(input: {
+  orgId: string;
+  spaceId: string;
+  mapPoints: FacilitySpace["mapPoints"];
+  mapZIndex: number | null;
+}): Promise<void> {
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase
+    .schema("facilities").from("spaces")
+    .update({
+      map_points_json: input.mapPoints,
+      map_z_index: input.mapZIndex
+    })
+    .eq("org_id", input.orgId)
+    .eq("id", input.spaceId);
+  if (error) {
+    throw new Error(`Failed to save space map geometry: ${error.message}`);
+  }
 }
 
 export async function updateFacilitySpaceRecord(input: {
@@ -547,24 +589,11 @@ export async function updateFacilitySpaceHierarchyRecord(input: {
 
 export async function deleteFacilitySpaceRecord(input: { orgId: string; spaceId: string }): Promise<void> {
   const supabase = await createSupabaseServer();
-
-  // Delete the corresponding map node first so we never leave a dangling
-  // shape pointing at a non-existent space (the source of the canvas
-  // bleed when there's no FK cascade between schemas).
-  const { error: nodeError } = await supabase
-    .schema("facilities")
-    .from("facility_map_nodes")
+  const { error } = await supabase
+    .schema("facilities").from("spaces")
     .delete()
     .eq("org_id", input.orgId)
-    .eq("space_id", input.spaceId);
-  if (nodeError) {
-    // Non-fatal — proceed with the space delete; the read-time filter
-    // will hide any leftover orphan, and the next load will clean it up.
-    console.error("Failed to delete map node before deleting facility space", nodeError);
-  }
-
-  const { error } = await supabase.schema("facilities").from("spaces").delete().eq("org_id", input.orgId).eq("id", input.spaceId);
-
+    .eq("id", input.spaceId);
   if (error) {
     throw new Error(`Failed to delete facility space: ${error.message}`);
   }

@@ -1,12 +1,10 @@
 export type FacilitySpaceKind =
   | "building"
-  | "floor"
-  | "room"
   | "field"
   | "court"
+  | "pavilion"
+  | "concessions"
   | "lobby"
-  | "office"
-  | "kitchen"
   | "bathroom"
   | "storage"
   | "parking_lot"
@@ -94,20 +92,20 @@ export type FacilitySpace = {
    * status labels. Stub — full feature lives in the lost session.
    */
   statusId?: string | null;
-  /** Latitude of the canvas (0,0) origin for the satellite layer. */
-  geoAnchorLat?: number | null;
-  /** Longitude of the canvas (0,0) origin for the satellite layer. */
-  geoAnchorLng?: number | null;
-  /** Human-readable address shown in the location editor. */
-  geoAddress?: string | null;
-  /** When true the editor renders the satellite layer underneath the canvas. */
-  geoShowMap?: boolean;
   isBookable: boolean;
   timezone: string;
   capacity: number | null;
   metadataJson: Record<string, unknown>;
   statusLabelsJson: Record<string, unknown>;
   sortIndex: number;
+  /**
+   * The space's polygon on its facility's canvas. NULL = "not yet
+   * placed" — the editor renders it as a default badge until the user
+   * drops a shape. There is exactly one polygon per space; this used to
+   * live in `facility_map_nodes` until the 202605030004 collapse.
+   */
+  mapPoints: Array<{ x: number; y: number; smooth?: boolean }> | null;
+  mapZIndex: number | null;
   createdAt: string;
   updatedAt: string;
 };

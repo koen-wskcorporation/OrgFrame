@@ -7,10 +7,11 @@ import { useToast } from "@orgframe/ui/primitives/toast";
 import { CANVAS_GRID_SIZE } from "@/src/features/canvas/core/constants";
 import { boundsFromPoints, snapPoint, snapToGrid } from "@/src/features/canvas/core/geometry";
 import type { CanvasPoint } from "@/src/features/canvas/core/types";
-import { getSpaceKindIcon } from "@/src/features/facilities/lib/spaceKindIcon";
+import { getSpaceKindIcon, isKindBookable } from "@/src/features/facilities/lib/spaceKindIcon";
 import { FacilityMapToolbar } from "@/src/features/facilities/map/components/FacilityMapToolbar";
-import type { FacilitySpace, FacilitySpaceStatus, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
-import type { FacilityMapNode } from "@/src/features/facilities/map/types";
+import type { FacilitySpaceStatus, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
+import type { MapShape } from "@/src/features/facilities/map/types";
+import { CANVAS_CORNER_RADIUS } from "@/src/features/canvas/core/constants";
 
 // ---- Local zoom range ----
 // Lost from canvas/core/constants when the editor's zoom expansion got
@@ -84,13 +85,11 @@ type EdgeHover = {
 };
 
 type FacilityMapEditorProps = {
-  nodes: FacilityMapNode[];
+  nodes: MapShape[];
   selectedNodeId: string | null;
   canWrite: boolean;
-  spaces: FacilitySpace[];
   spaceStatuses: FacilitySpaceStatusDef[];
   isSaving: boolean;
-  orgId: string;
   geoAnchor: { lat: number; lng: number } | null;
   geoShowMap: boolean;
   /** Hides satellite + location toolbar buttons; forces grid-only rendering. */
@@ -104,9 +103,10 @@ type FacilityMapEditorProps = {
    * polygon would open the panel.
    */
   onOpenSpaceDetails?: (spaceId: string) => void;
-  onChangeNodes: (nodes: FacilityMapNode[]) => void;
+  onChangeNodes: (nodes: MapShape[]) => void;
   onDeleteNode: (nodeId: string) => void;
-  onCreateSpace: () => FacilitySpace | null;
+  /** Adds a new shape to the workspace draft state and returns its id. */
+  onCreateShape: (points: CanvasPoint[]) => string | null;
   onSave: () => void;
   onToggleGeoMap: () => void;
   onEditGeoLocation: () => void;
@@ -133,7 +133,7 @@ type FacilityMapEditorProps = {
   onEdit?: () => void;
   /**
    * Additional content rendered inside each node's title pill, keyed by space
-   * id (= `node.entityId`). Use to inject availability badges or booking
+   * id (= `node.id`). Use to inject availability badges or booking
    * indicators in read-only consumers like the booking fullscreen.
    */
   nodeBadgeBySpaceId?: Record<string, React.ReactNode>;
@@ -205,9 +205,21 @@ function makeNodeId() {
   return `${random()}${random()}-${random()}-4${random().slice(1)}-8${random().slice(1)}-${random()}${random()}${random()}`;
 }
 
-function fillForStatus(status: FacilitySpaceStatus | undefined, isHovered: boolean, isSelected: boolean) {
+function fillForStatus(
+  status: FacilitySpaceStatus | undefined,
+  isHovered: boolean,
+  isSelected: boolean,
+  isBookable: boolean
+) {
   if (status === "archived") {
     return "url(#facility-map-archived-stripes)";
+  }
+  // Non-bookable spaces (lobby, restroom, parking lot, anything the user
+  // toggled off) get a slanted-line hatch so the "you can't book this"
+  // intent reads at a glance — without overloading the status-based
+  // colors above.
+  if (!isBookable) {
+    return "url(#facility-map-unbookable-stripes)";
   }
   if (status === "closed") {
     return "hsl(var(--surface-muted))";
@@ -315,10 +327,8 @@ export function FacilityMapEditor({
   nodes,
   selectedNodeId,
   canWrite: canWriteProp,
-  spaces,
   spaceStatuses,
   isSaving,
-  orgId,
   geoAnchor,
   geoShowMap,
   indoor = false,
@@ -326,7 +336,7 @@ export function FacilityMapEditor({
   onOpenSpaceDetails,
   onChangeNodes,
   onDeleteNode,
-  onCreateSpace,
+  onCreateShape,
   onSave,
   onToggleGeoMap,
   onEditGeoLocation,
@@ -360,6 +370,7 @@ export function FacilityMapEditor({
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const [pixelSize, setPixelSize] = React.useState<{ width: number; height: number }>({ width: 1, height: 1 });
   const [view, setView] = React.useState<View>(DEFAULT_VIEW);
+
 
   // Forward viewport state to the parent (workspace) so it can build the
   // exact center/zoom/size the AI vision endpoint needs to convert pixel
@@ -406,7 +417,6 @@ export function FacilityMapEditor({
   // via onCreateSpace, so the new node is independent.
   const clipboardRef = React.useRef<{ points: CanvasPoint[] } | null>(null);
 
-  const spaceById = React.useMemo(() => new Map(spaces.map((space) => [space.id, space])), [spaces]);
   const statusById = React.useMemo(() => new Map(spaceStatuses.map((status) => [status.id, status])), [spaceStatuses]);
 
   // useLayoutEffect for the initial measurement so the first painted frame
@@ -460,20 +470,10 @@ export function FacilityMapEditor({
     };
   }
 
-  function applyNodeUpdate(nodeId: string, updater: (current: FacilityMapNode) => FacilityMapNode) {
+  function applyNodeUpdate(nodeId: string, updater: (current: MapShape) => MapShape) {
     const current = nodeById.get(nodeId);
     if (!current) return;
-    // Recompute bounds from the new points but DON'T run through
-    // `normalizeNodeGeometry` — that snaps every polygon vertex to the
-    // 24px grid, which destroys precise satellite-positioned vertices.
-    // Per-drag grid snapping happens earlier in the move/vertex handlers
-    // via `snapMaybe`, gated on `snapEnabled` (i.e. grid mode only).
-    const updated = updater(current);
-    const next: FacilityMapNode = {
-      ...updated,
-      bounds: updated.points.length >= 3 ? boundsFromPoints(updated.points) : updated.bounds
-    };
-    onChangeNodes(nodes.map((node) => (node.id === nodeId ? next : node)));
+    onChangeNodes(nodes.map((node) => (node.id === nodeId ? updater(node) : node)));
   }
 
   function deleteNode(nodeId: string) {
@@ -536,7 +536,16 @@ export function FacilityMapEditor({
 
   function handleFit() {
     if (nodes.length === 0) {
-      setView(DEFAULT_VIEW);
+      // No shapes yet: if the facility has a geo anchor, center the
+      // canvas at world (0, 0) — that's the point that maps to the
+      // anchor lat/lng via `metersToLatLng`, so the satellite layer
+      // appears centered on the facility's real-world location
+      // instead of an arbitrary corner of the canvas.
+      if (geoAnchor) {
+        setView({ centerX: 0, centerY: 0, zoom: clampZoomForMode(1, mapEnabled) });
+      } else {
+        setView(DEFAULT_VIEW);
+      }
       return;
     }
     const allPoints = nodes.flatMap((node) => node.points);
@@ -575,26 +584,8 @@ export function FacilityMapEditor({
 
   function addSpaceWithPoints(points: CanvasPoint[]) {
     if (!canWrite) return;
-    const space = onCreateSpace();
-    if (!space) return;
-    const bounds = boundsFromPoints(points);
-    const maxZ = nodes.reduce((acc, node) => Math.max(acc, node.zIndex), 0);
-    const newNode: FacilityMapNode = {
-      id: makeNodeId(),
-      entityId: space.id,
-      parentEntityId: space.parentSpaceId,
-      label: space.name,
-      points,
-      bounds,
-      zIndex: maxZ + 1,
-      cornerRadius: 0,
-      status: "active",
-      spaceId: space.id,
-      orgId,
-      parentSpaceId: space.parentSpaceId
-    };
-    onChangeNodes([...nodes, newNode]);
-    onSelectNode(newNode.id);
+    const id = onCreateShape(points);
+    if (id) onSelectNode(id);
   }
 
   function handleAddSpace() {
@@ -617,7 +608,7 @@ export function FacilityMapEditor({
     addSpaceWithPoints(points);
   }
 
-  function startMove(node: FacilityMapNode, event: React.MouseEvent<Element>) {
+  function startMove(node: MapShape, event: React.MouseEvent<Element>) {
     event.stopPropagation();
     onSelectNode(node.id);
     if (!canWrite) return;
@@ -887,8 +878,9 @@ export function FacilityMapEditor({
         const targetYs: number[] = [];
         for (const other of nodes) {
           if (other.id === current.nodeId) continue;
-          targetXs.push(other.bounds.x, other.bounds.x + other.bounds.width);
-          targetYs.push(other.bounds.y, other.bounds.y + other.bounds.height);
+          const ob = boundsFromPoints(other.points);
+          targetXs.push(ob.x, ob.x + ob.width);
+          targetYs.push(ob.y, ob.y + ob.height);
         }
         let bestDx: number | null = null;
         let bestDxDist = radius;
@@ -1075,18 +1067,21 @@ export function FacilityMapEditor({
         viewBox={viewBox}
       >
         <defs>
-          <pattern id="facility-map-grid" x="0" y="0" width={CANVAS_GRID_SIZE} height={CANVAS_GRID_SIZE} patternUnits="userSpaceOnUse">
+          {/* Visual grid is half the snap step so users get a finer
+              reference even when the snap math (CANVAS_GRID_SIZE)
+              stays at its current value. */}
+          <pattern id="facility-map-grid" x="0" y="0" width={CANVAS_GRID_SIZE / 2} height={CANVAS_GRID_SIZE / 2} patternUnits="userSpaceOnUse">
             <path
-              d={`M ${CANVAS_GRID_SIZE} 0 L 0 0 0 ${CANVAS_GRID_SIZE}`}
+              d={`M ${CANVAS_GRID_SIZE / 2} 0 L 0 0 0 ${CANVAS_GRID_SIZE / 2}`}
               fill="none"
               stroke="hsl(var(--border) / 0.5)"
               strokeWidth={gridStrokeWidth}
             />
           </pattern>
           {/* White-ish grid for satellite mode where the dark border lines would wash out. */}
-          <pattern id="facility-map-grid-on-map" x="0" y="0" width={CANVAS_GRID_SIZE} height={CANVAS_GRID_SIZE} patternUnits="userSpaceOnUse">
+          <pattern id="facility-map-grid-on-map" x="0" y="0" width={CANVAS_GRID_SIZE / 2} height={CANVAS_GRID_SIZE / 2} patternUnits="userSpaceOnUse">
             <path
-              d={`M ${CANVAS_GRID_SIZE} 0 L 0 0 0 ${CANVAS_GRID_SIZE}`}
+              d={`M ${CANVAS_GRID_SIZE / 2} 0 L 0 0 0 ${CANVAS_GRID_SIZE / 2}`}
               fill="none"
               stroke="rgba(255, 255, 255, 0.35)"
               strokeWidth={gridStrokeWidth}
@@ -1110,6 +1105,28 @@ export function FacilityMapEditor({
               strokeWidth={stripeStrokeWidth}
             />
           </pattern>
+          {/* Slanted-line hatch over a normal surface fill so it reads as
+              "this exists, but you can't book it" — distinct from the
+              archived treatment which is a flat hatch with no fill. */}
+          <pattern
+            id="facility-map-unbookable-stripes"
+            x="0"
+            y="0"
+            width={CANVAS_GRID_SIZE}
+            height={CANVAS_GRID_SIZE}
+            patternTransform="rotate(45)"
+            patternUnits="userSpaceOnUse"
+          >
+            <rect width={CANVAS_GRID_SIZE} height={CANVAS_GRID_SIZE} fill="hsl(var(--surface))" />
+            <line
+              x1="0"
+              y1="0"
+              x2="0"
+              y2={CANVAS_GRID_SIZE}
+              stroke="hsl(var(--text-muted) / 0.32)"
+              strokeWidth={stripeStrokeWidth}
+            />
+          </pattern>
           <filter id="facility-map-handle-shadow" x="-50%" y="-50%" width="200%" height="200%">
             <feDropShadow dx="0" dy={1 * inversePixel} stdDeviation={1.5 * inversePixel} floodColor="hsl(var(--text))" floodOpacity="0.18" />
           </filter>
@@ -1128,8 +1145,7 @@ export function FacilityMapEditor({
           const isSelected = node.id === selectedNodeId;
           const isMultiSelected = Boolean(multiSelectedNodeIds?.has(node.id));
           const isHovered = node.id === hoveredNodeId && !isSelected;
-          const space = spaceById.get(node.entityId);
-          const fill = fillForStatus(space?.status, isHovered, isSelected);
+          const fill = fillForStatus(node.status, isHovered, isSelected, node.isBookable);
           const stroke = isMultiSelected ? "hsl(var(--accent))" : strokeForState({ selected: isSelected, hovered: isHovered });
           const path = polygonPath(node.points, CORNER_RADIUS_WORLD);
 
@@ -1223,10 +1239,9 @@ export function FacilityMapEditor({
               : sortedNodes;
 
           return ordered.map((node) => {
-            const space = spaceById.get(node.entityId);
-            const statusDef = space?.statusId ? statusById.get(space.statusId) ?? null : null;
+            const statusDef = node.statusId ? statusById.get(node.statusId) ?? null : null;
             const center = polygonCentroid(node.points);
-            const archived = space?.status === "archived";
+            const archived = node.status === "archived";
 
             return (
               <g key={`label-${node.id}`} transform={`translate(${center.x} ${center.y}) scale(${inversePixel})`}>
@@ -1257,21 +1272,26 @@ export function FacilityMapEditor({
                         // side panel. Body click on the polygon below
                         // selects-and-drags but does NOT open details —
                         // otherwise every drag-to-reshape pops the panel.
-                        onOpenSpaceDetails?.(node.entityId);
+                        onOpenSpaceDetails?.(node.id);
                         startMove(node, event);
                       }}
                       onMouseEnter={() => setTopNodeId(node.id)}
                       style={{ cursor: canWrite ? "move" : "default" }}
                     >
                       {(() => {
-                        const KindIcon = space ? getSpaceKindIcon(space.spaceKind) : null;
+                        const KindIcon = getSpaceKindIcon(node.spaceKind);
                         return KindIcon ? <KindIcon className="h-3.5 w-3.5 shrink-0 text-text-muted" /> : null;
                       })()}
                       <span className="min-w-0 truncate">{node.label}</span>
-                      {statusDef && !replaceStatusChipBySpaceId?.has(node.entityId) ? (
+                      {/* Status chip only renders when the kind is
+                          intrinsically bookable AND the row is
+                          flagged bookable. Gating on the kind first
+                          means stale rows (e.g. legacy bathrooms with
+                          is_bookable=true) still don't show a chip. */}
+                      {isKindBookable(node.spaceKind) && node.isBookable && statusDef && !replaceStatusChipBySpaceId?.has(node.id) ? (
                         <StatusChip color={statusDef.color} label={statusDef.label} size="sm" />
                       ) : null}
-                      {nodeBadgeBySpaceId?.[node.entityId] ?? null}
+                      {nodeBadgeBySpaceId?.[node.id] ?? null}
                     </div>
                   </div>
                 </foreignObject>
@@ -1330,8 +1350,9 @@ export function FacilityMapEditor({
               const handleRadiusPx = 8;
               const handleOffset = handleOffsetPx * inversePixel;
               const handleR = handleRadiusPx * inversePixel;
+              const nodeBounds = boundsFromPoints(node.points);
               const handleX = center.x;
-              const handleY = node.bounds.y - handleOffset;
+              const handleY = nodeBounds.y - handleOffset;
               const isRotating = interaction?.mode === "rotate" && interaction.nodeId === node.id;
               return (
                 <g key={`rotate-${node.id}`}>
@@ -1341,7 +1362,7 @@ export function FacilityMapEditor({
                     strokeWidth={1 * inversePixel}
                     x1={handleX}
                     x2={handleX}
-                    y1={node.bounds.y}
+                    y1={nodeBounds.y}
                     y2={handleY}
                   />
                   <circle
