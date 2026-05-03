@@ -123,16 +123,19 @@ export async function listFacilityMapNodes(orgId: string, spaces: FacilitySpace[
   const spaceById = new Map(spaces.map((space) => [space.id, space]));
   const rows = (data ?? []) as FacilityMapNodeRow[];
 
-  // A facility (top-level space, no parent) is the canvas itself, not a
-  // shape ON the canvas. Filter out any nodes that point at top-level
-  // spaces — these are stale rows from an earlier seeder that created
-  // them indiscriminately. Also drop nodes whose space is missing
-  // entirely (deleted out from under us).
+  // Drop orphan nodes (space row was hard-deleted, FK cascade should have
+  // taken the node too but defensive belt-and-suspenders) and archived
+  // spaces (they stay in the DB so they can be un-archived later).
+  // Note: a `parentSpaceId === null` check used to live here back when
+  // top-level rows in the spaces table WERE the facilities themselves —
+  // that's the lost-session bug we just removed via 202605030001 — but
+  // now `parent_space_id IS NULL` simply means "direct child of the
+  // facility", which is the most common case and SHOULD render.
   return rows
     .filter((row) => {
       const space = spaceById.get(row.space_id);
       if (!space) return false;
-      if (space.parentSpaceId === null) return false;
+      if (space.status === "archived") return false;
       return true;
     })
     .map((row) => mapRowToNode(row, spaceById.get(row.space_id)?.name ?? row.space_id));
@@ -147,11 +150,10 @@ export async function seedFacilityMapNodesForMissingSpaces(orgId: string, spaces
   }
 
   const existing = new Set((data ?? []).map((row) => String((row as { space_id: string }).space_id)));
-  // Top-level facilities (parentSpaceId === null) are CANVASES, not nodes —
-  // they're the surface that other nodes get drawn on. Seeding a node for
-  // them would put a meaningless rectangle on the facility's own map (and
-  // worse, on every sibling facility's map).
-  const missing = spaces.filter((space) => space.parentSpaceId !== null && !existing.has(space.id));
+  // Every space in `facilities.spaces` is a real shape on a facility's
+  // canvas now (top-level facilities live in `facilities.facilities`,
+  // not here). Seed any space that doesn't yet have a map-node row.
+  const missing = spaces.filter((space) => !existing.has(space.id));
   if (missing.length === 0) {
     return;
   }
@@ -239,28 +241,69 @@ export async function upsertFacilityMapNodes(input: {
 }
 
 /**
- * Delete map nodes that point at top-level facilities. These were created
- * by an earlier version of `seedFacilityMapNodesForMissingSpaces` that
- * seeded every space; they leak as visible rectangles on the facility's
- * own canvas (the facility-rendering-as-a-shape bug). One-shot cleanup
- * runs from `getFacilityMapManageDetail` on every load so existing orgs
+ * Delete map-node rows that should never render:
+ *   - Nodes for top-level facilities (canvases, not shapes).
+ *   - Orphan nodes whose `space_id` no longer matches any row in `spaces`.
+ *     These accumulate when a space is hard-deleted but the FK cascade
+ *     wasn't set up (or the node table is in a different schema).
+ *   - Nodes for archived spaces — we don't render them, no reason to keep
+ *     the row hanging around with stale geometry.
+ *
+ * Runs from `getFacilityMapManageDetail` on every load so existing orgs
  * heal themselves the first time they open the map after this fix.
  */
-export async function deleteOrphanTopLevelFacilityMapNodes(orgId: string, spaces: FacilitySpace[]): Promise<void> {
-  const topLevelSpaceIds = spaces.filter((s) => s.parentSpaceId === null).map((s) => s.id);
-  if (topLevelSpaceIds.length === 0) return;
+export async function deleteStaleFacilityMapNodes(orgId: string, spaces: FacilitySpace[]): Promise<void> {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase
+
+  // (Legacy step "wipe nodes for top-level spaces" removed: after the
+  // 202605030001 facility/space split, top-level spaces no longer exist
+  // — facilities live in their own table.)
+
+  // Archived spaces — wipe their nodes.
+  const archivedSpaceIds = spaces.filter((s) => s.status === "archived").map((s) => s.id);
+  if (archivedSpaceIds.length > 0) {
+    const { error } = await supabase
+      .schema("facilities")
+      .from("facility_map_nodes")
+      .delete()
+      .eq("org_id", orgId)
+      .in("space_id", archivedSpaceIds);
+    if (error) console.error("Failed to delete archived facility map nodes", error);
+  }
+
+  // 3) Orphans — node rows whose space_id isn't in the current `spaces`
+  // list. We pull existing node space_ids and diff against the set of
+  // known space ids; the difference is what we delete.
+  const { data: existing, error: existingError } = await supabase
     .schema("facilities")
     .from("facility_map_nodes")
-    .delete()
-    .eq("org_id", orgId)
-    .in("space_id", topLevelSpaceIds);
-  if (error) {
-    // Non-fatal: the read-time filter still hides them. Log and continue.
-    console.error("Failed to delete orphan top-level facility map nodes", error);
+    .select("space_id")
+    .eq("org_id", orgId);
+  if (existingError) {
+    console.error("Failed to load existing facility map nodes for orphan cleanup", existingError);
+    return;
+  }
+  const knownSpaceIds = new Set(spaces.map((s) => s.id));
+  const orphanSpaceIds = Array.from(
+    new Set(
+      ((existing ?? []) as Array<{ space_id: string }>)
+        .map((row) => row.space_id)
+        .filter((spaceId) => spaceId && !knownSpaceIds.has(spaceId))
+    )
+  );
+  if (orphanSpaceIds.length > 0) {
+    const { error } = await supabase
+      .schema("facilities")
+      .from("facility_map_nodes")
+      .delete()
+      .eq("org_id", orgId)
+      .in("space_id", orphanSpaceIds);
+    if (error) console.error("Failed to delete orphan facility map nodes", error);
   }
 }
+
+/** @deprecated kept for backwards-compat; use `deleteStaleFacilityMapNodes`. */
+export const deleteOrphanTopLevelFacilityMapNodes = deleteStaleFacilityMapNodes;
 
 export async function deleteFacilityMapNodes(input: { orgId: string; nodeIds: string[] }): Promise<void> {
   if (input.nodeIds.length === 0) return;
