@@ -187,10 +187,11 @@ export function TeamCalendarWorkspace({
 
   const spaceById = useMemo(() => buildSpaceById(facilityReadModel.spaces), [facilityReadModel.spaces]);
   const facilityOptions = useMemo(
-    () => facilityReadModel.spaces.filter((space) => space.parentSpaceId === null && space.status !== "archived"),
+    () => facilityReadModel.facilities.filter((facility) => facility.status !== "archived"),
     [facilityReadModel.spaces]
   );
-  const selectedFacility = selectedFacilityId ? spaceById.get(selectedFacilityId) ?? null : null;
+  const facilityById = useMemo(() => new Map(facilityReadModel.facilities.map((f) => [f.id, f])), [facilityReadModel.facilities]);
+  const selectedFacility = selectedFacilityId ? facilityById.get(selectedFacilityId) ?? null : null;
   const selectedFacilitySpaces = useMemo(
     () => facilitySelections.map((selection) => spaceById.get(selection.spaceId)).filter((space): space is FacilitySpace => Boolean(space)),
     [facilitySelections, spaceById]
@@ -900,7 +901,7 @@ export function TeamCalendarWorkspace({
       return;
     }
 
-    const facility = selectedFacilityId ? spaceById.get(selectedFacilityId) ?? null : null;
+    const facility = selectedFacilityId ? facilityById.get(selectedFacilityId) ?? null : null;
     const locationValue = facility ? formatFacilityLocation(facility, selectedFacilitySpaces) || facility.name : "";
 
     setReadModel((current) => ({
@@ -1171,11 +1172,11 @@ export function TeamCalendarWorkspace({
                       setSelectedFacilityId(next);
                     }}
                     options={[
-                      ...facilityOptions.map((space) => ({
-                        label: space.name,
-                        value: space.id,
-                        statusDot: resolveFacilityStatusDot(space.status),
-                        meta: space.status
+                      ...facilityOptions.map((facility) => ({
+                        label: facility.name,
+                        value: facility.id,
+                        statusDot: resolveFacilityStatusDot(facility.status),
+                        meta: facility.status === "archived" ? "Archived" : "Active"
                       })),
                       { label: "Other", value: "other" },
                       { label: "TBD", value: "tbd" }
@@ -1227,7 +1228,7 @@ export function TeamCalendarWorkspace({
                       </div>
                     )}
                     {selectedFacilityAddress ? <p className="text-xs text-text-muted">{selectedFacilityAddress}</p> : null}
-                    {selectedFacility.status === "closed" ? <p className="text-xs text-destructive">This facility is currently marked closed.</p> : null}
+                    {selectedFacility.status === "archived" ? <p className="text-xs text-destructive">This facility is archived.</p> : null}
                   </div>
                 ) : null}
               </>

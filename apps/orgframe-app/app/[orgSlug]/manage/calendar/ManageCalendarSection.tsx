@@ -180,10 +180,11 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
 
   const spaceById = useMemo(() => buildSpaceById(facilityReadModel.spaces), [facilityReadModel.spaces]);
   const facilityOptions = useMemo(
-    () => facilityReadModel.spaces.filter((space) => space.parentSpaceId === null && space.status !== "archived"),
+    () => facilityReadModel.facilities.filter((facility) => facility.status !== "archived"),
     [facilityReadModel.spaces]
   );
-  const selectedFacility = selectedFacilityId ? spaceById.get(selectedFacilityId) ?? null : null;
+  const facilityById = useMemo(() => new Map(facilityReadModel.facilities.map((f) => [f.id, f])), [facilityReadModel.facilities]);
+  const selectedFacility = selectedFacilityId ? facilityById.get(selectedFacilityId) ?? null : null;
   const selectedFacilitySpaces = useMemo(
     () => facilitySelections.map((selection) => spaceById.get(selection.spaceId)).filter((space): space is FacilitySpace => Boolean(space)),
     [facilitySelections, spaceById]
@@ -1289,7 +1290,7 @@ export function ManageCalendarSection({ orgSlug, canWrite, initialReadModel, ini
       return;
     }
 
-    const facility = selectedFacilityId ? spaceById.get(selectedFacilityId) ?? null : null;
+    const facility = selectedFacilityId ? facilityById.get(selectedFacilityId) ?? null : null;
     const locationValue = facility ? formatFacilityLocation(facility, selectedFacilitySpaces) || facility.name : "";
 
     setReadModel((current) => ({

@@ -261,16 +261,20 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
   }, [quickAddDraft?.endsAtUtc, quickAddDraft?.open, quickAddDraft?.startsAtUtc]);
 
   const spaceById = React.useMemo(() => buildSpaceById(facilityReadModel.spaces), [facilityReadModel.spaces]);
+  const facilityById = React.useMemo(
+    () => new Map(facilityReadModel.facilities.map((facility) => [facility.id, facility])),
+    [facilityReadModel.facilities]
+  );
   const facilityOptions = React.useMemo(() => {
-    const candidates = facilityReadModel.spaces.filter((space) => space.status !== "archived");
+    const candidates = facilityReadModel.facilities.filter((facility) => facility.status !== "archived");
     if (facilityRootId) {
-      // Only show children of the scoped facility root
-      return candidates.filter((space) => space.id === facilityRootId || space.parentSpaceId === facilityRootId);
+      // Scope the dropdown to a single facility (workspace-level lock).
+      return candidates.filter((facility) => facility.id === facilityRootId);
     }
-    return candidates.filter((space) => space.parentSpaceId === null);
-  }, [facilityReadModel.spaces, facilityRootId]);
+    return candidates;
+  }, [facilityReadModel.facilities, facilityRootId]);
 
-  const selectedFacility = selectedFacilityId ? spaceById.get(selectedFacilityId) ?? null : null;
+  const selectedFacility = selectedFacilityId ? facilityById.get(selectedFacilityId) ?? null : null;
   const selectedFacilitySpaces = React.useMemo(
     () => facilitySelections.map((selection) => spaceById.get(selection.spaceId)).filter((space): space is FacilitySpace => Boolean(space)),
     [facilitySelections, spaceById]
@@ -767,20 +771,11 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
                           setSelectedFacilityId(next);
                         }}
                         options={[
-                          ...facilityOptions.map((space) => ({
-                            label: space.name,
-                            value: space.id,
-                            statusDot: resolveFacilityStatusDot(space.status),
-                            // Use booking-friendly labels — "Available" reads
-                            // better than "open" in the location picker.
-                            meta:
-                              space.status === "open"
-                                ? "Available"
-                                : space.status === "closed"
-                                  ? "Unavailable"
-                                  : space.status === "archived"
-                                    ? "Archived"
-                                    : space.status
+                          ...facilityOptions.map((facility) => ({
+                            label: facility.name,
+                            value: facility.id,
+                            statusDot: resolveFacilityStatusDot(facility.status),
+                            meta: facility.status === "archived" ? "Archived" : "Active"
                           })),
                           { label: "Other", value: "other" },
                           { label: "TBD", value: "tbd" }
@@ -824,8 +819,8 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
                       <p className="text-xs text-text-muted">No spaces booked yet — use “Book spaces” above.</p>
                     )}
                     {selectedFacilityAddress ? <p className="text-xs text-text-muted">{selectedFacilityAddress}</p> : null}
-                    {selectedFacility.status === "closed" ? (
-                      <p className="text-xs text-destructive">This facility is currently marked closed.</p>
+                    {selectedFacility.status === "archived" ? (
+                      <p className="text-xs text-destructive">This facility is archived.</p>
                     ) : null}
                   </div>
                 ) : null}
