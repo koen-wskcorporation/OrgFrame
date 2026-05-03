@@ -223,7 +223,15 @@ export async function upsertFacilityMapNodes(input: {
     status: node.status
   }));
 
-  const { error } = await supabase.schema("facilities").from("facility_map_nodes").upsert(payload, { onConflict: "org_id,space_id" });
+  // Upsert keyed off the row's primary key (`id`). The previous
+  // `onConflict: "org_id,space_id"` required a composite UNIQUE that
+  // doesn't exist on the table — every save threw "no unique or
+  // exclusion constraint matching the ON CONFLICT specification".
+  // Using PK works because every node carries its `id` from creation
+  // (server-issued for loaded rows, client-issued via `crypto.randomUUID`
+  // for new/duplicated ones), so existing rows update by id and new
+  // ones insert.
+  const { error } = await supabase.schema("facilities").from("facility_map_nodes").upsert(payload);
   if (error) {
     throw new Error(`Failed to save facility map nodes: ${error.message}`);
   }
