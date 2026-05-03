@@ -10,8 +10,12 @@ import type {
 } from "@/src/features/facilities/types";
 import type { GeneratedFacilityReservationInput } from "@/src/features/facilities/schedule/rule-engine";
 
+// `status_labels_json` is referenced by app code but the migration that adds
+// the column hasn't been applied yet — selecting it raises
+// `column spaces.status_labels_json does not exist`. Until the migration
+// lands, we omit the column and synthesize an empty object in `mapSpace`.
 const spaceSelect =
-  "id, org_id, parent_space_id, name, slug, space_kind, status, is_bookable, timezone, capacity, metadata_json, status_labels_json, sort_index, created_at, updated_at";
+  "id, org_id, parent_space_id, name, slug, space_kind, status, is_bookable, timezone, capacity, metadata_json, sort_index, created_at, updated_at";
 const ruleSelect =
   "id, org_id, space_id, mode, reservation_kind, default_status, public_label, internal_notes, timezone, start_date, end_date, start_time, end_time, interval_count, interval_unit, by_weekday, by_monthday, end_mode, until_date, max_occurrences, event_id, program_id, conflict_override, sort_index, is_active, config_json, rule_hash, created_by, created_at, updated_at";
 const reservationSelect =
@@ -31,7 +35,6 @@ type SpaceRow = {
   timezone: string;
   capacity: number | null;
   metadata_json: unknown;
-  status_labels_json: unknown;
   sort_index: number;
   created_at: string;
   updated_at: string;
@@ -132,7 +135,8 @@ function mapSpace(row: SpaceRow): FacilitySpace {
     timezone: row.timezone,
     capacity: row.capacity,
     metadataJson: asObject(row.metadata_json),
-    statusLabelsJson: asObject(row.status_labels_json),
+    // Column not yet in DB; default to empty so status.ts falls back to built-ins.
+    statusLabelsJson: {},
     sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -280,7 +284,7 @@ export async function createFacilitySpaceRecord(input: {
       timezone: input.timezone,
       capacity: input.capacity,
       metadata_json: input.metadataJson ?? {},
-      status_labels_json: input.statusLabelsJson ?? {},
+      // status_labels_json column not yet in DB; skip until migration lands.
       sort_index: input.sortIndex ?? 0
     })
     .select(spaceSelect)
@@ -321,7 +325,7 @@ export async function updateFacilitySpaceRecord(input: {
       timezone: input.timezone,
       capacity: input.capacity,
       metadata_json: input.metadataJson ?? {},
-      status_labels_json: input.statusLabelsJson ?? {},
+      // status_labels_json column not yet in DB; skip until migration lands.
       sort_index: input.sortIndex ?? 0
     })
     .eq("org_id", input.orgId)
