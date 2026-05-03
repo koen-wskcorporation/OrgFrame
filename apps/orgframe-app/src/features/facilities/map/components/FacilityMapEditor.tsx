@@ -5,7 +5,7 @@ import { GoogleMapLayer } from "@orgframe/ui/primitives/google-map-layer";
 import { StatusChip } from "@orgframe/ui/primitives/status-chip";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { CANVAS_GRID_SIZE } from "@/src/features/canvas/core/constants";
-import { boundsFromPoints, normalizeNodeGeometry, snapPoint, snapToGrid } from "@/src/features/canvas/core/geometry";
+import { boundsFromPoints, snapPoint, snapToGrid } from "@/src/features/canvas/core/geometry";
 import type { CanvasPoint } from "@/src/features/canvas/core/types";
 import { getSpaceKindIcon } from "@/src/features/facilities/lib/spaceKindIcon";
 import { FacilityMapToolbar } from "@/src/features/facilities/map/components/FacilityMapToolbar";
@@ -454,9 +454,16 @@ export function FacilityMapEditor({
   function applyNodeUpdate(nodeId: string, updater: (current: FacilityMapNode) => FacilityMapNode) {
     const current = nodeById.get(nodeId);
     if (!current) return;
-    // When map mode is on, vertices should land freely on satellite features
-    // — pass `snap: false` so normalize doesn't pull them back to the grid.
-    const next = normalizeNodeGeometry(updater(current)) as FacilityMapNode;
+    // Recompute bounds from the new points but DON'T run through
+    // `normalizeNodeGeometry` — that snaps every polygon vertex to the
+    // 24px grid, which destroys precise satellite-positioned vertices.
+    // Per-drag grid snapping happens earlier in the move/vertex handlers
+    // via `snapMaybe`, gated on `snapEnabled` (i.e. grid mode only).
+    const updated = updater(current);
+    const next: FacilityMapNode = {
+      ...updated,
+      bounds: updated.points.length >= 3 ? boundsFromPoints(updated.points) : updated.bounds
+    };
     onChangeNodes(nodes.map((node) => (node.id === nodeId ? next : node)));
   }
 

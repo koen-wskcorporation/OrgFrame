@@ -1,7 +1,7 @@
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { CANVAS_CORNER_RADIUS, CANVAS_GRID_SIZE, CANVAS_MIN_NODE_SIZE, CANVAS_PADDING } from "@/src/features/canvas/core/constants";
 import { normalizeLayout } from "@/src/features/canvas/core/layout";
-import { normalizeNodeGeometry, rectPoints } from "@/src/features/canvas/core/geometry";
+import { boundsFromPoints, normalizeNodeGeometry, rectPoints } from "@/src/features/canvas/core/geometry";
 import type { CanvasNode, CanvasPoint } from "@/src/features/canvas/core/types";
 import type { FacilitySpace } from "@/src/features/facilities/types";
 import type { FacilityMapNode } from "@/src/features/facilities/map/types";
@@ -50,26 +50,37 @@ function asPoints(input: unknown): CanvasPoint[] {
 }
 
 function mapRowToNode(row: FacilityMapNodeRow, label: string): FacilityMapNode {
-  const node = normalizeNodeGeometry({
+  // Use the saved points verbatim. `normalizeNodeGeometry` snaps every
+  // polygon vertex to the 24px grid, which corrupts the precise vertex
+  // placement the user achieved on the satellite layer. Worse, its
+  // `shapeType === "rectangle"` branch overwrites `points` with
+  // `rectPoints(bounds)` — meaning any custom polygon stored under a row
+  // whose `shape_type` is still "rectangle" (the seeded default) renders
+  // as a plain bbox rectangle. We trust the persisted points and rebuild
+  // bounds from them.
+  const points = asPoints(row.points_json);
+  const dbBounds = {
+    x: Number(row.x),
+    y: Number(row.y),
+    width: Number(row.width),
+    height: Number(row.height)
+  };
+  const bounds = points.length >= 3 ? boundsFromPoints(points) : dbBounds;
+
+  return {
     id: row.id,
     entityId: row.space_id,
     parentEntityId: row.parent_space_id,
     label,
-    shapeType: row.shape_type,
-    points: asPoints(row.points_json),
-    bounds: {
-      x: Number(row.x),
-      y: Number(row.y),
-      width: Number(row.width),
-      height: Number(row.height)
-    },
+    // Treat every loaded node as a polygon for editing purposes; the
+    // editor only knows polygons, and a 4-point rectangle is just a
+    // polygon that happens to have right angles.
+    shapeType: "polygon",
+    points,
+    bounds,
     zIndex: Number(row.z_index),
     cornerRadius: CANVAS_CORNER_RADIUS,
-    status: row.status
-  });
-
-  return {
-    ...node,
+    status: row.status,
     spaceId: row.space_id,
     orgId: row.org_id,
     parentSpaceId: row.parent_space_id
@@ -167,10 +178,11 @@ export async function upsertFacilityMapNodes(input: {
     space_id: node.entityId,
     parent_space_id: node.parentEntityId,
     shape_type: node.shapeType,
-    points_json: node.points.map((point) => ({
-      x: Math.round(point.x / CANVAS_GRID_SIZE) * CANVAS_GRID_SIZE,
-      y: Math.round(point.y / CANVAS_GRID_SIZE) * CANVAS_GRID_SIZE
-    })),
+    // Persist polygon vertices verbatim. Forcing each point to the 24px
+    // canvas grid here destroyed sub-grid positioning achieved on the
+    // satellite layer — the editor's own per-drag `snapMaybe` already
+    // handles grid alignment when the user is in grid mode.
+    points_json: node.points.map((point) => ({ x: point.x, y: point.y })),
     x: node.bounds.x,
     y: node.bounds.y,
     width: node.bounds.width,
@@ -211,13 +223,19 @@ export async function upsertFacilityMapNodes(input: {
 }
 
 export function normalizeFacilityMapNodesForPersistence(nodes: FacilityMapNode[]): FacilityMapNode[] {
-  return normalizeLayout(
-    nodes.map((node) =>
-      normalizeNodeGeometry({
-        ...node,
-        status: node.status ?? "active",
-        cornerRadius: CANVAS_CORNER_RADIUS
-      })
-    )
-  ) as FacilityMapNode[];
+  // Recompute bounds from the freshest points but DON'T pass through
+  // `normalizeNodeGeometry` — that snaps every polygon vertex to the 24px
+  // grid, which loses precise satellite-positioned vertices. The editor
+  // applies grid snap during drag (`snapMaybe`) when grid mode is active,
+  // so save-time normalization here is redundant in grid mode and
+  // destructive in satellite mode.
+  return nodes.map((node) => {
+    const bounds = node.points.length >= 3 ? boundsFromPoints(node.points) : node.bounds;
+    return {
+      ...node,
+      bounds,
+      status: node.status ?? "active",
+      cornerRadius: CANVAS_CORNER_RADIUS
+    };
+  });
 }

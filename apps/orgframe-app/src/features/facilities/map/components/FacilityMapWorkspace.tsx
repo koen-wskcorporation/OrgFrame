@@ -26,11 +26,47 @@ export function FacilityMapWorkspace({ orgSlug, activeSpaceId, activeSpaceName, 
   const { toast } = useToast();
   const [isSaving, startSaving] = useTransition();
   const [isMapOpen, setIsMapOpen] = useState(true);
+  const [geoShowMap, setGeoShowMap] = useState(false);
+
+  // Restrict the editor to spaces that live underneath the active facility:
+  // the active space itself + every transitive descendant. Without this the
+  // editor renders every space in the org on a single canvas and auto-fit
+  // zooms out so far that each individual shape is unreadable.
+  const visibleSpaceIds = useMemo(() => {
+    const childrenByParent = new Map<string, string[]>();
+    for (const space of spaces) {
+      const parent = space.parentSpaceId;
+      if (!parent) continue;
+      const list = childrenByParent.get(parent) ?? [];
+      list.push(space.id);
+      childrenByParent.set(parent, list);
+    }
+    const result = new Set<string>([activeSpaceId]);
+    const queue = [activeSpaceId];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const child of childrenByParent.get(current) ?? []) {
+        if (!result.has(child)) {
+          result.add(child);
+          queue.push(child);
+        }
+      }
+    }
+    return result;
+  }, [spaces, activeSpaceId]);
+
+  const visibleSpaces = useMemo(
+    () => spaces.filter((space) => visibleSpaceIds.has(space.id)),
+    [spaces, visibleSpaceIds]
+  );
+
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() => {
     const active = initialNodes.find((node) => node.entityId === activeSpaceId);
-    return active?.id ?? initialNodes[0]?.id ?? null;
+    return active?.id ?? initialNodes.find((node) => visibleSpaceIds.has(node.entityId))?.id ?? null;
   });
-  const [nodes, setNodes] = useState<FacilityMapNode[]>(() => normalizeLayout(initialNodes) as FacilityMapNode[]);
+  const [nodes, setNodes] = useState<FacilityMapNode[]>(() =>
+    normalizeLayout(initialNodes.filter((node) => visibleSpaceIds.has(node.entityId))) as FacilityMapNode[]
+  );
 
   const selectedNode = useMemo(() => nodes.find((node) => node.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
   const activeLabel = selectedNode?.label ?? activeSpaceName;
@@ -101,12 +137,14 @@ export function FacilityMapWorkspace({ orgSlug, activeSpaceId, activeSpaceName, 
       >
         <FacilityMapEditor
           canWrite={canWrite}
-          // Geo anchoring (per-space lat/lng + satellite toggle) hasn't been
-          // restored from the lost session yet — render in indoor/grid-only
-          // mode so the satellite + map-pin toolbar buttons stay hidden.
+          // Per-space lat/lng anchoring (the "Edit location" map-pin flow)
+          // hasn't been restored from the lost session yet, so the editor
+          // can't actually center the satellite layer on real imagery —
+          // toggling satellite while `geoAnchor` is null leaves the canvas
+          // showing the grid. The toolbar's satellite button is still
+          // exposed so the affordance is visible.
           geoAnchor={null}
-          geoShowMap={false}
-          indoor
+          geoShowMap={geoShowMap}
           isSaving={isSaving}
           nodes={nodes}
           onChangeNodes={setNodes}
@@ -117,13 +155,28 @@ export function FacilityMapWorkspace({ orgSlug, activeSpaceId, activeSpaceName, 
           onCreateSpace={() => null}
           onDeleteNode={(nodeId) => setNodes((current) => current.filter((node) => node.id !== nodeId))}
           onEdit={() => setIsMapOpen(true)}
-          onEditGeoLocation={() => undefined}
+          onEditGeoLocation={() => {
+            toast({
+              title: "Set facility location",
+              description: "Saving a lat/lng anchor for the satellite layer is part of recovery still in progress."
+            });
+          }}
           onSave={handleSave}
           onSelectNode={setSelectedNodeId}
-          onToggleGeoMap={() => undefined}
+          onToggleGeoMap={() => {
+            setGeoShowMap((current) => !current);
+            // Without a geo anchor the satellite layer can't render — surface
+            // that as a toast so the toggle isn't silently a no-op.
+            if (!geoShowMap) {
+              toast({
+                title: "Set facility location to use satellite",
+                description: "This facility doesn't have a saved lat/lng yet. The map-pin / location editor is still being recovered."
+              });
+            }
+          }}
           orgId=""
           selectedNodeId={selectedNodeId}
-          spaces={spaces}
+          spaces={visibleSpaces}
           spaceStatuses={[]}
         />
       </Popup>
