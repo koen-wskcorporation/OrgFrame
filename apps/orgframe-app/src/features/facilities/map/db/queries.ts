@@ -167,13 +167,15 @@ export async function seedFacilityMapNodesForMissingSpaces(orgId: string, spaces
 
   const seeded = normalizeLayout(missing.map((space, index) => buildSeedNode(space, index)));
 
-  // Use upsert with `onConflict: "space_id"` so concurrent loads (or a
-  // re-run after a partial failure) can't double-seed the same space.
-  // Pairs with the unique constraint added in 202605030003.
+  // Plain insert — the `missing` filter above already excludes spaces
+  // that have a node row, so we won't insert duplicates from this path.
+  // Once migration 202605030003 lands, the table will also have a
+  // UNIQUE(space_id) constraint that catches anything that slips
+  // through (e.g. concurrent loads).
   const { error: insertError } = await supabase
     .schema("facilities")
     .from("facility_map_nodes")
-    .upsert(
+    .insert(
       seeded.map((node) => ({
         org_id: orgId,
         space_id: node.entityId,
@@ -186,8 +188,7 @@ export async function seedFacilityMapNodesForMissingSpaces(orgId: string, spaces
         z_index: node.zIndex,
         corner_radius: CANVAS_CORNER_RADIUS,
         status: node.status
-      })),
-      { onConflict: "space_id", ignoreDuplicates: true }
+      }))
     );
 
   if (insertError) {
