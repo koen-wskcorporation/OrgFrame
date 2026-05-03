@@ -10,7 +10,6 @@ function buildNode(overrides?: Partial<FacilityMapNode>): FacilityMapNode {
     entityId: "00000000-0000-0000-0000-000000000001",
     parentEntityId: null,
     label: "Field 1",
-    shapeType: "rectangle",
     points: [],
     bounds: {
       x: 11,
@@ -42,7 +41,6 @@ describe("facility map persistence normalization", () => {
     const [normalized] = normalizeFacilityMapNodesForPersistence([
       buildNode({
         id: "node-2",
-        shapeType: "polygon",
         points: [{ x: 11, y: 11 }, { x: 32, y: 19 }]
       })
     ]);

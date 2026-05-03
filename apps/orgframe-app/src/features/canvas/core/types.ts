@@ -1,5 +1,3 @@
-export type CanvasShapeType = "rectangle" | "polygon";
-
 export type CanvasPoint = {
   x: number;
   y: number;
@@ -23,7 +21,6 @@ export type CanvasNode = {
   entityId: string;
   parentEntityId: string | null;
   label: string;
-  shapeType: CanvasShapeType;
   points: CanvasPoint[];
   bounds: CanvasBounds;
   zIndex: number;

@@ -11,7 +11,6 @@ type FacilityMapNodeRow = {
   org_id: string;
   space_id: string;
   parent_space_id: string | null;
-  shape_type: "rectangle" | "polygon";
   points_json: unknown;
   x: number;
   y: number;
@@ -25,7 +24,7 @@ type FacilityMapNodeRow = {
 };
 
 const selectColumns =
-  "id, org_id, space_id, parent_space_id, shape_type, points_json, x, y, width, height, z_index, corner_radius, status, created_at, updated_at";
+  "id, org_id, space_id, parent_space_id, points_json, x, y, width, height, z_index, corner_radius, status, created_at, updated_at";
 
 function asPoints(input: unknown): CanvasPoint[] {
   if (!Array.isArray(input)) {
@@ -52,12 +51,8 @@ function asPoints(input: unknown): CanvasPoint[] {
 function mapRowToNode(row: FacilityMapNodeRow, label: string): FacilityMapNode {
   // Use the saved points verbatim. `normalizeNodeGeometry` snaps every
   // polygon vertex to the 24px grid, which corrupts the precise vertex
-  // placement the user achieved on the satellite layer. Worse, its
-  // `shapeType === "rectangle"` branch overwrites `points` with
-  // `rectPoints(bounds)` — meaning any custom polygon stored under a row
-  // whose `shape_type` is still "rectangle" (the seeded default) renders
-  // as a plain bbox rectangle. We trust the persisted points and rebuild
-  // bounds from them.
+  // placement the user achieved on the satellite layer. We trust the
+  // persisted points and rebuild bounds from them.
   const points = asPoints(row.points_json);
   const dbBounds = {
     x: Number(row.x),
@@ -72,10 +67,6 @@ function mapRowToNode(row: FacilityMapNodeRow, label: string): FacilityMapNode {
     entityId: row.space_id,
     parentEntityId: row.parent_space_id,
     label,
-    // Treat every loaded node as a polygon for editing purposes; the
-    // editor only knows polygons, and a 4-point rectangle is just a
-    // polygon that happens to have right angles.
-    shapeType: "polygon",
     points,
     bounds,
     zIndex: Number(row.z_index),
@@ -98,7 +89,6 @@ function buildSeedNode(space: FacilitySpace, index: number): CanvasNode {
     entityId: space.id,
     parentEntityId: space.parentSpaceId,
     label: space.name,
-    shapeType: "rectangle",
     bounds: {
       x,
       y,
@@ -165,7 +155,6 @@ export async function seedFacilityMapNodesForMissingSpaces(orgId: string, spaces
       org_id: orgId,
       space_id: node.entityId,
       parent_space_id: node.parentEntityId,
-      shape_type: node.shapeType,
       points_json: node.points,
       x: node.bounds.x,
       y: node.bounds.y,
@@ -195,7 +184,6 @@ export async function upsertFacilityMapNodes(input: {
     org_id: input.orgId,
     space_id: node.entityId,
     parent_space_id: node.parentEntityId,
-    shape_type: node.shapeType,
     // Persist polygon vertices verbatim. Forcing each point to the 24px
     // canvas grid here destroyed sub-grid positioning achieved on the
     // satellite layer — the editor's own per-drag `snapMaybe` already

@@ -580,7 +580,6 @@ export function FacilityMapEditor({
       zIndex: maxZ + 1,
       cornerRadius: 0,
       status: "active",
-      shapeType: "polygon",
       spaceId: space.id,
       orgId,
       parentSpaceId: space.parentSpaceId

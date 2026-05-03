@@ -137,7 +137,6 @@ const saveFacilityMapSchema = z.object({
       entityId: uuidSchema,
       parentEntityId: uuidSchema.nullable(),
       label: z.string().min(1),
-      shapeType: z.enum(["rectangle", "polygon"]),
       points: z.array(
         z.object({
           x: z.number(),

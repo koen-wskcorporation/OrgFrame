@@ -10,7 +10,6 @@ function buildNode(overrides?: Partial<CanvasNode>): CanvasNode {
     entityId: "entity-1",
     parentEntityId: null,
     label: "Node",
-    shapeType: "rectangle",
     points: [],
     bounds: {
       x: 13,
@@ -39,7 +38,6 @@ describe("facility map geometry normalization", () => {
   it("normalizes polygon points and derives valid bounds", () => {
     const normalized = normalizeNodeGeometry(
       buildNode({
-        shapeType: "polygon",
         points: [
           { x: 11, y: 13 },
           { x: 97, y: 31 },

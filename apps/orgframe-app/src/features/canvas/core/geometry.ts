@@ -74,16 +74,7 @@ function normalizePolygonPoints(points: CanvasPoint[]): CanvasPoint[] {
 }
 
 export function normalizeNodeGeometry(node: CanvasNode): CanvasNode {
-  if (node.shapeType === "rectangle") {
-    const bounds = normalizeBounds(node.bounds);
-    return {
-      ...node,
-      bounds,
-      points: rectPoints(bounds),
-      cornerRadius: CANVAS_CORNER_RADIUS
-    };
-  }
-
+  // Every node is a polygon now — a rectangle is just a 4-vertex polygon.
   const points = normalizePolygonPoints(node.points);
   const rawBounds = boundsFromPoints(points);
   const bounds = normalizeBounds(rawBounds);

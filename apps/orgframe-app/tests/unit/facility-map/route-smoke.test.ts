@@ -70,7 +70,6 @@ mock.module("@/src/features/facilities/map/db/queries", {
         entityId: "space-1",
         parentEntityId: null,
         label: "Field 1",
-        shapeType: "rectangle",
         points: [
           { x: 24, y: 24 },
           { x: 168, y: 24 },
