@@ -96,6 +96,14 @@ type FacilityMapEditorProps = {
   /** Hides satellite + location toolbar buttons; forces grid-only rendering. */
   indoor?: boolean;
   onSelectNode: (nodeId: string | null) => void;
+  /**
+   * Fires when the user clicks the title pill on a space — the gesture
+   * that says "I want to see this space's details," not "I want to drag
+   * it." Hosts wire this to opening the side panel. Without this, panel
+   * open and node selection are conflated and every body-click on a
+   * polygon would open the panel.
+   */
+  onOpenSpaceDetails?: (spaceId: string) => void;
   onChangeNodes: (nodes: FacilityMapNode[]) => void;
   onDeleteNode: (nodeId: string) => void;
   onCreateSpace: () => FacilitySpace | null;
@@ -315,6 +323,7 @@ export function FacilityMapEditor({
   geoShowMap,
   indoor = false,
   onSelectNode,
+  onOpenSpaceDetails,
   onChangeNodes,
   onDeleteNode,
   onCreateSpace,
@@ -1243,7 +1252,14 @@ export function FacilityMapEditor({
                           ? "bg-surface-muted text-text-muted hover:bg-surface-muted"
                           : "bg-surface text-text hover:bg-surface-muted")
                       }
-                      onMouseDown={(event) => startMove(node, event)}
+                      onMouseDown={(event) => {
+                        // Pill click is the only gesture that opens the
+                        // side panel. Body click on the polygon below
+                        // selects-and-drags but does NOT open details —
+                        // otherwise every drag-to-reshape pops the panel.
+                        onOpenSpaceDetails?.(node.entityId);
+                        startMove(node, event);
+                      }}
                       onMouseEnter={() => setTopNodeId(node.id)}
                       style={{ cursor: canWrite ? "move" : "default" }}
                     >

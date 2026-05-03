@@ -209,6 +209,7 @@ export function FacilityMapWorkspace({
     setNodes((current) => current.filter((node) => node.entityId !== spaceId));
     setDeletedNodeIds((current) => Array.from(new Set([...current, ...orphanNodes])));
     setSelectedNodeId(null);
+    setPanelSpaceId((current) => (current === spaceId ? null : current));
   }
 
   function handleSpaceUpdated(updated: FacilitySpace) {
@@ -227,8 +228,13 @@ export function FacilityMapWorkspace({
     );
   }
 
-  const selectedNode = selectedNodeId ? nodes.find((node) => node.id === selectedNodeId) ?? null : null;
-  const selectedSpace = selectedNode ? spaces.find((space) => space.id === selectedNode.entityId) ?? null : null;
+  // The side panel is keyed off `panelSpaceId`, NOT the editor's
+  // `selectedNodeId`. Selecting a polygon (clicking its body) shows
+  // vertex handles + enables drag/reshape; the panel only opens when
+  // the user clicks the title pill. Two separate intents, two separate
+  // pieces of state.
+  const [panelSpaceId, setPanelSpaceId] = useState<string | null>(null);
+  const selectedSpace = panelSpaceId ? spaces.find((space) => space.id === panelSpaceId) ?? null : null;
   const isPanelOpen = selectedSpace !== null;
 
   // Optimistic create. Returns a FacilitySpace synchronously with a temp UUID
@@ -403,6 +409,7 @@ export function FacilityMapWorkspace({
         onClose={() => {
           setIsMapOpen(false);
           setSelectedNodeId(null);
+          setPanelSpaceId(null);
         }}
         open={isMapOpen}
         size="full"
@@ -430,6 +437,7 @@ export function FacilityMapWorkspace({
               onCreateSpace={handleCreateSpace}
               onDeleteNode={handleDeleteNode}
               onEditGeoLocation={() => setIsLocationPopupOpen(true)}
+              onOpenSpaceDetails={setPanelSpaceId}
               onSave={handleSave}
               onSelectNode={setSelectedNodeId}
               onToggleGeoMap={handleToggleGeoMap}
@@ -446,7 +454,7 @@ export function FacilityMapWorkspace({
           />
           <FacilitySpacePanel
             canWrite={canWrite}
-            onClose={() => setSelectedNodeId(null)}
+            onClose={() => setPanelSpaceId(null)}
             onManageStatuses={() => setIsStatusManagerOpen(true)}
             onSpaceDeleted={handleSpaceDeleted}
             onSpaceUpdated={handleSpaceUpdated}
