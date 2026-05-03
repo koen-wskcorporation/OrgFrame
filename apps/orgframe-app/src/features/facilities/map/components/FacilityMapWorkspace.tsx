@@ -99,7 +99,33 @@ export function FacilityMapWorkspace({ orgSlug, activeSpaceId, activeSpaceName, 
         subtitle="Unified grid canvas with deterministic snapping, collision controls, and parent/child connectors."
         title={`Facility Map · ${activeLabel}`}
       >
-        <FacilityMapEditor canWrite={canWrite} nodes={nodes} onChangeNodes={setNodes} onSelectNode={setSelectedNodeId} selectedNodeId={selectedNodeId} />
+        <FacilityMapEditor
+          canWrite={canWrite}
+          // Geo anchoring (per-space lat/lng + satellite toggle) hasn't been
+          // restored from the lost session yet — render in indoor/grid-only
+          // mode so the satellite + map-pin toolbar buttons stay hidden.
+          geoAnchor={null}
+          geoShowMap={false}
+          indoor
+          isSaving={isSaving}
+          nodes={nodes}
+          onChangeNodes={setNodes}
+          // Adding a space from inside the editor requires a server-side
+          // create flow (`createFacilitySpaceAction` + draft state) that
+          // also hasn't been recovered. Returning null keeps the toolbar's
+          // "+" wired but no-ops it.
+          onCreateSpace={() => null}
+          onDeleteNode={(nodeId) => setNodes((current) => current.filter((node) => node.id !== nodeId))}
+          onEdit={() => setIsMapOpen(true)}
+          onEditGeoLocation={() => undefined}
+          onSave={handleSave}
+          onSelectNode={setSelectedNodeId}
+          onToggleGeoMap={() => undefined}
+          orgId=""
+          selectedNodeId={selectedNodeId}
+          spaces={spaces}
+          spaceStatuses={[]}
+        />
       </Popup>
     </div>
   );

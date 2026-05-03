@@ -4,10 +4,13 @@ export type FacilitySpaceStatus = "open" | "closed" | "archived";
 
 // Stub for in-progress org-customizable space-status definitions. The full
 // shape (label, color, ordering) lives in the lost session and will replace
-// this when recovered.
+// this when recovered. `color` is consumed by the FacilityMapEditor's
+// status chip — until the migration restores the real palette, callers
+// pass empty strings or status names.
 export type FacilitySpaceStatusDef = {
   id: string;
   label: string;
+  color: string;
 };
 
 export type FacilityReservationKind = "booking" | "blackout";
@@ -30,6 +33,11 @@ export type FacilitySpace = {
   slug: string;
   spaceKind: FacilitySpaceKind;
   status: FacilitySpaceStatus;
+  /**
+   * Optional id pointing at a `FacilitySpaceStatusDef` for org-customizable
+   * status labels. Stub — full feature lives in the lost session.
+   */
+  statusId?: string | null;
   isBookable: boolean;
   timezone: string;
   capacity: number | null;
