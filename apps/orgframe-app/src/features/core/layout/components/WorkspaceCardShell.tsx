@@ -11,6 +11,14 @@ type WorkspaceCardShellProps = {
   className?: string;
   contentClassName?: string;
   headerClassName?: string;
+  /**
+   * When true (default) the card fills the viewport (minus sticky chrome
+   * and bottom gutter). Header stays its natural height; content scrolls
+   * internally. As page-header tabs compact on scroll, the card grows to
+   * reclaim the space. Pass `fill={false}` for cards that should size to
+   * their content (printable views, embedded marketing previews).
+   */
+  fill?: boolean;
 };
 
 export function WorkspaceCardShell({
@@ -20,14 +28,17 @@ export function WorkspaceCardShell({
   children,
   className,
   contentClassName,
-  headerClassName
+  headerClassName,
+  fill = true
 }: WorkspaceCardShellProps) {
   return (
-    <Card className={className}>
-      <CardHeader className={headerClassName}>
+    <Card className={cn(fill ? "app-card-fill" : null, className)}>
+      <CardHeader className={cn(fill ? "app-card-fill__header" : null, headerClassName)}>
         <CardHeaderRow actions={actions} description={description} title={title} />
       </CardHeader>
-      <CardContent className={cn(contentClassName)}>{children}</CardContent>
+      <CardContent className={cn(fill ? "app-card-fill__content" : null, contentClassName)}>
+        {children}
+      </CardContent>
     </Card>
   );
 }

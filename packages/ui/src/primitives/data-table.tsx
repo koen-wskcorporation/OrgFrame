@@ -26,11 +26,10 @@ import { cn } from "./utils";
 export type SortDirection = "asc" | "desc";
 
 function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
-  return (
-    <div className="w-full overflow-x-auto">
-      <table className={cn("w-full caption-bottom text-sm", className)} {...props} />
-    </div>
-  );
+  // Bare <table> — no inner overflow-x-auto wrapper. The DataTable's
+  // outer shell is the scroll container (overflow-auto on both axes),
+  // so a wrapper here would steal sticky pinning from the thead.
+  return <table className={cn("w-full caption-bottom text-sm", className)} {...props} />;
 }
 
 function TableHeader({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
@@ -1399,7 +1398,7 @@ export function DataTable<TItem>({
   }
 
   return (
-    <>
+    <div className="flex h-full min-h-0 flex-col">
       <style>{`
         @keyframes datatable-marching-ants {
           to {
@@ -1460,7 +1459,11 @@ export function DataTable<TItem>({
       </div>
 
       <div
-        className="overflow-hidden rounded-control border border-border/80 bg-surface"
+        // Component-owned scroll: this shell fills the available height
+        // (its parent CardContent is `app-card-fill__content` = flex 1
+        // with min-height:0) and overflows on BOTH axes. The thead's
+        // `sticky top-0` then pins to the shell's top edge.
+        className="flex-1 min-h-0 overflow-auto rounded-control border border-border/80 bg-surface"
         onKeyDown={(event) => {
           if (!enableCellSelection || isInteractiveTarget(event.target)) {
             return;
@@ -1486,7 +1489,7 @@ export function DataTable<TItem>({
               )}
               onMouseDownCapture={suppressNativeTextSelection}
             >
-              <TableHeader className="sticky top-0 z-10 border-b border-border bg-surface-muted/95 backdrop-blur supports-[backdrop-filter]:bg-surface-muted/80">
+              <TableHeader className="sticky top-0 z-[5] border-b border-border bg-surface-muted/95 backdrop-blur supports-[backdrop-filter]:bg-surface-muted/80">
                 <TableRow className="bg-transparent hover:bg-transparent">
                   <SortableContext
                     items={visibleColumns.filter((column) => !isLockedSelectionColumn(column.key)).map((column) => column.key)}
@@ -1937,6 +1940,6 @@ export function DataTable<TItem>({
           ))}
         </div>
       </Popup>
-    </>
+    </div>
   );
 }

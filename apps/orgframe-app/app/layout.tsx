@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppFooter } from "@/src/features/core/layout/components/AppFooter";
 import { PrimaryHeader } from "@/src/features/core/layout/components/PrimaryHeader";
 import { ConfirmDialogProvider } from "@orgframe/ui/primitives/confirm-dialog";
+import { PanelContainer } from "@orgframe/ui/primitives/panel";
 import { ThemeModeProvider } from "@orgframe/ui/primitives/theme-mode";
 import { ToastProvider } from "@orgframe/ui/primitives/toast";
 import { shouldShowBranchHeaders } from "@/src/shared/env/branchVisibility";
@@ -133,21 +134,17 @@ export default async function RootLayout({
               <OrderPanelProvider>
                 <FileManagerProvider>
                   <UploadProvider>
-                    <div className="app-frame">
-                      <div className="app-root flex min-h-screen min-w-0 flex-col">
-                        {showHeaders ? (
-                          <PrimaryHeader
-                            currentOrgSlug={headerRouting.currentOrgSlug}
-                            homeHref={headerRouting.homeHref}
-                            initialAccountState={initialAccountState}
-                            orgOptions={orgOptions}
-                            tenantBaseOrigin={headerRouting.tenantBaseOrigin}
-                          />
-                        ) : null}
-                        <div className={showHeaders ? "flex-1 min-w-0 pt-[var(--layout-gap)]" : "flex-1 min-w-0"}>{children}</div>
-                      </div>
-                      <div className="panel-dock" id="panel-dock" />
-                    </div>
+                    {showHeaders ? (
+                      <PrimaryHeader
+                        currentOrgSlug={headerRouting.currentOrgSlug}
+                        homeHref={headerRouting.homeHref}
+                        initialAccountState={initialAccountState}
+                        orgOptions={orgOptions}
+                        tenantBaseOrigin={headerRouting.tenantBaseOrigin}
+                      />
+                    ) : null}
+                    {children}
+                    <PanelContainer />
                   </UploadProvider>
                 </FileManagerProvider>
               </OrderPanelProvider>

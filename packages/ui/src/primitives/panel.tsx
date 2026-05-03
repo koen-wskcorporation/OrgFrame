@@ -345,6 +345,24 @@ export function Panel({
   );
 }
 
+/**
+ * Body-level dock target for docked side panels. Render once in the
+ * root layout (after `{children}`). Each <Panel> portals its <aside>
+ * into this element; the asides themselves use `position: fixed` to
+ * pin against the viewport, so the dock doesn't drive positioning —
+ * it just exists as a stable React-tree-rooted portal target so panels
+ * can mount/unmount with the providers tree above them.
+ *
+ * The full multi-panel layout system (drag-to-swap order, per-gap
+ * orientation toggles for 3- and 4-panel grids, user-resizable splits
+ * persisted to preferences) is built on top of this dock — see TODO
+ * markers in this file. Until that lands, panels stack via the
+ * `--panel-active-width` reservation on `.app__body`.
+ */
+export function PanelContainer() {
+  return <div id="panel-dock" />;
+}
+
 export function PanelScreens({ screens, activeKey, onChange, className }: PanelScreensProps) {
   return (
     <div className={cn("inline-flex w-full items-center gap-1 rounded-control border bg-surface p-1", className)}>
