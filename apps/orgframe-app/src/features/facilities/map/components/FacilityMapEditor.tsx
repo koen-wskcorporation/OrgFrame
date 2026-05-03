@@ -1179,7 +1179,7 @@ export function FacilityMapEditor({
                     pointerEvents="none"
                     transform={`translate(${center.x} ${center.y}) scale(${inversePixel})`}
                   >
-                    <foreignObject height={36} style={{ overflow: "visible" }} width={180} x={-90} y={-18}>
+                    <foreignObject height={36} style={{ overflow: "visible", pointerEvents: "none" }} width={180} x={-90} y={-18}>
                       <div className="flex h-full w-full items-center justify-center">
                         <div
                           className={
@@ -1221,7 +1221,20 @@ export function FacilityMapEditor({
 
             return (
               <g key={`label-${node.id}`} transform={`translate(${center.x} ${center.y}) scale(${inversePixel})`}>
-                <foreignObject height={120} width={520} x={-260} y={-60} style={{ overflow: "visible" }}>
+                <foreignObject
+                  height={120}
+                  width={520}
+                  x={-260}
+                  y={-60}
+                  // `pointerEvents: none` on the foreignObject is critical:
+                  // the element's bbox covers a 520×120 area centered on
+                  // each polygon, so without it every click on the canvas
+                  // BENEATH a label gets eaten by the foreignObject (which
+                  // has no handler) and bubbles up to the SVG's pan handler
+                  // instead of reaching the polygon's `startMove`. The pill
+                  // child below opts back IN with `pointer-events-auto`.
+                  style={{ overflow: "visible", pointerEvents: "none" }}
+                >
                   <div className="pointer-events-none flex h-full w-full items-center justify-center">
                     <div
                       className={
@@ -1331,7 +1344,11 @@ export function FacilityMapEditor({
             })()
           : null}
 
-        {selectedNodeId && canWrite && !mapEnabled
+        {/* Vertex handles render in BOTH grid and satellite mode — without
+            them the user has no way to reshape a polygon, which is the
+            whole point of the editor. The earlier gate that hid them in
+            satellite mode was a mistake. */}
+        {selectedNodeId && canWrite
           ? (() => {
               const node = nodeById.get(selectedNodeId);
               if (!node) return null;
