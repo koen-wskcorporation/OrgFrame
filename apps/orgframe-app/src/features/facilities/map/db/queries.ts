@@ -121,7 +121,24 @@ export async function listFacilityMapNodes(orgId: string, spaces: FacilitySpace[
   // that's the lost-session bug we just removed via 202605030001 — but
   // now `parent_space_id IS NULL` simply means "direct child of the
   // facility", which is the most common case and SHOULD render.
-  return rows
+  //
+  // Dedupe by space_id: there is no UNIQUE constraint on
+  // `(org_id, space_id)` until migration 202605030003 lands, so it's
+  // possible to have two rows for the same space (the renderer would
+  // draw two stacked polygons). Keep the most recently updated one.
+  const seenSpaceIds = new Set<string>();
+  const sortedRows = rows.slice().sort((a, b) => {
+    const aTs = new Date(a.updated_at).getTime();
+    const bTs = new Date(b.updated_at).getTime();
+    return bTs - aTs;
+  });
+  const dedupedRows = sortedRows.filter((row) => {
+    if (seenSpaceIds.has(row.space_id)) return false;
+    seenSpaceIds.add(row.space_id);
+    return true;
+  });
+
+  return dedupedRows
     .filter((row) => {
       const space = spaceById.get(row.space_id);
       if (!space) return false;
@@ -150,21 +167,28 @@ export async function seedFacilityMapNodesForMissingSpaces(orgId: string, spaces
 
   const seeded = normalizeLayout(missing.map((space, index) => buildSeedNode(space, index)));
 
-  const { error: insertError } = await supabase.schema("facilities").from("facility_map_nodes").insert(
-    seeded.map((node) => ({
-      org_id: orgId,
-      space_id: node.entityId,
-      parent_space_id: node.parentEntityId,
-      points_json: node.points,
-      x: node.bounds.x,
-      y: node.bounds.y,
-      width: node.bounds.width,
-      height: node.bounds.height,
-      z_index: node.zIndex,
-      corner_radius: CANVAS_CORNER_RADIUS,
-      status: node.status
-    }))
-  );
+  // Use upsert with `onConflict: "space_id"` so concurrent loads (or a
+  // re-run after a partial failure) can't double-seed the same space.
+  // Pairs with the unique constraint added in 202605030003.
+  const { error: insertError } = await supabase
+    .schema("facilities")
+    .from("facility_map_nodes")
+    .upsert(
+      seeded.map((node) => ({
+        org_id: orgId,
+        space_id: node.entityId,
+        parent_space_id: node.parentEntityId,
+        points_json: node.points,
+        x: node.bounds.x,
+        y: node.bounds.y,
+        width: node.bounds.width,
+        height: node.bounds.height,
+        z_index: node.zIndex,
+        corner_radius: CANVAS_CORNER_RADIUS,
+        status: node.status
+      })),
+      { onConflict: "space_id", ignoreDuplicates: true }
+    );
 
   if (insertError) {
     throw new Error(`Failed to seed facility map nodes: ${insertError.message}`);
