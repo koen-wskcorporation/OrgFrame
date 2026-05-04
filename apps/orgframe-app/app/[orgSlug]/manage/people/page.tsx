@@ -4,7 +4,7 @@ import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { getPeopleDirectoryPageData } from "@/src/features/people/actions";
 import { PeopleDirectoryPanel } from "@/src/features/people/components/PeopleDirectoryPanel";
 import { PeoplePageTabs } from "@/src/features/people/components/PeoplePageTabs";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 
 export const metadata: Metadata = {
@@ -31,21 +31,22 @@ export default async function OrgPeoplePage({
 
   if (!isOrgToolEnabled(data.toolAvailability, "people")) {
     return (
-      <ManagePageShell
+      <PageShell
         description="Manage accounts, linked player/staff profiles, and relationship access."
         tabs={<PeoplePageTabs active="directory" orgSlug={orgSlug} />}
         title="People"
       >
         <ToolUnavailablePanel title="People" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
   return (
-    <ManagePageShell
+    <PageShell
+      description="Manage accounts, linked player/staff profiles, and relationship access."
       tabs={<PeoplePageTabs active="directory" orgSlug={data.orgSlug} />}
       title="People"
-      variant="workspace"
+
     >
       <ManageSection
         description="Manage accounts, linked player/staff profiles, and relationship access."
@@ -60,6 +61,6 @@ export default async function OrgPeoplePage({
           orgSlug={data.orgSlug}
         />
       </ManageSection>
-    </ManagePageShell>
+    </PageShell>
   );
 }

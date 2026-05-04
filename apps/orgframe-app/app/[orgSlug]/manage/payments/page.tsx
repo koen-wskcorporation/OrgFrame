@@ -5,7 +5,7 @@ import { gateManageSection } from "@/src/features/core/layout/gateManageSection"
 import { listOrgPaymentTransactions } from "@/src/features/payments/queries";
 import { PaymentsSectionNav } from "@/src/features/payments/components/PaymentsSectionNav";
 import { PaymentsTransactionsTable } from "@/src/features/payments/components/PaymentsTransactionsTable";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
 
@@ -22,13 +22,13 @@ export default async function OrgPaymentsOverviewPage({ params }: { params: Prom
 
   if (unavailable) {
     return (
-      <ManagePageShell
+      <PageShell
         description="Review transactions and payment settings for this organization."
         tabs={<PaymentsSectionNav active="overview" />}
         title="Payments"
       >
         <ToolUnavailablePanel title="Payments" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
@@ -36,10 +36,11 @@ export default async function OrgPaymentsOverviewPage({ params }: { params: Prom
   const transactions = canManage ? await listOrgPaymentTransactions({ orgId: orgContext.orgId, limit: 250 }).catch(() => []) : [];
 
   return (
-    <ManagePageShell
+    <PageShell
+      description="Review all payment transactions for this organization."
       tabs={<PaymentsSectionNav active="overview" />}
       title="Payments"
-      variant="workspace"
+
     >
       {!canManage ? <Alert variant="warning">You do not have permission to view payment transactions.</Alert> : null}
       <ManageSection
@@ -50,6 +51,6 @@ export default async function OrgPaymentsOverviewPage({ params }: { params: Prom
       >
         <PaymentsTransactionsTable transactions={transactions} />
       </ManageSection>
-    </ManagePageShell>
+    </PageShell>
   );
 }

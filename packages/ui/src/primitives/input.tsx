@@ -249,6 +249,14 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       }
 
       onSlugAutoChange(sourceSlug);
+
+      // Auto-generated slugs should be validated for availability the same way
+      // user-typed slugs are. Without this flip, the validation effect early
+      // -exits on `!hasSlugBeenEdited` and the user never sees "taken /
+      // available" while they're filling in the title field.
+      if (sourceSlug.length > 0) {
+        setHasSlugBeenEdited(true);
+      }
     }, [inputValue, isSlugField, onSlugAutoChange, slugAutoEnabled, slugAutoSource]);
 
     React.useEffect(() => {

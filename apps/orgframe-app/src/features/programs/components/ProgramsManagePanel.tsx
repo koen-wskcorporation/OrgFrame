@@ -10,7 +10,7 @@ import { RepeaterChip } from "@orgframe/ui/primitives/chip";
 import { PublishStatusIcon } from "@orgframe/ui/primitives/publish-status-icon";
 import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { useToast } from "@orgframe/ui/primitives/toast";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { createProgramAction, duplicateProgramAction, updateProgramAction } from "@/src/features/programs/actions";
 import { ProgramCreateWizard, type ProgramCreateInput } from "@/src/features/programs/components/ProgramCreateWizard";
@@ -145,7 +145,7 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
 
   return (
     <>
-      <ManagePageShell title="Programs" variant="workspace">
+      <PageShell title="Programs">
         {!canWrite ? <Alert variant="info">You have read-only access to programs.</Alert> : null}
         <Repeater
           emptyMessage="No programs yet."
@@ -212,7 +212,7 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
               )
             })}
         />
-      </ManagePageShell>
+      </PageShell>
 
       <ProgramCreateWizard
         canWrite={canWrite}

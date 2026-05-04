@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { listImportRunsAction } from "@/src/features/imports/actions";
@@ -23,25 +23,25 @@ export default async function OrgManageImportsPage({
 
   if (unavailable) {
     return (
-      <ManagePageShell
+      <PageShell
         description="Run staged CSV/XLSX imports with profile mapping, AI conflict assistance, and idempotent apply logs."
         title="Smart Import"
       >
         <ToolUnavailablePanel title="Smart Import" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
   const runsResult = await listImportRunsAction({ orgSlug, limit: 20 }).catch(() => ({ runs: [] }));
 
   return (
-    <ManagePageShell title="Smart Import" variant="workspace">
+    <PageShell title="Smart Import">
       <ManageSection
         description="Run staged CSV/XLSX imports with profile mapping, AI conflict assistance, and idempotent apply logs."
         title="Smart Import"
       >
         <SmartImportWorkspace initialRuns={runsResult.runs} orgSlug={orgContext.orgSlug} />
       </ManageSection>
-    </ManagePageShell>
+    </PageShell>
   );
 }

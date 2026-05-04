@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Chip } from "@orgframe/ui/primitives/chip";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
 import { FormPublishToggleButton } from "@/src/features/forms/components/FormPublishToggleButton";
@@ -25,9 +25,9 @@ export default async function FormManageLayout({
 
   if (unavailable) {
     return (
-      <ManagePageShell title="Forms">
+      <PageShell title="Forms">
         <ToolUnavailablePanel title="Forms" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
@@ -41,7 +41,7 @@ export default async function FormManageLayout({
   const statusColor = form.status === "published" ? "green" : "yellow";
 
   return (
-    <ManagePageShell
+    <PageShell
       actions={
         <>
           <Button href={`/${orgSlug}/manage/forms`} variant="secondary">
@@ -50,6 +50,7 @@ export default async function FormManageLayout({
           <FormPublishToggleButton canWrite={canWriteForms} form={form} orgSlug={orgSlug} />
         </>
       }
+      description="Configure fields, registrations, and publishing for this form."
       tabs={<FormPageTabs formId={form.id} orgSlug={orgSlug} />}
       title={
         <span className="inline-flex items-center gap-3">
@@ -60,6 +61,6 @@ export default async function FormManageLayout({
     >
       {!canWriteForms ? <Alert className="mb-3" variant="info">You have read-only access to this form.</Alert> : null}
       {children}
-    </ManagePageShell>
+    </PageShell>
   );
 }

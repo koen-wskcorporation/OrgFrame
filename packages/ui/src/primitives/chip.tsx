@@ -143,6 +143,12 @@ export type ChipPickerProps = {
   size?: ChipSize;
   placeholder?: string;
   className?: string;
+  /**
+   * `true` → render the colored status dot in the trigger chip. Mirrors the
+   * `status` prop on `<Chip />`. Defaults to off so existing call-sites are
+   * unaffected.
+   */
+  status?: boolean;
 };
 
 export function ChipPicker({
@@ -154,7 +160,8 @@ export function ChipPicker({
   manageLabel = "Manage statuses",
   size = "md",
   placeholder = "Set status",
-  className
+  className,
+  status
 }: ChipPickerProps) {
   const triggerRef = React.useRef<HTMLButtonElement | null>(null);
   const [open, setOpen] = React.useState(false);
@@ -177,7 +184,7 @@ export function ChipPicker({
         ref={triggerRef}
         type="button"
       >
-        <Chip color={selected ? selected.color : "slate"} size={normalized}>
+        <Chip color={selected ? selected.color : "slate"} size={normalized} status={status}>
           <span className="truncate">{selected ? selected.label : placeholder}</span>
           <ChevronDown
             aria-hidden

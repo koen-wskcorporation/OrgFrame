@@ -9,7 +9,7 @@ import { RepeaterChip } from "@orgframe/ui/primitives/chip";
 import { PublishStatusIcon } from "@orgframe/ui/primitives/publish-status-icon";
 import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { useToast } from "@orgframe/ui/primitives/toast";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { publishFormVersionAction, saveFormDraftAction } from "@/src/features/forms/actions";
 import { FormCreatePanel } from "@/src/features/forms/components/FormCreatePanel";
@@ -87,7 +87,7 @@ export function FormsManagePanel({ orgSlug, forms, programs, canWrite = true }: 
 
   return (
     <>
-      <ManagePageShell title="Forms" variant="workspace">
+      <PageShell title="Forms">
         {!canWrite ? <Alert variant="info">You have read-only access to forms.</Alert> : null}
         <Repeater
           emptyMessage="No forms yet."
@@ -141,7 +141,7 @@ export function FormsManagePanel({ orgSlug, forms, programs, canWrite = true }: 
               )
             })}
         />
-      </ManagePageShell>
+      </PageShell>
 
       <FormCreatePanel canWrite={canWrite} onClose={() => setIsCreateOpen(false)} open={isCreateOpen} orgSlug={orgSlug} programs={programs} />
     </>

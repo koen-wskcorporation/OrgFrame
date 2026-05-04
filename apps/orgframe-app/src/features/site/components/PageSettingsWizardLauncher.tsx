@@ -26,6 +26,12 @@ export function PageSettingsWizardLauncher({ open, onClose, orgSlug, pageSlug }:
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
+  // The launcher is mounted on the public page itself, so the current
+  // window host IS the org's public host (custom domain or subdomain). Using
+  // it directly avoids a round-trip to recompute server-side.
+  const displayHost =
+    typeof window !== "undefined" ? window.location.host : `${orgSlug}.orgframe.app`;
+
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -80,6 +86,7 @@ export function PageSettingsWizardLauncher({ open, onClose, orgSlug, pageSlug }:
 
   return (
     <PageWizard
+      displayHost={displayHost}
       editingItem={editingItem}
       editingPage={editingPage}
       mode="edit"

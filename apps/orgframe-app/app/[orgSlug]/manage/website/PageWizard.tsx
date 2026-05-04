@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { Checkbox } from "@orgframe/ui/primitives/checkbox";
+import { ChipPicker } from "@orgframe/ui/primitives/chip";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
-import { Select } from "@orgframe/ui/primitives/select";
-import { Textarea } from "@orgframe/ui/primitives/textarea";
 import {
   CreateWizard,
   type CreateWizardSubmitResult,
@@ -13,27 +13,45 @@ import {
 import { sanitizePageSlug } from "@/src/features/site/blocks/helpers";
 import type { OrgManagePage, OrgSiteStructureItem } from "@/src/features/site/types";
 import {
+  createWebsiteDropdownAction,
+  createWebsiteExternalLinkAction,
   createWebsitePageAction,
   updateWebsiteItemAction,
   type WebsiteManagerActionResult
 } from "@/src/features/site/websiteManagerActions";
+import { TypePicker, type ItemType } from "./TypePicker";
 
-type WizardState = {
+export type { ItemType };
+
+// One unified state shape covers all three item types. Fields that don't apply
+// to the current `itemType` are simply ignored at submit time. SEO fields have
+// been removed for now — they can be re-added later as a separate step.
+type CreateState = {
+  itemType: ItemType;
   title: string;
-  slug: string;
-  parentId: string;
+  slug: string; // page only
+  url: string; // link only
+  openInNewTab: boolean; // link only
   isPublished: boolean;
   showInMenu: boolean;
-  seoTitle: string;
-  metaDescription: string;
-  ogImagePath: string;
+};
+
+type EditState = {
+  title: string;
+  slug: string;
+  isPublished: boolean;
+  showInMenu: boolean;
 };
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+// ─── Prop types ───────────────────────────────────────────────────────────────
+
 type CreateProps = {
   mode: "create";
   defaultParentId: string | null;
+  /** Pre-selects a type on the first step. Pass null to default to "page". */
+  defaultType: ItemType | null;
 };
 
 type EditProps = {
@@ -47,102 +65,332 @@ type SharedProps = {
   onClose: () => void;
   onResult: (res: WebsiteManagerActionResult) => void;
   orgSlug: string;
+  /**
+   * Public host of the org (custom domain or `<slug>.<platform>`). Used as the
+   * URL preview prefix in the slug input.
+   */
+  displayHost: string;
   parentItems: OrgSiteStructureItem[];
 };
 
-type Props = SharedProps & (CreateProps | EditProps);
+export type Props = SharedProps & (CreateProps | EditProps);
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getLinkedPageSlug(item: OrgSiteStructureItem): string | null {
   const slug = item.linkTargetJson?.pageSlug;
   return typeof slug === "string" ? slug : null;
 }
 
-function buildParentOptions(items: OrgSiteStructureItem[], excludeId?: string) {
-  const byParent = new Map<string | null, OrgSiteStructureItem[]>();
-  for (const item of items) {
-    const list = byParent.get(item.parentId) ?? [];
-    list.push(item);
-    byParent.set(item.parentId, list);
-  }
-  for (const list of byParent.values()) {
-    list.sort((a, b) => a.orderIndex - b.orderIndex || a.title.localeCompare(b.title));
-  }
-  const out: { value: string; label: string; disabled?: boolean }[] = [
-    { value: "", label: "Top level (no parent)" }
-  ];
-  // Collect descendants of excludeId so we can disable them as parent options
-  // (preventing self/cycle when editing).
-  const blocked = new Set<string>();
-  if (excludeId) {
-    const stack = [excludeId];
-    while (stack.length) {
-      const id = stack.pop()!;
-      blocked.add(id);
-      for (const child of byParent.get(id) ?? []) stack.push(child.id);
+/**
+ * Walk up the parent chain and collect slug segments (root-first order). Used
+ * for the URL preview prefix. Skips dynamic items (which generate their own
+ * paths at render time) and ignores any segment without a slug.
+ */
+function buildParentPath(items: OrgSiteStructureItem[], parentId: string | null): string[] {
+  if (!parentId) return [];
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const path: string[] = [];
+  let current = byId.get(parentId);
+  while (current) {
+    if (current.type !== "dynamic" && current.slug) {
+      path.unshift(current.slug);
     }
+    if (!current.parentId) break;
+    current = byId.get(current.parentId);
   }
-  const walk = (parentId: string | null, depth: number) => {
-    const list = byParent.get(parentId) ?? [];
-    for (const item of list) {
-      if (item.type === "dynamic") continue;
-      const isHostable = item.type === "placeholder" || item.type === "page";
-      const indent = "— ".repeat(depth);
-      out.push({
-        value: item.id,
-        label: `${indent}${item.title}${item.type === "placeholder" ? " (dropdown)" : ""}`,
-        disabled: !isHostable || blocked.has(item.id)
-      });
-      walk(item.id, depth + 1);
-    }
-  };
-  walk(null, 0);
-  return out;
+  return path;
 }
 
-export function PageWizard(props: Props) {
-  const isEdit = props.mode === "edit";
-  const editingItem = isEdit ? props.editingItem : null;
-  const editingPage = isEdit ? props.editingPage : null;
-  const linkedSlug = editingItem ? getLinkedPageSlug(editingItem) : null;
+function buildPrefix(displayHost: string, parentPath: string[]) {
+  const segments = parentPath.filter(Boolean);
+  return `${displayHost}/${segments.length > 0 ? `${segments.join("/")}/` : ""}`;
+}
 
-  const initialState: WizardState = React.useMemo(() => {
-    if (isEdit && editingItem) {
-      return {
-        title: editingItem.title,
-        slug: linkedSlug ?? "",
-        parentId: editingItem.parentId ?? "",
-        isPublished: editingItem.isPublished,
-        showInMenu: editingItem.showInMenu,
-        seoTitle: editingPage?.seoTitle ?? "",
-        metaDescription: editingPage?.metaDescription ?? "",
-        ogImagePath: editingPage?.ogImagePath ?? ""
-      };
-    }
-    return {
+// ─── Status-chip toggle ──────────────────────────────────────────────────────
+
+const PUBLISH_OPTIONS = [
+  { value: "published", label: "Published", color: "emerald" as const },
+  { value: "unpublished", label: "Unpublished", color: "slate" as const }
+];
+
+function PublishStatusChip({
+  isPublished,
+  onChange
+}: {
+  isPublished: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <ChipPicker
+      onChange={(value) => onChange(value === "published")}
+      options={PUBLISH_OPTIONS}
+      size="md"
+      status
+      value={isPublished ? "published" : "unpublished"}
+    />
+  );
+}
+
+// ─── Create wizard ────────────────────────────────────────────────────────────
+
+type CreateInnerProps = SharedProps & CreateProps;
+
+function CreateItemWizard({
+  defaultParentId,
+  defaultType,
+  displayHost,
+  onClose,
+  onResult,
+  open,
+  orgSlug,
+  parentItems
+}: CreateInnerProps) {
+  // Parent is fixed by where the user opened the wizard — there's no in-wizard
+  // selector. Resolve once per open.
+  const parentPath = React.useMemo(
+    () => buildParentPath(parentItems, defaultParentId),
+    [parentItems, defaultParentId]
+  );
+  const slugPrefix = React.useMemo(() => buildPrefix(displayHost, parentPath), [displayHost, parentPath]);
+
+  const initialState: CreateState = React.useMemo(
+    () => ({
+      itemType: defaultType ?? "page",
       title: "",
       slug: "",
-      parentId: !isEdit ? props.defaultParentId ?? "" : "",
+      url: "",
+      openInNewTab: true,
       isPublished: true,
-      showInMenu: true,
-      seoTitle: "",
-      metaDescription: "",
-      ogImagePath: ""
-    };
+      showInMenu: true
+    }),
+    // Reset whenever the dialog opens (so re-opening gives a clean form).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEdit, editingItem?.id, editingPage?.id]);
-
-  const parentOptions = React.useMemo(
-    () => buildParentOptions(props.parentItems, editingItem?.id),
-    [props.parentItems, editingItem?.id]
+    [open, defaultType, defaultParentId]
   );
 
-  const slugLocked = isEdit && linkedSlug === "home";
+  const steps: WizardStep<CreateState>[] = [
+    {
+      id: "type",
+      label: "Type",
+      description: "Choose what you want to add to your website.",
+      render: ({ state, setField }) => (
+        <TypePicker onChange={(type) => setField("itemType", type)} value={state.itemType} />
+      )
+    },
+    {
+      id: "details",
+      label: "Details",
+      description: "Title and destination.",
+      validate: (state) => {
+        const errors: Record<string, string> = {};
+        if (state.title.trim().length < 1) {
+          errors.title = "A title is required.";
+        }
+        if (state.itemType === "page") {
+          if (state.title.trim().length < 2) {
+            errors.title = "Page title must be at least 2 characters.";
+          }
+          const slug = sanitizePageSlug(state.slug.trim() || state.title);
+          if (!slug) {
+            errors.slug = "A slug is required.";
+          } else if (slug.length < 1 || slug.length > 60 || !SLUG_PATTERN.test(slug)) {
+            errors.slug = "Use 1-60 lowercase letters, numbers, and hyphens.";
+          }
+        }
+        if (state.itemType === "link" && !state.url.trim()) {
+          errors.url = "A URL is required.";
+        }
+        return Object.keys(errors).length > 0 ? errors : null;
+      },
+      render: ({ state, setField, fieldErrors }) => (
+        <div className="space-y-4">
+          <FormField error={fieldErrors.title} label="Title">
+            <Input
+              autoFocus
+              onChange={(event) => setField("title", event.target.value)}
+              placeholder={
+                state.itemType === "page"
+                  ? "e.g. About us"
+                  : state.itemType === "dropdown"
+                    ? "e.g. Resources"
+                    : "e.g. Documentation"
+              }
+              value={state.title}
+            />
+          </FormField>
+          {state.itemType === "page" ? (
+            <FormField
+              error={fieldErrors.slug}
+              hint="Auto-generated from the title if blank."
+              label="URL"
+            >
+              <Input
+                onChange={(event) => setField("slug", event.target.value)}
+                onSlugAutoChange={(value) => setField("slug", value)}
+                persistentPrefix={slugPrefix}
+                slugAutoEnabled
+                slugAutoSource={state.title}
+                slugValidation={{ kind: "page", orgSlug }}
+                value={state.slug}
+              />
+            </FormField>
+          ) : null}
+          {state.itemType === "link" ? (
+            <>
+              <FormField error={fieldErrors.url} label="URL">
+                <Input
+                  onChange={(event) => setField("url", event.target.value)}
+                  placeholder="https://example.com"
+                  value={state.url}
+                />
+              </FormField>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={state.openInNewTab}
+                  onCheckedChange={(checked) => setField("openInNewTab", checked)}
+                />
+                <span className="font-medium text-text">Open in new tab</span>
+              </label>
+            </>
+          ) : null}
+        </div>
+      )
+    },
+    {
+      id: "visibility",
+      label: "Visibility",
+      description: "Set the publish status and choose whether it appears in the navigation.",
+      render: ({ state, setField }) => (
+        <div className="space-y-5">
+          {state.itemType === "page" ? (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-text">Status</div>
+              <PublishStatusChip
+                isPublished={state.isPublished}
+                onChange={(next) => setField("isPublished", next)}
+              />
+              <p className="text-xs text-text-muted">
+                Unpublished items are saved but won&apos;t render publicly. Click the chip to change.
+              </p>
+            </div>
+          ) : null}
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox
+              checked={state.showInMenu}
+              className="mt-0.5"
+              onCheckedChange={(checked) => setField("showInMenu", checked)}
+            />
+            <span>
+              <span className="font-medium text-text">Show in navigation</span>
+              <span className="block text-xs text-text-muted">
+                Add this to your site&apos;s top navigation. Hidden items are still reachable by URL.
+              </span>
+            </span>
+          </label>
+        </div>
+      )
+    }
+  ];
 
-  const steps: WizardStep<WizardState>[] = [
+  const handleSubmit = async (state: CreateState): Promise<CreateWizardSubmitResult> => {
+    const parentId = defaultParentId;
+
+    if (state.itemType === "dropdown") {
+      const res = await createWebsiteDropdownAction({
+        orgSlug,
+        parentId,
+        title: state.title.trim(),
+        showInMenu: state.showInMenu
+      });
+      onResult(res);
+      return res.ok ? { ok: true } : { ok: false, message: res.error, stepId: "details" };
+    }
+
+    if (state.itemType === "link") {
+      const res = await createWebsiteExternalLinkAction({
+        orgSlug,
+        parentId,
+        title: state.title.trim(),
+        url: state.url.trim(),
+        openInNewTab: state.openInNewTab,
+        showInMenu: state.showInMenu
+      });
+      onResult(res);
+      return res.ok ? { ok: true } : { ok: false, message: res.error, stepId: "details" };
+    }
+
+    // page
+    const slug = sanitizePageSlug(state.slug.trim() || state.title);
+    const result = await createWebsitePageAction({
+      orgSlug,
+      parentId,
+      title: state.title.trim(),
+      slug,
+      isPublished: state.isPublished,
+      showInMenu: state.showInMenu
+    });
+    if (!result.ok) {
+      return { ok: false, message: result.error, stepId: "details" };
+    }
+    onResult(result);
+    return { ok: true };
+  };
+
+  return (
+    <CreateWizard<CreateState>
+      draftId={`website-create.${orgSlug}`}
+      initialState={initialState}
+      mode="create"
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      open={open}
+      steps={steps}
+      submitLabel="Create"
+      subtitle="Pick a type, fill in the details, then add it to your site."
+      title="New item"
+    />
+  );
+}
+
+// ─── Edit wizard (page only) ──────────────────────────────────────────────────
+
+type EditInnerProps = SharedProps & EditProps;
+
+function EditPageWizard({
+  displayHost,
+  editingItem,
+  onClose,
+  onResult,
+  open,
+  orgSlug,
+  parentItems
+}: EditInnerProps) {
+  const linkedSlug = getLinkedPageSlug(editingItem);
+  const slugLocked = linkedSlug === "home";
+
+  const parentPath = React.useMemo(
+    () => buildParentPath(parentItems, editingItem.parentId),
+    [parentItems, editingItem.parentId]
+  );
+  const slugPrefix = React.useMemo(() => buildPrefix(displayHost, parentPath), [displayHost, parentPath]);
+
+  const initialState: EditState = React.useMemo(
+    () => ({
+      title: editingItem.title,
+      slug: linkedSlug ?? "",
+      isPublished: editingItem.isPublished,
+      showInMenu: editingItem.showInMenu
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editingItem.id]
+  );
+
+  const steps: WizardStep<EditState>[] = [
     {
       id: "identity",
       label: "Identity",
-      description: isEdit ? "Update the title, URL, or location in the site tree." : "Name the page and pick where it lives in the site.",
+      description: "Update the title or URL.",
       validate: (state) => {
         const errors: Record<string, string> = {};
         if (state.title.trim().length < 2) {
@@ -162,35 +410,20 @@ export function PageWizard(props: Props) {
             <Input
               autoFocus
               onChange={(event) => setField("title", event.target.value)}
-              placeholder="e.g. About us"
               value={state.title}
             />
           </FormField>
           <FormField
             error={fieldErrors.slug}
-            hint={slugLocked ? "The home page URL is fixed to /." : "Auto-generated from the title if blank."}
-            label="URL slug"
+            hint={slugLocked ? "The home page URL is fixed." : "The public URL path."}
+            label="URL"
           >
             <Input
               disabled={slugLocked}
               onChange={(event) => setField("slug", event.target.value)}
-              onSlugAutoChange={(value) => setField("slug", value)}
-              persistentPrefix={`/${props.orgSlug}/`}
-              slugAutoEnabled={!isEdit}
-              slugAutoSource={state.title}
-              slugValidation={{
-                kind: "page",
-                orgSlug: props.orgSlug,
-                currentSlug: linkedSlug ?? undefined
-              }}
+              persistentPrefix={slugPrefix}
+              slugValidation={{ kind: "page", orgSlug, currentSlug: linkedSlug ?? undefined }}
               value={state.slug}
-            />
-          </FormField>
-          <FormField hint="Pick a parent page or dropdown to nest this page underneath." label="Parent">
-            <Select
-              onChange={(event) => setField("parentId", event.target.value)}
-              options={parentOptions}
-              value={state.parentId}
             />
           </FormField>
         </div>
@@ -199,174 +432,97 @@ export function PageWizard(props: Props) {
     {
       id: "visibility",
       label: "Visibility",
-      description: "Control whether this page is published and shown in navigation.",
+      description: "Set the publish status and choose whether it appears in the navigation.",
       render: ({ state, setField }) => (
-        <div className="space-y-4">
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              checked={state.isPublished}
-              className="mt-0.5"
-              onChange={(event) => setField("isPublished", event.target.checked)}
-              type="checkbox"
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-text">Status</div>
+            <PublishStatusChip
+              isPublished={state.isPublished}
+              onChange={(next) => setField("isPublished", next)}
             />
-            <span>
-              <span className="font-medium text-text">Published</span>
-              <span className="block text-xs text-text-muted">
-                When unchecked, the page is saved as a draft and won&apos;t render publicly.
-              </span>
-            </span>
-          </label>
+            <p className="text-xs text-text-muted">
+              Unpublished items are saved but won&apos;t render publicly. Click the chip to change.
+            </p>
+          </div>
           <label className="flex items-start gap-2 text-sm">
-            <input
+            <Checkbox
               checked={state.showInMenu}
               className="mt-0.5"
-              onChange={(event) => setField("showInMenu", event.target.checked)}
-              type="checkbox"
+              onCheckedChange={(checked) => setField("showInMenu", checked)}
             />
             <span>
               <span className="font-medium text-text">Show in navigation</span>
               <span className="block text-xs text-text-muted">
-                Add this page to your site&apos;s top navigation. Hidden pages still render at their public URL.
+                Add this page to your site&apos;s top navigation.
               </span>
             </span>
           </label>
-        </div>
-      )
-    },
-    {
-      id: "seo",
-      label: "SEO",
-      description: "Optional. Override the title and description used in browser tabs, search results, and link previews.",
-      render: ({ state, setField }) => (
-        <div className="space-y-4">
-          <FormField hint="Defaults to the page title if left blank." label="SEO title">
-            <Input
-              maxLength={120}
-              onChange={(event) => setField("seoTitle", event.target.value)}
-              placeholder={state.title}
-              value={state.seoTitle}
-            />
-          </FormField>
-          <FormField
-            hint="Shown under the title in Google results. Aim for 150–160 characters."
-            label="Meta description"
-          >
-            <Textarea
-              maxLength={320}
-              onChange={(event) => setField("metaDescription", event.target.value)}
-              rows={3}
-              value={state.metaDescription}
-            />
-          </FormField>
-          <FormField
-            hint="Path to a share image stored in org assets. 1200×630 works best."
-            label="Share image path"
-          >
-            <Input
-              onChange={(event) => setField("ogImagePath", event.target.value)}
-              value={state.ogImagePath}
-            />
-          </FormField>
         </div>
       )
     }
   ];
 
-  const handleSubmit = async (state: WizardState): Promise<CreateWizardSubmitResult> => {
+  const handleSubmit = async (state: EditState): Promise<CreateWizardSubmitResult> => {
     const slug = slugLocked ? "home" : sanitizePageSlug(state.slug.trim() || state.title);
-
-    if (isEdit && editingItem) {
-      // Edit flow: send a single combined patch.
-      const patch: Parameters<typeof updateWebsiteItemAction>[0]["patch"] = {
-        title: state.title.trim(),
-        isPublished: state.isPublished,
-        showInMenu: state.showInMenu,
-        seoTitle: state.seoTitle.trim() || null,
-        metaDescription: state.metaDescription.trim() || null,
-        ogImagePath: state.ogImagePath.trim() || null
-      };
-      if (!slugLocked && slug !== linkedSlug) {
-        patch.slug = slug;
-      }
-      const res = await updateWebsiteItemAction({
-        orgSlug: props.orgSlug,
-        itemId: editingItem.id,
-        patch
-      });
-      props.onResult(res);
-      // Reparenting isn't part of updateWebsiteItemAction yet — surface a soft
-      // hint if the user changed the parent dropdown so we don't silently drop it.
-      if (res.ok && (state.parentId || "") !== (editingItem.parentId ?? "")) {
-        return {
-          ok: false,
-          message: "Use the indent / outdent buttons in the tree to change a page's parent.",
-          stepId: "identity"
-        };
-      }
-      return res.ok ? { ok: true } : { ok: false, message: res.error, stepId: "identity" };
-    }
-
-    // Create flow.
-    const result = await createWebsitePageAction({
-      orgSlug: props.orgSlug,
-      parentId: state.parentId || null,
+    const patch: Parameters<typeof updateWebsiteItemAction>[0]["patch"] = {
       title: state.title.trim(),
-      slug,
       isPublished: state.isPublished,
       showInMenu: state.showInMenu
-    });
-    if (!result.ok) {
-      return { ok: false, message: result.error, stepId: "identity" };
+    };
+    if (!slugLocked && slug !== linkedSlug) {
+      patch.slug = slug;
     }
-
-    const hasSeo =
-      state.seoTitle.trim().length > 0 ||
-      state.metaDescription.trim().length > 0 ||
-      state.ogImagePath.trim().length > 0;
-    if (hasSeo) {
-      const created = result.snapshot.items.find(
-        (item) =>
-          item.parentId === (state.parentId || null) &&
-          item.type === "page" &&
-          typeof item.linkTargetJson?.pageSlug === "string" &&
-          item.linkTargetJson.pageSlug === slug
-      );
-      if (created) {
-        const seoResult = await updateWebsiteItemAction({
-          orgSlug: props.orgSlug,
-          itemId: created.id,
-          patch: {
-            seoTitle: state.seoTitle.trim() || null,
-            metaDescription: state.metaDescription.trim() || null,
-            ogImagePath: state.ogImagePath.trim() || null
-          }
-        });
-        props.onResult(seoResult);
-        return seoResult.ok ? { ok: true } : { ok: false, message: seoResult.error, stepId: "seo" };
-      }
-    }
-
-    props.onResult(result);
-    return { ok: true };
+    const res = await updateWebsiteItemAction({ orgSlug, itemId: editingItem.id, patch });
+    onResult(res);
+    return res.ok ? { ok: true } : { ok: false, message: res.error, stepId: "identity" };
   };
 
   return (
-    <CreateWizard
-      draftId={isEdit ? undefined : `website-page-create.${props.orgSlug}`}
-      hideCancel={isEdit}
+    <CreateWizard<EditState>
+      hideCancel
       initialState={initialState}
-      mode={isEdit ? "edit" : "create"}
-      onClose={props.onClose}
+      mode="edit"
+      onClose={onClose}
       onSubmit={handleSubmit}
-      open={props.open}
+      open={open}
       steps={steps}
-      submitLabel={isEdit ? "Save" : "Create page"}
-      subtitle={
-        isEdit
-          ? "Update title, URL, visibility, and SEO. Move to a different parent with the indent buttons in the tree."
-          : "Step through the basics, then drop in blocks with the visual editor."
-      }
-      title={isEdit ? `Edit "${editingItem?.title ?? "page"}"` : "New page"}
+      submitLabel="Save"
+      subtitle="Update title, URL, and visibility."
+      title={`Edit "${editingItem.title}"`}
+    />
+  );
+}
+
+// ─── Main export ──────────────────────────────────────────────────────────────
+
+export function PageWizard(props: Props) {
+  if (props.mode === "edit") {
+    return (
+      <EditPageWizard
+        displayHost={props.displayHost}
+        editingItem={props.editingItem}
+        editingPage={props.editingPage}
+        mode="edit"
+        onClose={props.onClose}
+        onResult={props.onResult}
+        open={props.open}
+        orgSlug={props.orgSlug}
+        parentItems={props.parentItems}
+      />
+    );
+  }
+  return (
+    <CreateItemWizard
+      defaultParentId={props.defaultParentId}
+      defaultType={props.defaultType}
+      displayHost={props.displayHost}
+      mode="create"
+      onClose={props.onClose}
+      onResult={props.onResult}
+      open={props.open}
+      orgSlug={props.orgSlug}
+      parentItems={props.parentItems}
     />
   );
 }

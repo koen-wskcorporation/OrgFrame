@@ -9,7 +9,7 @@ import { can } from "@/src/shared/permissions/can";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
 import { isOrgToolEnabled } from "@/src/features/core/config/tools";
 import { getRoleLabel } from "@/src/features/core/access";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { OrgInfoPageToasts } from "./OrgInfoPageToasts";
 import { saveOrgInfoAction } from "./actions";
@@ -56,12 +56,12 @@ export default async function OrgInfoPage({
   ]);
   if (!isOrgToolEnabled(orgContext.toolAvailability, "info")) {
     return (
-      <ManagePageShell
+      <PageShell
         description="View and manage organization identity details used across public and staff routes."
         title="Org Info"
       >
         <ToolUnavailablePanel title="Org Info" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
@@ -70,7 +70,7 @@ export default async function OrgInfoPage({
   const errorMessage = query.error ? errorMessageByCode[query.error] : null;
 
   return (
-    <ManagePageShell title="Org Info" variant="workspace">
+    <PageShell description="View and manage organization identity details used across public and staff routes." title="Org Info">
       <OrgInfoPageToasts errorMessage={errorMessage} successMessage={successMessage} />
       <ManageSection
         contentClassName="space-y-4 p-5 md:p-6"
@@ -134,6 +134,6 @@ export default async function OrgInfoPage({
           )}
         </form>
       </ManageSection>
-    </ManagePageShell>
+    </PageShell>
   );
 }

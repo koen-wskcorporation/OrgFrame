@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
@@ -31,12 +31,12 @@ export default async function OrgManageWebsitePage({
 
   if (unavailable) {
     return (
-      <ManagePageShell
+      <PageShell
         description="Pages, navigation, and public site structure."
         title="Website"
       >
         <ToolUnavailablePanel title="Website" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
@@ -47,9 +47,10 @@ export default async function OrgManageWebsitePage({
   ]);
 
   return (
-    <ManagePageShell title="Website" variant="workspace">
+    <PageShell description="Pages, navigation, and public site structure. Drag to reorder or nest." title="Website">
       <WebsiteManagerProvider
         canWrite={canWrite}
+        displayHost={orgContext.displayHost}
         initialItems={items}
         initialPages={pages}
         orgSlug={orgContext.orgSlug}
@@ -63,6 +64,6 @@ export default async function OrgManageWebsitePage({
           <WebsiteManagerBody />
         </ManageSection>
       </WebsiteManagerProvider>
-    </ManagePageShell>
+    </PageShell>
   );
 }

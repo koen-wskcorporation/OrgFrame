@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { getPlatformHost } from "@/src/shared/domains/customDomains";
 import { buildGoDaddyQuickConnect, type GoDaddyQuickConnect } from "@/src/shared/domains/domainConnect";
@@ -72,9 +72,9 @@ export default async function OrgManageDomainsPage({
   const [orgContext, query] = await Promise.all([requireOrgPermission(orgSlug, "org.manage.read"), searchParams]);
   if (!isOrgToolEnabled(orgContext.toolAvailability, "domains")) {
     return (
-      <ManagePageShell description="Connect your domain in a guided flow designed for non-technical users." title="Custom Domains">
+      <PageShell description="Connect your domain in a guided flow designed for non-technical users." title="Custom Domains">
         <ToolUnavailablePanel title="Custom Domains" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
   const canManage = can(orgContext.membershipPermissions, "org.manage.read");
@@ -164,7 +164,7 @@ export default async function OrgManageDomainsPage({
   }
 
   return (
-    <ManagePageShell title="Custom Domains" variant="workspace">
+    <PageShell description="Connect your domain in a guided flow designed for non-technical users." title="Custom Domains">
       <ManageSection
         contentClassName="p-5 md:p-6 space-y-4"
         description="Connect your domain in a guided flow designed for non-technical users."
@@ -247,6 +247,6 @@ export default async function OrgManageDomainsPage({
         saveAction={saveOrgCustomDomainAction.bind(null, orgSlug)}
         verifyAction={verifyOrgCustomDomainAction.bind(null, orgSlug)}
       />
-    </ManagePageShell>
+    </PageShell>
   );
 }

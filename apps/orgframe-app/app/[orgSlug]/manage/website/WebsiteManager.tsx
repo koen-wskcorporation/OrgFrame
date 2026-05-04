@@ -6,10 +6,9 @@ import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChevronRight,
-  Eye,
-  EyeOff,
   ExternalLink,
   FolderTree,
+  GripVertical,
   Indent,
   MoreHorizontal,
   Outdent,
@@ -18,20 +17,36 @@ import {
   Trash2,
   X
 } from "lucide-react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { cn } from "@orgframe/ui/primitives/utils";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Badge } from "@orgframe/ui/primitives/chip";
+import { Badge, ChipPicker } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { useConfirmDialog } from "@orgframe/ui/primitives/confirm-dialog";
-import { Repeater, type RepeaterDragHandle } from "@orgframe/ui/primitives/repeater";
 import { RepeaterItem } from "@orgframe/ui/primitives/repeater-item";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { EditorSettingsDialog } from "@/src/features/core/layout/components/EditorSettingsDialog";
 import type { OrgManagePage, OrgSiteStructureItem } from "@/src/features/site/types";
 import {
-  createWebsiteDropdownAction,
-  createWebsiteExternalLinkAction,
   deleteWebsiteItemAction,
   reorderWebsiteItemsAction,
   updateWebsiteItemAction,
@@ -39,17 +54,17 @@ import {
 } from "@/src/features/site/websiteManagerActions";
 import { PageWizard } from "./PageWizard";
 
-type FlatRow = {
+type TreeNode = {
   item: OrgSiteStructureItem;
-  depth: number;
-  hasChildren: boolean;
+  children: TreeNode[];
 };
 
-type AddDialogKind = "dropdown" | "link" | null;
 type AddItemKind = "page" | "dropdown" | "link";
 
 type Props = {
   canWrite: boolean;
+  /** Public host (custom domain or `<slug>.orgframe.app`) used as the URL preview prefix. */
+  displayHost: string;
   initialItems: OrgSiteStructureItem[];
   initialPages: OrgManagePage[];
   orgSlug: string;
@@ -77,7 +92,7 @@ function isLocked(item: OrgSiteStructureItem): boolean {
   return item.flagsJson?.locked === true || item.flagsJson?.systemGenerated === true;
 }
 
-function buildFlatTree(items: OrgSiteStructureItem[]): FlatRow[] {
+function buildTree(items: OrgSiteStructureItem[]): TreeNode[] {
   const byParent = new Map<string | null, OrgSiteStructureItem[]>();
   for (const item of items) {
     const list = byParent.get(item.parentId) ?? [];
@@ -87,18 +102,41 @@ function buildFlatTree(items: OrgSiteStructureItem[]): FlatRow[] {
   for (const list of byParent.values()) {
     list.sort((a, b) => a.orderIndex - b.orderIndex || a.title.localeCompare(b.title));
   }
-  const out: FlatRow[] = [];
-  const walk = (parentId: string | null, depth: number) => {
+  const walk = (parentId: string | null): TreeNode[] => {
     const list = byParent.get(parentId) ?? [];
-    for (const item of list) {
-      const children = byParent.get(item.id) ?? [];
-      out.push({ item, depth, hasChildren: children.length > 0 });
-      walk(item.id, depth + 1);
-    }
+    return list.map((item) => ({ item, children: walk(item.id) }));
   };
-  walk(null, 0);
-  return out;
+  return walk(null);
 }
+
+/**
+ * Walk up the parent chain of `parentId` and return the slug segments — used
+ * to build a URL preview like `acme.orgframe.app/about/team/`. Dynamic items
+ * are skipped (they generate their own paths at render time).
+ */
+function buildParentPath(items: OrgSiteStructureItem[], parentId: string | null): string[] {
+  if (!parentId) return [];
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const path: string[] = [];
+  let current = byId.get(parentId);
+  while (current) {
+    if (current.type !== "dynamic" && current.slug) {
+      path.unshift(current.slug);
+    }
+    if (!current.parentId) break;
+    current = byId.get(current.parentId);
+  }
+  return path;
+}
+
+// Reused on every row's status chip — same shape and palette as the wizard's
+// `PUBLISH_OPTIONS` so the in-list toggle and the in-wizard toggle match
+// exactly. Order matters: the popover lists options top-to-bottom in this
+// order. Published first (live = primary state), Unpublished second (greyed).
+const PUBLISH_OPTIONS = [
+  { value: "published", label: "Published", color: "emerald" as const },
+  { value: "unpublished", label: "Unpublished", color: "slate" as const }
+];
 
 type BadgeVariant = "neutral" | "success" | "warning" | "destructive";
 function rowTypeLabel(item: OrgSiteStructureItem): { label: string; variant: BadgeVariant } {
@@ -112,9 +150,10 @@ function rowTypeLabel(item: OrgSiteStructureItem): { label: string; variant: Bad
 type WebsiteManagerContextValue = {
   canWrite: boolean;
   orgSlug: string;
+  displayHost: string;
   items: OrgSiteStructureItem[];
   pages: OrgManagePage[];
-  visibleFlat: FlatRow[];
+  treeNodes: TreeNode[];
   collapsed: Set<string>;
   pending: boolean;
   error: string | null;
@@ -124,16 +163,22 @@ type WebsiteManagerContextValue = {
   indent: (item: OrgSiteStructureItem) => void;
   outdent: (item: OrgSiteStructureItem) => void;
   handleDelete: (item: OrgSiteStructureItem) => void | Promise<void>;
-  handleReorder: (orderedIds: string[]) => void;
-  openAdd: (kind: AddItemKind, parentId: string | null) => void;
+  /** Move active to be the last child of newParentId (or null = top level). */
+  handleNest: (activeId: string, newParentId: string | null) => void;
+  /** Insert active before/after over within the over item's sibling group. */
+  handleReorderRelative: (
+    activeId: string,
+    overId: string,
+    position: "before" | "after"
+  ) => void;
+  /** Pass null to show the type-picker first; pass a specific kind to skip it. */
+  openAdd: (kind: AddItemKind | null, parentId: string | null) => void;
   // Dialog plumbing — read by the Body so dialogs render alongside the tree.
-  addDialog: AddDialogKind;
-  addParentId: string | null;
   wizardOpen: boolean;
   wizardParentId: string | null;
+  wizardDefaultType: AddItemKind | null;
   editingItem: OrgSiteStructureItem | null;
   setEditingItem: (item: OrgSiteStructureItem | null) => void;
-  closeAdd: () => void;
   closeWizard: () => void;
   applyResult: (res: WebsiteManagerActionResult) => void;
   startTransition: React.TransitionStartFunction;
@@ -151,6 +196,7 @@ function useWebsiteManager(): WebsiteManagerContextValue {
 
 export function WebsiteManagerProvider({
   canWrite,
+  displayHost,
   initialItems,
   initialPages,
   orgSlug,
@@ -163,29 +209,12 @@ export function WebsiteManagerProvider({
   const [error, setError] = React.useState<string | null>(null);
   const [pending, startTransition] = React.useTransition();
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
-  const [addDialog, setAddDialog] = React.useState<AddDialogKind>(null);
-  const [addParentId, setAddParentId] = React.useState<string | null>(null);
   const [wizardParentId, setWizardParentId] = React.useState<string | null>(null);
+  const [wizardDefaultType, setWizardDefaultType] = React.useState<AddItemKind | null>(null);
   const [wizardOpen, setWizardOpen] = React.useState(false);
   const [editingItem, setEditingItem] = React.useState<OrgSiteStructureItem | null>(null);
 
-  const flat = React.useMemo(() => buildFlatTree(items), [items]);
-  const visibleFlat = React.useMemo(() => {
-    const hidden = new Set<string>();
-    const out: FlatRow[] = [];
-    for (const row of flat) {
-      if (row.item.parentId && hidden.has(row.item.parentId)) {
-        hidden.add(row.item.id);
-        continue;
-      }
-      out.push(row);
-      if (collapsed.has(row.item.id)) {
-        hidden.add(row.item.id);
-      }
-    }
-    return out;
-  }, [flat, collapsed]);
-
+  const treeNodes = React.useMemo(() => buildTree(items), [items]);
   const itemsById = React.useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
   const applyResult = (result: WebsiteManagerActionResult) => {
@@ -214,38 +243,70 @@ export function WebsiteManagerProvider({
     [orgSlug]
   );
 
-  const handleReorder = (orderedIds: string[]) => {
-    // Repeater drag-and-drop. Only same-parent moves are accepted; cross-parent
-    // drags fall back to indent/outdent buttons.
-    const visibleIds = visibleFlat.map((r) => r.item.id);
-    const oldOrder = visibleIds;
-    let movedId: string | null = null;
-    let newIndex = -1;
-    for (let i = 0; i < orderedIds.length; i += 1) {
-      if (orderedIds[i] !== oldOrder[i]) {
-        movedId = orderedIds[i];
-        newIndex = i;
-        break;
-      }
-    }
-    if (!movedId || newIndex === -1) return;
-    const moved = itemsById.get(movedId);
-    if (!moved) return;
-
-    // Find the destination's neighbours from the new order, using only siblings
-    // of the moved item to determine the new sortIndex within its parent.
-    const siblings = items.filter((i) => i.parentId === moved.parentId).sort((a, b) => a.orderIndex - b.orderIndex);
-    const siblingIds = siblings.map((s) => s.id);
-    // Build a new sibling order from the dragged sequence, restricted to siblings.
-    const reorderedSiblingIds = orderedIds.filter((id) => siblingIds.includes(id));
-    if (reorderedSiblingIds.length !== siblings.length) {
-      setError("Drag only reorders within the same level. Use the indent buttons to move between levels.");
+  /**
+   * Move the active item to be the last child of `newParentId`. Pass `null` to
+   * promote it to the top level. Skips no-ops and rejects nesting under
+   * a `dynamic` item.
+   */
+  const handleNest = (activeId: string, newParentId: string | null) => {
+    const newParent = newParentId ? items.find((i) => i.id === newParentId) : null;
+    if (newParentId && (!newParent || newParent.type === "dynamic")) {
+      setError("Cannot nest under that item.");
       return;
     }
+    const active = items.find((i) => i.id === activeId);
+    if (!active) return;
+    if (active.parentId === newParentId) {
+      // Already under this parent; treat as a no-op.
+      return;
+    }
+
+    const childrenOfTarget = items.filter((i) => i.parentId === newParentId && i.id !== activeId);
+    const next = items.map((it) =>
+      it.id === activeId
+        ? { ...it, parentId: newParentId, orderIndex: childrenOfTarget.length }
+        : it
+    );
+    setItems(next);
+    persistOrder(next);
+  };
+
+  /**
+   * Insert the active item before/after the over item in the over item's
+   * sibling group. If the active was previously in a different group it gets
+   * reparented at the same time.
+   */
+  const handleReorderRelative = (
+    activeId: string,
+    overId: string,
+    position: "before" | "after"
+  ) => {
+    const over = items.find((i) => i.id === overId);
+    const active = items.find((i) => i.id === activeId);
+    if (!over || !active) return;
+
+    const targetParentId = over.parentId;
+    const siblings = items
+      .filter((i) => i.parentId === targetParentId && i.id !== activeId)
+      .sort((a, b) => a.orderIndex - b.orderIndex);
+
+    const overIndex = siblings.findIndex((s) => s.id === overId);
+    if (overIndex < 0) return;
+    const insertIndex = position === "before" ? overIndex : overIndex + 1;
+
+    const newSiblings = [...siblings];
+    newSiblings.splice(insertIndex, 0, { ...active, parentId: targetParentId });
+
     const next = items.map((it) => {
-      if (it.parentId !== moved.parentId) return it;
-      const idx = reorderedSiblingIds.indexOf(it.id);
-      return idx === -1 ? it : { ...it, orderIndex: idx };
+      if (it.id === activeId) {
+        const idx = newSiblings.findIndex((s) => s.id === activeId);
+        return { ...it, parentId: targetParentId, orderIndex: idx };
+      }
+      if (it.parentId === targetParentId) {
+        const idx = newSiblings.findIndex((s) => s.id === it.id);
+        return idx === -1 ? it : { ...it, orderIndex: idx };
+      }
+      return it;
     });
     setItems(next);
     persistOrder(next);
@@ -355,32 +416,25 @@ export function WebsiteManagerProvider({
     });
   };
 
-  const openAdd = (kind: AddItemKind, parentId: string | null) => {
-    if (kind === "page") {
-      setWizardParentId(parentId);
-      setWizardOpen(true);
-      return;
-    }
-    setAddDialog(kind);
-    setAddParentId(parentId);
-  };
-
-  const closeAdd = () => {
-    setAddDialog(null);
-    setAddParentId(null);
+  const openAdd = (kind: AddItemKind | null, parentId: string | null) => {
+    setWizardDefaultType(kind);
+    setWizardParentId(parentId);
+    setWizardOpen(true);
   };
 
   const closeWizard = () => {
     setWizardOpen(false);
     setWizardParentId(null);
+    setWizardDefaultType(null);
   };
 
   const value: WebsiteManagerContextValue = {
     canWrite,
     orgSlug,
+    displayHost,
     items,
     pages,
-    visibleFlat,
+    treeNodes,
     collapsed,
     pending,
     error,
@@ -390,15 +444,14 @@ export function WebsiteManagerProvider({
     indent,
     outdent,
     handleDelete,
-    handleReorder,
+    handleNest,
+    handleReorderRelative,
     openAdd,
-    addDialog,
-    addParentId,
     wizardOpen,
     wizardParentId,
+    wizardDefaultType,
     editingItem,
     setEditingItem,
-    closeAdd,
     closeWizard,
     applyResult,
     startTransition
@@ -408,60 +461,42 @@ export function WebsiteManagerProvider({
 }
 
 /**
- * Three "New …" buttons. Slot into a `<ManageSection actions={…}>` so they
- * land in the section header. Must be rendered inside `WebsiteManagerProvider`.
+ * Single "+ New" button. Slots into a `<ManageSection actions={…}>` so it
+ * lands in the section header. Must be rendered inside `WebsiteManagerProvider`.
  */
 export function WebsiteManagerActions() {
   const { canWrite, openAdd } = useWebsiteManager();
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button disabled={!canWrite} onClick={() => openAdd("page", null)} size="sm">
-        <Plus className="h-4 w-4" />
-        New page
-      </Button>
-      <Button disabled={!canWrite} onClick={() => openAdd("dropdown", null)} size="sm" variant="secondary">
-        <FolderTree className="h-4 w-4" />
-        New dropdown
-      </Button>
-      <Button disabled={!canWrite} onClick={() => openAdd("link", null)} size="sm" variant="secondary">
-        <ExternalLink className="h-4 w-4" />
-        New external link
-      </Button>
-    </div>
+    <Button disabled={!canWrite} onClick={() => openAdd(null, null)} size="sm">
+      <Plus className="h-4 w-4" />
+      New
+    </Button>
   );
 }
 
 /**
- * The tree (rendered via Repeater) plus the modals that read from manager
- * state. Render as the children of the section that hosts `WebsiteManagerActions`.
+ * The tree (rendered via `<TreeRoot>` with drag-to-reorder + drag-to-nest)
+ * plus the modals that read from manager state. Render as the children of
+ * the section that hosts `WebsiteManagerActions`.
  */
 export function WebsiteManagerBody() {
   const ctx = useWebsiteManager();
   const {
-    addDialog,
-    addParentId,
     applyResult,
     canWrite,
-    closeAdd,
     closeWizard,
-    collapsed,
+    displayHost,
     editingItem,
     error,
-    handleDelete,
-    handleReorder,
-    indent,
     items,
-    openAdd,
     orgSlug,
-    outdent,
     pages,
     pending,
     setEditingItem,
     setError,
     startTransition,
-    toggleCollapse,
-    toggleField,
-    visibleFlat,
+    treeNodes,
+    wizardDefaultType,
     wizardOpen,
     wizardParentId
   } = ctx;
@@ -479,55 +514,12 @@ export function WebsiteManagerBody() {
         </Alert>
       ) : null}
 
-      <Repeater<FlatRow>
-        disableSearch
-        disableViewToggle
-        emptyMessage={
-          <span>
-            No pages yet. Click <span className="font-semibold text-text">New page</span> to get started.
-          </span>
-        }
-        fixedView="list"
-        getItemId={(row) => row.item.id}
-        getSearchValue={(row) => row.item.title}
-        items={visibleFlat}
-        onReorder={canWrite ? handleReorder : undefined}
-        renderItem={({ item: row, drag }) => (
-          <TreeRow
-            canWrite={canWrite}
-            collapsed={collapsed.has(row.item.id)}
-            drag={drag}
-            onAddChild={(kind) => openAdd(kind, row.item.id)}
-            onDelete={() => handleDelete(row.item)}
-            onEdit={() => setEditingItem(row.item)}
-            onIndent={() => indent(row.item)}
-            onOutdent={() => outdent(row.item)}
-            onToggleCollapse={() => toggleCollapse(row.item.id)}
-            onTogglePublished={() => toggleField(row.item, { isPublished: !row.item.isPublished })}
-            onToggleShowInMenu={() => toggleField(row.item, { showInMenu: !row.item.showInMenu })}
-            orgSlug={orgSlug}
-            pending={pending}
-            row={row}
-          />
-        )}
-        reorderable={canWrite}
-      />
-
-      <AddItemDialog
-        kind={addDialog}
-        onClose={closeAdd}
-        onResult={(res) => {
-          applyResult(res);
-          if (res.ok) closeAdd();
-        }}
-        orgSlug={orgSlug}
-        parentId={addParentId}
-        pending={pending}
-        startTransition={startTransition}
-      />
+      <TreeRoot />
 
       <PageWizard
         defaultParentId={wizardParentId}
+        defaultType={wizardDefaultType}
+        displayHost={displayHost}
         mode="create"
         onClose={closeWizard}
         onResult={(res) => {
@@ -541,6 +533,7 @@ export function WebsiteManagerBody() {
 
       {editingItem && editingItem.type === "page" ? (
         <PageWizard
+          displayHost={displayHost}
           editingItem={editingItem}
           editingPage={
             (() => {
@@ -578,46 +571,208 @@ export function WebsiteManagerBody() {
 }
 
 // ---------------------------------------------------------------------------
+// TreeRoot: single DndContext driving both reorder (drop on edges) and nest
+// (drop in the middle of a row). Each parent's children get their own
+// SortableContext, all under one DndContext so cross-level drags work too.
+// ---------------------------------------------------------------------------
+
+type DropMode = "before" | "after" | "nest";
+
+type DragState = {
+  activeId: string | null;
+  overInfo: { id: string; mode: DropMode } | null;
+};
+
+const DragStateContext = React.createContext<DragState>({ activeId: null, overInfo: null });
+
+function useDragState() {
+  return React.useContext(DragStateContext);
+}
+
+/** Returns true if `candidateId` is `ancestorId` or a descendant of it. */
+function isInSubtree(
+  itemsById: Map<string, OrgSiteStructureItem>,
+  ancestorId: string,
+  candidateId: string
+): boolean {
+  let current: string | null | undefined = candidateId;
+  while (current) {
+    if (current === ancestorId) return true;
+    const item = itemsById.get(current);
+    if (!item) return false;
+    current = item.parentId;
+  }
+  return false;
+}
+
+function TreeRoot() {
+  const { canWrite, treeNodes, items, handleNest, handleReorderRelative } = useWebsiteManager();
+
+  const itemsById = React.useMemo(
+    () => new Map(items.map((i) => [i.id, i])),
+    [items]
+  );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const [activeId, setActiveId] = React.useState<string | null>(null);
+  const [overInfo, setOverInfo] = React.useState<DragState["overInfo"]>(null);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      setOverInfo(null);
+      return;
+    }
+    const overRect = over.rect;
+    const activeRect = active.rect.current.translated;
+    if (!overRect || !activeRect) {
+      setOverInfo(null);
+      return;
+    }
+
+    // Determine drop mode by the active item's vertical center relative to
+    // the over row. Top quarter = before, bottom quarter = after, middle =
+    // nest under that row.
+    const activeCenterY = activeRect.top + activeRect.height / 2;
+    const overTop = overRect.top;
+    const overHeight = overRect.height;
+    const relativeY = (activeCenterY - overTop) / overHeight;
+
+    let mode: DropMode;
+    if (relativeY < 0.3) mode = "before";
+    else if (relativeY > 0.7) mode = "after";
+    else mode = "nest";
+
+    // Reject nesting under a descendant of the active item (would form a cycle).
+    if (mode === "nest" && isInSubtree(itemsById, String(active.id), String(over.id))) {
+      setOverInfo(null);
+      return;
+    }
+
+    setOverInfo({ id: String(over.id), mode });
+  };
+
+  const reset = () => {
+    setActiveId(null);
+    setOverInfo(null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active } = event;
+    if (!overInfo) {
+      reset();
+      return;
+    }
+    const activeStr = String(active.id);
+    if (activeStr === overInfo.id) {
+      reset();
+      return;
+    }
+
+    if (overInfo.mode === "nest") {
+      handleNest(activeStr, overInfo.id);
+    } else {
+      handleReorderRelative(activeStr, overInfo.id, overInfo.mode);
+    }
+    reset();
+  };
+
+  const dragValue = React.useMemo<DragState>(() => ({ activeId, overInfo }), [activeId, overInfo]);
+
+  if (treeNodes.length === 0) {
+    return (
+      <div className="rounded-control border bg-surface px-4 py-8 text-center text-sm text-text-muted">
+        No items yet. Click <span className="font-semibold text-text">New</span> to add a page, dropdown, or link.
+      </div>
+    );
+  }
+
+  return (
+    <DndContext
+      collisionDetection={closestCenter}
+      onDragCancel={reset}
+      onDragEnd={canWrite ? handleDragEnd : reset}
+      onDragOver={handleDragOver}
+      onDragStart={handleDragStart}
+      sensors={sensors}
+    >
+      <DragStateContext.Provider value={dragValue}>
+        <SiblingGroup nodes={treeNodes} />
+      </DragStateContext.Provider>
+    </DndContext>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SiblingGroup: one SortableContext per group of siblings. Recursively
+// mounted by TreeRow for each parent's children.
+// ---------------------------------------------------------------------------
+
+function SiblingGroup({ nodes }: { nodes: TreeNode[] }) {
+  const ids = React.useMemo(() => nodes.map((n) => n.item.id), [nodes]);
+
+  if (nodes.length === 0) return null;
+
+  return (
+    <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+      <div className="space-y-3">
+        {nodes.map((node) => (
+          <TreeRow key={node.item.id} node={node} />
+        ))}
+      </div>
+    </SortableContext>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // TreeRow
 // ---------------------------------------------------------------------------
 
 type TreeRowProps = {
-  canWrite: boolean;
-  collapsed: boolean;
-  drag?: RepeaterDragHandle;
-  onAddChild: (kind: AddItemKind) => void;
-  onDelete: () => void;
-  onEdit: () => void;
-  onIndent: () => void;
-  onOutdent: () => void;
-  onToggleCollapse: () => void;
-  onTogglePublished: () => void;
-  onToggleShowInMenu: () => void;
-  orgSlug: string;
-  pending: boolean;
-  row: FlatRow;
+  node: TreeNode;
 };
 
-function TreeRow({
-  canWrite,
-  collapsed,
-  drag,
-  onAddChild,
-  onDelete,
-  onEdit,
-  onIndent,
-  onOutdent,
-  onToggleCollapse,
-  onTogglePublished,
-  onToggleShowInMenu,
-  orgSlug,
-  pending,
-  row
-}: TreeRowProps) {
-  const { item, depth, hasChildren } = row;
-  const setNodeRef = drag?.setNodeRef;
-  const dragStyle = drag?.style;
-  const DragHandle = drag?.Handle;
+function TreeRow({ node }: TreeRowProps) {
+  const {
+    canWrite,
+    collapsed,
+    handleDelete,
+    indent,
+    openAdd,
+    orgSlug,
+    outdent,
+    pending,
+    setEditingItem,
+    toggleCollapse,
+    toggleField
+  } = useWebsiteManager();
+
+  const { item, children } = node;
+  const hasChildren = children.length > 0;
+  const isCollapsed = collapsed.has(item.id);
+
+  const sortable = useSortable({ id: item.id, disabled: !canWrite || isLocked(item) });
+  const dragState = useDragState();
+  const isNestTarget =
+    dragState.overInfo?.id === item.id &&
+    dragState.overInfo?.mode === "nest" &&
+    dragState.activeId !== item.id;
+  const isBeingDragged = dragState.activeId === item.id;
+
+  const dragStyle: React.CSSProperties = {
+    transform: CSS.Translate.toString(sortable.transform),
+    transition: sortable.transition,
+    opacity: isBeingDragged ? 0.4 : undefined
+  };
+  const setNodeRef = sortable.setNodeRef;
   const typeLabel = rowTypeLabel(item);
   const linkedPageSlug = getLinkedPageSlug(item);
   const externalUrl = getExternalUrl(item);
@@ -629,6 +784,15 @@ function TreeRow({
         : `/${orgSlug}/${linkedPageSlug}`
       : null;
   const [actionsOpen, setActionsOpen] = React.useState(false);
+
+  const onAddChild = (kind: AddItemKind) => openAdd(kind, item.id);
+  const onDelete = () => handleDelete(item);
+  const onEdit = () => setEditingItem(item);
+  const onIndent = () => indent(item);
+  const onOutdent = () => outdent(item);
+  const onToggleCollapse = () => toggleCollapse(item.id);
+  const onTogglePublished = () => toggleField(item, { isPublished: !item.isPublished });
+  const onToggleShowInMenu = () => toggleField(item, { showInMenu: !item.showInMenu });
 
   const titleNode = editorHref ? (
     <Link className="truncate text-text hover:underline" href={editorHref}>
@@ -653,41 +817,55 @@ function TreeRow({
       ? "Dropdown — no link"
       : item.urlPath || "—";
 
-  const leading = (
-    <div className="flex items-center gap-1">
-      <span aria-hidden className="flex-none" style={{ width: depth * 16 }} />
-      {hasChildren ? (
-        <Button aria-label={collapsed ? "Expand" : "Collapse"} iconOnly onClick={onToggleCollapse} variant="ghost">
-          {collapsed ? <ChevronRight /> : <ChevronDown />}
-        </Button>
-      ) : (
-        <span aria-hidden className="inline-block h-8 w-8" />
-      )}
-      {DragHandle ? <DragHandle aria-label="Drag to reorder" disabled={!canWrite || locked} /> : null}
-    </div>
-  );
+  const leading = canWrite ? (
+    <Button
+      aria-label="Drag to reorder"
+      className={cn("touch-none", locked ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing")}
+      disabled={locked}
+      iconOnly
+      ref={sortable.setActivatorNodeRef as React.Ref<HTMLButtonElement>}
+      {...sortable.attributes}
+      {...sortable.listeners}
+    >
+      <GripVertical />
+    </Button>
+  ) : null;
 
+  // Order: title text → metadata chips → expand/collapse arrow on the far right
+  // of the chip row. The chevron is only rendered when the row actually has
+  // children — and it sits AFTER the chips so the title text can land flush
+  // against the leading edge.
   const chips = (
     <>
       <Badge variant={typeLabel.variant}>{typeLabel.label}</Badge>
-      {!item.isPublished ? <Badge variant="warning">Draft</Badge> : null}
+      {/* Status chip — clickable, same options + colors as the wizard. */}
+      <ChipPicker
+        disabled={!canWrite || locked}
+        onChange={(value) => toggleField(item, { isPublished: value === "published" })}
+        options={PUBLISH_OPTIONS}
+        status
+        value={item.isPublished ? "published" : "unpublished"}
+      />
       {!item.showInMenu ? <Badge variant="neutral">Hidden in nav</Badge> : null}
       {locked ? <Badge variant="neutral">Locked</Badge> : null}
+      {hasChildren ? (
+        // Sized to match the chip-row baseline (h-5) so it doesn't push the
+        // title / meta apart. The default `iconOnly` size (h-8) was making
+        // rows-with-children visibly taller than rows-without.
+        <Button
+          aria-label={isCollapsed ? "Expand" : "Collapse"}
+          className="!h-5 !w-5 [&_svg]:!h-3 [&_svg]:!w-3"
+          iconOnly
+          onClick={onToggleCollapse}
+        >
+          {isCollapsed ? <ChevronRight /> : <ChevronDown />}
+        </Button>
+      ) : null}
     </>
   );
 
   const secondaryActions = (
     <div className="flex items-center gap-0.5">
-      <Button
-        aria-label={item.isPublished ? "Unpublish" : "Publish"}
-        disabled={!canWrite || pending || locked}
-        iconOnly
-        onClick={onTogglePublished}
-        title={item.isPublished ? "Published" : "Draft"}
-        variant="ghost"
-      >
-        {item.isPublished ? <Eye /> : <EyeOff className="text-text-muted" />}
-      </Button>
       <Button
         aria-label={item.showInMenu ? "Hide from nav" : "Show in nav"}
         disabled={!canWrite || pending || locked}
@@ -783,8 +961,21 @@ function TreeRow({
   );
 
   return (
-    <div ref={setNodeRef} style={dragStyle}>
+    <div
+      className={cn(
+        // Nest target highlight — ring + accent border so it's clear that the
+        // dragged row will become a child of THIS row on drop, not just be
+        // reordered next to it.
+        "rounded-control transition-shadow",
+        isNestTarget && "ring-2 ring-accent ring-offset-2 ring-offset-canvas"
+      )}
+      ref={setNodeRef}
+      style={dragStyle}
+    >
       <RepeaterItem
+        body={
+          hasChildren && !isCollapsed ? <SiblingGroup nodes={children} /> : null
+        }
         chips={chips}
         id={item.id}
         leading={leading}
@@ -795,94 +986,6 @@ function TreeRow({
         view="list"
       />
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Add dialog
-// ---------------------------------------------------------------------------
-
-type AddDialogProps = {
-  kind: AddDialogKind;
-  onClose: () => void;
-  onResult: (res: WebsiteManagerActionResult) => void;
-  orgSlug: string;
-  parentId: string | null;
-  pending: boolean;
-  startTransition: React.TransitionStartFunction;
-};
-
-function AddItemDialog({ kind, onClose, onResult, orgSlug, parentId, pending, startTransition }: AddDialogProps) {
-  const [title, setTitle] = React.useState("");
-  const [url, setUrl] = React.useState("");
-  const [openInNewTab, setOpenInNewTab] = React.useState(true);
-
-  React.useEffect(() => {
-    if (kind) {
-      setTitle("");
-      setUrl("");
-      setOpenInNewTab(true);
-    }
-  }, [kind]);
-
-  const submit = () => {
-    if (!title.trim()) return;
-    startTransition(async () => {
-      let res: WebsiteManagerActionResult;
-      if (kind === "dropdown") {
-        res = await createWebsiteDropdownAction({ orgSlug, parentId, title });
-      } else if (kind === "link") {
-        res = await createWebsiteExternalLinkAction({ orgSlug, parentId, title, url, openInNewTab });
-      } else {
-        return;
-      }
-      onResult(res);
-    });
-  };
-
-  const titleText = kind === "dropdown" ? "New dropdown" : kind === "link" ? "New external link" : "";
-  const description =
-    kind === "dropdown"
-      ? "A header dropdown that groups child links. It has no link of its own."
-      : kind === "link"
-      ? "A nav item that links to an external URL."
-      : "";
-
-  return (
-    <EditorSettingsDialog
-      description={description}
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button onClick={onClose} variant="ghost">
-            Cancel
-          </Button>
-          <Button disabled={pending || !title.trim() || (kind === "link" && !url.trim())} onClick={submit}>
-            Create
-          </Button>
-        </div>
-      }
-      onClose={onClose}
-      open={Boolean(kind)}
-      size="md"
-      title={titleText}
-    >
-      <div className="space-y-4">
-        <FormField htmlFor="add-title" label="Title">
-          <Input autoFocus id="add-title" onChange={(e) => setTitle(e.target.value)} value={title} />
-        </FormField>
-        {kind === "link" ? (
-          <>
-            <FormField htmlFor="add-url" label="URL">
-              <Input id="add-url" onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" value={url} />
-            </FormField>
-            <label className="flex items-center gap-2 text-sm">
-              <input checked={openInNewTab} onChange={(e) => setOpenInNewTab(e.target.checked)} type="checkbox" />
-              Open in new tab
-            </label>
-          </>
-        ) : null}
-      </div>
-    </EditorSettingsDialog>
   );
 }
 

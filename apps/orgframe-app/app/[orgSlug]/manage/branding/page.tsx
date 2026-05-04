@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
 import { can } from "@/src/shared/permissions/can";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { BrandingForm } from "./BrandingForm";
 import { saveOrgBrandingAction } from "./actions";
@@ -32,12 +32,12 @@ export default async function OrgBrandingSettingsPage({
   });
   if (unavailable) {
     return (
-      <ManagePageShell
+      <PageShell
         description="Control how your organization appears across public and staff routes."
         title="Branding"
       >
         <ToolUnavailablePanel title="Branding" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
   const canManageBranding = can(orgContext.membershipPermissions, "org.branding.write");
@@ -49,7 +49,7 @@ export default async function OrgBrandingSettingsPage({
   const saveBranding = saveOrgBrandingAction.bind(null, orgSlug);
 
   return (
-    <ManagePageShell title="Branding" variant="workspace">
+    <PageShell description="Control how your organization appears across public and staff routes." title="Branding">
       {query.saved === "1" ? <Alert variant="success">Branding saved successfully.</Alert> : null}
       {errorMessage ? <Alert variant="destructive">{errorMessage}</Alert> : null}
       <ManageSection
@@ -70,6 +70,6 @@ export default async function OrgBrandingSettingsPage({
           saveAction={saveBranding}
         />
       </ManageSection>
-    </ManagePageShell>
+    </PageShell>
   );
 }

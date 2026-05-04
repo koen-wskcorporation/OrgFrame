@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
 import { FormsManagePanel } from "@/src/features/forms/components/FormsManagePanel";
@@ -20,9 +20,9 @@ export default async function OrgManageFormsPage({ params }: { params: Promise<{
 
   if (unavailable) {
     return (
-      <ManagePageShell description="Build, publish, and operate generic and registration forms." title="Forms">
+      <PageShell description="Build, publish, and operate generic and registration forms." title="Forms">
         <ToolUnavailablePanel title="Forms" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 

@@ -152,7 +152,7 @@ function renderModuleSummary(module: PersonalHubModule) {
 
 export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
   return (
-    <main className="app-page-shell pb-10 pt-0">
+    <main className="w-full min-w-0 px-[var(--layout-gap)] pb-10 pt-0">
       <div className="app-page-stack">
         <DashboardHeader
           avatarUrl={context.user.avatarUrl}

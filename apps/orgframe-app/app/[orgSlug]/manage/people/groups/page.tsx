@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { listPeopleSystemGroupsWorkspace } from "@/src/features/org-share/server";
@@ -25,16 +25,17 @@ export default async function OrgPeopleGroupsPage({ params }: { params: Promise<
   };
 
   if (unavailable) {
-    return <ManagePageShell {...unavailableShellProps}><ToolUnavailablePanel title="People" /></ManagePageShell>;
+    return <PageShell {...unavailableShellProps}><ToolUnavailablePanel title="People" /></PageShell>;
   }
 
   const groups = await listPeopleSystemGroupsWorkspace(orgContext.orgId).catch(() => []);
 
   return (
-    <ManagePageShell
+    <PageShell
+      description="Manage accounts, linked player/staff profiles, and relationship access."
       tabs={<PeoplePageTabs active="groups" orgSlug={orgSlug} />}
       title="People"
-      variant="workspace"
+
     >
       <ManageSection
         description="Manage accounts, linked player/staff profiles, and relationship access."
@@ -43,6 +44,6 @@ export default async function OrgPeopleGroupsPage({ params }: { params: Promise<
       >
         <PeopleSystemGroupsTree groups={groups} />
       </ManageSection>
-    </ManagePageShell>
+    </PageShell>
   );
 }

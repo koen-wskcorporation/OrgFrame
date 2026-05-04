@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Pencil, Settings } from "lucide-react";
+import { ChevronDown, Pencil, Settings } from "lucide-react";
 import { AdaptiveLogo } from "@orgframe/ui/primitives/adaptive-logo";
 import { Button } from "@orgframe/ui/primitives/button";
 import { NavItem } from "@orgframe/ui/primitives/nav-item";
-import { Popover } from "@orgframe/ui/primitives/popover";
+import { PickerMenu, type PickerMenuItem } from "@orgframe/ui/primitives/picker-menu";
 import {
   buildOrgSwitchHref,
   getTenantBaseAuthority,
@@ -106,8 +106,6 @@ export function OrgHeader({
 }: OrgHeaderProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [manageMenuOpen, setManageMenuOpen] = useState(false);
-  const [orgSwitcherOpen, setOrgSwitcherOpen] = useState(false);
-  const orgSwitcherRef = useRef<HTMLButtonElement | null>(null);
   const pathname = usePathname();
   const router = useRouter();
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -248,71 +246,51 @@ export function OrgHeader({
             </Link>
 
             {hasSwitchableOrgs ? (
-              <>
-                <Button
-                  iconOnly
-                  aria-expanded={orgSwitcherOpen}
-                  aria-haspopup="menu"
-                  aria-label="Switch organization"
-                  onClick={() => setOrgSwitcherOpen((prev) => !prev)}
-                  ref={orgSwitcherRef}
-                >
-                  <ChevronDown className={cn("transition-transform", orgSwitcherOpen ? "rotate-180" : "")} />
-                </Button>
-
-                <Popover
-                  anchorRef={orgSwitcherRef}
-                  className="w-[18rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[18px] border border-border/70 bg-surface/95 p-1.5 shadow-floating backdrop-blur-xl"
-                  onClose={() => setOrgSwitcherOpen(false)}
-                  open={orgSwitcherOpen}
-                  placement="bottom-start"
-                >
-                  <ul className="max-h-[22rem] space-y-0.5 overflow-y-auto">
-                    {switcherOptions.map((option) => {
-                      const isCurrent = option.orgSlug === orgSlug;
-                      const href = isCurrent
-                        ? `/${option.orgSlug}`
-                        : buildOrgSwitchHref({
-                            targetOrgSlug: option.orgSlug,
-                            pathname: currentPathname || pathname,
-                            currentOrgSlug: orgSlug,
-                            tenantBaseHost,
-                            tenantBaseAuthority,
-                            tenantBaseProtocol,
-                            currentProtocol: hasHydrated ? window.location.protocol : "https:"
-                          });
-                      return (
-                        <li key={option.orgSlug}>
-                          <a
-                            className={cn(
-                              "flex items-center gap-2.5 rounded-control px-2.5 py-2 text-sm transition-colors",
-                              isCurrent ? "bg-surface-muted/60 text-text" : "text-text hover:bg-surface-muted"
-                            )}
-                            href={href}
-                            onClick={() => setOrgSwitcherOpen(false)}
-                          >
-                            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center">
-                              {option.orgIconUrl || option.orgLogoUrl ? (
-                                <AdaptiveLogo
-                                  alt={`${option.orgName} icon`}
-                                  className="h-full w-full object-contain object-center"
-                                  src={(option.orgIconUrl ?? option.orgLogoUrl) as string}
-                                />
-                              ) : (
-                                <span className="inline-flex h-full w-full items-center justify-center rounded-full bg-surface-muted text-[10px] font-semibold text-text-muted">
-                                  {getOrgInitial(option.orgName)}
-                                </span>
-                              )}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate font-medium">{option.orgName}</span>
-                            {isCurrent ? <Check className="h-4 w-4 shrink-0 text-text-muted" /> : null}
-                          </a>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </Popover>
-              </>
+              <PickerMenu
+                ariaLabel="Switch organization"
+                placement="bottom-start"
+                widthClassName="w-[18rem] max-w-[calc(100vw-1.5rem)]"
+                renderTrigger={({ ref, onClick, open }) => (
+                  <Button
+                    iconOnly
+                    aria-expanded={open}
+                    aria-haspopup="menu"
+                    aria-label="Switch organization"
+                    onClick={onClick}
+                    ref={ref}
+                  >
+                    <ChevronDown className={cn("transition-transform", open ? "rotate-180" : "")} />
+                  </Button>
+                )}
+                items={switcherOptions.map<PickerMenuItem>((option) => {
+                  const isCurrent = option.orgSlug === orgSlug;
+                  const href = isCurrent
+                    ? `/${option.orgSlug}`
+                    : buildOrgSwitchHref({
+                        targetOrgSlug: option.orgSlug,
+                        pathname: currentPathname || pathname,
+                        currentOrgSlug: orgSlug,
+                        tenantBaseHost,
+                        tenantBaseAuthority,
+                        tenantBaseProtocol,
+                        currentProtocol: hasHydrated ? window.location.protocol : "https:"
+                      });
+                  const logoSrc = option.orgIconUrl ?? option.orgLogoUrl ?? null;
+                  return {
+                    key: option.orgSlug,
+                    label: option.orgName,
+                    href,
+                    iconUrl: logoSrc,
+                    iconAlt: `${option.orgName} icon`,
+                    iconFallback: (
+                      <span className="inline-flex h-full w-full items-center justify-center rounded-full bg-surface-muted text-[10px] font-semibold text-text-muted">
+                        {getOrgInitial(option.orgName)}
+                      </span>
+                    ),
+                    active: isCurrent
+                  };
+                })}
+              />
             ) : null}
           </div>
 

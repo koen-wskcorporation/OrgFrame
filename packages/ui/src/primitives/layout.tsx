@@ -1,19 +1,6 @@
 import * as React from "react";
 import { cn } from "./utils";
 
-// Standard content container for manage pages — sits below the PageHeader and
-// wraps the page's primary content (Repeater, table, form, etc.) in a card.
-type ManagePageContentProps = React.HTMLAttributes<HTMLDivElement>;
-
-export function ManagePageContent({ className, ...props }: ManagePageContentProps) {
-  return (
-    <div
-      className={cn("rounded-card border border-border bg-surface shadow-card", className)}
-      {...props}
-    />
-  );
-}
-
 type PageStackProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function PageStack({ className, ...props }: PageStackProps) {
@@ -41,7 +28,7 @@ type AppPageProps<T extends React.ElementType> = {
 export function AppPage<T extends React.ElementType = "main">({ as, className, children, ...props }: AppPageProps<T>) {
   const Component = (as ?? "main") as React.ElementType;
   return (
-    <Component className={cn("app-page-shell", className)} {...props}>
+    <Component className={cn("w-full min-w-0 px-[var(--layout-gap)]", className)} {...props}>
       {children}
     </Component>
   );

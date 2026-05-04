@@ -3,7 +3,7 @@ import { Alert } from "@orgframe/ui/primitives/alert";
 import { listOrgPaymentLinks } from "@/src/features/billing/service";
 import { can } from "@/src/shared/permissions/can";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { ToolUnavailablePanel } from "../../ToolUnavailablePanel";
 import { PaymentsSectionNav } from "../PaymentsSectionNav";
@@ -22,13 +22,13 @@ export default async function OrgPaymentLinksPage({ params }: { params: Promise<
 
   if (unavailable) {
     return (
-      <ManagePageShell
+      <PageShell
         description="Create and manage payment links for this organization."
         tabs={<PaymentsSectionNav active="links" />}
         title="Payments"
       >
         <ToolUnavailablePanel title="Payments" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
@@ -36,10 +36,11 @@ export default async function OrgPaymentLinksPage({ params }: { params: Promise<
   const links = canManage ? await listOrgPaymentLinks({ orgId: orgContext.orgId }).catch(() => []) : [];
 
   return (
-    <ManagePageShell
+    <PageShell
+      description="Create shareable payment links for one-off charges and collections."
       tabs={<PaymentsSectionNav active="links" />}
       title="Payments"
-      variant="workspace"
+
     >
       {!canManage ? <Alert variant="warning">You do not have permission to manage payment links.</Alert> : null}
       {canManage ? (
@@ -52,6 +53,6 @@ export default async function OrgPaymentLinksPage({ params }: { params: Promise<
           <PaymentLinksManager initialLinks={links} orgSlug={orgSlug} />
         </ManageSection>
       ) : null}
-    </ManagePageShell>
+    </PageShell>
   );
 }

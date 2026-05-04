@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { AiDashboard } from "@/src/features/manage-dashboard/components/AiDashboard";
 
@@ -15,17 +15,17 @@ export default async function OrgManageDashboardPage({ params }: { params: Promi
   const [orgContext, sessionUser] = await Promise.all([getOrgAuthContext(orgSlug), getSessionUser()]);
   if (!sessionUser) {
     return (
-      <ManagePageShell title="Dashboard">
+      <PageShell title="Dashboard">
         <Alert variant="info">Sign in to view your dashboard.</Alert>
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
   return (
-    <ManagePageShell title="Dashboard" variant="workspace">
+    <PageShell description="Overview of your organization's activity and quick links to management tools." title="Dashboard">
       <ManageSection title="Dashboard">
         <AiDashboard orgName={orgContext.orgName} orgSlug={orgContext.orgSlug} />
       </ManageSection>
-    </ManagePageShell>
+    </PageShell>
   );
 }

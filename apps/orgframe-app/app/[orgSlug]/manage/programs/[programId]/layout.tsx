@@ -1,4 +1,4 @@
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ProgramTabsNav } from "./ProgramTabsNav";
 
 export default async function ProgramManageLayout({
@@ -11,12 +11,12 @@ export default async function ProgramManageLayout({
   const { orgSlug, programId } = await params;
 
   return (
-    <ManagePageShell
+    <PageShell
       description="Program structure map is deferred in this phase."
       tabs={<ProgramTabsNav orgSlug={orgSlug} programId={programId} />}
       title="Program"
     >
       {children}
-    </ManagePageShell>
+    </PageShell>
   );
 }

@@ -44,11 +44,13 @@ export function PageHeader({
       >
         <div className="min-w-0 space-y-1.5">
           <h1 className="ui-page-title">{title}</h1>
-          {description ? <p className="max-w-[68ch] text-sm leading-relaxed text-text-muted">{description}</p> : null}
+          {description ? (
+            <p className="app-page-header__desc max-w-[68ch] text-sm leading-relaxed text-text-muted">{description}</p>
+          ) : null}
         </div>
         {actions ? <div className="flex flex-wrap items-center gap-2 md:justify-end">{actions}</div> : null}
       </div>
-      {tabs ? <div className="mt-4">{tabs}</div> : null}
+      {tabs ? <div className="app-page-header__tabs mt-4">{tabs}</div> : null}
     </div>
   );
 }

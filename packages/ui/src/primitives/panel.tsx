@@ -29,9 +29,29 @@ const UNIT_WIDTH_STORAGE_KEY = "orgframe:panel-unit-width-px";
 const LAYOUT_MODE_STORAGE_KEY = "orgframe:panel-layout-mode";
 
 const PANEL_DOCK_ID = "panel-dock";
-const POPUP_PANEL_DOCK_ID = "popup-panel-dock";
 const PRIMARY_HEADER_ID = "app-primary-header";
-const POPUP_PANEL_COUNT_ATTRIBUTE = "data-popup-panel-count";
+
+/**
+ * Resolve `--layout-gap` to a pixel value.
+ *
+ * The CSS variable is declared in `rem` (e.g. `--layout-gap: 1rem`), and
+ * `getPropertyValue` returns the raw string — `parseFloat("1rem")` yields
+ * `1`, not `16`. Scale by the root font size so callers get the rendered px.
+ * Handles `rem`, `em`, `px`, and unitless values.
+ */
+function readLayoutGapPx(): number {
+  if (typeof window === "undefined") return 0;
+  const rootStyles = window.getComputedStyle(document.documentElement);
+  const raw = rootStyles.getPropertyValue("--layout-gap").trim();
+  if (!raw) return 0;
+  const numeric = Number.parseFloat(raw);
+  if (!Number.isFinite(numeric)) return 0;
+  if (raw.endsWith("rem") || raw.endsWith("em")) {
+    const rootFontSize = Number.parseFloat(rootStyles.fontSize) || 16;
+    return numeric * rootFontSize;
+  }
+  return numeric;
+}
 
 export type PanelLayoutMode = "side-by-side" | "stacked";
 
@@ -322,17 +342,46 @@ export function PanelContainer() {
   // Track panel-top — align to the top of `.app__content` (the row where page
   // content sits). When there is no AppShell on the page (e.g. auth routes),
   // fall back to "below the primary header by one layout-gap".
+  //
+  // When a fullscreen Popup is open (`body[data-popup-count] > 0`), prefer
+  // the popup's own header bottom — the page's primary header is hidden
+  // behind the popup, so docking under it would put panels right over the
+  // popup's title bar. Falls back to the page measurement when no popup
+  // is open or no `[role="dialog"]` matches.
   React.useEffect(() => {
     const measure = () => {
+      const layoutGap = readLayoutGapPx();
+
+      const popupCount = Number(document.body.getAttribute("data-popup-count") ?? "0");
+      if (popupCount > 0) {
+        // Topmost open dialog (the last one mounted is on top in DOM order).
+        const dialogs = document.querySelectorAll<HTMLElement>("[role='dialog'][aria-modal='true']");
+        const topDialog = dialogs[dialogs.length - 1];
+        const dialogHeader = topDialog?.firstElementChild as HTMLElement | null;
+        if (dialogHeader) {
+          const headerBottom = dialogHeader.getBoundingClientRect().bottom;
+          const next = Math.max(0, Math.round(headerBottom + layoutGap));
+          setPanelTop((current) => (current === next ? current : next));
+          return;
+        }
+      }
+
+      // Floor the panel at "one layout-gap below the sticky topbar" so it
+      // can never rise above the pinned topbar on scroll. When there is
+      // no topbar (--app-topbar-height is unset / 0), the floor is 0 and
+      // the primary-header fallback below applies.
+      const topbarHeight = Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--app-topbar-height")
+      ) || 0;
+      const stickyFloor = topbarHeight > 0 ? layoutGap + topbarHeight + layoutGap : 0;
+
       const body = document.querySelector(".app__content") as HTMLElement | null;
       let next: number;
       if (body) {
-        next = Math.max(0, Math.round(body.getBoundingClientRect().top));
+        next = Math.max(stickyFloor, Math.round(body.getBoundingClientRect().top));
       } else {
         const header = document.getElementById(PRIMARY_HEADER_ID);
         const headerBottom = header?.getBoundingClientRect().bottom ?? 0;
-        const rootStyles = window.getComputedStyle(document.documentElement);
-        const layoutGap = Number.parseFloat(rootStyles.getPropertyValue("--layout-gap")) || 0;
         next = Math.max(0, Math.round(headerBottom + layoutGap));
       }
       setPanelTop((current) => (current === next ? current : next));
@@ -346,10 +395,28 @@ export function PanelContainer() {
       if (header) observer.observe(header);
       if (body) observer.observe(body);
     }
+    // Re-measure when popups open or close so we can track their header.
+    const popupAttrObserver = new MutationObserver(measure);
+    popupAttrObserver.observe(document.body, { attributes: true, attributeFilter: ["data-popup-count"] });
+    // And when any new dialog mounts/unmounts so the ResizeObserver above
+    // doesn't have to know about elements that didn't exist at setup time.
+    const dialogTreeObserver = new MutationObserver(() => {
+      measure();
+      // Hook the active dialog's header into the resize observer too — its
+      // size can change if subtitle wraps or the header reflows.
+      if (!observer) return;
+      const dialogs = document.querySelectorAll<HTMLElement>("[role='dialog'][aria-modal='true']");
+      const topDialog = dialogs[dialogs.length - 1];
+      const dialogHeader = topDialog?.firstElementChild as HTMLElement | null;
+      if (dialogHeader) observer.observe(dialogHeader);
+    });
+    dialogTreeObserver.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, { passive: true });
     return () => {
       observer?.disconnect();
+      popupAttrObserver.disconnect();
+      dialogTreeObserver.disconnect();
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure);
     };
@@ -361,8 +428,9 @@ export function PanelContainer() {
   // stacked panels is 1 unit wide.
   const layoutGapPx = React.useMemo(() => {
     if (typeof window === "undefined") return 16;
-    const rootStyles = window.getComputedStyle(document.documentElement);
-    return Number.parseFloat(rootStyles.getPropertyValue("--layout-gap")) || 16;
+    return readLayoutGapPx() || 16;
+    // panelKeys/panelTop in deps so this re-runs when layout changes (e.g.
+    // viewport crosses the 768px breakpoint where --layout-gap shifts).
   }, [panelKeys.length, panelTop]);
 
   const tree = React.useMemo(() => buildLayoutTree(panelKeys, gapOrients), [panelKeys, gapOrients]);
@@ -494,7 +562,12 @@ export function PanelContainer() {
         top: panelTop ? `${panelTop}px` : "var(--layout-gap)",
         bottom: "var(--layout-gap)",
         width: `${containerTotalWidth}px`,
-        zIndex: 100
+        // Sit above fullscreen Popup (z-1200/1201) so panels overlay
+        // editor popups instead of disappearing behind them. Smaller
+        // confirm/dialog popups opened from inside a panel still render
+        // centered (the centered dialog body is visible above the panels'
+        // dock area, just without the backdrop tinting the panels).
+        zIndex: 1300
       }}
     >
       {showResizeHandle ? (
@@ -669,7 +742,7 @@ export type PanelProps = {
   panelStyle?: React.CSSProperties;
   /** @deprecated kept for API compatibility — pushMode is no longer per-panel. */
   pushMode?: "content" | "app";
-  /** Render in popup-panel-dock with absolute fill positioning instead of the main container. */
+  /** @deprecated legacy fixed-to-viewport positioning. Identical to default now. */
   globalPanel?: boolean;
   /**
    * Stable identity for the drag-to-swap order array. Optional — if
@@ -720,15 +793,12 @@ export function Panel({
 
   const resolvePortalTarget = React.useCallback((): HTMLElement | null => {
     if (typeof document === "undefined") return null;
-    // Popup-context wins (we're rendered inside a Popup editor).
-    const popup = document.getElementById(POPUP_PANEL_DOCK_ID);
-    if (popup) return popup;
-    // Otherwise prefer this panel's registered cell node inside the layout
-    // tree. The registry is updated synchronously by `LayoutCell` ref
-    // callbacks, so as soon as PanelContainer renders the cell on a new
-    // commit, the panel sees it on the same commit. Falls back to the
-    // root dock only if the cell genuinely doesn't exist yet (e.g., before
-    // PanelContainer has registered the panel into its order).
+    // Prefer this panel's registered cell node inside the layout tree. The
+    // registry is updated synchronously by `LayoutCell` ref callbacks, so
+    // as soon as PanelContainer renders the cell on a new commit, the
+    // panel sees it on the same commit. Falls back to the root dock only
+    // if the cell genuinely doesn't exist yet (e.g., before PanelContainer
+    // has registered the panel into its order).
     const cell = getCellNode(orderKey);
     if (cell) return cell;
     return document.getElementById(PANEL_DOCK_ID) ?? document.body;
@@ -742,11 +812,6 @@ export function Panel({
   // Re-resolve the portal target whenever the cell registry changes — that
   // covers initial cell render, drag-swaps that move the panel into a new
   // cell node, and gap-orientation flips that restructure the tree.
-  //
-  // Also listens for `panel-dock-changed` window events so already-open
-  // panels can re-portal into a popup-panel-dock that appears mid-life
-  // (e.g. when a fullscreen editor popup mounts and wants the wizard panel
-  // docked inside it).
   React.useEffect(() => {
     if (!mounted) return;
     const apply = () => {
@@ -754,19 +819,12 @@ export function Panel({
       setPortalTarget((current) => (current === next ? current : next));
     };
     apply();
-    const unsubscribeCells = subscribeCellNodes(apply);
-    const onDockChanged = () => apply();
-    window.addEventListener("panel-dock-changed", onDockChanged);
-    return () => {
-      unsubscribeCells();
-      window.removeEventListener("panel-dock-changed", onDockChanged);
-    };
+    return subscribeCellNodes(apply);
   }, [mounted, resolvePortalTarget]);
 
-  const isPopupContext = portalTarget?.getAttribute("data-panel-context") === "popup";
-  // Only dock panels (not popups, not the legacy `globalPanel` which is
-  // fixed-positioned to the viewport) participate in the swap order.
-  const participatesInDockOrder = open && mounted && !isPopupContext && !globalPanel;
+  // Only docked panels (not the legacy `globalPanel` viewport-pinned mode)
+  // participate in the drag-swap order.
+  const participatesInDockOrder = open && mounted && !globalPanel;
 
   React.useEffect(() => {
     if (!participatesInDockOrder) return;
@@ -853,46 +911,29 @@ export function Panel({
     };
     document.addEventListener("keydown", onKeyDown);
 
-    // Popup-context book-keeping — for popup-panel-dock layout calc.
-    if (isPopupContext) {
-      const popupCount = Number(portalTarget.getAttribute(POPUP_PANEL_COUNT_ATTRIBUTE) ?? "0");
-      portalTarget.setAttribute(POPUP_PANEL_COUNT_ATTRIBUTE, String(popupCount + 1));
-      return () => {
-        document.removeEventListener("keydown", onKeyDown);
-        const nextCount = Math.max(0, Number(portalTarget.getAttribute(POPUP_PANEL_COUNT_ATTRIBUTE) ?? "1") - 1);
-        if (nextCount === 0) portalTarget.removeAttribute(POPUP_PANEL_COUNT_ATTRIBUTE);
-        else portalTarget.setAttribute(POPUP_PANEL_COUNT_ATTRIBUTE, String(nextCount));
-      };
-    }
-
     return () => {
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [isPopupContext, mounted, open, portalTarget]);
+  }, [mounted, open, portalTarget]);
 
   if (!mounted || !open || !portalTarget) {
     return null;
   }
 
-  // Three positioning modes:
-  //  - popup-context: filling the popup-panel-dock area
-  //  - globalPanel: full-viewport pinned right edge
-  //  - default: flex child of the PanelContainer (no positioning, just flex sizing)
+  // Two positioning modes:
+  //  - globalPanel: full-viewport pinned right edge (legacy)
+  //  - default: flex child of the PanelContainer (the panel fills its cell)
   const baseClass =
     "app-panel pointer-events-auto flex min-h-0 min-w-0 flex-col overflow-hidden bg-surface shadow-floating";
-  const positionClass = isPopupContext
-    ? "absolute z-[1100] rounded-none border-y-0 border-r-0 border-l"
-    : globalPanel
-      ? "fixed z-[100] rounded-card border"
-      : "relative rounded-card border flex-1";
+  const positionClass = globalPanel
+    ? "fixed z-[100] rounded-card border"
+    : "relative rounded-card border flex-1";
 
-  const positionStyle: React.CSSProperties = isPopupContext
-    ? { bottom: 0, right: 0, top: 0, maxWidth: "100%", width: "100%" }
-    : globalPanel
-      ? { bottom: 0, right: 0, top: 0, maxWidth: "100vw", width: `min(100vw, ${UNIT_PANEL_WIDTH}px)` }
-      : // The cell we portal into already determines the panel's slot in the
-        // layout tree; the panel itself just fills that cell.
-        { flex: "1 1 0", minWidth: 0, minHeight: 0 };
+  const positionStyle: React.CSSProperties = globalPanel
+    ? { bottom: 0, right: 0, top: 0, maxWidth: "100vw", width: `min(100vw, ${UNIT_PANEL_WIDTH}px)` }
+    : // The cell we portal into already determines the panel's slot in the
+      // layout tree; the panel itself just fills that cell.
+      { flex: "1 1 0", minWidth: 0, minHeight: 0 };
 
   return createPortal(
     <aside

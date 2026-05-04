@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Alert } from "@orgframe/ui/primitives/alert";
-import { Popup } from "@orgframe/ui/primitives/popup";
 import { useToast } from "@orgframe/ui/primitives/toast";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { EditorShell } from "@/src/features/canvas/components/EditorShell";
 import { saveFacilityMapAction, updateFacilityAction } from "@/src/features/facilities/actions";
 import type {
   Facility,
@@ -110,22 +108,11 @@ export function FacilityMapWorkspace({
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [panelSpaceId, setPanelSpaceId] = useState<string | null>(null);
 
-  // Editor popup, status manager, location editor.
-  const [isEditorOpen, setIsEditorOpen] = useState(defaultEditorOpen);
+  // Status manager and location editor. The editor popup, popup-session bump,
+  // mounted-guard, and beforeunload guard now live inside <EditorShell>.
   const [isStatusManagerOpen, setIsStatusManagerOpen] = useState(false);
   const [isLocationPopupOpen, setIsLocationPopupOpen] = useState(false);
   const [savingLocation, setSavingLocation] = useState(false);
-
-  // Force the editor to remount on each open so its initial-fit effect
-  // re-runs from a clean state instead of preserving the previous session's
-  // pan/zoom.
-  const [popupSession, setPopupSession] = useState(0);
-  useEffect(() => { if (isEditorOpen) setPopupSession((s) => s + 1); }, [isEditorOpen]);
-
-  // SSR/client float-precision differences in the inline preview's path math
-  // would trigger hydration warnings; render the inline preview only after mount.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
 
   const isIndoor = facility.environment === "indoor";
   const geoAnchor =
@@ -133,15 +120,6 @@ export function FacilityMapWorkspace({
       ? { lat: facility.geoAnchorLat, lng: facility.geoAnchorLng }
       : null;
   const geoShowMap = Boolean(facility.geoShowMap && geoAnchor) && !isIndoor;
-
-  // Browser-level guard for the unsaved-draft case. Modern browsers ignore
-  // the message string but require a non-empty returnValue.
-  useEffect(() => {
-    if (!draft.isDirty) return;
-    const handler = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [draft.isDirty]);
 
   // ---------------------- Geo / location ----------------------------------
 
@@ -222,17 +200,10 @@ export function FacilityMapWorkspace({
     });
   }
 
-  function attemptCloseEditor() {
-    if (!draft.isDirty) { setIsEditorOpen(false); onEditorClose?.(); return; }
-    const ok = typeof window !== "undefined"
-      ? window.confirm("You have unsaved changes. Discard them and close?")
-      : true;
-    if (!ok) return;
+  function handleDiscardDirty() {
     draft.discard();
     setSelectedShapeId(null);
     setPanelSpaceId(null);
-    setIsEditorOpen(false);
-    onEditorClose?.();
   }
 
   // Side-panel update/delete from FacilitySpacePanel. For server-saved
@@ -300,88 +271,71 @@ export function FacilityMapWorkspace({
   const titleNode = <span className="inline-flex items-center gap-2"><span>Facility Map</span></span>;
 
   return (
-    <div className={hidePreview ? "" : "ui-stack-page"}>
-      {!hidePreview && !canWrite ? <Alert variant="info">You have read-only access to the facility map.</Alert> : null}
-
-      {!hidePreview ? <ManageSection
-        contentClassName="flex flex-col"
-        description="Read-only preview, auto-fit to your spaces. Click Edit to open the full canvas."
-        title={titleNode}
-      >
-        <div className="relative min-h-[420px] w-full flex-1 overflow-hidden rounded-card border border-border bg-canvas">
-          {mounted ? (
-            <FacilityMapEditor
-              canWrite={false}
-              geoAnchor={geoAnchor}
-              geoShowMap={geoShowMap}
-              indoor={isIndoor}
-              isSaving={false}
-              nodes={draft.shapes}
-              onChangeNodes={() => undefined}
-              onCreateShape={() => null}
-              onDeleteNode={() => undefined}
-              onEdit={() => setIsEditorOpen(true)}
-              onEditGeoLocation={() => undefined}
-              onSave={() => undefined}
-              onSelectNode={() => undefined}
-              onToggleGeoMap={() => undefined}
-              readOnly
-              selectedNodeId={null}
-              spaceStatuses={spaceStatuses}
-            />
-          ) : null}
-        </div>
-      </ManageSection> : null}
-
-      <Popup
-        closeOnBackdrop={false}
-        contentClassName="!p-0"
-        onClose={attemptCloseEditor}
-        open={isEditorOpen}
-        size="full"
-        subtitle="Pan, zoom, drag vertices to reshape, and save when you're happy."
-        title={titleNode}
-      >
-        <div className="relative h-full w-full">
-          <div
-            className="absolute inset-y-0 left-0 motion-reduce:transition-none"
-            style={{ right: isPanelOpen ? 360 : 0, transition: "right 220ms cubic-bezier(0.22, 1, 0.36, 1)", willChange: "right" }}
-          >
-            <FacilityMapEditor
-              key={`editor-${popupSession}`}
-              canWrite={canWrite}
-              geoAnchor={geoAnchor}
-              geoShowMap={geoShowMap}
-              indoor={isIndoor}
-              isSaving={isSaving}
-              nodes={draft.shapes}
-              onChangeNodes={draft.setShapes}
-              onCreateShape={handleCreateShape}
-              onDeleteNode={handleDeleteShape}
-              onEditGeoLocation={() => setIsLocationPopupOpen(true)}
-              onOpenSpaceDetails={setPanelSpaceId}
-              onSave={handleSave}
-              onSelectNode={setSelectedShapeId}
-              onToggleGeoMap={handleToggleGeoMap}
-              selectedNodeId={selectedShapeId}
-              spaceStatuses={spaceStatuses}
-            />
-          </div>
-          <div
-            className="pointer-events-none absolute inset-y-0 right-0 w-[360px] max-w-full"
-            data-panel-context="popup"
-            id="popup-panel-dock"
+    <EditorShell
+      canWrite={canWrite}
+      defaultEditorOpen={defaultEditorOpen}
+      hidePreview={hidePreview}
+      isDirty={draft.isDirty}
+      onDiscardDirty={handleDiscardDirty}
+      onEditorClose={onEditorClose}
+      popupSubtitle="Pan, zoom, drag vertices to reshape, and save when you're happy."
+      previewDescription="Read-only preview, auto-fit to your spaces. Click Edit to open the full canvas."
+      readOnlyMessage="You have read-only access to the facility map."
+      title={titleNode}
+      renderEditor={({ mode, popupSession, requestEdit }) =>
+        mode === "preview" ? (
+          <FacilityMapEditor
+            canWrite={false}
+            geoAnchor={geoAnchor}
+            geoShowMap={geoShowMap}
+            indoor={isIndoor}
+            isSaving={false}
+            nodes={draft.shapes}
+            onChangeNodes={() => undefined}
+            onCreateShape={() => null}
+            onDeleteNode={() => undefined}
+            onEdit={requestEdit}
+            onEditGeoLocation={() => undefined}
+            onSave={() => undefined}
+            onSelectNode={() => undefined}
+            onToggleGeoMap={() => undefined}
+            readOnly
+            selectedNodeId={null}
+            spaceStatuses={spaceStatuses}
           />
+        ) : (
+          <FacilityMapEditor
+            key={`editor-${popupSession}`}
+            canWrite={canWrite}
+            geoAnchor={geoAnchor}
+            geoShowMap={geoShowMap}
+            indoor={isIndoor}
+            isSaving={isSaving}
+            nodes={draft.shapes}
+            onChangeNodes={draft.setShapes}
+            onCreateShape={handleCreateShape}
+            onDeleteNode={handleDeleteShape}
+            onEditGeoLocation={() => setIsLocationPopupOpen(true)}
+            onOpenSpaceDetails={setPanelSpaceId}
+            onSave={handleSave}
+            onSelectNode={setSelectedShapeId}
+            onToggleGeoMap={handleToggleGeoMap}
+            selectedNodeId={selectedShapeId}
+            spaceStatuses={spaceStatuses}
+          />
+        )
+      }
+      popupExtras={
+        <>
+          {/* FacilitySpacePanel is itself a `<Panel>` — it auto-portals
+              into the global PanelContainer when open, so it sits inside
+              the multi-panel layout area regardless of whether the editor
+              popup is open. */}
           <FacilitySpacePanel
             canWrite={canWrite}
             isPending={panelSpaceId ? draft.isPendingCreate(panelSpaceId) : false}
             onClose={() => setPanelSpaceId(null)}
             onLivePreview={(updated) => {
-              // Live preview only — patch the editor's draft shape so
-              // the canvas pill, icon, status chip, and unbookable hatch
-              // repaint immediately. Does NOT touch the server-side
-              // `spaces` state; that only happens on save success
-              // (handleSpaceUpdated below).
               draft.updateShape(updated.id, {
                 label: updated.name,
                 spaceKind: updated.spaceKind,
@@ -398,27 +352,25 @@ export function FacilityMapWorkspace({
             space={selectedSpace}
             spaceStatuses={spaceStatuses}
           />
-        </div>
-      </Popup>
-
-      <SpaceStatusManager
-        canWrite={canWrite}
-        onClose={() => setIsStatusManagerOpen(false)}
-        onReadModel={() => undefined}
-        open={isStatusManagerOpen}
-        orgSlug={orgSlug}
-        statuses={spaceStatuses}
-      />
-
-      <SetLocationPopup
-        initialLat={geoAnchor?.lat ?? null}
-        initialLng={geoAnchor?.lng ?? null}
-        initialAddress={facility.geoAddress ?? ""}
-        onClose={() => setIsLocationPopupOpen(false)}
-        onSave={handleSaveLocation}
-        open={isLocationPopupOpen}
-        saving={savingLocation}
-      />
-    </div>
+          <SpaceStatusManager
+            canWrite={canWrite}
+            onClose={() => setIsStatusManagerOpen(false)}
+            onReadModel={() => undefined}
+            open={isStatusManagerOpen}
+            orgSlug={orgSlug}
+            statuses={spaceStatuses}
+          />
+          <SetLocationPopup
+            initialLat={geoAnchor?.lat ?? null}
+            initialLng={geoAnchor?.lng ?? null}
+            initialAddress={facility.geoAddress ?? ""}
+            onClose={() => setIsLocationPopupOpen(false)}
+            onSave={handleSaveLocation}
+            open={isLocationPopupOpen}
+            saving={savingLocation}
+          />
+        </>
+      }
+    />
   );
 }

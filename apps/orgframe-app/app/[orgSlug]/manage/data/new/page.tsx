@@ -3,7 +3,8 @@ import { Button } from "@orgframe/ui/primitives/button";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
 import { TOOL_DATA_SOURCES } from "@/src/features/data/registry";
 import { can } from "@/src/shared/permissions/can";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { CollectionBuilder } from "@/src/features/data/components/CollectionBuilder";
 
 export const metadata: Metadata = {
@@ -31,7 +32,7 @@ export default async function NewCollectionPage({
   }));
 
   return (
-    <ManagePageShell
+    <PageShell
       actions={
         <Button href={`/${orgSlug}/manage/data`} size="sm" variant="ghost">
           ← Back
@@ -40,9 +41,9 @@ export default async function NewCollectionPage({
       description="Save a filtered view and pin it alongside your other data sources."
       title="New data collection"
     >
-      <div className="p-5">
+      <ManageSection description="Pick a source and filter the rows you want pinned." fill={false} title="Builder">
         <CollectionBuilder orgSlug={orgSlug} sources={sources} />
-      </div>
-    </ManagePageShell>
+      </ManageSection>
+    </PageShell>
   );
 }

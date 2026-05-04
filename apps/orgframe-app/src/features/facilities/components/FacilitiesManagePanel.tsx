@@ -7,7 +7,7 @@ import { Button } from "@orgframe/ui/primitives/button";
 import { ChipPicker, RepeaterChip } from "@orgframe/ui/primitives/chip";
 import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { useToast } from "@orgframe/ui/primitives/toast";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { FacilityMapWorkspace } from "@/src/features/facilities/map/components/FacilityMapWorkspace";
 import { SpaceCreateWizard } from "@/src/features/facilities/components/SpaceCreateWizard";
@@ -63,7 +63,7 @@ export function FacilitiesManagePanel({ orgSlug, orgId, canWrite, initialReadMod
 
   return (
     <>
-      <ManagePageShell title="Facilities" variant="workspace">
+      <PageShell title="Facilities">
         {!canWrite ? <Alert variant="info">You have read-only access to facilities.</Alert> : null}
         <ManageSection
           actions={
@@ -121,7 +121,7 @@ export function FacilitiesManagePanel({ orgSlug, orgId, canWrite, initialReadMod
             }}
           />
         </ManageSection>
-      </ManagePageShell>
+      </PageShell>
 
       {/* Create wizard */}
       <SpaceCreateWizard

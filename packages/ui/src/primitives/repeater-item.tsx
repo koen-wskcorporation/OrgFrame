@@ -27,6 +27,13 @@ export type RepeaterItemSpec = {
   secondaryActions?: React.ReactNode;
   /** Free-form footer slot for card view (replaces the action row when provided). */
   footer?: React.ReactNode;
+  /**
+   * Free-form content rendered INSIDE the same row container, beneath the main
+   * row (title / chips / actions). Used by tree-style lists to nest a sub-list
+   * directly within its parent row rather than as a separate item below it.
+   * List view only.
+   */
+  body?: React.ReactNode;
   /** Wrap the item in an anchor that navigates here. Mutually exclusive with onClick. */
   href?: string;
   /** Wrap the item in a button that fires this on click. */
@@ -59,6 +66,7 @@ export function RepeaterItem({
   primaryAction,
   secondaryActions,
   footer,
+  body,
   href,
   onClick,
   hoverable,
@@ -81,17 +89,8 @@ export function RepeaterItem({
   ) : null;
 
   if (view === "list") {
-    return (
-      <RowShell
-        className={cn(
-          "ui-list-row",
-          showHover && "ui-list-row-hover",
-          isInteractive && "cursor-pointer",
-          className
-        )}
-        href={href}
-        onClick={onClick}
-      >
+    const rowContent = (
+      <>
         {selectionNode}
         {leading ? <div className="flex-none">{leading}</div> : null}
         <div className="ui-list-row-content">
@@ -107,6 +106,49 @@ export function RepeaterItem({
             {primaryAction}
           </div>
         ) : null}
+      </>
+    );
+
+    if (body) {
+      // When a body slot is provided, the outer container becomes a column with
+      // the head row at top and the body beneath, all inside one bordered
+      // shell. The hover affordance lives on the head row only — the body
+      // hosts its own interactive children.
+      return (
+        <RowShell
+          className={cn(
+            "overflow-hidden rounded-control border bg-surface shadow-sm",
+            isInteractive && "cursor-pointer",
+            className
+          )}
+          href={href}
+          onClick={onClick}
+        >
+          <div
+            className={cn(
+              "flex flex-wrap items-center justify-between gap-3 px-4 py-3",
+              showHover && "transition-colors hover:bg-surface-muted/65"
+            )}
+          >
+            {rowContent}
+          </div>
+          <div className="border-t border-border bg-canvas/30 px-4 py-3">{body}</div>
+        </RowShell>
+      );
+    }
+
+    return (
+      <RowShell
+        className={cn(
+          "ui-list-row",
+          showHover && "ui-list-row-hover",
+          isInteractive && "cursor-pointer",
+          className
+        )}
+        href={href}
+        onClick={onClick}
+      >
+        {rowContent}
       </RowShell>
     );
   }

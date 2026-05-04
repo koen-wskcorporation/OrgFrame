@@ -5,7 +5,7 @@ import { listAccessibleDataSources } from "@/src/features/data/registry";
 import { SourcesRepeater, type SourceItem } from "@/src/features/data/components/SourcesRepeater";
 import { can } from "@/src/shared/permissions/can";
 import type { ResolvedDataSource } from "@/src/features/data/registry/types";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 
 function kindOrder(source: ResolvedDataSource): number {
@@ -49,7 +49,7 @@ export default async function DataPage({
   const canWrite = can(orgContext.membershipPermissions, "data.write");
 
   return (
-    <ManagePageShell title="Data" variant="workspace">
+    <PageShell description="Unified dashboards, tables, and your own pinned collections." title="Data">
       <ManageSection
         actions={
           canWrite ? (
@@ -65,6 +65,6 @@ export default async function DataPage({
       >
         <SourcesRepeater items={sources.map((src) => toSourceItem(orgSlug, src))} />
       </ManageSection>
-    </ManagePageShell>
+    </PageShell>
   );
 }

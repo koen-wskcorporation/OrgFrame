@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
 import { ProgramsManagePanel } from "@/src/features/programs/components/ProgramsManagePanel";
@@ -19,9 +19,9 @@ export default async function OrgManageProgramsPage({ params }: { params: Promis
 
   if (unavailable) {
     return (
-      <ManagePageShell description="Create and manage program catalogs, structure maps, and schedules." title="Programs">
+      <PageShell description="Create and manage program catalogs, structure maps, and schedules." title="Programs">
         <ToolUnavailablePanel title="Programs" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 

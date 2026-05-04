@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
 import { CalendarWorkspace } from "@/src/features/calendar/components/CalendarWorkspace";
@@ -43,12 +44,12 @@ export default async function ManageCalendarPage({ params }: { params: Promise<{
 
   if (unavailable) {
     return (
-      <ManagePageShell
+      <PageShell
         description="Organization calendar for events, practices, games, and shared facility scheduling."
         title="Calendar"
       >
         <ToolUnavailablePanel title="Calendar" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
@@ -63,15 +64,13 @@ export default async function ManageCalendarPage({ params }: { params: Promise<{
   const facilityReadModel = workspaceData.ok ? workspaceData.data.facilityReadModel : emptyFacilityReadModel;
 
   return (
-    <ManagePageShell
-      className="min-h-0 h-[calc(100dvh-var(--org-header-height,0px)-var(--layout-gap))]"
+    <PageShell
       description="Organization calendar for events, practices, games, and shared facility scheduling."
       title="Calendar"
-      variant="workspace"
     >
       {!canWrite ? <Alert variant="info">You have read-only access to calendar data.</Alert> : null}
       {!workspaceData.ok ? <Alert variant="warning">Some calendar data could not be loaded. Showing available data only.</Alert> : null}
-      <section aria-label="Editable calendar" className="min-h-0 flex-1 overflow-hidden">
+      <ManageSection contentClassName="min-h-0 overflow-hidden p-0" description="Events, practices, games, and shared facility scheduling." title="Schedule">
         <CalendarWorkspace
           canWrite={canWrite}
           context={{ kind: "manage", activeTeams }}
@@ -79,7 +78,7 @@ export default async function ManageCalendarPage({ params }: { params: Promise<{
           initialReadModel={readModel}
           orgSlug={orgSlug}
         />
-      </section>
-    </ManagePageShell>
+      </ManageSection>
+    </PageShell>
   );
 }

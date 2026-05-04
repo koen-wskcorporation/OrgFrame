@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
 import { FacilitiesManagePanel } from "@/src/features/facilities/components/FacilitiesManagePanel";
@@ -19,9 +19,9 @@ export default async function OrgManageFacilitiesPage({ params }: { params: Prom
 
   if (unavailable) {
     return (
-      <ManagePageShell description="Manage facility spaces and structure." title="Facilities">
+      <PageShell description="Manage facility spaces and structure." title="Facilities">
         <ToolUnavailablePanel title="Facilities" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 

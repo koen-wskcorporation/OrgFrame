@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
@@ -22,9 +22,9 @@ export default async function OrgManageInboxPage({ params }: { params: Promise<{
 
   if (unavailable) {
     return (
-      <ManagePageShell description="Unified communication inbox and identity resolution." title="Inbox">
+      <PageShell description="Unified communication inbox and identity resolution." title="Inbox">
         <ToolUnavailablePanel title="Inbox" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
@@ -33,14 +33,14 @@ export default async function OrgManageInboxPage({ params }: { params: Promise<{
 
   if (!workspace.ok) {
     return (
-      <ManagePageShell description="Unified communication inbox and identity resolution." title="Inbox">
+      <PageShell description="Unified communication inbox and identity resolution." title="Inbox">
         <Alert className="m-5" variant="destructive">{workspace.error}</Alert>
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
   return (
-    <ManagePageShell title="Inbox" variant="workspace">
+    <PageShell description="Unified inbox for email, SMS, social, and web chat conversations with contact identity resolution." title="Inbox">
       {!canWrite ? <Alert variant="info">You have read-only inbox access.</Alert> : null}
       <ManageSection
         actions={
@@ -53,6 +53,6 @@ export default async function OrgManageInboxPage({ params }: { params: Promise<{
       >
         <InboxWorkspace canWrite={canWrite} initialReadModel={workspace.data} orgSlug={orgSlug} />
       </ManageSection>
-    </ManagePageShell>
+    </PageShell>
   );
 }

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
 import { getInboxConnectionsDataAction } from "@/src/features/inbox/actions";
@@ -21,9 +22,9 @@ export default async function OrgManageInboxConnectionsPage({ params }: { params
 
   if (unavailable) {
     return (
-      <ManagePageShell description="Connect per-org communication channels for unified inbox routing." title="Inbox Connections">
+      <PageShell description="Connect per-org communication channels for unified inbox routing." title="Inbox Connections">
         <ToolUnavailablePanel title="Inbox" />
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
@@ -32,14 +33,14 @@ export default async function OrgManageInboxConnectionsPage({ params }: { params
 
   if (!data.ok) {
     return (
-      <ManagePageShell description="Connect per-org communication channels for unified inbox routing." title="Inbox Connections">
+      <PageShell description="Connect per-org communication channels for unified inbox routing." title="Inbox Connections">
         <Alert className="m-5" variant="destructive">{data.error}</Alert>
-      </ManagePageShell>
+      </PageShell>
     );
   }
 
   return (
-    <ManagePageShell
+    <PageShell
       actions={
         <Button href={`/${orgSlug}/manage/inbox`} variant="secondary">
           Open Conversations
@@ -48,7 +49,13 @@ export default async function OrgManageInboxConnectionsPage({ params }: { params
       description="Manage per-org channel connections and webhook routing targets for the unified inbox."
       title="Inbox Connections"
     >
-      <InboxConnectionsWorkspace canWrite={canWrite} initialIntegrations={data.data.integrations} orgSlug={orgSlug} />
-    </ManagePageShell>
+      <ManageSection
+        description="Per-org channel connections and webhook routing targets."
+        fill={false}
+        title="Connections"
+      >
+        <InboxConnectionsWorkspace canWrite={canWrite} initialIntegrations={data.data.integrations} orgSlug={orgSlug} />
+      </ManageSection>
+    </PageShell>
   );
 }

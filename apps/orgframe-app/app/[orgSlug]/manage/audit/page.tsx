@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { getAuditEventsPage } from "@/src/features/audit/actions";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { AuditLogPanel } from "@/src/features/audit/components/AuditLogPanel";
 
@@ -15,7 +15,7 @@ export default async function OrgManageAuditPage({ params }: { params: Promise<{
   const initialPage = await getAuditEventsPage({ orgSlug, page: 1, pageSize: 50 });
 
   return (
-    <ManagePageShell title="Audit log" variant="workspace">
+    <PageShell description="Every write and serious read taken in this org over the last year, including AI-driven actions on behalf of users." title="Audit log">
       <ManageSection
         description="Every write and serious read taken in this org over the last year, including AI-driven actions on behalf of users."
         fill={false}
@@ -23,6 +23,6 @@ export default async function OrgManageAuditPage({ params }: { params: Promise<{
       >
         <AuditLogPanel orgSlug={orgSlug} initialPage={initialPage} />
       </ManageSection>
-    </ManagePageShell>
+    </PageShell>
   );
 }

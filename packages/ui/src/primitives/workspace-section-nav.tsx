@@ -19,7 +19,7 @@ type WorkspaceSectionNavProps<T extends string> = {
 export function WorkspaceSectionNav<T extends string>({ ariaLabel, active, items, className }: WorkspaceSectionNavProps<T>) {
   return (
     <nav aria-label={ariaLabel} className={className}>
-      <ul className="flex snap-x snap-mandatory gap-2 overflow-x-auto py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <ul className="ws-tabs flex snap-x snap-mandatory gap-2 overflow-x-auto py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {items.map((item) => {
           const isActive = active === item.key;
 
@@ -28,7 +28,7 @@ export function WorkspaceSectionNav<T extends string>({ ariaLabel, active, items
               <Link
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "group flex h-full flex-col rounded-control border px-3.5 py-3 transition-colors",
+                  "ws-tab group flex h-full flex-col rounded-control border px-3.5 py-3 transition-colors",
                   isActive
                     ? "border-border/80 bg-surface text-text-muted hover:bg-surface-muted/35 hover:text-text"
                     : "border-border bg-surface-muted/65 text-text shadow-sm"
@@ -37,7 +37,7 @@ export function WorkspaceSectionNav<T extends string>({ ariaLabel, active, items
                 prefetch={item.prefetch}
               >
                 <span className={cn("truncate text-sm font-semibold", isActive ? "text-accent" : "text-text-muted")}>{item.label}</span>
-                <span className="mt-1.5 line-clamp-1 text-xs text-text-muted">{item.description}</span>
+                <span className="ws-tab-desc mt-1.5 line-clamp-1 text-xs text-text-muted">{item.description}</span>
               </Link>
             </li>
           );

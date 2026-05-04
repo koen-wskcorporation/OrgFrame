@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PageTabs } from "@orgframe/ui/primitives/page-tabs";
-import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { Button } from "@orgframe/ui/primitives/button";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
 import { getDataSourceByKey } from "@/src/features/data/registry";
@@ -75,7 +75,7 @@ export default async function DataCenterSourcePage({
   );
 
   return (
-    <ManagePageShell
+    <PageShell
       actions={
         <>
           <RangeSelector value={rangeKey} />
@@ -100,6 +100,6 @@ export default async function DataCenterSourcePage({
       ) : (
         <TablesView snapshot={snapshot} source={source} />
       )}
-    </ManagePageShell>
+    </PageShell>
   );
 }

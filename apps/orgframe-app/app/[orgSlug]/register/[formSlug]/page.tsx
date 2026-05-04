@@ -57,7 +57,7 @@ export default async function OrgFormRegistrationPage({
   ]);
 
   return (
-    <main className="app-page-shell w-full py-8 md:py-10">
+    <main className="w-full min-w-0 px-[var(--layout-gap)] py-8 md:py-10">
       <div className="ui-stack-page">
         <PageHeader description={form.description ?? "Complete the form and submit registration."} title={form.name} />
 
