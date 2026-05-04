@@ -63,6 +63,7 @@ export function Popup({
   const footerRef = React.useRef<HTMLDivElement | null>(null);
   const closeTimerRef = React.useRef<number | null>(null);
   const isClosingRef = React.useRef(false);
+  const myPopupIndex = React.useRef(0);
   const titleId = React.useId();
   const [mounted, setMounted] = React.useState(false);
   const [rendered, setRendered] = React.useState(false);
@@ -244,6 +245,13 @@ export function Popup({
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        // Only the topmost popup should respond. Without this gate, Escape
+        // fires every mounted popup's listener and stacked popups (e.g. a
+        // wizard with a fullscreen picker over it) all close together.
+        const currentCount = Number(document.body.getAttribute(POPUP_COUNT_ATTRIBUTE) ?? "0");
+        if (myPopupIndex.current !== currentCount) {
+          return;
+        }
         event.preventDefault();
         requestClose();
         return;
@@ -289,6 +297,7 @@ export function Popup({
     document.addEventListener("keydown", onKeyDown);
 
     const popupCount = Number(document.body.getAttribute(POPUP_COUNT_ATTRIBUTE) ?? "0");
+    myPopupIndex.current = popupCount + 1;
     document.body.setAttribute(POPUP_COUNT_ATTRIBUTE, String(popupCount + 1));
     document.body.classList.add("overflow-hidden");
 

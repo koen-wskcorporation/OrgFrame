@@ -9,7 +9,7 @@ import { Button } from "@orgframe/ui/primitives/button";
 import { Chip } from "@orgframe/ui/primitives/chip";
 import { Input } from "@orgframe/ui/primitives/input";
 import { NavItem } from "@orgframe/ui/primitives/nav-item";
-import { PersonChip } from "@orgframe/ui/primitives/person-chip";
+import { EntityChip } from "@orgframe/ui/primitives/entity-chip";
 import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { Select } from "@orgframe/ui/primitives/select";
 import { Tooltip } from "@orgframe/ui/primitives/tooltip";
@@ -1615,7 +1615,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                 {(() => {
                   const createdByUserId = asMetadataUserId(contextCardFile.metadataJson, "createdByUserId") ?? contextCardFile.uploaderUserId;
                   const createdBy = createdByUserId ? peopleByUserId[createdByUserId] : null;
-                  return createdBy ? <PersonChip avatarUrl={createdBy.avatarUrl} name={createdBy.name} /> : <p className="text-xs text-text-muted">Unknown</p>;
+                  return createdBy ? <EntityChip avatarUrl={createdBy.avatarUrl} name={createdBy.name} /> : <p className="text-xs text-text-muted">Unknown</p>;
                 })()}
               </div>
 
@@ -1625,7 +1625,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                   const createdByUserId = asMetadataUserId(contextCardFile.metadataJson, "createdByUserId") ?? contextCardFile.uploaderUserId;
                   const editedByUserId = asMetadataUserId(contextCardFile.metadataJson, "lastEditedByUserId") ?? createdByUserId;
                   const editedBy = editedByUserId ? peopleByUserId[editedByUserId] : null;
-                  return editedBy ? <PersonChip avatarUrl={editedBy.avatarUrl} name={editedBy.name} /> : <p className="text-xs text-text-muted">Unknown</p>;
+                  return editedBy ? <EntityChip avatarUrl={editedBy.avatarUrl} name={editedBy.name} /> : <p className="text-xs text-text-muted">Unknown</p>;
                 })()}
               </div>
             </div>,

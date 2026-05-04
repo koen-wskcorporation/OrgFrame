@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { PageStack } from "@orgframe/ui/primitives/layout";
 import { Button } from "@orgframe/ui/primitives/button";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
 import { listAccessibleDataSources } from "@/src/features/data/registry";
 import { SourcesRepeater, type SourceItem } from "@/src/features/data/components/SourcesRepeater";
 import { can } from "@/src/shared/permissions/can";
 import type { ResolvedDataSource } from "@/src/features/data/registry/types";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 
 function kindOrder(source: ResolvedDataSource): number {
   if (source.kind === "collection") return source.pinned ? 0 : 1;
@@ -25,16 +25,16 @@ function toSourceItem(orgSlug: string, src: ResolvedDataSource): SourceItem {
     kindOrder: kindOrder(src),
     pinned: Boolean(src.pinned),
     href: `/${orgSlug}/manage/data/${encodeURIComponent(src.fqKey)}`,
-    searchText: [src.label, src.description ?? "", ...src.tags.map((t) => t.label)].join(" "),
+    searchText: [src.label, src.description ?? "", ...src.tags.map((t) => t.label)].join(" ")
   };
 }
 
 export const metadata: Metadata = {
-  title: "Data",
+  title: "Data"
 };
 
 export default async function DataPage({
-  params,
+  params
 }: {
   params: Promise<{ orgSlug: string }>;
 }) {
@@ -43,17 +43,14 @@ export default async function DataPage({
 
   const sources = await listAccessibleDataSources({
     orgId: orgContext.orgId,
-    permissions: orgContext.membershipPermissions,
+    permissions: orgContext.membershipPermissions
   });
 
   const canWrite = can(orgContext.membershipPermissions, "data.write");
 
   return (
-    <PageStack>
-      <PageHeader
-        description="Unified dashboards, tables, and your own pinned collections."
-        showBorder={false}
-        title="Data"
+    <ManagePageShell title="Data" variant="workspace">
+      <ManageSection
         actions={
           canWrite ? (
             <Button href={`/${orgSlug}/manage/data/new`} size="sm">
@@ -61,8 +58,13 @@ export default async function DataPage({
             </Button>
           ) : null
         }
-      />
-      <SourcesRepeater items={sources.map((src) => toSourceItem(orgSlug, src))} />
-    </PageStack>
+        contentClassName="space-y-4 p-5 md:p-6"
+        description="Unified dashboards, tables, and your own pinned collections."
+        fill={false}
+        title="Data"
+      >
+        <SourcesRepeater items={sources.map((src) => toSourceItem(orgSlug, src))} />
+      </ManageSection>
+    </ManagePageShell>
   );
 }

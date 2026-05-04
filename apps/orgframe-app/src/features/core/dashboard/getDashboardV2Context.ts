@@ -292,7 +292,7 @@ async function fetchSchedule(orgsById: Map<string, DashboardV2OrgMembership>) {
           entryType: String(entry.entry_type ?? "event"),
           startsAtUtc: String(row.starts_at_utc),
           endsAtUtc: String(row.ends_at_utc),
-          href: `/${org.orgSlug}/calendar/${String(row.id)}`
+          href: null
         }
       ];
     });

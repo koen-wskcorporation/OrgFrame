@@ -1,10 +1,7 @@
-import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { PageStack } from "@orgframe/ui/primitives/layout";
-import { can } from "@/src/shared/permissions/can";
-import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
-import { isOrgToolEnabled } from "@/src/shared/org/features";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { listImportRunsAction } from "@/src/features/imports/actions";
 import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
 import { SmartImportWorkspace } from "./SmartImportWorkspace";
@@ -19,37 +16,32 @@ export default async function OrgManageImportsPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const orgContext = await getOrgAuthContext(orgSlug);
+  const { orgContext, unavailable } = await gateManageSection(orgSlug, {
+    permission: "org.manage.read",
+    tool: "imports"
+  });
 
-  if (!isOrgToolEnabled(orgContext.toolAvailability, "imports")) {
+  if (unavailable) {
     return (
-      <PageStack>
-        <PageHeader
-          description="Run staged CSV/XLSX imports with profile mapping, AI conflict assistance, and idempotent apply logs."
-          showBorder={false}
-          title="Smart Import"
-        />
+      <ManagePageShell
+        description="Run staged CSV/XLSX imports with profile mapping, AI conflict assistance, and idempotent apply logs."
+        title="Smart Import"
+      >
         <ToolUnavailablePanel title="Smart Import" />
-      </PageStack>
+      </ManagePageShell>
     );
   }
 
-  const canManage = can(orgContext.membershipPermissions, "org.manage.read");
-
-  if (!canManage) {
-    redirect(`/forbidden?reason=imports-manage-guard`);
-  }
-
-  const runsResult = await listImportRunsAction({ orgSlug: orgContext.orgSlug, limit: 20 }).catch(() => ({ runs: [] }));
+  const runsResult = await listImportRunsAction({ orgSlug, limit: 20 }).catch(() => ({ runs: [] }));
 
   return (
-    <PageStack>
-      <PageHeader
+    <ManagePageShell title="Smart Import" variant="workspace">
+      <ManageSection
         description="Run staged CSV/XLSX imports with profile mapping, AI conflict assistance, and idempotent apply logs."
-        showBorder={false}
         title="Smart Import"
-      />
-      <SmartImportWorkspace initialRuns={runsResult.runs} orgSlug={orgContext.orgSlug} />
-    </PageStack>
+      >
+        <SmartImportWorkspace initialRuns={runsResult.runs} orgSlug={orgContext.orgSlug} />
+      </ManageSection>
+    </ManagePageShell>
   );
 }

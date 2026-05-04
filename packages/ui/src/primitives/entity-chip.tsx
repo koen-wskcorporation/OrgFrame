@@ -1,25 +1,31 @@
 import * as React from "react";
 import { X } from "lucide-react";
 import { Avatar } from "./avatar";
-import { StatusChip } from "./status-chip";
+import { Chip, type ChipVariant } from "./chip";
+import type { StatusColor } from "./status-palette";
 import { cn } from "./utils";
 
-// Generic chip for representing any org entity (person, team, division, etc.)
-// inline. Renamed from `person-chip` so the same primitive can serve mixed
-// selection lists in linking/sharing flows without a misleading name.
+// Chip representing an org entity (person, team, division, profile, etc.)
+// inline. Composed: outer pill wrapper + Avatar + name + optional status (a
+// nested Chip) + optional remove button.
+
+type EntityStatus = {
+  /** Palette slug or shorthand variant — passed straight through to <Chip />. */
+  color?: StatusColor | string;
+  variant?: ChipVariant;
+  label: string;
+  /** Defaults to true when `color` is set. */
+  showDot?: boolean;
+};
 
 type EntityChipProps = Omit<React.HTMLAttributes<HTMLSpanElement>, "onRemove"> & {
   name: string;
   avatarUrl?: string | null;
   /** Hide the avatar (useful for team/division/program chips that have no avatar). */
   hideAvatar?: boolean;
-  metaLabel?: string;
-  metaTone?: "neutral" | "success";
-  /**
-   * When provided, renders a small `X` button at the end of the chip.
-   * Used by selection chips in pickers (e.g. EntityLinkPicker) to remove
-   * the linked target.
-   */
+  /** Status indicator rendered inside the chip. Optional. */
+  status?: EntityStatus;
+  /** When provided, renders a small `X` button at the end. */
   onRemove?: () => void;
   removeAriaLabel?: string;
 };
@@ -29,8 +35,7 @@ export function EntityChip({
   className,
   hideAvatar = false,
   name,
-  metaLabel,
-  metaTone = "neutral",
+  status,
   onRemove,
   removeAriaLabel,
   ...props
@@ -45,10 +50,15 @@ export function EntityChip({
     >
       {hideAvatar ? null : <Avatar alt={`${name} avatar`} name={name} sizePx={20} src={avatarUrl} />}
       <span className="truncate text-xs font-medium text-text">{name}</span>
-      {metaLabel ? (
-        <StatusChip className="text-[10px]" variant={metaTone === "success" ? "success" : "neutral"}>
-          {metaLabel}
-        </StatusChip>
+      {status ? (
+        <Chip
+          className="text-[10px]"
+          color={status.color}
+          label={status.label}
+          showDot={status.showDot}
+          size="sm"
+          variant={status.variant}
+        />
       ) : null}
       {onRemove ? (
         <button
@@ -67,6 +77,4 @@ export function EntityChip({
   );
 }
 
-// Backward-compat alias so callsites can migrate gradually.
-export const PersonChip = EntityChip;
 export type { EntityChipProps };

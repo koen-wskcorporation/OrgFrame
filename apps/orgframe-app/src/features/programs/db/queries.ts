@@ -299,7 +299,7 @@ export async function getProgramDetailsBySlug(
 export async function listProgramNodes(programId: string, options?: { publishedOnly?: boolean }): Promise<ProgramNode[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .select(nodeSelect)
     .eq("program_id", programId)
     .order("sort_index", { ascending: true })
@@ -468,7 +468,7 @@ export async function createProgramNodeRecord(input: {
       ? input.sortIndex
       : await (async () => {
           const { data: latest } = await supabase
-            .schema("programs").from("program_structure_nodes")
+            .schema("programs").from("divisions")
             .select("sort_index")
             .eq("program_id", input.programId)
             .eq("parent_id", input.parentId)
@@ -484,7 +484,7 @@ export async function createProgramNodeRecord(input: {
         })();
 
   const { data, error } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .insert({
       program_id: input.programId,
       parent_id: input.parentId,
@@ -508,7 +508,7 @@ export async function createProgramNodeRecord(input: {
 
 export async function deleteProgramNodeRecord(programId: string, nodeId: string) {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.schema("programs").from("program_structure_nodes").delete().eq("program_id", programId).eq("id", nodeId);
+  const { error } = await supabase.schema("programs").from("divisions").delete().eq("program_id", programId).eq("id", nodeId);
 
   if (error) {
     throw new Error(`Failed to delete program node: ${error.message}`);
@@ -524,7 +524,7 @@ export async function updateProgramNodeHierarchyRecord(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .update({
       parent_id: input.parentId,
       node_kind: input.nodeKind,
@@ -545,7 +545,7 @@ export async function updateProgramNodeSettingsRecord(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .update({
       settings_json: input.settingsJson
     })
@@ -568,7 +568,7 @@ export async function updateProgramNodeRecord(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .update({
       name: input.name,
       slug: input.slug,

@@ -226,7 +226,7 @@ The app still needs its runtime Sheets identity for ongoing sync/reconcile after
 
 ## Programs + Forms Architecture
 
-- Programs data lives in `programs`, `program_structure_nodes`, and `program_schedule_blocks`.
+- Programs data lives in `programs`, `divisions`, and `program_schedule_blocks`.
 - Forms data lives in `org_forms`, `org_form_versions`, `org_form_submissions`, and `org_form_submission_entries`.
 - Registration links forms to players and capacity via `program_registrations` and `submit_form_response(...)`.
 - Public discovery and registration routes are canonical at `/{orgSlug}/programs` and `/{orgSlug}/register/{formSlug}`.

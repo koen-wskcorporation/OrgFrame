@@ -200,6 +200,9 @@ export type OrgSitePage = {
   temporaryWindowStartUtc: string | null;
   temporaryWindowEndUtc: string | null;
   sortIndex: number;
+  seoTitle: string | null;
+  metaDescription: string | null;
+  ogImagePath: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -213,6 +216,9 @@ export type OrgManagePage = {
   temporaryWindowStartUtc: string | null;
   temporaryWindowEndUtc: string | null;
   sortIndex: number;
+  seoTitle: string | null;
+  metaDescription: string | null;
+  ogImagePath: string | null;
   createdAt: string;
   updatedAt: string;
 };

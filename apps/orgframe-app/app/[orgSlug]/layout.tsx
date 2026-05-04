@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/src/features/core/layout/components/AppShell";
 import { BrandingCssVarsBridge } from "@/src/features/core/layout/components/BrandingCssVarsBridge";
-import { OrgScopedWorkspaceShell } from "@/src/features/workspace/components/OrgScopedWorkspaceShell";
+import { OrgTopbar } from "@/src/features/core/layout/components/OrgTopbar";
 import { OrgShareProvider } from "@/src/features/org-share/OrgShareProvider";
 import { applyBrandingVars } from "@/src/shared/branding/applyBrandingVars";
 import { getOrgRequestContext } from "@/src/shared/org/getOrgRequestContext";
@@ -24,13 +24,9 @@ export async function generateMetadata({ params }: { params: Promise<{ orgSlug: 
 
 export default async function OrgLayout({
   children,
-  topbar,
-  sidebar,
   params
 }: {
   children: React.ReactNode;
-  topbar: React.ReactNode;
-  sidebar: React.ReactNode;
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
@@ -44,15 +40,16 @@ export default async function OrgLayout({
      * vars still cascade to descendants — prevents a flash of unbranded
      * paint before the BrandingCssVarsBridge runs on the client.
      *
-     * Topbar (OrgHeader) and sidebar (manage nav, etc) come from the
-     * @topbar and @sidebar parallel-route slots — see ./@topbar/default.tsx
-     * and ./@sidebar/default.tsx + ./@sidebar/manage/page.tsx.
+     * The topbar is rendered directly here (not via a parallel-route
+     * slot) so it can't suffer from slot-state bleed across navs.
+     * Sidebars are owned by the route group that needs one — see
+     * manage/layout.tsx + ManageShell.
      */
     <div className="contents" style={brandingVars}>
       <BrandingCssVarsBridge vars={brandingVars as Record<string, string>} />
       <OrgShareProvider orgSlug={orgRequest.org.orgSlug}>
-        <AppShell sidebar={sidebar} topbar={topbar}>
-          <OrgScopedWorkspaceShell orgSlug={orgRequest.org.orgSlug}>{children}</OrgScopedWorkspaceShell>
+        <AppShell topbar={<OrgTopbar orgSlug={orgSlug} />}>
+          {children}
         </AppShell>
       </OrgShareProvider>
     </div>

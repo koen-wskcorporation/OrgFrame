@@ -17,6 +17,7 @@
     "typecheck:web": "npm run typecheck --workspace orgframe-web"
   },
   "dependencies": {
+    "docker": "^1.0.0",
     "eslint-config-next": "^16.2.1",
     "next": "^16.2.4",
     "react": "^19.2.4",

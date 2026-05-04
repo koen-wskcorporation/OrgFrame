@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { PageStack } from "@orgframe/ui/primitives/layout";
 import { PageTabs } from "@orgframe/ui/primitives/page-tabs";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
 import { Button } from "@orgframe/ui/primitives/button";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
 import { getDataSourceByKey } from "@/src/features/data/registry";
@@ -64,43 +63,43 @@ export default async function DataCenterSourcePage({
   const tablesHref = `/${orgSlug}/manage/data/${encodeURIComponent(source.fqKey)}${qs ? `${qs}&view=tables` : "?view=tables"}`;
   const dashboardHref = `/${orgSlug}/manage/data/${encodeURIComponent(source.fqKey)}${qs}`;
 
+  const sourceTabs = (
+    <PageTabs
+      active={view}
+      ariaLabel="Data source views"
+      items={[
+        { key: "dashboard", label: "Dashboard", description: "Charts and KPIs", href: dashboardHref },
+        { key: "tables", label: "Tables", description: "Browse raw records", href: tablesHref }
+      ]}
+    />
+  );
+
   return (
-    <PageStack>
-      <PageHeader
-        description={source.description}
-        showBorder={false}
-        title={source.label}
-        actions={
-          <>
-            <RangeSelector value={rangeKey} />
-            {source.kind === "collection" && can(orgContext.membershipPermissions, "data.write") ? (
-              <CollectionActionsBar
-                orgSlug={orgSlug}
-                collectionId={source.fqKey.replace(/^collection:/, "")}
-                pinned={Boolean(source.pinned)}
-              />
-            ) : null}
-            <Button href={`/${orgSlug}/manage/data`} variant="ghost" size="sm">
-              ← All sources
-            </Button>
-          </>
-        }
-      />
-
-      <PageTabs
-        ariaLabel="Data source views"
-        active={view}
-        items={[
-          { key: "dashboard", label: "Dashboard", description: "Charts and KPIs", href: dashboardHref },
-          { key: "tables", label: "Tables", description: "Browse raw records", href: tablesHref },
-        ]}
-      />
-
+    <ManagePageShell
+      actions={
+        <>
+          <RangeSelector value={rangeKey} />
+          {source.kind === "collection" && can(orgContext.membershipPermissions, "data.write") ? (
+            <CollectionActionsBar
+              collectionId={source.fqKey.replace(/^collection:/, "")}
+              orgSlug={orgSlug}
+              pinned={Boolean(source.pinned)}
+            />
+          ) : null}
+          <Button href={`/${orgSlug}/manage/data`} size="sm" variant="ghost">
+            ← All sources
+          </Button>
+        </>
+      }
+      description={source.description}
+      tabs={sourceTabs}
+      title={source.label}
+    >
       {view === "dashboard" ? (
-        <DashboardView source={source} snapshot={snapshot} layout={layout} />
+        <DashboardView layout={layout} snapshot={snapshot} source={source} />
       ) : (
-        <TablesView source={source} snapshot={snapshot} />
+        <TablesView snapshot={snapshot} source={source} />
       )}
-    </PageStack>
+    </ManagePageShell>
   );
 }

@@ -8,32 +8,28 @@ type AppShellProps = {
    * is omitted from the DOM entirely so there's no extra gap.
    */
   topbar: React.ReactNode;
-  /**
-   * Sidebar slot. When null/false, the body collapses to a single
-   * column. Pass `null` for areas that don't need a sidebar (public
-   * pages, simple item pages).
-   */
-  sidebar: React.ReactNode;
   children: React.ReactNode;
 };
 
 /**
- * Single application shell. Owns the layout-gap padding, the topbar slot,
- * and the body grid (sidebar + content).
+ * Application shell. Owns the layout-gap padding, the sticky topbar,
+ * and the content column.
  *
  *   <main class="app">
  *     ├── <div class="app__topbar">  (only when topbar non-null)
- *     └── <div class="app__body">
- *         ├── <aside class="app__sidebar">  (only when sidebar non-null)
- *         └── <div class="app__content">
- *
- * The topbar is a sibling of the body — when a side panel docks, only
- * `.app__body` shrinks. Nothing else needs to coordinate.
+ *     └── <div class="app__content">
  *
  * Sets `data-scrolled` on the content div based on window scroll, so
- * page-header CSS can compact tabs on scroll.
+ * page-header CSS can compact tabs on scroll. Tracks topbar height
+ * into `--app-topbar-height` so a sticky sidebar (rendered by a
+ * nested layout, e.g. ManageShell) can pin below it.
+ *
+ * Sidebars are NOT owned by this shell — they're rendered by the
+ * route group that needs them (currently just /manage via
+ * ManageShell). This avoids parallel-route slot bleed where a stale
+ * sidebar would persist on routes that don't use one.
  */
-export function AppShell({ topbar, sidebar, children }: AppShellProps) {
+export function AppShell({ topbar, children }: AppShellProps) {
   const [scrolled, setScrolled] = React.useState(false);
   const topbarRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -44,10 +40,6 @@ export function AppShell({ topbar, sidebar, children }: AppShellProps) {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Track the topbar's height into `--app-topbar-height` so the sidebar can
-  // pin at `top: calc(var(--app-topbar-height) + var(--layout-gap))` —
-  // sliding under the topbar's bottom edge once the primary header has
-  // scrolled away. Re-measures on resize and on topbar content changes.
   React.useEffect(() => {
     const node = topbarRef.current;
     if (!node) {
@@ -73,20 +65,12 @@ export function AppShell({ topbar, sidebar, children }: AppShellProps) {
   }, [topbar]);
 
   const hasTopbar = topbar != null && topbar !== false;
-  const hasSidebar = sidebar != null && sidebar !== false;
 
   return (
-    <main
-      className="app"
-      data-no-topbar={hasTopbar ? undefined : "true"}
-      data-no-sidebar={hasSidebar ? undefined : "true"}
-    >
+    <main className="app" data-no-topbar={hasTopbar ? undefined : "true"}>
       {hasTopbar ? <div className="app__topbar" ref={topbarRef}>{topbar}</div> : null}
-      <div className="app__body">
-        {hasSidebar ? <aside className="app__sidebar">{sidebar}</aside> : null}
-        <div className="app__content" data-scrolled={scrolled ? "true" : undefined}>
-          {children}
-        </div>
+      <div className="app__content" data-scrolled={scrolled ? "true" : undefined}>
+        {children}
       </div>
     </main>
   );

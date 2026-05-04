@@ -14,7 +14,6 @@ import {
   getTenantBaseHost,
   getTenantBaseProtocol
 } from "@/src/features/core/layout/lib/orgSwitchHref";
-import { ProgramHeaderBar } from "@/src/features/core/layout/components/ProgramHeaderBar";
 import type { OrgNavItem } from "@/src/features/site/types";
 import type { OrgAdminNavNode } from "@/src/features/core/navigation/config/adminNav";
 import { renderAdminNavNode } from "@/src/features/core/navigation/components/renderAdminNavNode";
@@ -388,8 +387,6 @@ export function OrgHeader({
             ) : null}
           </div>
         </div>
-
-        {!isPageContentEditing ? <ProgramHeaderBar orgSlug={orgSlug} /> : null}
       </div>
     </div>
   );

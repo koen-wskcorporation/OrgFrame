@@ -3,7 +3,7 @@
 import { Pencil, Plus, X } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Badge } from "@orgframe/ui/primitives/badge";
+import { Badge } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { FormField } from "@orgframe/ui/primitives/form-field";

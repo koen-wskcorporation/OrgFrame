@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
-import { PageStack } from "@orgframe/ui/primitives/layout";
-import { getFacilityMapManageDetail } from "@/src/features/facilities/actions";
+import {
+  getFacilityMapManageDetailCached,
+  listFacilitySpaceStatusesCached
+} from "@/src/features/facilities/cached-loaders";
 import { FacilityItemShell } from "@/src/features/facilities/components/FacilityItemShell";
-import { listFacilitySpaceStatuses } from "@/src/features/facilities/db/queries";
 
 export default async function FacilityManageLayout({
   children,
@@ -12,22 +13,20 @@ export default async function FacilityManageLayout({
   params: Promise<{ orgSlug: string; facilityId: string }>;
 }) {
   const { orgSlug, facilityId } = await params;
-  const detail = await getFacilityMapManageDetail(orgSlug, facilityId);
+  const detail = await getFacilityMapManageDetailCached(orgSlug, facilityId);
   if (!detail) {
     notFound();
   }
-  const spaceStatuses = await listFacilitySpaceStatuses(detail.org.orgId);
+  const spaceStatuses = await listFacilitySpaceStatusesCached(detail.org.orgId);
 
   return (
-    <PageStack>
-      <FacilityItemShell
-        canWrite={detail.canWrite}
-        initialFacility={detail.facility}
-        orgSlug={orgSlug}
-        spaceStatuses={spaceStatuses}
-      >
-        {children}
-      </FacilityItemShell>
-    </PageStack>
+    <FacilityItemShell
+      canWrite={detail.canWrite}
+      initialFacility={detail.facility}
+      orgSlug={orgSlug}
+      spaceStatuses={spaceStatuses}
+    >
+      {children}
+    </FacilityItemShell>
   );
 }

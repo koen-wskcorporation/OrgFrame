@@ -1,11 +1,7 @@
-import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { Alert } from "@orgframe/ui/primitives/alert";
-import { PageStack } from "@orgframe/ui/primitives/layout";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
-import { isOrgToolEnabled } from "@/src/features/core/config/tools";
 import { FormsManagePanel } from "@/src/features/forms/components/FormsManagePanel";
 import { listFormsForManage } from "@/src/features/forms/db/queries";
 import { listProgramsForManage } from "@/src/features/programs/db/queries";
@@ -17,34 +13,25 @@ export const metadata: Metadata = {
 
 export default async function OrgManageFormsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
-  const orgContext = await getOrgAuthContext(orgSlug);
-  if (!isOrgToolEnabled(orgContext.toolAvailability, "forms")) {
+  const { orgContext, unavailable } = await gateManageSection(orgSlug, {
+    permission: ["forms.read", "forms.write"],
+    tool: "forms"
+  });
+
+  if (unavailable) {
     return (
-      <PageStack>
-        <PageHeader description="Build, publish, and operate generic and registration forms." showBorder={false} title="Forms" />
+      <ManagePageShell description="Build, publish, and operate generic and registration forms." title="Forms">
         <ToolUnavailablePanel title="Forms" />
-      </PageStack>
+      </ManagePageShell>
     );
   }
-  const canReadForms = can(orgContext.membershipPermissions, "forms.read") || can(orgContext.membershipPermissions, "forms.write");
+
   const canWriteForms = can(orgContext.membershipPermissions, "forms.write");
-
-  if (!canReadForms) {
-    redirect("/forbidden");
-  }
-
+  const canAccessPrograms = can(orgContext.membershipPermissions, "programs.read") || can(orgContext.membershipPermissions, "programs.write");
   const [forms, programs] = await Promise.all([
     listFormsForManage(orgContext.orgId),
-    (can(orgContext.membershipPermissions, "programs.read") || can(orgContext.membershipPermissions, "programs.write"))
-      ? listProgramsForManage(orgContext.orgId)
-      : Promise.resolve([])
+    canAccessPrograms ? listProgramsForManage(orgContext.orgId) : Promise.resolve([])
   ]);
 
-  return (
-    <PageStack>
-      <PageHeader description="Build, publish, and operate generic and registration forms." showBorder={false} title="Forms" />
-      {!canWriteForms ? <Alert variant="info">You have read-only access to forms.</Alert> : null}
-      <FormsManagePanel canWrite={canWriteForms} forms={forms} orgSlug={orgContext.orgSlug} programs={programs} />
-    </PageStack>
-  );
+  return <FormsManagePanel canWrite={canWriteForms} forms={forms} orgSlug={orgSlug} programs={programs} />;
 }

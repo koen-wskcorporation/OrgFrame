@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Sparkles, X } from "lucide-react";
-import { Button } from "@orgframe/ui/primitives/button";
+import { Check } from "lucide-react";
 import { Popup } from "@orgframe/ui/primitives/popup";
 import { Popover } from "@orgframe/ui/primitives/popover";
 import { SpinnerIcon } from "@orgframe/ui/primitives/spinner-icon";
@@ -434,39 +433,6 @@ export function FacilityBookingFullscreen(props: FacilityBookingFullscreenProps)
       size="full"
       subtitle={headerSubtitle}
       title={headerTitle}
-      footer={
-        <>
-          <Button onClick={onClose} type="button" variant="ghost">
-            <X className="h-4 w-4" />
-            Cancel
-          </Button>
-          {aiSuggestions.length > 0 && onSuggestWindow ? (
-            <div className="ml-2 flex flex-wrap items-center gap-1">
-              <span className="inline-flex items-center gap-1 text-xs font-semibold text-text">
-                <Sparkles className="h-3.5 w-3.5 text-accent" />
-                Try:
-              </span>
-              {aiSuggestions.map((suggestion) => (
-                <Button
-                  key={suggestion.startsAtUtc}
-                  onClick={() => onSuggestWindow(suggestion)}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                >
-                  {suggestion.label}
-                </Button>
-              ))}
-            </div>
-          ) : null}
-          <div className="ml-auto">
-            <Button onClick={onClose} type="button">
-              <Check className="h-4 w-4" />
-              Done
-            </Button>
-          </div>
-        </>
-      }
     >
       <div className="flex h-full min-h-0 w-full">
         <div className="relative min-h-0 flex-1 overflow-hidden">

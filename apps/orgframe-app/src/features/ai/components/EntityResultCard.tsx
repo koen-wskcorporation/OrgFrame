@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { CalendarDays, Clock3, User, Users } from "lucide-react";
-import { Badge } from "@orgframe/ui/primitives/badge";
+import { Badge } from "@orgframe/ui/primitives/chip";
 import { Chip } from "@orgframe/ui/primitives/chip";
 import { PersonCard } from "@orgframe/ui/primitives/person-card";
 import { AccountProfileCard } from "@/src/features/core/account/components/AccountProfileCard";
@@ -135,7 +135,7 @@ export function EntityResultCard({ card }: EntityResultCardProps) {
           </p>
           {card.subtitle ? <p className="mt-0.5 text-xs text-text-muted">{card.subtitle}</p> : null}
         </div>
-        <Chip className="normal-case tracking-normal" size="compact" variant="flat">
+        <Chip className="normal-case tracking-normal" size="compact">
           {card.type}
         </Chip>
       </div>
@@ -154,7 +154,7 @@ export function EntityResultCard({ card }: EntityResultCardProps) {
       {card.badges?.length ? (
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           {card.badges.map((badge) => (
-            <Chip className="normal-case tracking-normal" key={`${card.id}:${badge}`} size="compact" variant="flat">
+            <Chip className="normal-case tracking-normal" key={`${card.id}:${badge}`} size="compact">
               {badge}
             </Chip>
           ))}

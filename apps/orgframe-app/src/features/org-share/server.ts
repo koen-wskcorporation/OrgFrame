@@ -215,7 +215,7 @@ async function listProgramTeamNodes(orgId: string): Promise<Array<{
   // See `listOrgHierarchyTargets` for why we avoid the embedded
   // `programs!inner(...)` join. The relation name (`programs`) collides with
   // the schema name (`programs`), surfacing as a misleading
-  // "Could not find the table 'programs.program_structure_nodes' in the
+  // "Could not find the table 'programs.divisions' in the
   //  schema cache" error from the PostgREST resolver.
   const { data: programRows, error: programsError } = await supabase
     .schema("programs").from("programs")
@@ -235,7 +235,7 @@ async function listProgramTeamNodes(orgId: string): Promise<Array<{
   const programIds = programs.map((program) => program.id);
 
   const { data: structureNodes, error: structureError } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .select("id, name, parent_id, program_id, node_kind")
     .in("program_id", programIds);
 
@@ -587,7 +587,7 @@ async function listOrgHierarchyTargets(orgId: string): Promise<ShareTarget[]> {
 
   // Avoid the embedded `programs!inner(...)` join: the embedded relation
   // name (`programs`) collides with the schema name (`programs`) and surfaces
-  // as a misleading "Could not find table 'programs.program_structure_nodes'
+  // as a misleading "Could not find table 'programs.divisions'
   // in the schema cache" error from the resolver. Two plain queries + a JS
   // join sidesteps it. Also returns parent ids so consumers can render
   // hierarchy (teams under divisions, divisions under programs).
@@ -608,7 +608,7 @@ async function listOrgHierarchyTargets(orgId: string): Promise<ShareTarget[]> {
   const programIds = programs.map((program) => program.id);
 
   const { data: structureNodes, error: structureError } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .select("id, name, parent_id, program_id, node_kind")
     .in("program_id", programIds);
 

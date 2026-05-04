@@ -1723,7 +1723,7 @@ async function buildCalendarSourceHierarchy(orgId: string, sources: CalendarSour
   const { data: teamRows, error: teamError } = teamIds.length
     ? await supabase
         .schema("programs").from("program_teams")
-        .select("id, program_id, program_node_id, settings_json, program_structure_nodes(id, name, parent_id, settings_json)")
+        .select("id, program_id, program_node_id, settings_json, divisions(id, name, parent_id, settings_json)")
         .eq("org_id", orgId)
         .in("id", teamIds)
     : { data: [], error: null };
@@ -1747,7 +1747,7 @@ async function buildCalendarSourceHierarchy(orgId: string, sources: CalendarSour
   const programIds = new Set<string>();
 
   for (const row of (teamRows ?? []) as any[]) {
-    const node = Array.isArray(row.program_structure_nodes) ? row.program_structure_nodes[0] : row.program_structure_nodes;
+    const node = Array.isArray(row.divisions) ? row.divisions[0] : row.divisions;
     const divisionId = typeof node?.parent_id === "string" ? node.parent_id : null;
     const teamSettings = asObject(row.settings_json);
     const divisionSettings = asObject(node?.settings_json);
@@ -1773,7 +1773,7 @@ async function buildCalendarSourceHierarchy(orgId: string, sources: CalendarSour
   }
 
   const { data: divisionRows, error: divisionError } = divisionIds.size
-    ? await supabase.schema("programs").from("program_structure_nodes").select("id, program_id, name, settings_json").in("id", Array.from(divisionIds))
+    ? await supabase.schema("programs").from("divisions").select("id, program_id, name, settings_json").in("id", Array.from(divisionIds))
     : { data: [], error: null };
   if (divisionError) {
     throw new Error(`Failed to list division nodes for calendar hierarchy: ${divisionError.message}`);
@@ -2116,7 +2116,7 @@ export async function listOrgActiveTeams(orgId: string): Promise<Array<{ id: str
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
     .schema("programs").from("program_teams")
-    .select("id, program_structure_nodes(name)")
+    .select("id, divisions(name)")
     .eq("org_id", orgId)
     .eq("status", "active")
     .order("created_at", { ascending: true });
@@ -2126,7 +2126,7 @@ export async function listOrgActiveTeams(orgId: string): Promise<Array<{ id: str
   }
 
   return (data ?? []).flatMap((row: any) => {
-    const programNode = Array.isArray(row.program_structure_nodes) ? row.program_structure_nodes[0] : row.program_structure_nodes;
+    const programNode = Array.isArray(row.divisions) ? row.divisions[0] : row.divisions;
     if (!row.id || !programNode?.name) {
       return [];
     }

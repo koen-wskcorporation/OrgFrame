@@ -4,7 +4,7 @@ import { Alert } from "@orgframe/ui/primitives/alert";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { SubmitButton } from "@orgframe/ui/primitives/submit-button";
-import { AuthShell } from "@/src/features/core/auth/components/AuthShell";
+import { CenteredFormShell } from "@/src/features/core/layout/components/CenteredFormShell";
 import { requestPasswordResetAction, updatePasswordFromResetAction } from "@/app/auth/actions";
 
 export const metadata: Metadata = {
@@ -36,7 +36,7 @@ export default async function ResetPage({
   const infoMessage = query.message ? infoMessageByCode[query.message] ?? query.message : null;
 
   return (
-    <AuthShell
+    <CenteredFormShell
       subtitle={isUpdateMode ? "Choose a new account password to finish reset." : "Enter your account email to receive a reset link."}
       title={isUpdateMode ? "Set new password" : "Reset password"}
     >
@@ -70,6 +70,6 @@ export default async function ResetPage({
           </Link>
         </p>
       </div>
-    </AuthShell>
+    </CenteredFormShell>
   );
 }

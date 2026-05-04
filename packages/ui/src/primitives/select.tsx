@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronDown, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, Search, type LucideIcon } from "lucide-react";
+import { Chip, type ChipColor } from "./chip";
 import { formControlDisabledClass, formControlFocusClass, formControlInlineClass, formControlShellClass } from "./form-control";
 import { Popover } from "./popover";
 import { cn } from "./utils";
@@ -16,6 +17,8 @@ export type SelectOption = {
   icon?: LucideIcon;
   statusDot?: "success" | "warning" | "destructive" | "muted";
   meta?: string;
+  /** Chip rendered after the label (trigger + listbox). When `status` is true, the chip renders with a status dot. */
+  chip?: { label: string; color?: ChipColor | string; status?: boolean };
 };
 
 type SelectProps = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "children" | "onChange"> & {
@@ -23,6 +26,8 @@ type SelectProps = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "children
   placeholder?: string;
   variant?: "default" | "inline";
   onChange?: (event: React.ChangeEvent<HTMLSelectElement>) => void;
+  /** When true, replaces the trigger button with a search input that filters options as the user types. */
+  searchable?: boolean;
 };
 
 function resolveInitialValue(options: SelectOption[], providedValue: string | undefined) {
@@ -69,6 +74,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       placeholder = "Select an option",
       variant = "default",
       id,
+      searchable = false,
       ...props
     },
     ref
@@ -80,14 +86,30 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     );
     const [open, setOpen] = React.useState(false);
     const [highlightedIndex, setHighlightedIndex] = React.useState<number>(-1);
+    const [query, setQuery] = React.useState("");
     const rootRef = React.useRef<HTMLDivElement | null>(null);
-    const triggerRef = React.useRef<HTMLButtonElement | null>(null);
+    const buttonTriggerRef = React.useRef<HTMLButtonElement | null>(null);
+    const inputTriggerRef = React.useRef<HTMLInputElement | null>(null);
+    const triggerRef = (searchable ? inputTriggerRef : buttonTriggerRef) as React.RefObject<HTMLElement | null>;
     const selectRef = React.useRef<HTMLSelectElement | null>(null);
     const listboxId = React.useId();
     const selectedValue = String(isControlled ? value ?? "" : uncontrolledValue);
     const enabledOptionIndexes = React.useMemo(() => getEnabledOptionIndexes(options), [options]);
     const selectedIndex = options.findIndex((option) => option.value === selectedValue);
     const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : null;
+
+    const filteredOptions = React.useMemo(() => {
+      if (!searchable) return options;
+      const q = query.trim().toLowerCase();
+      if (!q) return options;
+      return options.filter((option) => option.label.toLowerCase().includes(q));
+    }, [options, query, searchable]);
+
+    React.useEffect(() => {
+      if (!open) {
+        setQuery("");
+      }
+    }, [open]);
 
     function setSelectRef(node: HTMLSelectElement | null) {
       selectRef.current = node;
@@ -181,7 +203,12 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
 
       emitChange(nextValue);
       setOpen(false);
-      triggerRef.current?.focus();
+      setQuery("");
+      if (searchable) {
+        inputTriggerRef.current?.focus();
+      } else {
+        buttonTriggerRef.current?.focus();
+      }
     }
 
     function handleTriggerKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
@@ -261,43 +288,114 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           ))}
         </select>
 
-        <button
-          aria-controls={listboxId}
-          aria-expanded={open}
-          aria-haspopup="listbox"
-          className={cn(
-            variant === "inline"
-              ? `flex h-auto w-full items-center justify-between gap-2 ${formControlInlineClass} px-0 py-0 text-left text-inherit transition-colors duration-150 focus:outline-none focus:ring-0 focus:ring-offset-0`
-              : `flex h-10 w-full items-center justify-between gap-2 rounded-control px-3 py-2 text-left text-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-canvas ${formControlShellClass} ${formControlFocusClass}`,
-            formControlDisabledClass,
-            !selectedOption ? "text-text-muted" : "",
-            className
-          )}
-          disabled={disabled}
-          id={id}
-          onClick={() => {
-            triggerRef.current?.focus();
-            setOpen((current) => !current);
-          }}
-          onKeyDown={handleTriggerKeyDown}
-          ref={triggerRef}
-          type="button"
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            {selectedOption?.imageSrc ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                alt={selectedOption.imageAlt ?? ""}
-                className="h-4 w-4 shrink-0 rounded-[4px] border border-border/70 object-cover"
-                src={selectedOption.imageSrc}
-              />
+        {searchable ? (
+          <div
+            className={cn(
+              variant === "inline"
+                ? `flex h-auto w-full items-center gap-2 ${formControlInlineClass} px-0 py-0 text-inherit`
+                : `flex h-10 w-full items-center gap-2 rounded-control px-3 py-2 text-sm ${formControlShellClass}`,
+              formControlDisabledClass,
+              "focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-canvas",
+              className
+            )}
+          >
+            <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-text-muted" />
+            <input
+              aria-controls={listboxId}
+              aria-expanded={open}
+              aria-haspopup="listbox"
+              autoComplete="off"
+              className="min-w-0 flex-1 bg-transparent text-text placeholder:text-text-muted focus:outline-none disabled:cursor-not-allowed"
+              disabled={disabled}
+              id={id}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                if (!open) setOpen(true);
+              }}
+              onFocus={() => {
+                if (!disabled) setOpen(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  if (open) {
+                    event.preventDefault();
+                    setOpen(false);
+                  }
+                  return;
+                }
+                if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter") {
+                  // Defer to the shared listbox keyboard handling.
+                  handleTriggerKeyDown(event as unknown as React.KeyboardEvent<HTMLButtonElement>);
+                }
+              }}
+              placeholder={selectedOption?.label ?? placeholder}
+              ref={inputTriggerRef}
+              type="search"
+              value={query}
+            />
+            {selectedOption?.chip && !query ? (
+              <Chip color={selectedOption.chip.color} size="compact" status={selectedOption.chip.status} showDot={selectedOption.chip.status ? undefined : false}>
+                {selectedOption.chip.label}
+              </Chip>
             ) : null}
-            {selectedOption?.icon ? <selectedOption.icon className="h-4 w-4 shrink-0 text-text-muted" /> : null}
-            {selectedOption?.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(selectedOption.statusDot))} /> : null}
-            <span className="truncate">{selectedOption?.label ?? placeholder}</span>
-          </span>
-          <ChevronDown className={cn(variant === "inline" ? "h-3.5 w-3.5" : "h-4 w-4", "shrink-0 text-text-muted transition-transform", open ? "rotate-180" : "")} />
-        </button>
+            <ChevronDown
+              className={cn(
+                variant === "inline" ? "h-3.5 w-3.5" : "h-4 w-4",
+                "shrink-0 text-text-muted transition-transform",
+                open ? "rotate-180" : ""
+              )}
+            />
+          </div>
+        ) : (
+          <button
+            aria-controls={listboxId}
+            aria-expanded={open}
+            aria-haspopup="listbox"
+            className={cn(
+              variant === "inline"
+                ? `flex h-auto w-full items-center justify-between gap-2 ${formControlInlineClass} px-0 py-0 text-left text-inherit transition-colors duration-150 focus:outline-none focus:ring-0 focus:ring-offset-0`
+                : `flex h-10 w-full items-center justify-between gap-2 rounded-control px-3 py-2 text-left text-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-canvas ${formControlShellClass} ${formControlFocusClass}`,
+              formControlDisabledClass,
+              !selectedOption ? "text-text-muted" : "",
+              className
+            )}
+            disabled={disabled}
+            id={id}
+            onClick={() => {
+              buttonTriggerRef.current?.focus();
+              setOpen((current) => !current);
+            }}
+            onKeyDown={handleTriggerKeyDown}
+            ref={buttonTriggerRef}
+            type="button"
+          >
+            <span className="flex min-w-0 flex-1 items-center gap-2">
+              {selectedOption?.imageSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  alt={selectedOption.imageAlt ?? ""}
+                  className="h-4 w-4 shrink-0 rounded-[4px] border border-border/70 object-cover"
+                  src={selectedOption.imageSrc}
+                />
+              ) : null}
+              {selectedOption?.icon ? <selectedOption.icon className="h-4 w-4 shrink-0 text-text-muted" /> : null}
+              {selectedOption?.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(selectedOption.statusDot))} /> : null}
+              <span className="min-w-0 flex-1 truncate">{selectedOption?.label ?? placeholder}</span>
+              {selectedOption?.chip ? (
+                <Chip color={selectedOption.chip.color} showDot={false} size="compact">
+                  {selectedOption.chip.label}
+                </Chip>
+              ) : null}
+            </span>
+            <ChevronDown
+              className={cn(
+                variant === "inline" ? "h-3.5 w-3.5" : "h-4 w-4",
+                "shrink-0 text-text-muted transition-transform",
+                open ? "rotate-180" : ""
+              )}
+            />
+          </button>
+        )}
 
         <Popover
           anchorRef={triggerRef}
@@ -312,7 +410,11 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           placement="bottom-start"
         >
           <ul className="max-h-60 overflow-y-auto py-1.5" id={listboxId} role="listbox">
-            {options.map((option, index) => {
+            {filteredOptions.length === 0 ? (
+              <li className="px-3 py-2 text-xs text-text-muted">No matches.</li>
+            ) : null}
+            {filteredOptions.map((option) => {
+              const index = options.indexOf(option);
               const isSelected = option.value === selectedValue;
               const isHighlighted = index === highlightedIndex;
               const itemDisabled = Boolean(option.disabled);
@@ -347,6 +449,11 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                     {option.icon ? <option.icon className="h-4 w-4 shrink-0 text-text-muted" /> : null}
                     {option.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(option.statusDot))} /> : null}
                     <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                    {option.chip ? (
+                      <Chip color={option.chip.color} size="compact" status={option.chip.status} showDot={option.chip.status ? undefined : false}>
+                        {option.chip.label}
+                      </Chip>
+                    ) : null}
                     {option.meta ? <span className="shrink-0 text-xs text-text-muted">{option.meta}</span> : null}
                     {isSelected ? <Check className="h-4 w-4 shrink-0 text-text-muted" /> : null}
                   </button>

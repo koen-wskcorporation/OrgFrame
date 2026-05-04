@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Popup } from "@orgframe/ui/primitives/popup";
 import { useToast } from "@orgframe/ui/primitives/toast";
-import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { saveFacilityMapAction, updateFacilityAction } from "@/src/features/facilities/actions";
 import type {
   Facility,
@@ -25,6 +25,12 @@ type Props = {
   /** Spaces scoped to this facility (the loader filters by `facility_id`). */
   spaces: FacilitySpace[];
   spaceStatuses: FacilitySpaceStatusDef[];
+  /** When true the full-screen editor popup opens immediately on mount. */
+  defaultEditorOpen?: boolean;
+  /** Called when the editor popup fully closes (after unsaved-changes check). */
+  onEditorClose?: () => void;
+  /** When true the read-only preview card is not rendered. */
+  hidePreview?: boolean;
 };
 
 function defaultTimezone() {
@@ -81,7 +87,10 @@ export function FacilityMapWorkspace({
   facility: initialFacility,
   canWrite,
   spaces: initialSpaces,
-  spaceStatuses
+  spaceStatuses,
+  defaultEditorOpen = false,
+  onEditorClose,
+  hidePreview = false
 }: Props) {
   const { toast } = useToast();
   const [isSaving, startSaving] = useTransition();
@@ -102,7 +111,7 @@ export function FacilityMapWorkspace({
   const [panelSpaceId, setPanelSpaceId] = useState<string | null>(null);
 
   // Editor popup, status manager, location editor.
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isEditorOpen, setIsEditorOpen] = useState(defaultEditorOpen);
   const [isStatusManagerOpen, setIsStatusManagerOpen] = useState(false);
   const [isLocationPopupOpen, setIsLocationPopupOpen] = useState(false);
   const [savingLocation, setSavingLocation] = useState(false);
@@ -214,7 +223,7 @@ export function FacilityMapWorkspace({
   }
 
   function attemptCloseEditor() {
-    if (!draft.isDirty) { setIsEditorOpen(false); return; }
+    if (!draft.isDirty) { setIsEditorOpen(false); onEditorClose?.(); return; }
     const ok = typeof window !== "undefined"
       ? window.confirm("You have unsaved changes. Discard them and close?")
       : true;
@@ -223,6 +232,7 @@ export function FacilityMapWorkspace({
     setSelectedShapeId(null);
     setPanelSpaceId(null);
     setIsEditorOpen(false);
+    onEditorClose?.();
   }
 
   // Side-panel update/delete from FacilitySpacePanel. For server-saved
@@ -290,10 +300,10 @@ export function FacilityMapWorkspace({
   const titleNode = <span className="inline-flex items-center gap-2"><span>Facility Map</span></span>;
 
   return (
-    <div className="ui-stack-page">
-      {!canWrite ? <Alert variant="info">You have read-only access to the facility map.</Alert> : null}
+    <div className={hidePreview ? "" : "ui-stack-page"}>
+      {!hidePreview && !canWrite ? <Alert variant="info">You have read-only access to the facility map.</Alert> : null}
 
-      <WorkspaceCardShell
+      {!hidePreview ? <ManageSection
         contentClassName="flex flex-col"
         description="Read-only preview, auto-fit to your spaces. Click Edit to open the full canvas."
         title={titleNode}
@@ -321,7 +331,7 @@ export function FacilityMapWorkspace({
             />
           ) : null}
         </div>
-      </WorkspaceCardShell>
+      </ManageSection> : null}
 
       <Popup
         closeOnBackdrop={false}

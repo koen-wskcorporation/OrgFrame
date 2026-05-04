@@ -4,19 +4,24 @@ import * as React from "react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { CalendarPicker } from "@orgframe/ui/primitives/calendar-picker";
 import { Chip } from "@orgframe/ui/primitives/chip";
+import { EntityChip } from "@orgframe/ui/primitives/entity-chip";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Select } from "@orgframe/ui/primitives/select";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { Plus, X } from "lucide-react";
 import { WizardChrome } from "@/src/shared/components/CreateWizard";
-import { EntityLinkPicker } from "@/src/features/org-share/components/EntityLinkPicker";
-import type { ShareTarget } from "@/src/features/org-share/types";
+import { listOrgShareCatalogAction } from "@/src/features/org-share/actions";
+import type { ShareTarget, ShareTargetType } from "@/src/features/org-share/types";
 import {
   createCalendarEntryAction,
   createManualOccurrenceAction,
+  deleteCalendarEntryAction,
+  deleteRecurringOccurrenceAction,
   setOccurrenceFacilityAllocationsAction,
   setRuleFacilityAllocationsAction,
+  updateCalendarEntryAction,
   updateOccurrenceAction,
+  updateRecurringOccurrenceAction,
   upsertCalendarRuleAction
 } from "@/src/features/calendar/actions";
 import type {
@@ -44,7 +49,7 @@ import {
   buildSpaceById,
   formatFacilityLocation,
   getFacilityAddress,
-  resolveFacilityStatusDot,
+  resolveRootSpaceId,
   type FacilityBookingSelection
 } from "@/src/features/calendar/components/facility-booking-utils";
 import type { CalendarQuickAddDraft } from "@/src/features/calendar/components/Calendar";
@@ -55,14 +60,30 @@ const ALL_ENTRY_TYPES: readonly CalendarEntryTypeOption[] = ["event", "practice"
 
 // Order matters: schedule comes before location/booking so the date/time
 // constraints are already set when the user opens the facility booking view.
-const CREATE_SCREENS = [
-  { key: "basics", label: "Basics" },
-  { key: "link", label: "Link" },
-  { key: "schedule", label: "Schedule" },
-  { key: "location", label: "Location" }
-] as const;
+// `type` and `basics` are conditional — see `buildCreateScreens` below.
+type CreateScreenKey = "type" | "basics" | "link" | "schedule" | "location";
 
-type CreateScreenKey = (typeof CREATE_SCREENS)[number]["key"];
+const SCREEN_LABELS: Record<CreateScreenKey, string> = {
+  type: "Type",
+  basics: "Basics",
+  link: "Link",
+  schedule: "Schedule",
+  location: "Location"
+};
+
+function buildCreateScreens(
+  showTypePicker: boolean,
+  entryType: CalendarEntryTypeOption,
+  forceBasics = false
+): Array<{ key: CreateScreenKey; label: string }> {
+  const keys: CreateScreenKey[] = [];
+  if (showTypePicker) keys.push("type");
+  // In edit mode (forceBasics), the title is always editable — even for
+  // practice/game entries that auto-generated their title at create time.
+  if (entryType === "event" || forceBasics) keys.push("basics");
+  keys.push("link", "location", "schedule");
+  return keys.map((key) => ({ key, label: SCREEN_LABELS[key] }));
+}
 
 const ENTRY_TYPE_LABELS: Record<CalendarEntryTypeOption, string> = {
   event: "Event",
@@ -72,6 +93,38 @@ const ENTRY_TYPE_LABELS: Record<CalendarEntryTypeOption, string> = {
 
 function targetKey(target: ShareTarget) {
   return `${target.type}:${target.id}`;
+}
+
+function shareTargetTypeLabel(type: ShareTargetType) {
+  switch (type) {
+    case "team":
+      return "Team";
+    case "division":
+      return "Division";
+    case "program":
+      return "Program";
+    case "person":
+      return "Person";
+    case "admin":
+      return "Admin";
+    case "group":
+      return "Group";
+    default:
+      return type;
+  }
+}
+
+function shareTargetChipColor(type: ShareTargetType) {
+  switch (type) {
+    case "program":
+      return "yellow";
+    case "division":
+      return "red";
+    case "team":
+      return "green";
+    default:
+      return "neutral";
+  }
 }
 
 function toLocalInputValue(value: string) {
@@ -92,6 +145,21 @@ function localInputToUtcIso(value: string): string | null {
     return null;
   }
   return date.toISOString();
+}
+
+// Round forward to the next half-hour boundary (e.g. 10:07 → 10:30, 10:30 → 10:30).
+function nextHalfHour(now: Date): Date {
+  const next = new Date(now);
+  next.setSeconds(0, 0);
+  const minutes = next.getMinutes();
+  if (minutes === 0 || minutes === 30) return next;
+  if (minutes < 30) {
+    next.setMinutes(30);
+  } else {
+    next.setMinutes(0);
+    next.setHours(next.getHours() + 1);
+  }
+  return next;
 }
 
 // Helpers for splitting / merging date and time portions of a UTC ISO string.
@@ -153,6 +221,13 @@ export type UseCalendarEntryComposerOptions = {
 
 export type CalendarEntryComposerHandle = {
   open: (draft: CalendarQuickAddDraft) => void;
+  /**
+   * Open the composer in edit mode for an existing occurrence + entry. The
+   * wizard renders the same step UI as create, but submit calls update
+   * actions and the steps are freely navigable. Used as the unified detail /
+   * edit surface across calendar workspaces.
+   */
+  openForEdit: (input: { occurrence: CalendarOccurrence; entry: CalendarEntry }) => void;
   close: () => void;
   isOpen: boolean;
   element: React.ReactNode;
@@ -196,8 +271,15 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
   const initialEntryType = (defaultEntryType ?? allowedEntryTypes[0] ?? "event") as CalendarEntryTypeOption;
 
   const [quickAddDraft, setQuickAddDraft] = React.useState<(CalendarQuickAddDraft & { open: boolean }) | null>(null);
-  const [createScreen, setCreateScreen] = React.useState<CreateScreenKey>("basics");
   const [quickEntryType, setQuickEntryType] = React.useState<CalendarEntryTypeOption>(initialEntryType);
+  const showTypePicker = allowedEntryTypes.length > 1;
+  const initialScreen: CreateScreenKey = showTypePicker
+    ? "type"
+    : initialEntryType === "event"
+      ? "basics"
+      : "link";
+  const [createScreen, setCreateScreen] = React.useState<CreateScreenKey>(initialScreen);
+  const [shareCatalog, setShareCatalog] = React.useState<ShareTarget[] | null>(null);
   const [linkTargets, setLinkTargets] = React.useState<ShareTarget[]>([]);
   const [linkError, setLinkError] = React.useState<string | null>(null);
   const [locationDraft, setLocationDraft] = React.useState("");
@@ -214,6 +296,15 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
   );
   const [isSaving, startSaving] = React.useTransition();
 
+  // Edit mode — when set, the wizard is editing an existing entry/occurrence
+  // instead of creating a new one. Submit dispatches update actions and the
+  // stepper is freely navigable.
+  const [editing, setEditing] = React.useState<{
+    occurrence: CalendarOccurrence;
+    entry: CalendarEntry;
+  } | null>(null);
+  const [editScope, setEditScope] = React.useState<"occurrence" | "following" | "series">("series");
+
   const optimisticIdRef = React.useRef(0);
   const pendingOccurrenceUpdatesRef = React.useRef(new Map<string, { startsAtUtc: string; endsAtUtc: string; timezone: string }>());
 
@@ -221,6 +312,26 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
   React.useEffect(() => {
     setLinkError(null);
   }, [quickEntryType]);
+
+  // Background-load the share catalog once the wizard opens, so the link step
+  // is ready by the time the user reaches it. Cached by orgSlug.
+  const wizardOpen = Boolean(quickAddDraft?.open);
+  React.useEffect(() => {
+    if (!wizardOpen || shareCatalog !== null) return;
+    let cancelled = false;
+    listOrgShareCatalogAction({ orgSlug, requestedTypes: ["team", "division", "program"] })
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.ok) {
+          setShareCatalog([]);
+          return;
+        }
+        setShareCatalog(result.data.options);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgSlug, wizardOpen, shareCatalog]);
 
   // Auto-generate the title for non-event entries from the linked entities.
   // Event titles remain user-controlled; switching back to "event" preserves
@@ -318,7 +429,8 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
   function open(draft: CalendarQuickAddDraft) {
     onSelectedOccurrenceChange?.(null);
     setQuickAddDraft({ ...draft, open: true });
-    setCreateScreen("basics");
+    const startType = (defaultEntryType ?? allowedEntryTypes[0] ?? "event") as CalendarEntryTypeOption;
+    setCreateScreen(showTypePicker ? "type" : startType === "event" ? "basics" : "link");
     if (defaultFacilityId) {
       setLocationMode("facility");
       setSelectedFacilityId(defaultFacilityId);
@@ -339,12 +451,102 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
 
   function close() {
     setQuickAddDraft(null);
-    setCreateScreen("basics");
+    setCreateScreen(initialScreen);
+    setEditing(null);
     onSelectedOccurrenceChange?.(null);
+  }
+
+  function openForEdit({ occurrence, entry }: { occurrence: CalendarOccurrence; entry: CalendarEntry }) {
+    onSelectedOccurrenceChange?.(occurrence.id);
+
+    // Hydrate the wizard state from the entity. The wizard renders the same
+    // step UI; in edit mode the stepper is freely navigable and submit calls
+    // update actions instead of create actions.
+    setQuickAddDraft({
+      title: entry.title,
+      startsAtUtc: occurrence.startsAtUtc,
+      endsAtUtc: occurrence.endsAtUtc,
+      open: true
+    });
+    setQuickEntryType(entry.entryType as CalendarEntryTypeOption);
+
+    // Links: hydrate from settings_json.links + the host team if present.
+    const settingsLinksRaw = (entry.settingsJson as Record<string, unknown> | undefined)?.links;
+    const settingsLinks: ShareTarget[] = Array.isArray(settingsLinksRaw)
+      ? settingsLinksRaw
+          .map((target) => {
+            if (!target || typeof target !== "object") return null;
+            const candidate = target as Record<string, unknown>;
+            if (typeof candidate.id !== "string" || typeof candidate.type !== "string" || typeof candidate.label !== "string") return null;
+            return { id: candidate.id, type: candidate.type as ShareTarget["type"], label: candidate.label } satisfies ShareTarget;
+          })
+          .filter((target): target is ShareTarget => target !== null)
+      : [];
+    setLinkTargets(settingsLinks);
+    setLinkError(null);
+
+    // Location: pre-populate from entry settings_json.location and any
+    // existing facility allocations.
+    const existingAllocations = readModel.allocations.filter((allocation) => allocation.occurrenceId === occurrence.id);
+    if (existingAllocations.length > 0) {
+      const firstSpaceId = existingAllocations[0]!.spaceId;
+      const rootId = resolveRootSpaceId(firstSpaceId, spaceById);
+      if (rootId) {
+        setLocationMode("facility");
+        setSelectedFacilityId(rootId);
+      } else {
+        setLocationMode("tbd");
+        setSelectedFacilityId("");
+      }
+      setFacilitySelections(
+        existingAllocations.map((allocation) => ({
+          spaceId: allocation.spaceId,
+          configurationId: allocation.configurationId,
+          lockMode: allocation.lockMode,
+          allowShared: allocation.allowShared,
+          notes: typeof (allocation.metadataJson as Record<string, unknown> | undefined)?.notes === "string"
+            ? ((allocation.metadataJson as Record<string, unknown>).notes as string)
+            : undefined
+        }))
+      );
+    } else {
+      const rawLocation = (entry.settingsJson as Record<string, unknown> | undefined)?.location;
+      const trimmed = typeof rawLocation === "string" ? rawLocation.trim() : "";
+      if (trimmed) {
+        setLocationMode("other");
+        setLocationDraft(trimmed);
+      } else {
+        setLocationMode("tbd");
+        setLocationDraft("");
+      }
+      setSelectedFacilityId("");
+      setFacilitySelections([]);
+    }
+
+    // Recurrence: rebuild the rule draft from the occurrence window. The
+    // schedule step shows a scope select when sourceRuleId is set.
+    setRuleDraft(syncRuleDraftWithWindow(
+      buildRuleDraftFromWindow(occurrence.startsAtUtc, occurrence.endsAtUtc, occurrence.timezone),
+      occurrence.startsAtUtc,
+      occurrence.endsAtUtc,
+      occurrence.timezone
+    ));
+    setEditScope("series");
+
+    setEditing({ occurrence, entry });
+    // Edit mode opens on basics so the user lands on the most-edited fields
+    // (title for events; for practice/game basics is hidden but the stepper
+    // is free-nav so they can jump anywhere immediately).
+    setCreateScreen(entry.entryType === "event" ? "basics" : "link");
   }
 
   function submit() {
     if (!quickAddDraft) {
+      return;
+    }
+
+    if (editing) {
+      submitEdit();
       return;
     }
 
@@ -449,18 +651,6 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
     onSelectedOccurrenceChange?.(optimisticOccurrenceId);
 
     startSaving(async () => {
-      if (linkRequired && !resolvedHostTeamId) {
-        // game/practice need a team link; UI validation should have caught this,
-        // but guard at the action boundary too.
-        removeOptimistic(optimisticEntryId, optimisticOccurrenceId);
-        toast({
-          title: "Team link required",
-          description: `Link a team to this ${quickEntryType} before creating it.`,
-          variant: "destructive"
-        });
-        return;
-      }
-
       const entryResult = await createCalendarEntryAction({
         orgSlug,
         sourceId: null,
@@ -624,17 +814,208 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
     });
   }
 
+  function submitEdit() {
+    if (!editing || !quickAddDraft) return;
+    const { occurrence, entry } = editing;
+    const draft = quickAddDraft;
+    const nextTitle = draft.title.trim();
+    if (!nextTitle) {
+      toast({ title: "Title required", description: "Add a title before saving.", variant: "destructive" });
+      setCreateScreen("basics");
+      return;
+    }
+    if (new Date(draft.endsAtUtc).getTime() <= new Date(draft.startsAtUtc).getTime()) {
+      toast({ title: "Invalid time range", description: "End time must be after start time.", variant: "destructive" });
+      setCreateScreen("schedule");
+      return;
+    }
+
+    const allLinks: ShareTarget[] = [...lockedLinks, ...linkTargets];
+    const resolvedHostTeamId = allLinks.find((target) => target.type === "team")?.id ?? entry.hostTeamId;
+    const locationValue = locationDraft.trim();
+    const startParts = toLocalParts(draft.startsAtUtc, occurrence.timezone);
+    const endParts = toLocalParts(draft.endsAtUtc, occurrence.timezone);
+
+    if (occurrence.sourceRuleId) {
+      // Recurring: a single action takes the recurrence draft + scope and
+      // applies the change to occurrence/following/series as the user picks.
+      startSaving(async () => {
+        const result = await updateRecurringOccurrenceAction({
+          orgSlug,
+          occurrenceId: occurrence.id,
+          editScope,
+          entryType: entry.entryType,
+          title: nextTitle,
+          summary: entry.summary ?? "",
+          visibility: entry.visibility,
+          status: entry.status,
+          hostTeamId: resolvedHostTeamId,
+          timezone: occurrence.timezone,
+          location: locationValue,
+          localDate: startParts.localDate,
+          localStartTime: startParts.localTime,
+          localEndTime: endParts.localTime,
+          metadataJson: occurrence.metadataJson,
+          recurrence: {
+            mode: ruleDraft.repeatEnabled ? "repeating_pattern" : ruleDraft.mode,
+            timezone: ruleDraft.timezone,
+            startDate: ruleDraft.startDate,
+            endDate: ruleDraft.endDate,
+            startTime: ruleDraft.startTime,
+            endTime: ruleDraft.endTime,
+            intervalCount: ruleDraft.intervalCount,
+            intervalUnit: ruleDraft.intervalUnit,
+            byWeekday: ruleDraft.byWeekday,
+            byMonthday: ruleDraft.byMonthday,
+            endMode: ruleDraft.endMode,
+            untilDate: ruleDraft.untilDate,
+            maxOccurrences: ruleDraft.maxOccurrences ? Number.parseInt(ruleDraft.maxOccurrences, 10) : null,
+            configJson: { specificDates: ruleDraft.specificDates }
+          },
+          copyForwardInvites: true,
+          copyForwardFacilities: true
+        });
+        if (!result.ok) {
+          toast({ title: "Unable to update event", description: result.error, variant: "destructive" });
+          refreshWorkspace();
+          return;
+        }
+        // Allocations are scope-bound to the rule when scope === "series";
+        // for occurrence/following we re-apply per-occurrence allocations.
+        if (editScope === "occurrence") {
+          await setOccurrenceFacilityAllocationsAction({
+            orgSlug,
+            occurrenceId: occurrence.id,
+            allocations: facilitySelections
+          });
+        }
+        close();
+        refreshWorkspace("Event updated");
+      });
+      return;
+    }
+
+    startSaving(async () => {
+      const entryUpdate = await updateCalendarEntryAction({
+        orgSlug,
+        entryId: entry.id,
+        sourceId: entry.sourceId,
+        purpose: entry.purpose,
+        audience: entry.audience,
+        entryType: entry.entryType,
+        title: nextTitle,
+        summary: entry.summary ?? "",
+        visibility: entry.visibility,
+        status: entry.status,
+        hostTeamId: resolvedHostTeamId,
+        timezone: entry.defaultTimezone,
+        location: locationValue
+      });
+      if (!entryUpdate.ok) {
+        toast({ title: "Unable to update event", description: entryUpdate.error, variant: "destructive" });
+        refreshWorkspace();
+        return;
+      }
+
+      const occurrenceUpdate = await updateOccurrenceAction({
+        orgSlug,
+        occurrenceId: occurrence.id,
+        entryId: occurrence.entryId,
+        timezone: occurrence.timezone,
+        localDate: startParts.localDate,
+        localStartTime: startParts.localTime,
+        localEndTime: endParts.localTime,
+        metadataJson: occurrence.metadataJson
+      });
+      if (!occurrenceUpdate.ok) {
+        toast({ title: "Unable to update timing", description: occurrenceUpdate.error, variant: "destructive" });
+        refreshWorkspace();
+        return;
+      }
+
+      const allocationResult = await setOccurrenceFacilityAllocationsAction({
+        orgSlug,
+        occurrenceId: occurrence.id,
+        allocations: facilitySelections
+      });
+      if (!allocationResult.ok) {
+        toast({ title: "Unable to update facility booking", description: allocationResult.error, variant: "destructive" });
+      }
+
+      close();
+      refreshWorkspace("Event updated");
+    });
+  }
+
+  function submitDelete() {
+    if (!editing) return;
+    const { occurrence, entry } = editing;
+    if (typeof window !== "undefined" && !window.confirm("Delete this event?")) return;
+    startSaving(async () => {
+      if (occurrence.sourceRuleId) {
+        const result = await deleteRecurringOccurrenceAction({
+          orgSlug,
+          occurrenceId: occurrence.id,
+          deleteScope: editScope
+        });
+        if (!result.ok) {
+          toast({ title: "Unable to delete event", description: result.error, variant: "destructive" });
+          refreshWorkspace();
+          return;
+        }
+      } else {
+        const result = await deleteCalendarEntryAction({ orgSlug, entryId: entry.id });
+        if (!result.ok) {
+          toast({ title: "Unable to delete event", description: result.error, variant: "destructive" });
+          refreshWorkspace();
+          return;
+        }
+      }
+      close();
+      refreshWorkspace("Event deleted");
+    });
+  }
+
   const isOpen = Boolean(quickAddDraft?.open);
-  const showTypePicker = allowedEntryTypes.length > 1;
   const linkRequired = quickEntryType === "practice" || quickEntryType === "game";
   const allLinks = React.useMemo<ShareTarget[]>(() => [...lockedLinks, ...linkTargets], [lockedLinks, linkTargets]);
   const lockedKeys = React.useMemo(() => new Set(lockedLinks.map(targetKey)), [lockedLinks]);
   const linkStepValid = !linkRequired || allLinks.length > 0;
+  // When a facility is chosen, require at least one space booking before
+  // advancing past the location step.
+  const locationStepValid = locationMode !== "facility" || facilitySelections.length > 0;
 
-  const screenIndex = CREATE_SCREENS.findIndex((screen) => screen.key === createScreen);
+  const screens = React.useMemo(
+    () => buildCreateScreens(showTypePicker && !editing, quickEntryType, Boolean(editing)),
+    [showTypePicker, quickEntryType, editing]
+  );
+
+  // If the active screen is no longer in the list (e.g. user switched type
+  // away from "event" while on "basics"), snap forward to the next valid one.
+  React.useEffect(() => {
+    if (!screens.some((screen) => screen.key === createScreen)) {
+      setCreateScreen(screens[0]?.key ?? "link");
+    }
+  }, [screens, createScreen]);
+
+  const screenIndex = screens.findIndex((screen) => screen.key === createScreen);
 
   function removeLink(target: ShareTarget) {
     setLinkTargets((current) => current.filter((item) => targetKey(item) !== targetKey(target)));
+  }
+
+  function openFacilityBooking() {
+    // When a user opens the fullscreen picker, jump the wizard to the
+    // schedule step (its panel re-docks inside the popup) and seed the
+    // window with the next half-hour from "now" if the draft still holds
+    // the open-time placeholder.
+    const start = nextHalfHour(new Date());
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const startIso = start.toISOString();
+    const endIso = end.toISOString();
+    setQuickAddDraft((current) => (current ? { ...current, startsAtUtc: startIso, endsAtUtc: endIso, open: true } : current));
+    setCreateScreen("schedule");
+    setFacilityDialogOpen(true);
   }
 
   const element = (
@@ -660,140 +1041,194 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
       <WizardChrome
         canAdvance={Boolean(
           canWrite &&
-            // Title is required everywhere EXCEPT the basics step when the
-            // entry type is practice/game — those titles get auto-generated
-            // from the linked teams on the next step. If we required a title
-            // here the user would be stuck (can't type, can't advance).
-            (createScreen === "basics" && quickEntryType !== "event"
-              ? true
-              : Boolean(quickAddDraft?.title?.trim())) &&
-            (createScreen !== "link" || linkStepValid)
+            // Title is only required on the basics step (which is itself only
+            // shown for "event"). Other steps don't gate on the title since
+            // practice/game titles are auto-generated from links.
+            (createScreen === "basics" ? Boolean(quickAddDraft?.title?.trim()) : true) &&
+            (createScreen !== "link" || linkStepValid) &&
+            (createScreen !== "location" || locationStepValid)
         )}
         currentStepId={createScreen}
-        onBack={() => setCreateScreen(CREATE_SCREENS[Math.max(0, screenIndex - 1)]?.key ?? "basics")}
+        customFooter={
+          editing ? (
+            <>
+              <Button onClick={close} type="button" variant="ghost" disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button
+                disabled={!canWrite || isSaving}
+                onClick={submitDelete}
+                type="button"
+                variant="ghost"
+              >
+                Delete
+              </Button>
+              <div className="ml-auto">
+                <Button disabled={!canWrite || isSaving} loading={isSaving} onClick={submit} type="button">
+                  Save changes
+                </Button>
+              </div>
+            </>
+          ) : undefined
+        }
+        mode={editing ? "edit" : "create"}
+        onBack={() => setCreateScreen(screens[Math.max(0, screenIndex - 1)]?.key ?? screens[0]?.key ?? "link")}
         onClose={close}
-        onNext={() => setCreateScreen(CREATE_SCREENS[Math.min(CREATE_SCREENS.length - 1, screenIndex + 1)]?.key ?? "location")}
+        onNext={() =>
+          setCreateScreen(
+            screens[Math.min(screens.length - 1, screenIndex + 1)]?.key ?? screens[screens.length - 1]?.key ?? "location"
+          )
+        }
         onStepChange={(id) => setCreateScreen(id as CreateScreenKey)}
         onSubmit={submit}
         open={isOpen}
-        steps={CREATE_SCREENS.map((screen) => ({ id: screen.key, label: screen.label }))}
-        submitLabel="Create event"
+        steps={screens.map((screen) => ({ id: screen.key, label: screen.label }))}
+        submitLabel={editing ? "Save changes" : "Create event"}
         submitting={isSaving}
-        subtitle="Build the event interactively: time, location, spaces, and recurrence."
-        title="Create Event"
+        subtitle={
+          editing ? "Edit any step to update this event." : "Build the event interactively: time, location, spaces, and recurrence."
+        }
+        title={editing ? editing.entry.title || "Edit event" : "Create Event"}
       >
         {isOpen && quickAddDraft ? (
           <ScrollableSheetBody className="space-y-4 pr-1">
-            {createScreen === "basics" ? (
-              <>
-                {quickEntryType === "event" ? (
-                  <label className="space-y-1 text-xs text-text-muted">
-                    <span>Title</span>
-                    <Input
-                      onChange={(event) =>
-                        setQuickAddDraft((current) =>
-                          current ? { ...current, title: event.target.value, open: true } : current
-                        )
-                      }
-                      placeholder="Event title"
-                      value={quickAddDraft.title}
-                    />
-                  </label>
-                ) : (
-                  <div className="rounded-control border border-dashed border-border bg-canvas px-3 py-2 text-xs text-text-muted">
-                    Title is generated from the linked team
-                    {quickEntryType === "game" ? "(s) and the matchup" : ""}.
-                    <span className="ml-2 font-medium text-text">{quickAddDraft.title || "—"}</span>
-                  </div>
-                )}
+            {createScreen === "type" ? (
+              <label className="space-y-1 text-xs text-text-muted">
+                <span>Type</span>
+                <Select
+                  disabled={!canWrite}
+                  onChange={(event) => setQuickEntryType(event.target.value as CalendarEntryTypeOption)}
+                  options={allowedEntryTypes.map((type) => ({
+                    value: type,
+                    label: ENTRY_TYPE_LABELS[type]
+                  }))}
+                  value={quickEntryType}
+                />
+              </label>
+            ) : null}
 
-                {showTypePicker ? (
-                  <label className="space-y-1 text-xs text-text-muted">
-                    <span>Type</span>
-                    <Select
-                      disabled={!canWrite}
-                      onChange={(event) => setQuickEntryType(event.target.value as CalendarEntryTypeOption)}
-                      options={allowedEntryTypes.map((type) => ({
-                        value: type,
-                        label: ENTRY_TYPE_LABELS[type]
-                      }))}
-                      value={quickEntryType}
-                    />
-                  </label>
-                ) : null}
-              </>
+            {createScreen === "basics" ? (
+              <label className="space-y-1 text-xs text-text-muted">
+                <span>Title</span>
+                <Input
+                  onChange={(event) =>
+                    setQuickAddDraft((current) =>
+                      current ? { ...current, title: event.target.value, open: true } : current
+                    )
+                  }
+                  placeholder="Event title"
+                  value={quickAddDraft.title}
+                />
+              </label>
             ) : null}
 
             {createScreen === "link" ? (
-              <EntityLinkPicker
-                allowedTypes={["team", "division", "program"]}
-                emptyHint={
-                  linkRequired
-                    ? `A ${quickEntryType} must be linked to at least one team, division, or program.`
-                    : "Optionally link this event to teams, divisions, or programs so it shows up on their calendars."
-                }
-                errorMessage={linkError ?? undefined}
-                lockedLinks={lockedLinks}
-                onChange={(next) => {
-                  setLinkTargets(next);
-                  setLinkError(null);
-                }}
-                orgSlug={orgSlug}
-                required={linkRequired}
-                value={linkTargets}
-              />
+              <div className="space-y-2">
+                <label className="block space-y-1 text-xs text-text-muted">
+                  <span>Link To</span>
+                  <Select
+                    disabled={!canWrite}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      if (!next || !shareCatalog) return;
+                      const target = shareCatalog.find(
+                        (item) => `${item.type}:${item.id}` === next
+                      );
+                      if (!target) return;
+                      setLinkTargets((current) => [...current, target]);
+                      setLinkError(null);
+                    }}
+                    options={(shareCatalog ?? [])
+                      .filter((target) => {
+                        const key = targetKey(target);
+                        if (lockedLinks.some((locked) => targetKey(locked) === key)) return false;
+                        if (linkTargets.some((picked) => targetKey(picked) === key)) return false;
+                        return true;
+                      })
+                      .map((target) => ({
+                        value: targetKey(target),
+                        label: target.label,
+                        chip: { label: shareTargetTypeLabel(target.type), color: shareTargetChipColor(target.type) }
+                      }))}
+                    placeholder="Search teams, divisions, or programs…"
+                    searchable
+                    value=""
+                  />
+                </label>
+
+                {[...lockedLinks, ...linkTargets].length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {[...lockedLinks, ...linkTargets].map((target) => {
+                      const key = targetKey(target);
+                      const locked = lockedLinks.some((item) => targetKey(item) === key);
+                      return (
+                        <EntityChip
+                          hideAvatar
+                          key={key}
+                          name={target.label}
+                          onRemove={
+                            locked
+                              ? undefined
+                              : () =>
+                                  setLinkTargets((current) =>
+                                    current.filter((item) => targetKey(item) !== key)
+                                  )
+                          }
+                          status={{
+                            label: shareTargetTypeLabel(target.type),
+                            color: shareTargetChipColor(target.type),
+                            showDot: false
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                {linkError ? <p className="text-xs text-destructive">{linkError}</p> : null}
+              </div>
             ) : null}
 
             {createScreen === "location" ? (
               <>
-                <div className="space-y-1 text-xs text-text-muted">
+                <label className="space-y-1 text-xs text-text-muted">
                   <span>Location</span>
-                  <div className="flex items-stretch gap-2">
-                    <div className="min-w-0 flex-1">
-                      <Select
-                        disabled={!canWrite}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          if (next === "tbd") {
-                            setLocationMode("tbd");
-                            setLocationDraft("");
-                            setSelectedFacilityId("");
-                            setFacilitySelections([]);
-                            return;
-                          }
-                          if (next === "other") {
-                            setLocationMode("other");
-                            setSelectedFacilityId("");
-                            setFacilitySelections([]);
-                            return;
-                          }
-                          setLocationMode("facility");
-                          setSelectedFacilityId(next);
-                        }}
-                        options={[
-                          ...facilityOptions.map((facility) => ({
-                            label: facility.name,
-                            value: facility.id,
-                            statusDot: resolveFacilityStatusDot(facility.status),
-                            meta: facility.status === "archived" ? "Archived" : "Active"
-                          })),
-                          { label: "Other", value: "other" },
-                          { label: "TBD", value: "tbd" }
-                        ]}
-                        value={locationMode === "facility" ? selectedFacilityId : locationMode}
-                      />
-                    </div>
-                    <Button
-                      disabled={locationMode !== "facility" || !selectedFacility}
-                      onClick={() => setFacilityDialogOpen(true)}
-                      type="button"
-                      variant="secondary"
-                    >
-                      <Plus className="h-4 w-4" />
-                      {facilitySelections.length > 0 ? `Edit spaces (${facilitySelections.length})` : "Book spaces"}
-                    </Button>
-                  </div>
-                </div>
+                  <Select
+                    disabled={!canWrite}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      if (next === "tbd") {
+                        setLocationMode("tbd");
+                        setLocationDraft("");
+                        setSelectedFacilityId("");
+                        setFacilitySelections([]);
+                        return;
+                      }
+                      if (next === "other") {
+                        setLocationMode("other");
+                        setSelectedFacilityId("");
+                        setFacilitySelections([]);
+                        return;
+                      }
+                      setLocationMode("facility");
+                      setSelectedFacilityId(next);
+                    }}
+                    options={[
+                      ...facilityOptions.map((facility) => ({
+                        label: facility.name,
+                        value: facility.id,
+                        chip: {
+                          label: facility.status === "archived" ? "Archived" : "Active",
+                          color: facility.status === "archived" ? "red" : "green",
+                          status: true
+                        }
+                      })),
+                      { label: "Other", value: "other" },
+                      { label: "TBD", value: "tbd" }
+                    ]}
+                    value={locationMode === "facility" ? selectedFacilityId : locationMode}
+                  />
+                </label>
 
                 {locationMode === "other" ? (
                   <label className="space-y-1 text-xs text-text-muted">
@@ -803,9 +1238,19 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
                 ) : null}
 
                 {locationMode === "facility" && selectedFacility ? (
-                  <div className="space-y-2 rounded-control border p-3">
+                  <div className="space-y-3 rounded-control border bg-surface p-3">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-text">{selectedFacility.name}</p>
+                      {selectedFacilityAddress ? (
+                        <p className="text-xs text-text-muted">{selectedFacilityAddress}</p>
+                      ) : null}
+                      {selectedFacility.status === "archived" ? (
+                        <p className="text-xs text-destructive">This facility is archived.</p>
+                      ) : null}
+                    </div>
+
                     {facilitySelections.length > 0 ? (
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Selected spaces</p>
                         <div className="flex flex-wrap gap-2">
                           {facilitySelections.map((selection) => (
@@ -815,13 +1260,12 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
                           ))}
                         </div>
                       </div>
-                    ) : (
-                      <p className="text-xs text-text-muted">No spaces booked yet — use “Book spaces” above.</p>
-                    )}
-                    {selectedFacilityAddress ? <p className="text-xs text-text-muted">{selectedFacilityAddress}</p> : null}
-                    {selectedFacility.status === "archived" ? (
-                      <p className="text-xs text-destructive">This facility is archived.</p>
                     ) : null}
+
+                    <Button onClick={openFacilityBooking} type="button" variant="secondary">
+                      <Plus className="h-4 w-4" />
+                      {facilitySelections.length > 0 ? `Edit spaces (${facilitySelections.length})` : "Book spaces"}
+                    </Button>
                   </div>
                 ) : null}
               </>
@@ -829,8 +1273,7 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
 
             {createScreen === "schedule" ? (
               <>
-                {/* Row 1: start date + end date side-by-side */}
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-4">
                   <label className="space-y-1 text-xs text-text-muted">
                     <span>Start date</span>
                     <CalendarPicker
@@ -853,10 +1296,6 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
                       value={toLocalDate(quickAddDraft.endsAtUtc)}
                     />
                   </label>
-                </div>
-
-                {/* Row 2: start time + end time side-by-side, below dates */}
-                <div className="grid gap-2 sm:grid-cols-2">
                   <label className="space-y-1 text-xs text-text-muted">
                     <span>Start time</span>
                     <Input
@@ -882,9 +1321,27 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
                     />
                   </label>
                 </div>
-
-                <RecurringEventEditor canWrite={canWrite} draft={ruleDraft} onChange={setRuleDraft} />
               </>
+            ) : null}
+
+            {createScreen === "schedule" && editing && editing.occurrence.sourceRuleId ? (
+              <label className="space-y-1 text-xs text-text-muted">
+                <span>Apply changes to</span>
+                <Select
+                  disabled={!canWrite}
+                  onChange={(event) => setEditScope(event.target.value as "occurrence" | "following" | "series")}
+                  options={[
+                    { label: "This occurrence only", value: "occurrence" },
+                    { label: "This and following", value: "following" },
+                    { label: "Entire series", value: "series" }
+                  ]}
+                  value={editScope}
+                />
+              </label>
+            ) : null}
+
+            {createScreen === "schedule" ? (
+              <RecurringEventEditor canWrite={canWrite} draft={ruleDraft} onChange={setRuleDraft} />
             ) : null}
           </ScrollableSheetBody>
         ) : null}
@@ -896,5 +1353,5 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
     pendingOccurrenceUpdatesRef.current.set(occurrenceId, window);
   }
 
-  return { open, close, isOpen, element, recordPendingMove };
+  return { open, openForEdit, close, isOpen, element, recordPendingMove };
 }

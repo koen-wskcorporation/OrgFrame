@@ -1,12 +1,10 @@
 import { Alert } from "@orgframe/ui/primitives/alert";
 import type { Metadata } from "next";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
-import { PageStack } from "@orgframe/ui/primitives/layout";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
 import { can } from "@/src/shared/permissions/can";
-import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
-import { isOrgToolEnabled } from "@/src/shared/org/features";
+import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { BrandingForm } from "./BrandingForm";
 import { saveOrgBrandingAction } from "./actions";
 import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
@@ -28,13 +26,18 @@ export default async function OrgBrandingSettingsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { orgSlug } = await params;
-  const orgContext = await requireOrgPermission(orgSlug, "org.branding.read");
-  if (!isOrgToolEnabled(orgContext.toolAvailability, "branding")) {
+  const { orgContext, unavailable } = await gateManageSection(orgSlug, {
+    permission: "org.branding.read",
+    tool: "branding"
+  });
+  if (unavailable) {
     return (
-      <PageStack>
-        <PageHeader description="Control how your organization appears across public and staff routes." showBorder={false} title="Branding" />
+      <ManagePageShell
+        description="Control how your organization appears across public and staff routes."
+        title="Branding"
+      >
         <ToolUnavailablePanel title="Branding" />
-      </PageStack>
+      </ManagePageShell>
     );
   }
   const canManageBranding = can(orgContext.membershipPermissions, "org.branding.write");
@@ -46,31 +49,27 @@ export default async function OrgBrandingSettingsPage({
   const saveBranding = saveOrgBrandingAction.bind(null, orgSlug);
 
   return (
-    <PageStack>
-      <PageHeader description="Control how your organization appears across public and staff routes." showBorder={false} title="Branding" />
-
+    <ManagePageShell title="Branding" variant="workspace">
       {query.saved === "1" ? <Alert variant="success">Branding saved successfully.</Alert> : null}
       {errorMessage ? <Alert variant="destructive">{errorMessage}</Alert> : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Brand Assets</CardTitle>
-          <CardDescription>Logo and icon are used in org routes and the org favicon endpoint.</CardDescription>
-        </CardHeader>
-        <CardContent className="app-section-stack">
-          <BrandingForm
-            accent={orgContext.branding.accent}
-            canManageBranding={canManageBranding}
-            iconPath={orgContext.branding.iconPath}
-            iconUrl={iconUrl}
-            logoPath={orgContext.branding.logoPath}
-            logoUrl={logoUrl}
-            orgName={orgContext.orgName}
-            orgSlug={orgSlug}
-            saveAction={saveBranding}
-          />
-        </CardContent>
-      </Card>
-    </PageStack>
+      <ManageSection
+        contentClassName="space-y-4 p-5 md:p-6"
+        description="Control how your organization appears across public and staff routes."
+        fill={false}
+        title="Branding"
+      >
+        <BrandingForm
+          accent={orgContext.branding.accent}
+          canManageBranding={canManageBranding}
+          iconPath={orgContext.branding.iconPath}
+          iconUrl={iconUrl}
+          logoPath={orgContext.branding.logoPath}
+          logoUrl={logoUrl}
+          orgName={orgContext.orgName}
+          orgSlug={orgSlug}
+          saveAction={saveBranding}
+        />
+      </ManageSection>
+    </ManagePageShell>
   );
 }

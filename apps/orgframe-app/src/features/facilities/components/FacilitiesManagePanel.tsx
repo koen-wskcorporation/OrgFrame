@@ -1,91 +1,174 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Plus } from "lucide-react";
+import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
+import { ChipPicker, RepeaterChip } from "@orgframe/ui/primitives/chip";
+import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { FacilityMapWorkspace } from "@/src/features/facilities/map/components/FacilityMapWorkspace";
 import { SpaceCreateWizard } from "@/src/features/facilities/components/SpaceCreateWizard";
-import type { FacilityReservationReadModel } from "@/src/features/facilities/types";
+import { updateFacilityAction } from "@/src/features/facilities/actions";
+import type { Facility, FacilityReservationReadModel } from "@/src/features/facilities/types";
 
 type FacilitiesManagePanelProps = {
   orgSlug: string;
+  orgId: string;
   canWrite: boolean;
   initialReadModel: FacilityReservationReadModel;
 };
 
-export function FacilitiesManagePanel({ orgSlug, canWrite, initialReadModel }: FacilitiesManagePanelProps) {
+const STATUS_OPTIONS = [
+  { value: "active", label: "Active", color: "emerald" },
+  { value: "archived", label: "Archived", color: "slate" }
+];
+
+export function FacilitiesManagePanel({ orgSlug, orgId, canWrite, initialReadModel }: FacilitiesManagePanelProps) {
   const { toast } = useToast();
   const [readModel, setReadModel] = useState(initialReadModel);
-  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
+  const [mapFacility, setMapFacility] = useState<Facility | null>(null);
+  const [pendingStatusId, setPendingStatusId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
 
-  // Active first, archived demoted to the bottom (still visible so admins
-  // can un-archive). Same query under the hood (`listFacilitiesForManage`)
-  // returns both — sort here is purely presentational.
   const facilities = [...readModel.facilities].sort((a, b) => {
     if (a.status !== b.status) return a.status === "active" ? -1 : 1;
     return a.sortIndex - b.sortIndex || a.name.localeCompare(b.name);
   });
 
-  return (
-    <div className="ui-stack-page">
-      <div className="flex items-center justify-end">
-        <Button disabled={!canWrite} onClick={() => setIsWizardOpen(true)} variant="primary">
-          <Plus />
-          New facility
-        </Button>
-      </div>
+  function handleStatusChange(facility: Facility, nextStatus: string) {
+    if (!canWrite || nextStatus === facility.status) return;
+    setPendingStatusId(facility.id);
+    startTransition(async () => {
+      const result = await updateFacilityAction({
+        orgSlug,
+        facilityId: facility.id,
+        name: facility.name,
+        slug: facility.slug,
+        status: nextStatus as "active" | "archived"
+      });
+      setPendingStatusId(null);
+      if (!result.ok) {
+        toast({ title: "Couldn't update status", description: result.error, variant: "destructive" });
+        return;
+      }
+      setReadModel(result.data.readModel);
+      toast({ title: nextStatus === "archived" ? "Facility archived" : "Facility restored", variant: "success" });
+    });
+  }
 
+  return (
+    <>
+      <ManagePageShell title="Facilities" variant="workspace">
+        {!canWrite ? <Alert variant="info">You have read-only access to facilities.</Alert> : null}
+        <ManageSection
+          actions={
+            <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
+              <Plus className="h-4 w-4" />
+              Add
+            </Button>
+          }
+          description="Manage facility spaces and structure."
+          fill={false}
+          title="Facilities"
+        >
+          <Repeater
+            emptyMessage='No facilities yet. Click "New facility" to create your first one.'
+            getSearchValue={(facility) => `${facility.name} ${facility.slug}`}
+            initialView="list"
+            items={facilities}
+            searchPlaceholder="Search facilities"
+            viewKey="manage.facilities"
+            getItem={(facility) => {
+              const childCount = readModel.spaces.filter((s) => s.facilityId === facility.id).length;
+              return {
+                id: facility.id,
+                title: facility.name,
+                meta: <>/{facility.slug}</>,
+                chips: (
+                  <>
+                    <ChipPicker
+                      disabled={!canWrite || pendingStatusId === facility.id}
+                      onChange={(next) => handleStatusChange(facility, next)}
+                      options={STATUS_OPTIONS}
+                      value={facility.status}
+                    />
+                    <RepeaterChip label={`${childCount} ${childCount === 1 ? "space" : "spaces"}`} />
+                    <RepeaterChip label={facility.environment === "indoor" ? "Indoor" : "Outdoor"} />
+                  </>
+                ),
+                secondaryActions: (
+                  <Button
+                    disabled={!canWrite}
+                    onClick={() => setEditingFacility(facility)}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    Manage
+                  </Button>
+                ),
+                primaryAction: (
+                  <Button onClick={() => setMapFacility(facility)} size="sm" type="button" variant="primary">
+                    Edit map
+                  </Button>
+                )
+              };
+            }}
+          />
+        </ManageSection>
+      </ManagePageShell>
+
+      {/* Create wizard */}
       <SpaceCreateWizard
-        onClose={() => setIsWizardOpen(false)}
+        onClose={() => setIsCreateOpen(false)}
         onCreated={(next) => {
           setReadModel(next);
-          setIsWizardOpen(false);
+          setIsCreateOpen(false);
           toast({ title: "Facility created", variant: "success" });
         }}
-        open={isWizardOpen}
+        open={isCreateOpen}
         orgSlug={orgSlug}
         spaceStatuses={readModel.spaceStatuses}
       />
 
-      {facilities.length === 0 ? (
-        <div className="rounded-card border border-dashed border-border bg-surface px-6 py-10 text-center">
-          <p className="text-sm font-medium text-text">No facilities yet.</p>
-          <p className="mt-1 text-xs text-text-muted">Click "New facility" to create your first one.</p>
-        </div>
-      ) : (
-        <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {facilities.map((facility) => {
-            const childCount = readModel.spaces.filter((s) => s.facilityId === facility.id).length;
-            return (
-              <li key={facility.id}>
-                <Link
-                  className="block rounded-card border border-border bg-surface p-4 transition-colors hover:bg-surface-muted"
-                  href={`/${orgSlug}/manage/facilities/${facility.id}`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-semibold text-text">{facility.name}</p>
-                    {facility.status === "archived" ? (
-                      <span className="shrink-0 rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-                        Archived
-                      </span>
-                    ) : (
-                      <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                        Active
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 truncate text-xs text-text-muted">/{facility.slug}</p>
-                  <p className="mt-2 text-xs text-text-muted">
-                    {childCount} {childCount === 1 ? "space" : "spaces"} ·{" "}
-                    {facility.environment === "indoor" ? "Indoor" : "Outdoor"}
-                  </p>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
+      {/* Edit (manage) wizard */}
+      {editingFacility ? (
+        <SpaceCreateWizard
+          canWrite={canWrite}
+          facility={editingFacility}
+          mode="edit"
+          onClose={() => setEditingFacility(null)}
+          onSaved={(next) => {
+            setReadModel(next);
+            setEditingFacility(null);
+            toast({ title: "Facility updated", variant: "success" });
+          }}
+          open={true}
+          orgSlug={orgSlug}
+          spaceStatuses={readModel.spaceStatuses}
+        />
+      ) : null}
+
+      {/* Full-screen map editor — opened directly in edit mode, no preview card */}
+      {mapFacility ? (
+        <FacilityMapWorkspace
+          key={mapFacility.id}
+          canWrite={canWrite}
+          defaultEditorOpen
+          facility={mapFacility}
+          hidePreview
+          onEditorClose={() => setMapFacility(null)}
+          orgId={orgId}
+          orgSlug={orgSlug}
+          spaces={readModel.spaces.filter((s) => s.facilityId === mapFacility.id)}
+          spaceStatuses={readModel.spaceStatuses}
+        />
+      ) : null}
+    </>
   );
 }

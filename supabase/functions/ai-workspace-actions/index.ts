@@ -443,7 +443,7 @@ async function createTeam(service: ReturnType<typeof createClient>, payload: Wor
   if (idempotencyKey) {
     const { data: existingByKey } = await service
       .schema("programs")
-      .from("program_structure_nodes")
+      .from("divisions")
       .select("id")
       .eq("program_id", programId)
       .eq("node_kind", "team")
@@ -474,7 +474,7 @@ async function createTeam(service: ReturnType<typeof createClient>, payload: Wor
 
   let siblingQuery = service
     .schema("programs")
-    .from("program_structure_nodes")
+    .from("divisions")
     .select("sort_index")
     .eq("program_id", programId)
     .eq("node_kind", "team");
@@ -489,7 +489,7 @@ async function createTeam(service: ReturnType<typeof createClient>, payload: Wor
 
   const { data: node, error: nodeError } = await service
     .schema("programs")
-    .from("program_structure_nodes")
+    .from("divisions")
     .insert({
       program_id: programId,
       parent_id: parentNodeId,

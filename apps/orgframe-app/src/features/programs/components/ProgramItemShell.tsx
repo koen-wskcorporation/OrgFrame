@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Settings2 } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { ItemPageHeader } from "@orgframe/ui/primitives/item-page-header";
-import { StatusChipPicker } from "@orgframe/ui/primitives/status-chip-picker";
+import { ChipPicker } from "@orgframe/ui/primitives/chip";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { updateProgramAction } from "@/src/features/programs/actions";
 import { ProgramCreateWizard } from "@/src/features/programs/components/ProgramCreateWizard";
@@ -72,7 +72,7 @@ export function ProgramItemShell({ orgSlug, initialProgram, canWrite, tabs, chil
       <ItemPageHeader
         title={program.name}
         status={
-          <StatusChipPicker
+          <ChipPicker
             disabled={!canWrite || pending}
             onChange={handleStatusChange}
             options={STATUS_OPTIONS}

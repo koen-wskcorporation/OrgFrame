@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getFacilityMapManageDetail } from "@/src/features/facilities/actions";
+import {
+  getFacilityMapManageDetailCached,
+  listFacilitySpaceStatusesCached
+} from "@/src/features/facilities/cached-loaders";
 import { FacilityMapWorkspace } from "@/src/features/facilities/map/components/FacilityMapWorkspace";
-import { listFacilitySpaceStatuses } from "@/src/features/facilities/db/queries";
 
 export const metadata: Metadata = {
   title: "Facility"
@@ -14,11 +16,11 @@ export default async function OrgManageFacilityPage({
   params: Promise<{ orgSlug: string; facilityId: string }>;
 }) {
   const { orgSlug, facilityId } = await params;
-  const detail = await getFacilityMapManageDetail(orgSlug, facilityId);
+  const detail = await getFacilityMapManageDetailCached(orgSlug, facilityId);
   if (!detail) {
     notFound();
   }
-  const spaceStatuses = await listFacilitySpaceStatuses(detail.org.orgId);
+  const spaceStatuses = await listFacilitySpaceStatusesCached(detail.org.orgId);
 
   return (
     <FacilityMapWorkspace

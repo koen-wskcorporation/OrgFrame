@@ -1,11 +1,7 @@
-import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { Alert } from "@orgframe/ui/primitives/alert";
-import { PageStack } from "@orgframe/ui/primitives/layout";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
-import { isOrgToolEnabled } from "@/src/features/core/config/tools";
 import { FacilitiesManagePanel } from "@/src/features/facilities/components/FacilitiesManagePanel";
 import { listFacilityReservationReadModel } from "@/src/features/facilities/db/queries";
 import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
@@ -16,37 +12,21 @@ export const metadata: Metadata = {
 
 export default async function OrgManageFacilitiesPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
-  const orgContext = await getOrgAuthContext(orgSlug);
-  if (!isOrgToolEnabled(orgContext.toolAvailability, "facilities")) {
+  const { orgContext, unavailable } = await gateManageSection(orgSlug, {
+    permission: ["facilities.read", "facilities.write"],
+    tool: "facilities"
+  });
+
+  if (unavailable) {
     return (
-      <PageStack>
-        <PageHeader
-          description="Manage facility spaces and structure."
-          showBorder={false}
-          title="Facilities"
-        />
+      <ManagePageShell description="Manage facility spaces and structure." title="Facilities">
         <ToolUnavailablePanel title="Facilities" />
-      </PageStack>
+      </ManagePageShell>
     );
   }
-  const canReadFacilities = can(orgContext.membershipPermissions, "facilities.read") || can(orgContext.membershipPermissions, "facilities.write");
+
   const canWriteFacilities = can(orgContext.membershipPermissions, "facilities.write");
-
-  if (!canReadFacilities) {
-    redirect("/forbidden");
-  }
-
   const readModel = await listFacilityReservationReadModel(orgContext.orgId);
 
-  return (
-    <PageStack>
-      <PageHeader
-        description="Manage facility spaces and structure."
-        showBorder={false}
-        title="Facilities"
-      />
-      {!canWriteFacilities ? <Alert variant="info">You have read-only access to facilities.</Alert> : null}
-      <FacilitiesManagePanel canWrite={canWriteFacilities} initialReadModel={readModel} orgSlug={orgContext.orgSlug} />
-    </PageStack>
-  );
+  return <FacilitiesManagePanel canWrite={canWriteFacilities} initialReadModel={readModel} orgId={orgContext.orgId} orgSlug={orgSlug} />;
 }

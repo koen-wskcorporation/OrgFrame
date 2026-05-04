@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
-import { PageStack } from "@orgframe/ui/primitives/layout";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { listOrgPaymentLinks } from "@/src/features/billing/service";
 import { can } from "@/src/shared/permissions/can";
-import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
-import { isOrgToolEnabled } from "@/src/shared/org/features";
+import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { ToolUnavailablePanel } from "../../ToolUnavailablePanel";
 import { PaymentsSectionNav } from "../PaymentsSectionNav";
 import { PaymentLinksManager } from "./PaymentLinksManager";
@@ -17,15 +15,20 @@ export const metadata: Metadata = {
 
 export default async function OrgPaymentLinksPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
-  const orgContext = await requireOrgPermission(orgSlug, "org.manage.read");
+  const { orgContext, unavailable } = await gateManageSection(orgSlug, {
+    permission: "org.manage.read",
+    tool: "billing"
+  });
 
-  if (!isOrgToolEnabled(orgContext.toolAvailability, "billing")) {
+  if (unavailable) {
     return (
-      <PageStack>
-        <PageHeader description="Create and manage payment links for this organization." showBorder={false} title="Payments" />
-        <PaymentsSectionNav active="links" />
+      <ManagePageShell
+        description="Create and manage payment links for this organization."
+        tabs={<PaymentsSectionNav active="links" />}
+        title="Payments"
+      >
         <ToolUnavailablePanel title="Payments" />
-      </PageStack>
+      </ManagePageShell>
     );
   }
 
@@ -33,19 +36,22 @@ export default async function OrgPaymentLinksPage({ params }: { params: Promise<
   const links = canManage ? await listOrgPaymentLinks({ orgId: orgContext.orgId }).catch(() => []) : [];
 
   return (
-    <PageStack>
-      <PageHeader description="Create shareable payment links for one-off charges and collections." showBorder={false} title="Payments" />
-      <PaymentsSectionNav active="links" />
-
+    <ManagePageShell
+      tabs={<PaymentsSectionNav active="links" />}
+      title="Payments"
+      variant="workspace"
+    >
       {!canManage ? <Alert variant="warning">You do not have permission to manage payment links.</Alert> : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment Links</CardTitle>
-          <CardDescription>Create links admins can share to collect payment for ad hoc items.</CardDescription>
-        </CardHeader>
-        <CardContent>{canManage ? <PaymentLinksManager initialLinks={links} orgSlug={orgSlug} /> : null}</CardContent>
-      </Card>
-    </PageStack>
+      {canManage ? (
+        <ManageSection
+          contentClassName="space-y-4 p-5 md:p-6"
+          description="Create shareable payment links for one-off charges and collections."
+          fill={false}
+          title="Payment Links"
+        >
+          <PaymentLinksManager initialLinks={links} orgSlug={orgSlug} />
+        </ManageSection>
+      ) : null}
+    </ManagePageShell>
   );
 }

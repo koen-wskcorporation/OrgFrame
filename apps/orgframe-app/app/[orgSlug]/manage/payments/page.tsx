@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
-import { PageStack } from "@orgframe/ui/primitives/layout";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { listOrgPaymentTransactions } from "@/src/features/billing/service";
 import { can } from "@/src/shared/permissions/can";
-import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
-import { isOrgToolEnabled } from "@/src/shared/org/features";
+import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
+import { listOrgPaymentTransactions } from "@/src/features/payments/queries";
+import { PaymentsSectionNav } from "@/src/features/payments/components/PaymentsSectionNav";
+import { PaymentsTransactionsTable } from "@/src/features/payments/components/PaymentsTransactionsTable";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
-import { PaymentsSectionNav } from "./PaymentsSectionNav";
-import { PaymentsTransactionsTable } from "./PaymentsTransactionsTable";
 
 export const metadata: Metadata = {
   title: "Payments"
@@ -17,14 +15,20 @@ export const metadata: Metadata = {
 
 export default async function OrgPaymentsOverviewPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
-  const orgContext = await requireOrgPermission(orgSlug, "org.manage.read");
+  const { orgContext, unavailable } = await gateManageSection(orgSlug, {
+    permission: "org.manage.read",
+    tool: "billing"
+  });
 
-  if (!isOrgToolEnabled(orgContext.toolAvailability, "billing")) {
+  if (unavailable) {
     return (
-      <PageStack>
-        <PageHeader description="Review transactions and payment settings for this organization." showBorder={false} title="Payments" />
+      <ManagePageShell
+        description="Review transactions and payment settings for this organization."
+        tabs={<PaymentsSectionNav active="overview" />}
+        title="Payments"
+      >
         <ToolUnavailablePanel title="Payments" />
-      </PageStack>
+      </ManagePageShell>
     );
   }
 
@@ -32,21 +36,20 @@ export default async function OrgPaymentsOverviewPage({ params }: { params: Prom
   const transactions = canManage ? await listOrgPaymentTransactions({ orgId: orgContext.orgId, limit: 250 }).catch(() => []) : [];
 
   return (
-    <PageStack>
-      <PageHeader description="Review all payment transactions for this organization." showBorder={false} title="Payments" />
-      <PaymentsSectionNav active="overview" />
-
+    <ManagePageShell
+      tabs={<PaymentsSectionNav active="overview" />}
+      title="Payments"
+      variant="workspace"
+    >
       {!canManage ? <Alert variant="warning">You do not have permission to view payment transactions.</Alert> : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Transactions</CardTitle>
-          <CardDescription>Most recent transactions across all orders in this organization.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <PaymentsTransactionsTable transactions={transactions} />
-        </CardContent>
-      </Card>
-    </PageStack>
+      <ManageSection
+        contentClassName="space-y-4 p-5 md:p-6"
+        description="Review all payment transactions for this organization."
+        fill={false}
+        title="Transactions"
+      >
+        <PaymentsTransactionsTable transactions={transactions} />
+      </ManageSection>
+    </ManagePageShell>
   );
 }

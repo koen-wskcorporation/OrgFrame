@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { GoogleMapLayer } from "@orgframe/ui/primitives/google-map-layer";
-import { StatusChip } from "@orgframe/ui/primitives/status-chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { CANVAS_GRID_SIZE } from "@/src/features/canvas/core/constants";
 import { boundsFromPoints, snapPoint, snapToGrid } from "@/src/features/canvas/core/geometry";
@@ -1289,7 +1289,7 @@ export function FacilityMapEditor({
                           means stale rows (e.g. legacy bathrooms with
                           is_bookable=true) still don't show a chip. */}
                       {isKindBookable(node.spaceKind) && node.isBookable && statusDef && !replaceStatusChipBySpaceId?.has(node.id) ? (
-                        <StatusChip color={statusDef.color} label={statusDef.label} size="sm" />
+                        <Chip color={statusDef.color} label={statusDef.label} size="sm" status={true} />
                       ) : null}
                       {nodeBadgeBySpaceId?.[node.id] ?? null}
                     </div>

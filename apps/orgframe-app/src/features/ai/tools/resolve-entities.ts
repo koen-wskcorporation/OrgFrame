@@ -153,7 +153,7 @@ export const resolveEntitiesTool: AiToolDefinition<typeof resolveEntitiesInputSc
       supabase.schema("orgs").from("governing_bodies").select("id, slug, name").order("name", { ascending: true }),
       supabase.schema("programs").from("programs").select("id, slug, name").eq("org_id", orgId).order("updated_at", { ascending: false }).limit(30),
       supabase
-        .schema("programs").from("program_structure_nodes")
+        .schema("programs").from("divisions")
         .select("id, program_id, name, node_kind, programs!inner(org_id)")
         .eq("programs.org_id", orgId)
         .order("updated_at", { ascending: false })

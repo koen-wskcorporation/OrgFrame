@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { StatusChip } from "@orgframe/ui/primitives/status-chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardHeader, CardHeaderRow } from "@orgframe/ui/primitives/card";
 import { DataTable, type DataTableColumn } from "@orgframe/ui/primitives/data-table";
@@ -182,7 +182,7 @@ export function PeopleDirectoryPanel({ orgSlug, currentUserId, canWritePeople, l
         label: "Role",
         defaultVisible: true,
         sortable: true,
-        renderCell: (row) => <StatusChip variant="neutral">{row.role}</StatusChip>,
+        renderCell: (row) => <Chip variant="neutral">{row.role}</Chip>,
         renderSortValue: (row) => row.role
       },
       {
@@ -190,7 +190,7 @@ export function PeopleDirectoryPanel({ orgSlug, currentUserId, canWritePeople, l
         label: "Status",
         defaultVisible: true,
         sortable: true,
-        renderCell: (row) => <StatusChip variant={row.status === "active" ? "success" : "warning"}>{row.status}</StatusChip>,
+        renderCell: (row) => <Chip variant={row.status === "active" ? "success" : "warning"}>{row.status}</Chip>,
         renderSortValue: (row) => row.status
       },
       {
@@ -209,9 +209,12 @@ export function PeopleDirectoryPanel({ orgSlug, currentUserId, canWritePeople, l
                 return (
                   <EntityChip
                     key={entry.profile.id}
-                    metaLabel={metaLabel.length > 0 ? metaLabel : undefined}
-                    metaTone={hasSelfLink ? "success" : "neutral"}
                     name={entry.profile.displayName}
+                    status={
+                      metaLabel.length > 0
+                        ? { label: metaLabel, variant: hasSelfLink ? "success" : "neutral" }
+                        : undefined
+                    }
                   />
                 );
               })}
@@ -354,12 +357,12 @@ export function PeopleDirectoryPanel({ orgSlug, currentUserId, canWritePeople, l
           <div className="-mx-5 space-y-4 md:-mx-6">
             <PersonCard
               badges={[
-                <StatusChip key="role" variant="neutral">
+                <Chip key="role" variant="neutral">
                   {account.role}
-                </StatusChip>,
-                <StatusChip key="status" variant={account.status === "active" ? "success" : "warning"}>
+                </Chip>,
+                <Chip key="status" variant={account.status === "active" ? "success" : "warning"}>
                   {account.status}
-                </StatusChip>
+                </Chip>
               ]}
               layout="panel-edge"
               name={displayName}
@@ -434,22 +437,22 @@ export function PeopleDirectoryPanel({ orgSlug, currentUserId, canWritePeople, l
   function renderProfilePanel(entry: ProfileEntry) {
     const isSelf = entry.links.some((link) => link.relationshipType === "self");
     const badges = [
-      <StatusChip key="type" variant="neutral">
+      <Chip key="type" variant="neutral">
         {entry.profile.profileType}
-      </StatusChip>,
-      <StatusChip key="status" variant={statusBadgeVariant(entry.profile.status)}>
+      </Chip>,
+      <Chip key="status" variant={statusBadgeVariant(entry.profile.status)}>
         {entry.profile.status}
-      </StatusChip>,
+      </Chip>,
       ...entry.links.map((link) => (
-        <StatusChip key={link.id} variant={link.relationshipType === "self" ? "success" : "neutral"}>
+        <Chip key={link.id} variant={link.relationshipType === "self" ? "success" : "neutral"}>
           {relationshipBadgeLabel(link.relationshipType)}
-        </StatusChip>
+        </Chip>
       )),
       ...(isSelf
         ? [
-            <StatusChip key="you" variant="success">
+            <Chip key="you" variant="success">
               You
-            </StatusChip>
+            </Chip>
           ]
         : [])
     ];
@@ -533,7 +536,7 @@ export function PeopleDirectoryPanel({ orgSlug, currentUserId, canWritePeople, l
   }
 
   return (
-    <div className="ui-stack-page">
+    <>
       {loadError ? <Alert variant="warning">{loadError}</Alert> : null}
 
       <Card className="app-card-fill">
@@ -617,6 +620,6 @@ export function PeopleDirectoryPanel({ orgSlug, currentUserId, canWritePeople, l
         panelKey="people-account-edit"
         targetUserId={editAccount?.userId}
       />
-    </div>
+    </>
   );
 }

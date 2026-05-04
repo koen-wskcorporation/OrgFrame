@@ -1,4 +1,4 @@
-import { Badge } from "@orgframe/ui/primitives/badge";
+import { Badge } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { AdaptiveLogo } from "@orgframe/ui/primitives/adaptive-logo";
@@ -83,12 +83,12 @@ function renderModuleBody(module: PersonalHubModule) {
       return (
         <div className="space-y-2">
           {module.items.slice(0, 8).map((item) => (
-            <a className="ui-list-item ui-list-item-hover block" href={item.href} key={item.occurrenceId}>
+            <div className="ui-list-item block" key={item.occurrenceId}>
               <p className="truncate text-sm font-semibold text-text">{item.title}</p>
               <p className="text-xs text-text-muted">
                 {item.orgName} · {formatRelativeDateTime(item.startsAtUtc)}
               </p>
-            </a>
+            </div>
           ))}
         </div>
       );
@@ -172,7 +172,7 @@ export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
               {context.organizations.length > 0 ? (
                 <Button href="/create" size="sm" variant="secondary">
                   <Plus className="h-4 w-4" />
-                  New Organization
+                  Add
                 </Button>
               ) : null}
             </div>

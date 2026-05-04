@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
-import { PageStack } from "@orgframe/ui/primitives/layout";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { getPlatformHost } from "@/src/shared/domains/customDomains";
 import { buildGoDaddyQuickConnect, type GoDaddyQuickConnect } from "@/src/shared/domains/domainConnect";
 import { getVercelDomainDnsInstructions, type VercelDnsInstruction } from "@/src/shared/domains/vercelProjectDomains";
@@ -73,10 +72,9 @@ export default async function OrgManageDomainsPage({
   const [orgContext, query] = await Promise.all([requireOrgPermission(orgSlug, "org.manage.read"), searchParams]);
   if (!isOrgToolEnabled(orgContext.toolAvailability, "domains")) {
     return (
-      <PageStack>
-        <PageHeader description="Connect your domain in a guided flow designed for non-technical users." showBorder={false} title="Custom Domains" />
+      <ManagePageShell description="Connect your domain in a guided flow designed for non-technical users." title="Custom Domains">
         <ToolUnavailablePanel title="Custom Domains" />
-      </PageStack>
+      </ManagePageShell>
     );
   }
   const canManage = can(orgContext.membershipPermissions, "org.manage.read");
@@ -166,30 +164,30 @@ export default async function OrgManageDomainsPage({
   }
 
   return (
-    <PageStack>
-      <PageHeader
+    <ManagePageShell title="Custom Domains" variant="workspace">
+      <ManageSection
+        contentClassName="p-5 md:p-6 space-y-4"
         description="Connect your domain in a guided flow designed for non-technical users."
-        showBorder={false}
+        fill={false}
         title="Custom Domains"
-      />
+      >
+        {query.saved === "1" ? <Alert variant="success">Custom domain settings saved.</Alert> : null}
+        {query.removed === "1" ? <Alert variant="success">Custom domain removed.</Alert> : null}
+        {query.verified === "1" ? <Alert variant="success">Domain verified successfully. Host-based routing is now active.</Alert> : null}
+        {errorMessage ? (
+          <Alert variant="destructive">
+            {errorMessage}
+            {errorDetail ? <span className="block mt-1 text-xs">{errorDetail}</span> : null}
+          </Alert>
+        ) : null}
+        {domainError ? <Alert variant="destructive">Unable to load custom domain settings right now.</Alert> : null}
 
-      {query.saved === "1" ? <Alert variant="success">Custom domain settings saved.</Alert> : null}
-      {query.removed === "1" ? <Alert variant="success">Custom domain removed.</Alert> : null}
-      {query.verified === "1" ? <Alert variant="success">Domain verified successfully. Host-based routing is now active.</Alert> : null}
-      {errorMessage ? (
-        <Alert variant="destructive">
-          {errorMessage}
-          {errorDetail ? <span className="block mt-1 text-xs">{errorDetail}</span> : null}
-        </Alert>
-      ) : null}
-      {domainError ? <Alert variant="destructive">Unable to load custom domain settings right now.</Alert> : null}
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-text">Domain Status</p>
+          <p className="text-sm text-text-muted">Use the guided setup wizard to connect through your registrar first, with manual DNS as backup.</p>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Domain Status</CardTitle>
-          <CardDescription>Use the guided setup wizard to connect through your registrar first, with manual DNS as backup.</CardDescription>
-        </CardHeader>
-        <CardContent className="app-section-stack">
+        <div className="space-y-3">
           {customDomain ? (
             <div className="ui-muted-block">
               <p className="text-sm font-semibold text-text">{customDomain.domain}</p>
@@ -233,8 +231,8 @@ export default async function OrgManageDomainsPage({
           <Alert variant="info">
             If your registrar cannot place a CNAME on the root domain, connect <span className="font-semibold">www</span> and forward the apex/root domain.
           </Alert>
-        </CardContent>
-      </Card>
+        </div>
+      </ManageSection>
 
       <DomainSetupModal
         canManage={canManage}
@@ -249,6 +247,6 @@ export default async function OrgManageDomainsPage({
         saveAction={saveOrgCustomDomainAction.bind(null, orgSlug)}
         verifyAction={verifyOrgCustomDomainAction.bind(null, orgSlug)}
       />
-    </PageStack>
+    </ManagePageShell>
   );
 }

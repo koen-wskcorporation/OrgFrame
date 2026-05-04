@@ -319,12 +319,12 @@ export function PanelContainer() {
     };
   }, []);
 
-  // Track panel-top — align to the top of `.app__body` (the row where page
+  // Track panel-top — align to the top of `.app__content` (the row where page
   // content sits). When there is no AppShell on the page (e.g. auth routes),
   // fall back to "below the primary header by one layout-gap".
   React.useEffect(() => {
     const measure = () => {
-      const body = document.querySelector(".app__body") as HTMLElement | null;
+      const body = document.querySelector(".app__content") as HTMLElement | null;
       let next: number;
       if (body) {
         next = Math.max(0, Math.round(body.getBoundingClientRect().top));
@@ -339,7 +339,7 @@ export function PanelContainer() {
     };
     measure();
     const header = document.getElementById(PRIMARY_HEADER_ID);
-    const body = document.querySelector(".app__body") as HTMLElement | null;
+    const body = document.querySelector(".app__content") as HTMLElement | null;
     let observer: ResizeObserver | null = null;
     if (typeof ResizeObserver !== "undefined") {
       observer = new ResizeObserver(measure);

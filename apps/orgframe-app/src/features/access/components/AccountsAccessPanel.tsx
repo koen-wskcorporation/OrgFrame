@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { Eye, KeyRound, Trash2 } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Badge } from "@orgframe/ui/primitives/badge";
+import { Badge } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { DataTable, type DataTableColumn } from "@orgframe/ui/primitives/data-table";

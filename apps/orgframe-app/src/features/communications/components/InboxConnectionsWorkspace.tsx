@@ -3,9 +3,12 @@
 import { useEffect, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
+import { Chip, RepeaterChip } from "@orgframe/ui/primitives/chip";
+import { Repeater } from "@orgframe/ui/primitives/repeater";
+import { RepeaterItem } from "@orgframe/ui/primitives/repeater-item";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { ArrowLeft } from "lucide-react";
-import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { connectFacebookPageAction, disconnectInboxIntegrationAction, getInboxConnectionsDataAction } from "@/src/features/communications/actions";
 import type { CommChannelIntegration } from "@/src/features/communications/types";
 
@@ -213,7 +216,7 @@ export function InboxConnectionsWorkspace({ orgSlug, canWrite, initialIntegratio
     <div className="ui-stack-page">
       {isMutating ? <Alert variant="info">Updating connections...</Alert> : null}
 
-      <WorkspaceCardShell
+      <ManageSection
         contentClassName="app-section-stack"
         description="Connect one or more Facebook Pages for this organization. Webhook events route to this org by connected Page ID."
         title="Facebook Messenger Connection"
@@ -241,52 +244,71 @@ export function InboxConnectionsWorkspace({ orgSlug, canWrite, initialIntegratio
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Pick a Page to Connect</p>
               {oauthPages.map((page) => (
-                <div className="ui-list-row" key={page.id}>
-                  <div className="ui-list-row-content">
-                    <p className="ui-list-row-title">{page.name}</p>
-                    <p className="ui-list-row-meta">Page ID: {page.id}</p>
-                  </div>
-                  <div className="ui-list-row-actions">
+                <RepeaterItem
+                  key={page.id}
+                  id={page.id}
+                  title={page.name}
+                  meta={<>Page ID: {page.id}</>}
+                  primaryAction={
                     <Button disabled={!canWrite || isMutating} onClick={() => connectPageFromOauth(page)} size="sm" type="button">
                       Connect This Page
                     </Button>
-                  </div>
-                </div>
+                  }
+                  view="list"
+                />
               ))}
             </div>
           ) : null}
-      </WorkspaceCardShell>
+      </ManageSection>
 
-      <WorkspaceCardShell
-        contentClassName="ui-list-stack"
-        description="Per-org page connections used for routing Messenger webhooks."
-        title="Connected Pages"
-      >
-          {integrations.length === 0 ? <Alert variant="info">No connected pages yet.</Alert> : null}
-          {integrations.map((integration) => (
-            <div className="ui-list-row" key={integration.id}>
-              <div className="ui-list-row-content">
-                <p className="ui-list-row-title">{integration.providerAccountName ?? `Page ${integration.providerAccountId}`}</p>
-                <p className="ui-list-row-meta">Page ID: {integration.providerAccountId}</p>
-                <p className="ui-list-row-meta">Status: {integration.status}</p>
-                <p className="ui-list-row-meta">Connected: {formatDateTime(integration.connectedAt)}</p>
-                <p className="ui-list-row-meta">Token: {integration.tokenHint ?? "not stored"}</p>
-                {integration.lastError ? <p className="mt-1 text-xs text-destructive">Last error: {integration.lastError}</p> : null}
-              </div>
-              <div className="ui-list-row-actions">
-                <Button
-                  disabled={!canWrite || integration.status === "disconnected"}
-                  onClick={() => disconnectIntegration(integration.id)}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  Disconnect
-                </Button>
-              </div>
-            </div>
-          ))}
-      </WorkspaceCardShell>
+      <Repeater
+        emptyMessage="No connected pages yet."
+        getSearchValue={(integration) => `${integration.providerAccountName ?? ""} ${integration.providerAccountId}`}
+        initialView="list"
+        items={integrations}
+        searchPlaceholder="Search connections"
+        viewKey="manage.inbox-connections"
+        renderShell={({ toolbar, body }) => (
+          <ManageSection
+            actions={toolbar ? <div className="flex flex-wrap items-center gap-2">{toolbar}</div> : undefined}
+            description="Per-org page connections used for routing Messenger webhooks."
+            title="Connected Pages"
+          >
+            {body}
+          </ManageSection>
+        )}
+        getItem={(integration) => ({
+            id: integration.id,
+            title: integration.providerAccountName ?? `Page ${integration.providerAccountId}`,
+            chips: (
+              <>
+                <Chip
+                  color={integration.status === "active" ? "emerald" : integration.status === "error" ? "red" : "slate"}
+                  label={integration.status}
+                />
+                <RepeaterChip label={`Token ${integration.tokenHint ?? "not stored"}`} />
+              </>
+            ),
+            meta: (
+              <>
+                <div>/{integration.providerAccountId}</div>
+                <div>Connected: {formatDateTime(integration.connectedAt)}</div>
+                {integration.lastError ? <div className="mt-1 text-destructive">Last error: {integration.lastError}</div> : null}
+              </>
+            ),
+            primaryAction: (
+              <Button
+                disabled={!canWrite || integration.status === "disconnected"}
+                onClick={() => disconnectIntegration(integration.id)}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                Disconnect
+              </Button>
+            )
+          })}
+      />
     </div>
   );
 }

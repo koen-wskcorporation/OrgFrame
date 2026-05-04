@@ -9,7 +9,7 @@ import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Popup } from "@orgframe/ui/primitives/popup";
 import { Select } from "@orgframe/ui/primitives/select";
-import { StatusChip } from "@orgframe/ui/primitives/status-chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { STATUS_COLORS, type StatusColor } from "@orgframe/ui/primitives/status-palette";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import {
@@ -191,7 +191,7 @@ export function SpaceStatusManager({ open, onClose, orgSlug, statuses, canWrite,
                   />
                 ) : (
                   <div className="flex items-center gap-3">
-                    <StatusChip color={status.color} label={status.label} />
+                    <Chip color={status.color} label={status.label} status={true} />
                     <span className="flex-1 text-xs text-text-muted">
                       {status.isSystem ? "System · " : ""}Behaves as <strong className="text-text">{status.behavesAs}</strong>
                     </span>
@@ -263,7 +263,7 @@ function StatusEditor({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <StatusChip color={state.color} label={state.label || "Preview"} />
+        <Chip color={state.color} label={state.label || "Preview"} status={true} />
         <Button iconOnly aria-label="Cancel edit" onClick={onCancel}>
           <X />
         </Button>

@@ -6,9 +6,12 @@ import { useRouter } from "next/navigation";
 import { Copy, Plus } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
+import { RepeaterChip } from "@orgframe/ui/primitives/chip";
 import { PublishStatusIcon } from "@orgframe/ui/primitives/publish-status-icon";
+import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { useToast } from "@orgframe/ui/primitives/toast";
-import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { createProgramAction, duplicateProgramAction, updateProgramAction } from "@/src/features/programs/actions";
 import { ProgramCreateWizard, type ProgramCreateInput } from "@/src/features/programs/components/ProgramCreateWizard";
 import type { Program } from "@/src/features/programs/types";
@@ -39,9 +42,7 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
   }, [programItems]);
 
   function toggleProgramStatus(program: Program) {
-    if (!canWrite) {
-      return;
-    }
+    if (!canWrite) return;
 
     setStatusProgramId(program.id);
     startTogglingStatus(async () => {
@@ -74,12 +75,7 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
 
         setProgramItems((current) =>
           current.map((item) =>
-            item.id === program.id
-              ? {
-                  ...item,
-                  status: isPublished ? "draft" : "published"
-                }
-              : item
+            item.id === program.id ? { ...item, status: isPublished ? "draft" : "published" } : item
           )
         );
         toast({
@@ -117,26 +113,18 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
       return { ok: false as const, message: result.error };
     }
 
-    toast({
-      title: "Program created",
-      variant: "success"
-    });
+    toast({ title: "Program created", variant: "success" });
     router.push(`/manage/programs/${result.data.programId}`);
     return { ok: true as const };
   }
 
   function handleDuplicate(program: Program) {
-    if (!canWrite) {
-      return;
-    }
+    if (!canWrite) return;
 
     setDuplicateProgramId(program.id);
     startDuplicating(async () => {
       try {
-        const result = await duplicateProgramAction({
-          orgSlug,
-          programId: program.id
-        });
+        const result = await duplicateProgramAction({ orgSlug, programId: program.id });
 
         if (!result.ok) {
           toast({
@@ -147,10 +135,7 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
           return;
         }
 
-        toast({
-          title: "Program duplicated",
-          variant: "success"
-        });
+        toast({ title: "Program duplicated", variant: "success" });
         router.push(`/manage/programs/${result.data.programId}`);
       } finally {
         setDuplicateProgramId(null);
@@ -159,58 +144,75 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
   }
 
   return (
-    <div className="ui-stack-page">
-      <WorkspaceCardShell
-        actions={
-          <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
-            <Plus className="h-4 w-4" />
-            Create program
-          </Button>
-        }
-        contentClassName="ui-list-stack"
-        description="Manage program structure, schedules, and linked forms."
-        title="Programs"
-      >
-        {sortedPrograms.length === 0 ? <Alert variant="info">No programs yet.</Alert> : null}
-        {sortedPrograms.map((program) => (
-          <div className="ui-list-row ui-list-row-hover" key={program.id}>
-            <div className="ui-list-row-content">
-              <div className="flex items-center gap-1.5">
-                <PublishStatusIcon
-                  disabled={!canWrite}
-                  isLoading={isTogglingStatus && statusProgramId === program.id}
-                  isPublished={program.status === "published"}
-                  onToggle={() => toggleProgramStatus(program)}
-                  statusLabel={program.status === "published" ? `Published status for ${program.name}` : `Unpublished status for ${program.name}`}
-                />
-                <Link className="ui-list-row-title hover:underline" href={`/manage/programs/${program.id}`}>
+    <>
+      <ManagePageShell title="Programs" variant="workspace">
+        {!canWrite ? <Alert variant="info">You have read-only access to programs.</Alert> : null}
+        <Repeater
+          emptyMessage="No programs yet."
+          getSearchValue={(program) => `${program.name} ${program.slug}`}
+          initialView="list"
+          items={sortedPrograms}
+          searchPlaceholder="Search programs"
+          viewKey="manage.programs"
+          renderShell={({ toolbar, body }) => (
+            <ManageSection
+              actions={
+                <div className="flex flex-wrap items-center gap-2">
+                  {toolbar}
+                  <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
+                    <Plus className="h-4 w-4" />
+                    Add
+                  </Button>
+                </div>
+              }
+              description="Manage program structure, schedules, and linked forms."
+              fill={false}
+              title="Programs"
+            >
+              {body}
+            </ManageSection>
+          )}
+          getItem={(program) => ({
+              id: program.id,
+              title: (
+                <Link className="hover:underline" href={`/manage/programs/${program.id}`}>
                   {program.name}
                 </Link>
-              </div>
-              <p className="ui-list-row-meta">
-                {program.programType === "custom" ? program.customTypeLabel ?? "Custom" : program.programType} · {program.status}
-              </p>
-              <p className="text-sm text-text-muted">{orgDisplayHost}/programs/{program.slug}</p>
-            </div>
-            <div className="ui-list-row-actions">
-              <Button href={`/manage/programs/${program.id}`} size="sm" variant="secondary">
-                Open
-              </Button>
-              <Button
-                disabled={!canWrite || (isDuplicating && duplicateProgramId !== program.id)}
-                loading={isDuplicating && duplicateProgramId === program.id}
-                onClick={() => handleDuplicate(program)}
-                size="sm"
-                type="button"
-                variant="secondary"
-              >
-                <Copy className="h-3.5 w-3.5" />
-                Duplicate
-              </Button>
-            </div>
-          </div>
-        ))}
-      </WorkspaceCardShell>
+              ),
+              chips: (
+                <>
+                  <PublishStatusIcon
+                    disabled={!canWrite}
+                    isLoading={isTogglingStatus && statusProgramId === program.id}
+                    isPublished={program.status === "published"}
+                    onToggle={() => toggleProgramStatus(program)}
+                    statusLabel={program.status === "published" ? `Published status for ${program.name}` : `Unpublished status for ${program.name}`}
+                  />
+                  <RepeaterChip label={program.programType === "custom" ? program.customTypeLabel ?? "Custom" : program.programType} />
+                </>
+              ),
+              meta: <>/{program.slug}</>,
+              secondaryActions: (
+                <Button
+                  disabled={!canWrite || (isDuplicating && duplicateProgramId !== program.id)}
+                  loading={isDuplicating && duplicateProgramId === program.id}
+                  onClick={() => handleDuplicate(program)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Duplicate
+                </Button>
+              ),
+              primaryAction: (
+                <Button href={`/manage/programs/${program.id}`} size="sm" variant="secondary">
+                  Open
+                </Button>
+              )
+            })}
+        />
+      </ManagePageShell>
 
       <ProgramCreateWizard
         canWrite={canWrite}
@@ -219,6 +221,6 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
         open={isCreateOpen}
         orgSlug={orgSlug}
       />
-    </div>
+    </>
   );
 }

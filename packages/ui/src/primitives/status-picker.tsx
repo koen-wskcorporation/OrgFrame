@@ -4,7 +4,7 @@ import * as React from "react";
 import { Check, ChevronDown, Settings2 } from "lucide-react";
 import { formControlDisabledClass, formControlFocusClass, formControlShellClass } from "./form-control";
 import { Popover } from "./popover";
-import { StatusChip } from "./status-chip";
+import { Chip } from "./chip";
 import { cn } from "./utils";
 
 export type StatusPickerOption = {
@@ -62,7 +62,7 @@ export function StatusPicker({
       >
         <span className="flex min-w-0 items-center gap-2">
           {selected ? (
-            <StatusChip color={selected.color} label={selected.label} size="sm" />
+            <Chip color={selected.color} label={selected.label} size="sm" />
           ) : (
             <span className="truncate">{placeholder}</span>
           )}
@@ -99,7 +99,7 @@ export function StatusPicker({
                     type="button"
                   >
                     <span className="min-w-0 flex-1">
-                      <StatusChip color={option.color} label={option.label} size="sm" />
+                      <Chip color={option.color} label={option.label} size="sm" />
                     </span>
                     {isSelected ? <Check className="h-4 w-4 shrink-0 text-text-muted" /> : null}
                   </button>

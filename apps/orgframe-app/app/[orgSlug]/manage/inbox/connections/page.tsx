@@ -1,14 +1,11 @@
-import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { PageStack } from "@orgframe/ui/primitives/layout";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
+import { ManagePageShell } from "@/src/features/core/layout/components/ManagePageShell";
+import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
-import { isOrgToolEnabled } from "@/src/shared/org/features";
-import { getInboxConnectionsDataAction } from "@/src/features/communications/actions";
-import { InboxConnectionsWorkspace } from "@/src/features/communications/components/InboxConnectionsWorkspace";
+import { getInboxConnectionsDataAction } from "@/src/features/inbox/actions";
+import { InboxConnectionsWorkspace } from "@/src/features/inbox/components/InboxConnectionsWorkspace";
 import { ToolUnavailablePanel } from "../../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
@@ -17,49 +14,41 @@ export const metadata: Metadata = {
 
 export default async function OrgManageInboxConnectionsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
-  const orgContext = await getOrgAuthContext(orgSlug);
-  if (!isOrgToolEnabled(orgContext.toolAvailability, "inbox")) {
+  const { orgContext, unavailable } = await gateManageSection(orgSlug, {
+    permission: ["communications.read", "communications.write"],
+    tool: "inbox"
+  });
+
+  if (unavailable) {
     return (
-      <PageStack>
-        <PageHeader description="Connect per-org communication channels for unified inbox routing." showBorder={false} title="Inbox Connections" />
+      <ManagePageShell description="Connect per-org communication channels for unified inbox routing." title="Inbox Connections">
         <ToolUnavailablePanel title="Inbox" />
-      </PageStack>
+      </ManagePageShell>
     );
   }
 
-  const canRead = can(orgContext.membershipPermissions, "communications.read") || can(orgContext.membershipPermissions, "communications.write");
   const canWrite = can(orgContext.membershipPermissions, "communications.write");
-
-  if (!canRead) {
-    redirect("/forbidden");
-  }
-
-  const data = await getInboxConnectionsDataAction({
-    orgSlug: orgContext.orgSlug
-  });
+  const data = await getInboxConnectionsDataAction({ orgSlug });
 
   if (!data.ok) {
     return (
-      <PageStack>
-        <PageHeader description="Connect per-org communication channels for unified inbox routing." showBorder={false} title="Inbox Connections" />
-        <Alert variant="destructive">{data.error}</Alert>
-      </PageStack>
+      <ManagePageShell description="Connect per-org communication channels for unified inbox routing." title="Inbox Connections">
+        <Alert className="m-5" variant="destructive">{data.error}</Alert>
+      </ManagePageShell>
     );
   }
 
   return (
-    <PageStack>
-      <PageHeader
-        description="Manage per-org channel connections and webhook routing targets for the unified inbox."
-        showBorder={false}
-        title="Inbox Connections"
-        actions={
-          <Button href={`/${orgContext.orgSlug}/manage/inbox`} variant="secondary">
-            Open Conversations
-          </Button>
-        }
-      />
-      <InboxConnectionsWorkspace canWrite={canWrite} initialIntegrations={data.data.integrations} orgSlug={orgContext.orgSlug} />
-    </PageStack>
+    <ManagePageShell
+      actions={
+        <Button href={`/${orgSlug}/manage/inbox`} variant="secondary">
+          Open Conversations
+        </Button>
+      }
+      description="Manage per-org channel connections and webhook routing targets for the unified inbox."
+      title="Inbox Connections"
+    >
+      <InboxConnectionsWorkspace canWrite={canWrite} initialIntegrations={data.data.integrations} orgSlug={orgSlug} />
+    </ManagePageShell>
   );
 }

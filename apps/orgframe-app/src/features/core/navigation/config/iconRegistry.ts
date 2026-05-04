@@ -5,12 +5,14 @@ import {
   CreditCard,
   FileText,
   Globe,
+  Home,
   Inbox,
   LayoutDashboard,
   MapPinned,
   Palette,
   Settings,
   Spline,
+  Trophy,
   Users,
   Wrench,
   type LucideIcon
@@ -26,6 +28,8 @@ export const ORG_ADMIN_ICON_MAP: Record<OrgAdminNavIcon, LucideIcon> = {
   users: Users,
   "credit-card": CreditCard,
   layout: LayoutDashboard,
+  home: Home,
+  trophy: Trophy,
   calendar: CalendarDays,
   "file-text": FileText,
   map: MapPinned,
@@ -36,7 +40,7 @@ export const ORG_ADMIN_ICON_MAP: Record<OrgAdminNavIcon, LucideIcon> = {
 export type OrgHierarchyEntityType = "program" | "division" | "team";
 
 export const ORG_HIERARCHY_ENTITY_CONFIG: Record<OrgHierarchyEntityType, { label: string; icon: LucideIcon }> = {
-  program: { label: "Program", icon: LayoutDashboard },
+  program: { label: "Program", icon: Trophy },
   division: { label: "Division", icon: Spline },
   team: { label: "Team", icon: Users }
 };

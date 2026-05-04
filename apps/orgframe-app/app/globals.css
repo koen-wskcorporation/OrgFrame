@@ -95,17 +95,21 @@ a {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- * Unified App Shell
+ * App Shell
  *
  *   <main class="app">
  *     ├── <div class="app__topbar">  (only when topbar non-null)
- *     └── <div class="app__body">
- *         ├── <aside class="app__sidebar">  (only when sidebar non-null)
- *         └── <div class="app__content">
+ *     └── <div class="app__content">
+ *         └── (page children, optionally wrapped in .sidebar-shell)
+ *
+ * Sidebars are owned by the route group that needs them (currently
+ * /manage via ManageShell), not by the AppShell. This avoids
+ * parallel-slot bleed where a stale sidebar would persist on routes
+ * that don't render one.
  *
  * Body scroll is the only scroll. PrimaryHeader scrolls away naturally;
- * .app__topbar pins below; .app__sidebar pins below the topbar; the
- * page-header inside .app__content pins below those.
+ * .app__topbar pins below; the page-header inside .app__content pins
+ * below the topbar.
  * ───────────────────────────────────────────────────────────────────────── */
 
 .app {
@@ -114,19 +118,6 @@ a {
   gap: var(--layout-gap);
   padding: var(--layout-gap);
   min-height: 100dvh;
-}
-
-.app__body {
-  display: grid;
-  grid-template-areas: "sidebar content";
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--layout-gap);
-  transition: padding-right 220ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.app[data-no-sidebar] .app__body {
-  grid-template-areas: "content";
-  grid-template-columns: minmax(0, 1fr);
 }
 
 .app__topbar {
@@ -167,7 +158,26 @@ a {
   pointer-events: none;
 }
 
-.app__sidebar {
+.app__content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-gap);
+  transition: padding-right 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Sidebar shell — body grid for routes that need a sidebar. Lives
+ * inside .app__content so panel-docking + scroll behavior continue
+ * to work uniformly. */
+.sidebar-shell {
+  display: grid;
+  grid-template-areas: "sidebar content";
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--layout-gap);
+  min-width: 0;
+}
+
+.sidebar-shell__sidebar {
   grid-area: sidebar;
   min-width: 0;
   /*
@@ -183,7 +193,7 @@ a {
   align-self: start;
 }
 
-.app__content {
+.sidebar-shell__content {
   grid-area: content;
   min-width: 0;
   display: flex;
@@ -191,19 +201,19 @@ a {
   gap: var(--layout-gap);
 }
 
-/* Panel docking — only the body grid shrinks; topbar stays full width. */
-body.panel-open-content .app__body {
+/* Panel docking — content column shrinks; topbar stays full width. */
+body.panel-open-content .app__content {
   padding-right: calc(var(--panel-active-width, 325px) + var(--layout-gap));
 }
 
 @media (max-width: 1023px) {
-  body.panel-open-content .app__body {
+  body.panel-open-content .app__content {
     padding-right: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app__body {
+  .app__content {
     transition: none;
   }
 }
@@ -477,7 +487,7 @@ body.panel-resizing * {
   }
 
   .ui-list-row {
-    @apply flex flex-wrap items-start justify-between gap-3 rounded-control border bg-surface px-4 py-3 shadow-sm;
+    @apply flex flex-wrap items-center justify-between gap-3 rounded-control border bg-surface px-4 py-3 shadow-sm;
   }
 
   .ui-list-row-hover {
@@ -498,6 +508,30 @@ body.panel-resizing * {
 
   .ui-list-row-actions {
     @apply ml-auto flex flex-wrap items-center gap-2;
+  }
+
+  .ui-repeat-card {
+    @apply flex h-full flex-col gap-3 rounded-control border bg-surface p-4 shadow-sm;
+  }
+
+  .ui-repeat-card-hover {
+    @apply transition-colors hover:bg-surface-muted/65;
+  }
+
+  .ui-repeat-card-head {
+    @apply flex items-start justify-between gap-2;
+  }
+
+  .ui-repeat-card-title {
+    @apply text-sm font-semibold text-text;
+  }
+
+  .ui-repeat-card-meta {
+    @apply text-xs text-text-muted;
+  }
+
+  .ui-repeat-card-footer {
+    @apply mt-auto flex flex-wrap items-center gap-2 pt-1;
   }
 
   .ui-surface-block {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { AuthLoginPagePopup } from "@/src/features/core/auth/components/AuthLoginPagePopup";
-import { AuthShell } from "@/src/features/core/auth/components/AuthShell";
+import { CenteredFormShell } from "@/src/features/core/layout/components/CenteredFormShell";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import type { AuthMode } from "@/src/features/core/auth/components/AuthDialog";
 
@@ -67,7 +67,7 @@ export default async function AuthPage({
   const initialMode: AuthMode = query.mode === "signup" ? "signup" : "signin";
 
   return (
-    <AuthShell subtitle="Continue with your email to sign in or create your account." title="Login">
+    <CenteredFormShell subtitle="Continue with your email to sign in or create your account." title="Login">
       <AuthLoginPagePopup
         errorMessage={errorMessage}
         infoMessage={infoMessage}
@@ -81,6 +81,6 @@ export default async function AuthPage({
           Reset it here
         </Link>
       </p>
-    </AuthShell>
+    </CenteredFormShell>
   );
 }

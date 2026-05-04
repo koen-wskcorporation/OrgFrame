@@ -470,6 +470,8 @@ export type WizardChromeProps = {
   sidebarPushMode?: "content" | "app";
   /** Optional: replace the default footer entirely. */
   customFooter?: React.ReactNode;
+  /** "create" (default) shows linear Back/Next/Submit and gates the stepper. "edit" lets the user jump freely between steps. */
+  mode?: "create" | "edit";
 };
 
 /**
@@ -499,8 +501,10 @@ export function WizardChrome({
   frame = "sidebar",
   popupSize = "lg",
   sidebarPushMode = "content",
-  customFooter
+  customFooter,
+  mode = "create"
 }: WizardChromeProps) {
+  const isEdit = mode === "edit";
   const currentIndex = Math.max(0, steps.findIndex((step) => step.id === currentStepId));
   const isFirstStep = currentIndex <= 0;
   const isLastStep = currentIndex >= steps.length - 1;
@@ -509,11 +513,11 @@ export function WizardChrome({
 
   const stepper =
     steps.length > 1 ? (
-      <div className="flex flex-wrap items-center gap-1.5 px-1 pb-2 text-xs text-text-muted">
+      <div className="flex flex-wrap items-center gap-1.5 px-1 text-xs text-text-muted">
         {steps.map((step, index) => {
           const isComplete = index < currentIndex;
           const isCurrent = index === currentIndex;
-          const reachable = index <= currentIndex;
+          const reachable = isEdit ? true : index <= currentIndex;
           return (
             <React.Fragment key={step.id}>
               <button
@@ -521,7 +525,7 @@ export function WizardChrome({
                   "rounded-full border px-2.5 py-1 text-xs font-medium transition " +
                   (isCurrent
                     ? "border-accent/40 bg-accent/10 text-text"
-                    : isComplete
+                    : isComplete && !isEdit
                       ? "border-success/40 bg-success/5 text-success"
                       : "border-border bg-surface text-text-muted hover:bg-surface-muted/60")
                 }
@@ -529,7 +533,7 @@ export function WizardChrome({
                 onClick={() => onStepChange(step.id)}
                 type="button"
               >
-                <span className="font-medium">{index + 1}.</span> {step.label}
+                {isEdit ? null : <span className="font-medium">{index + 1}. </span>}{step.label}
               </button>
               {index < steps.length - 1 ? <span className="text-text-muted/60">›</span> : null}
             </React.Fragment>
@@ -538,7 +542,19 @@ export function WizardChrome({
       </div>
     ) : null;
 
-  const defaultFooter = (
+  const defaultFooter = isEdit ? (
+    <>
+      <Button onClick={onClose} type="button" variant="ghost" disabled={submitting}>
+        Cancel
+      </Button>
+      <div className="ml-auto flex items-center gap-2">
+        <Button onClick={onSubmit} type="button" loading={submitting} disabled={submitting || !canAdvance}>
+          <Save className="h-4 w-4" />
+          {submitLabel}
+        </Button>
+      </div>
+    </>
+  ) : (
     <>
       <Button onClick={onClose} type="button" variant="ghost" disabled={submitting}>
         Cancel
@@ -568,7 +584,7 @@ export function WizardChrome({
   const footer = customFooter ?? defaultFooter;
 
   const body = (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {stepper}
       {children}
     </div>
@@ -694,7 +710,7 @@ export function CreateWizard<TState>({
 
   const stepper =
     flow.totalVisible > 1 ? (
-      <div className="flex flex-wrap items-center gap-1.5 px-1 pb-2 text-xs text-text-muted">
+      <div className="flex flex-wrap items-center gap-1.5 px-1 text-xs text-text-muted">
         {flow.visibleSteps.map((step, index) => {
           const isComplete = index < flow.currentIndex;
           const isCurrent = index === flow.currentIndex;
@@ -738,7 +754,7 @@ export function CreateWizard<TState>({
     ) : null;
 
   const body = (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {stepper}
       {draftBanner}
       {flow.currentStep

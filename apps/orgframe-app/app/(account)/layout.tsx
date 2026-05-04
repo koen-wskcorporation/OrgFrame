@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { AccountSidebar, AccountSidebarMobile } from "@/src/features/core/account/components/AccountSidebar";
-import { UniversalAppShell } from "@/src/features/core/layout/components/UniversalAppShell";
+import { AppShell } from "@/src/features/core/layout/components/AppShell";
+import { SidebarShell } from "@/src/features/core/layout/components/SidebarShell";
 import { requireAuth } from "@/src/features/core/auth/server/requireAuth";
 
 export default async function AccountAreaLayout({ children }: { children: React.ReactNode }) {
@@ -10,5 +11,18 @@ export default async function AccountAreaLayout({ children }: { children: React.
     redirect("/auth");
   }
 
-  return <UniversalAppShell mobileSidebar={<AccountSidebarMobile />} sidebar={<AccountSidebar />}>{children}</UniversalAppShell>;
+  return (
+    <AppShell topbar={null}>
+      <SidebarShell
+        sidebar={
+          <>
+            <div className="hidden lg:block"><AccountSidebar /></div>
+            <div className="lg:hidden"><AccountSidebarMobile /></div>
+          </>
+        }
+      >
+        {children}
+      </SidebarShell>
+    </AppShell>
+  );
 }

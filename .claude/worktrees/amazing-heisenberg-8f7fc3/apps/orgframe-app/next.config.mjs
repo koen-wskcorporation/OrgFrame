@@ -4,6 +4,10 @@ const nextConfig = {
   devIndicators: false,
   allowedDevOrigins: ["orgframe.test", "*.orgframe.test"],
   experimental: {
+    experimental: {
+  optimizePackageImports: ["lucide-react"],
+
+},
     serverActions: {
       bodySizeLimit: "50mb"
     },

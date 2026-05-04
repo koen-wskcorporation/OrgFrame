@@ -10,6 +10,8 @@ export type OrgAdminNavIcon =
   | "users"
   | "credit-card"
   | "layout"
+  | "home"
+  | "trophy"
   | "calendar"
   | "file-text"
   | "map"
@@ -88,6 +90,8 @@ function isNavItemVisible(item: OrgAdminNavItem, visibility?: OrgAdminNavVisibil
       return isOrgToolEnabled(toolAvailability, "forms") && Boolean(capabilities?.forms.canAccess);
     case "inbox":
       return isOrgToolEnabled(toolAvailability, "inbox") && Boolean(capabilities?.communications.canAccess);
+    case "website":
+      return isOrgToolEnabled(toolAvailability, "website") && Boolean(capabilities?.pages?.canRead || capabilities?.manage.canRead);
     case "manage":
       return Boolean(capabilities?.manage.canRead || capabilities?.audit.canRead);
     case "dashboard":
@@ -104,7 +108,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
       label: "Dashboard",
       href: "/manage",
       description: "Your AI-powered command center with customizable cards.",
-      icon: "layout",
+      icon: "home",
       showInHome: true,
       match: "exact"
     },
@@ -162,6 +166,14 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
       showInHome: false
     },
     {
+      key: "website",
+      label: "Website",
+      href: "/manage/website",
+      description: "Manage pages, navigation, and public site structure.",
+      icon: "layout",
+      showInHome: true
+    },
+    {
       key: "people",
       label: "People",
       href: "/manage/people",
@@ -192,7 +204,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
       label: "Programs",
       href: "/manage/programs",
       description: "Create and edit programs, divisions, and schedules.",
-      icon: "layout",
+      icon: "trophy",
       showInHome: true
     },
     {

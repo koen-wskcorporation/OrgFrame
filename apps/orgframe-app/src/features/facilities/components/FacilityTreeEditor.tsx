@@ -9,9 +9,9 @@ import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { ContextPanel, CreateModal } from "@orgframe/ui/primitives/interaction-containers";
 import { Select } from "@orgframe/ui/primitives/select";
-import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
-import { buildFacilitySpaceStatusOptions, formatFacilitySpaceStatusLabel, resolveFacilitySpaceStatusLabels } from "@/src/features/facilities/status";
-import type { FacilitySpace } from "@/src/features/facilities/types";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { formatFacilitySpaceStatusLabel, resolveFacilitySpaceStatusLabels } from "@/src/features/facilities/status";
+import type { FacilitySpace, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
 import { FacilityStatusBadge } from "@/src/features/facilities/components/FacilityStatusBadge";
 
 type SpaceDraft = {
@@ -62,6 +62,7 @@ type FacilityTreeEditorProps = {
   onArchiveSpace: (spaceId: string) => void;
   onToggleBookable: (spaceId: string, isBookable: boolean) => void;
   onSetStatus: (spaceId: string, status: FacilitySpace["status"]) => void;
+  spaceStatuses: FacilitySpaceStatusDef[];
 };
 
 function slugify(value: string) {
@@ -106,7 +107,8 @@ function renderTree(
   onArchive: (spaceId: string) => void,
   onToggleBookable: (space: FacilitySpace) => void,
   onSetStatus: (space: FacilitySpace, status: FacilitySpace["status"]) => void,
-  canWrite: boolean
+  canWrite: boolean,
+  spaceStatuses: FacilitySpaceStatusDef[]
 ) {
   return spaces
     .filter((space) => space.parentSpaceId === parentId)
@@ -128,7 +130,7 @@ function renderTree(
                     disabled={!canWrite}
                     label={formatFacilitySpaceStatusLabel(space.status, statusLabels)}
                     onSelectSpaceStatus={(nextStatus) => onSetStatus(space, nextStatus)}
-                    spaceStatusOptions={buildFacilitySpaceStatusOptions(statusLabels)}
+                    spaceStatuses={spaceStatuses}
                     status={space.status}
                   />
                 </div>
@@ -169,7 +171,7 @@ function renderTree(
             ) : null}
           </div>
         </div>
-        {renderTree(orgSlug, spaces, space.id, depth + 1, onEdit, onArchive, onToggleBookable, onSetStatus, canWrite)}
+        {renderTree(orgSlug, spaces, space.id, depth + 1, onEdit, onArchive, onToggleBookable, onSetStatus, canWrite, spaceStatuses)}
       </div>
     ));
 }
@@ -182,7 +184,8 @@ export function FacilityTreeEditor({
   onUpdateSpace,
   onArchiveSpace,
   onToggleBookable,
-  onSetStatus
+  onSetStatus,
+  spaceStatuses
 }: FacilityTreeEditorProps) {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [draft, setDraft] = useState<SpaceDraft>(() => toDraft());
@@ -335,7 +338,7 @@ export function FacilityTreeEditor({
   );
 
   return (
-    <WorkspaceCardShell
+    <ManageSection
       actions={
         <Button disabled={!canWrite} onClick={openCreatePanel} type="button">
           <Plus className="h-4 w-4" />
@@ -356,7 +359,8 @@ export function FacilityTreeEditor({
           onArchiveSpace,
           (space) => onToggleBookable(space.id, !space.isBookable),
           (space, status) => onSetStatus(space.id, status),
-          canWrite
+          canWrite,
+          spaceStatuses
         )}
       
 
@@ -379,6 +383,6 @@ export function FacilityTreeEditor({
       >
         {editorBody}
       </ContextPanel>
-    </WorkspaceCardShell>
+    </ManageSection>
   );
 }

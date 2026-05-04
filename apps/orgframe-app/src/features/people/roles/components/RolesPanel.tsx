@@ -5,7 +5,7 @@ import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardHeader, CardHeaderRow } from "@orgframe/ui/primitives/card";
 import { DataTable, type DataTableColumn } from "@orgframe/ui/primitives/data-table";
-import { StatusChip } from "@orgframe/ui/primitives/status-chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { RoleCreateWizard } from "@/src/features/people/roles/components/RoleCreateWizard";
 import { RoleEditPanel } from "@/src/features/people/roles/components/RoleEditPanel";
 import type { OrgRoleDefinition } from "@/src/features/people/roles/actions";
@@ -46,9 +46,9 @@ export function RolesPanel({ orgSlug, initialRoles, canManageRoles, loadError }:
         defaultVisible: true,
         sortable: true,
         renderCell: (row) => (
-          <StatusChip variant={row.source === "default" ? "neutral" : "success"}>
+          <Chip variant={row.source === "default" ? "neutral" : "success"}>
             {row.source === "default" ? "Built-in" : "Custom"}
-          </StatusChip>
+          </Chip>
         ),
         renderSortValue: (row) => row.source
       },

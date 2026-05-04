@@ -8,7 +8,7 @@ import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Panel } from "@orgframe/ui/primitives/panel";
 import { Select } from "@orgframe/ui/primitives/select";
-import { StatusChip } from "@orgframe/ui/primitives/status-chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { StatusPicker } from "@orgframe/ui/primitives/status-picker";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { deleteFacilitySpaceAction, updateFacilitySpaceAction } from "@/src/features/facilities/actions";
@@ -296,7 +296,7 @@ export function FacilitySpacePanel({
       {KindIcon ? <KindIcon className="h-4 w-4 shrink-0 text-text-muted" /> : null}
       <span className="min-w-0 truncate">{draft?.name ?? space.name}</span>
       {showStatus && currentStatusDef ? (
-        <StatusChip color={currentStatusDef.color} label={currentStatusDef.label} size="sm" />
+        <Chip color={currentStatusDef.color} label={currentStatusDef.label} size="sm" status={true} />
       ) : null}
     </div>
   ) : (

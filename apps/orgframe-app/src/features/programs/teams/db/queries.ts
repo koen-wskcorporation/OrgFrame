@@ -169,7 +169,7 @@ export async function listProgramTeamsSummary(programId: string): Promise<Progra
   const supabase = await createSupabaseServer();
   const { data: teamRows, error } = await supabase
     .schema("programs").from("program_teams")
-    .select(`${teamSelect}, program_structure_nodes(id, name, slug, parent_id)`)
+    .select(`${teamSelect}, divisions(id, name, slug, parent_id)`)
     .eq("program_id", programId)
     .order("created_at", { ascending: true });
 
@@ -216,7 +216,7 @@ export async function listProgramTeamsSummary(programId: string): Promise<Progra
 
   return (teamRows ?? []).map((row: any) => {
     const team = mapTeam(row);
-    const node = asRelationObject(row.program_structure_nodes);
+    const node = asRelationObject(row.divisions);
     return {
       team,
       node: {
@@ -241,7 +241,7 @@ export async function listPublishedProgramTeamsForDirectory(
   const service = createOptionalSupabaseServiceRoleClient();
   const limit = typeof options?.limit === "number" && options.limit > 0 ? Math.min(options.limit, 200) : 200;
   const { data: rows, error } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .select("id, program_id, parent_id, name, slug, node_kind, settings_json, programs!inner(id, org_id, slug, name, status)")
     .eq("programs.org_id", orgId)
     .eq("programs.status", "published")
@@ -276,7 +276,7 @@ export async function listPublishedProgramTeamsForDirectory(
 
   if (divisionIds.length > 0) {
     const { data: divisionRows, error: divisionError } = await supabase
-      .schema("programs").from("program_structure_nodes")
+      .schema("programs").from("divisions")
       .select("id, name, slug, settings_json")
       .in("id", divisionIds);
 
@@ -428,7 +428,7 @@ export async function getProgramTeamDetail(teamId: string): Promise<ProgramTeamD
   const supabase = await createSupabaseServer();
   const { data: teamRow, error } = await supabase
     .schema("programs").from("program_teams")
-    .select(`${teamSelect}, program_structure_nodes(id, name, slug, parent_id)`)
+    .select(`${teamSelect}, divisions(id, name, slug, parent_id)`)
     .eq("id", teamId)
     .maybeSingle();
 
@@ -464,14 +464,14 @@ export async function getProgramTeamDetail(teamId: string): Promise<ProgramTeamD
   const usersById = await listAuthUsersByIds(staffUserIds);
 
   const team = mapTeam(teamRow);
-  const node = asRelationObject(teamRow.program_structure_nodes);
+  const node = asRelationObject(teamRow.divisions);
   const teamSettings = asObject(team.settingsJson);
   const teamSetting = asTeamCalendarVisibility(teamSettings.calendarTeamVisibility);
 
   const divisionId = getOptionalString(node, "parent_id");
   const [divisionNode, programRow] = await Promise.all([
     divisionId
-      ? supabase.schema("programs").from("program_structure_nodes").select("id, settings_json").eq("id", divisionId).maybeSingle()
+      ? supabase.schema("programs").from("divisions").select("id, settings_json").eq("id", divisionId).maybeSingle()
       : Promise.resolve({ data: null as any, error: null as any }),
     supabase.schema("programs").from("programs").select("id, settings_json").eq("id", team.programId).maybeSingle()
   ]);
