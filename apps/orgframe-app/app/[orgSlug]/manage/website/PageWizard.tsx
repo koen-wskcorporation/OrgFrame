@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { Trash2 } from "lucide-react";
+import { Button } from "@orgframe/ui/primitives/button";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { ChipPicker } from "@orgframe/ui/primitives/chip";
 import { FormField } from "@orgframe/ui/primitives/form-field";
@@ -58,6 +60,8 @@ type EditProps = {
   mode: "edit";
   editingItem: OrgSiteStructureItem;
   editingPage: OrgManagePage | null;
+  /** Wired to a "Delete page" button rendered in the wizard's Visibility step. */
+  onDelete?: () => void | Promise<void>;
 };
 
 type SharedProps = {
@@ -361,6 +365,7 @@ function EditPageWizard({
   displayHost,
   editingItem,
   onClose,
+  onDelete,
   onResult,
   open,
   orgSlug,
@@ -458,6 +463,18 @@ function EditPageWizard({
               </span>
             </span>
           </label>
+          {onDelete ? (
+            <div className="space-y-2 border-t border-border pt-4">
+              <div className="text-sm font-medium text-text">Danger zone</div>
+              <p className="text-xs text-text-muted">
+                Removing this page deletes it permanently along with any blocks it contains.
+              </p>
+              <Button onClick={() => void onDelete()} size="sm" variant="danger">
+                <Trash2 className="h-4 w-4" />
+                Delete page
+              </Button>
+            </div>
+          ) : null}
         </div>
       )
     }
@@ -505,6 +522,7 @@ export function PageWizard(props: Props) {
         editingPage={props.editingPage}
         mode="edit"
         onClose={props.onClose}
+        onDelete={props.onDelete}
         onResult={props.onResult}
         open={props.open}
         orgSlug={props.orgSlug}

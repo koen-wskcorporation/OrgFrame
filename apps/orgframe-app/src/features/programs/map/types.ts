@@ -11,6 +11,9 @@ export type ProgramMapNode = {
   bounds: CanvasBounds;
   zIndex: number;
   capacity: number | null;
+  /** True when the node's `settings_json.published` is `true`. Drives the
+   *  Published / Draft status chip on the canvas card. */
+  isPublished: boolean;
   /** Indicates a node placed by the auto-layout fallback because the DB had no map_* columns yet. */
   placedByFallback: boolean;
 };

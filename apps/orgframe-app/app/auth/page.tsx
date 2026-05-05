@@ -75,12 +75,7 @@ export default async function AuthPage({
         nextPath={nextPath}
         returnTo={returnTo}
       />
-      <p className="mt-5 text-center text-sm text-text-muted">
-        Need to reset your password?{" "}
-        <Link className="font-medium text-text underline underline-offset-2 hover:text-text-muted" href="/auth/reset">
-          Reset it here
-        </Link>
-      </p>
+      
     </CenteredFormShell>
   );
 }

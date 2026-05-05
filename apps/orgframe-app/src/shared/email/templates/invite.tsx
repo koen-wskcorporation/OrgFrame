@@ -8,21 +8,32 @@ export type InviteEmailProps = {
 
 export default function InviteEmail({ actionUrl, token }: InviteEmailProps) {
   return (
-    <EmailLayout preview="You've been invited to OrgFrame">
-      <Heading as="h1" style={emailStyles.heading}>You're invited</Heading>
+    <EmailLayout
+      preview="You've been invited to OrgFrame"
+      footerNote="If you weren't expecting this invite, you can safely ignore this email."
+    >
+      <Heading as="h1" style={emailStyles.heading}>
+        You're invited to OrgFrame
+      </Heading>
       <Text style={emailStyles.paragraph}>
-        An OrgFrame admin has invited you to join their organization. Accept the invite to set up your account.
+        An admin has invited you to join their organization on OrgFrame. Accept below to set up your account and get
+        started.
       </Text>
-      <Section style={{ margin: "24px 0" }}>
-        <Button href={actionUrl} style={emailStyles.button}>Accept invite</Button>
+      <Section style={emailStyles.buttonRow}>
+        <Button href={actionUrl} style={emailStyles.button}>
+          Accept invite
+        </Button>
       </Section>
-      <Text style={emailStyles.muted}>
-        Or paste this link into your browser:<br />
-        <Link href={actionUrl} style={emailStyles.link}>{actionUrl}</Link>
-      </Text>
-      <Text style={emailStyles.muted}>
-        One-time code: <span style={emailStyles.code}>{token}</span>
-      </Text>
+      <Section style={emailStyles.panel}>
+        <Text style={emailStyles.panelLabel}>One-time code</Text>
+        <Text style={emailStyles.code}>{token}</Text>
+      </Section>
+      <Section style={emailStyles.panel}>
+        <Text style={emailStyles.panelLabel}>Or paste this link</Text>
+        <Link href={actionUrl} style={emailStyles.fallbackLink}>
+          {actionUrl}
+        </Link>
+      </Section>
     </EmailLayout>
   );
 }

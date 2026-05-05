@@ -675,6 +675,8 @@ export async function saveProgramHierarchyAction(input: z.input<typeof saveHiera
     }
 
     revalidatePath(`/${org.orgSlug}/manage/programs/${payload.programId}`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${payload.programId}/structure`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${payload.programId}/teams`);
     revalidatePath(`/${org.orgSlug}/programs/${program.slug}`);
 
     return {

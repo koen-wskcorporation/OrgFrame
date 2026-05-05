@@ -226,7 +226,7 @@ export function AuthDialog({
                     setStep("email");
                   }}
                   type="button"
-                  variant="ghost"
+                  variant="secondary"
                 >
                   Change email
                 </Button>

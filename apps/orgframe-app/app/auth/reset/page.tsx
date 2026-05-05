@@ -28,11 +28,12 @@ const infoMessageByCode: Record<string, string> = {
 export default async function ResetPage({
   searchParams
 }: {
-  searchParams: Promise<{ mode?: string; error?: string; message?: string }>;
+  searchParams: Promise<{ mode?: string; error?: string; message?: string; detail?: string }>;
 }) {
   const query = await searchParams;
   const isUpdateMode = query.mode === "update";
-  const errorMessage = query.error ? errorMessageByCode[query.error] ?? "Unable to continue." : null;
+  const baseError = query.error ? errorMessageByCode[query.error] ?? "Unable to continue." : null;
+  const errorMessage = baseError && query.detail ? `${baseError} (${query.detail})` : baseError;
   const infoMessage = query.message ? infoMessageByCode[query.message] ?? query.message : null;
 
   return (

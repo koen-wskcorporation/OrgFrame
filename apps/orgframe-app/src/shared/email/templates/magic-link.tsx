@@ -10,20 +10,29 @@ export default function MagicLinkEmail({ actionUrl, token }: MagicLinkEmailProps
   return (
     <EmailLayout
       preview="Your OrgFrame sign-in link"
-      footerNote="If you did not request this link, you can ignore this email."
+      footerNote="If you did not request this link, you can safely ignore this email."
     >
-      <Heading as="h1" style={emailStyles.heading}>Sign in to OrgFrame</Heading>
-      <Text style={emailStyles.paragraph}>Click the button below to sign in. This link will expire shortly.</Text>
-      <Section style={{ margin: "24px 0" }}>
-        <Button href={actionUrl} style={emailStyles.button}>Sign in</Button>
+      <Heading as="h1" style={emailStyles.heading}>
+        Sign in to OrgFrame
+      </Heading>
+      <Text style={emailStyles.paragraph}>
+        Click the button below to sign in. The link is single-use and expires shortly.
+      </Text>
+      <Section style={emailStyles.buttonRow}>
+        <Button href={actionUrl} style={emailStyles.button}>
+          Sign in
+        </Button>
       </Section>
-      <Text style={emailStyles.muted}>
-        Or paste this link into your browser:<br />
-        <Link href={actionUrl} style={emailStyles.link}>{actionUrl}</Link>
-      </Text>
-      <Text style={emailStyles.muted}>
-        One-time code: <span style={emailStyles.code}>{token}</span>
-      </Text>
+      <Section style={emailStyles.panel}>
+        <Text style={emailStyles.panelLabel}>One-time code</Text>
+        <Text style={emailStyles.code}>{token}</Text>
+      </Section>
+      <Section style={emailStyles.panel}>
+        <Text style={emailStyles.panelLabel}>Or paste this link</Text>
+        <Link href={actionUrl} style={emailStyles.fallbackLink}>
+          {actionUrl}
+        </Link>
+      </Section>
     </EmailLayout>
   );
 }

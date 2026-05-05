@@ -2,18 +2,21 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, Building2, FileIcon, FolderIcon, FolderOpenIcon, MoveRight, Plus, Search, Upload, User, X } from "lucide-react";
+import { Building2, FileIcon, FolderIcon, FolderOpenIcon, Home, MoveRight, Plus, Upload, User, X } from "lucide-react";
 import { Popup } from "@orgframe/ui/primitives/popup";
 import { Alert } from "@orgframe/ui/primitives/alert";
+import { Breadcrumb, type BreadcrumbItem } from "@orgframe/ui/primitives/breadcrumb";
 import { Button } from "@orgframe/ui/primitives/button";
+import { Card } from "@orgframe/ui/primitives/card";
 import { Chip } from "@orgframe/ui/primitives/chip";
-import { Input } from "@orgframe/ui/primitives/input";
 import { NavItem } from "@orgframe/ui/primitives/nav-item";
+import { SearchBar } from "@orgframe/ui/primitives/search-bar";
 import { EntityChip } from "@orgframe/ui/primitives/entity-chip";
 import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { Select } from "@orgframe/ui/primitives/select";
 import { Tooltip } from "@orgframe/ui/primitives/tooltip";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { cn } from "@orgframe/ui/primitives/utils";
 import { OrgAreaSidebarSection, OrgAreaSidebarShell } from "@/src/features/core/navigation/components/OrgAreaSidebarShell";
 import { ORG_HIERARCHY_ENTITY_CONFIG } from "@/src/features/core/navigation/config/iconRegistry";
 import { loadFileManagerSnapshotAction, mutateFileManagerAction } from "@/src/features/files/manager/actions";
@@ -26,9 +29,14 @@ import type {
   FileManagerLoadInput,
   FileManagerPerson,
   FileManagerScope,
+  FileManagerSnapshot,
   FileManagerSort,
   OpenFileManagerOptions
 } from "@/src/features/files/manager/types";
+
+function snapshotCacheKey(input: FileManagerLoadInput) {
+  return [input.scope, input.orgSlug ?? "", input.folderId ?? "_root_", input.search ?? "", input.sort ?? ""].join("|");
+}
 
 type ActiveRequest = {
   id: string;
@@ -362,7 +370,18 @@ function FolderTitle({ folder, showDynamicTag = true }: { folder: FileManagerFol
   );
 }
 
-export function FileManagerProvider({ children }: { children: React.ReactNode }) {
+type FileManagerProviderProps = {
+  children: React.ReactNode;
+  /**
+   * Org slug to warm the snapshot cache for as soon as the provider mounts.
+   * When provided, both `personal` and `organization` snapshots are fetched
+   * in the background so the first popup-open is instant. Mutations still
+   * invalidate the cache; this only avoids the cold-start network wait.
+   */
+  prefetchOrgSlug?: string | null;
+};
+
+export function FileManagerProvider({ children, prefetchOrgSlug }: FileManagerProviderProps) {
   const [activeRequest, setActiveRequest] = useState<ActiveRequest | null>(null);
   const [activeScope, setActiveScope] = useState<FileManagerScope>("personal");
   const [folders, setFolders] = useState<FileManagerFolder[]>([]);
@@ -388,11 +407,15 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
   const [organizationScopeIconUrl, setOrganizationScopeIconUrl] = useState<string | null>(null);
   const [personalScopeAvatarUrl, setPersonalScopeAvatarUrl] = useState<string | null>(null);
   const [fileContextCard, setFileContextCard] = useState<FileContextCardState | null>(null);
+  const [infoPanelFileId, setInfoPanelFileId] = useState<string | null>(null);
   const contextCardRef = useRef<HTMLDivElement | null>(null);
   const requestCounterRef = useRef(0);
   const hasLoadedDataRef = useRef(false);
   const initializedFolderRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const snapshotCacheRef = useRef<Map<string, FileManagerSnapshot>>(new Map());
+  const inFlightKeysRef = useRef<Set<string>>(new Set());
+  const prefetchStartedRef = useRef(false);
   const { toast } = useToast();
 
   const allowedScopes = useMemo(() => {
@@ -420,6 +443,12 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
   }, [activeRequest]);
 
   const folderById = useMemo(() => asFolderMap(folders), [folders]);
+
+  // For personal scope the user-facing "root" is the `my-uploads` system
+  // folder — we hide the wrapper from the breadcrumb and treat it as the
+  // navigation home target. Folder creation at this level still works because
+  // the create call uses `currentFolderId` as the parent.
+  const personalRootId = activeScope === "personal" ? systemFolderIds["my-uploads"] ?? null : null;
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string | null, FileManagerFolder[]>();
@@ -455,8 +484,12 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
       cursor = folder.parentId;
     }
 
+    // Hide the personal `my-uploads` wrapper — it's the user-facing root.
+    if (personalRootId) {
+      return nodes.filter((folder) => folder.id !== personalRootId);
+    }
     return nodes;
-  }, [currentFolderId, folderById]);
+  }, [currentFolderId, folderById, personalRootId]);
 
   const visibleFolders = useMemo(() => {
     return childrenByParent.get(currentFolderId) ?? [];
@@ -491,65 +524,84 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     return () => window.clearTimeout(timeoutId);
   }, [searchInput]);
 
-  const loadSnapshot = useCallback(async () => {
-    if (!activeRequest) {
-      return;
-    }
-
-    const currentToken = requestCounterRef.current + 1;
-    requestCounterRef.current = currentToken;
-
-    const hasRenderedData = hasLoadedDataRef.current;
-    if (hasRenderedData) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-    setErrorMessage(null);
-
-    const input: FileManagerLoadInput = {
-      scope: activeScope,
-      orgSlug: activeRequest.options.orgSlug,
-      folderId: isSearching ? null : currentFolderId,
-      search: debouncedSearch.trim() ? debouncedSearch.trim() : undefined,
-      sort
-    };
-
-    const result = await loadFileManagerSnapshotAction(input);
-    if (requestCounterRef.current !== currentToken) {
-      return;
-    }
-
-    setLoading(false);
-    setRefreshing(false);
-
-    if (!result.ok) {
-      setErrorMessage(result.error);
-      setFolders([]);
-      setFiles([]);
-      setSystemFolderIds({});
-      setPeopleByUserId({});
-      setOrganizationScopeIconUrl(null);
-      setPersonalScopeAvatarUrl(null);
-      return;
-    }
-
-    setFolders(result.data.folders);
-    setFiles(result.data.files);
-    setSystemFolderIds(result.data.systemFolderIds);
-    setPeopleByUserId(result.data.peopleByUserId);
-    setOrganizationScopeIconUrl(result.data.organizationScopeIconUrl);
-    setPersonalScopeAvatarUrl(result.data.personalScopeAvatarUrl);
+  const applySnapshot = useCallback((snapshot: FileManagerSnapshot) => {
+    setFolders(snapshot.folders);
+    setFiles(snapshot.files);
+    setSystemFolderIds(snapshot.systemFolderIds);
+    setPeopleByUserId((current) => ({ ...current, ...snapshot.peopleByUserId }));
+    setOrganizationScopeIconUrl(snapshot.organizationScopeIconUrl);
+    setPersonalScopeAvatarUrl(snapshot.personalScopeAvatarUrl);
     hasLoadedDataRef.current = true;
     setFileCache((current) => {
       const next = { ...current };
-      for (const file of result.data.files) {
+      for (const file of snapshot.files) {
         next[file.id] = file;
       }
       return next;
     });
+  }, []);
 
-    if (!initializedFolderRef.current) {
+  const fetchSnapshot = useCallback(async (input: FileManagerLoadInput, options?: { background?: boolean }) => {
+    if (!activeRequest) {
+      return;
+    }
+
+    const key = snapshotCacheKey(input);
+    if (options?.background && inFlightKeysRef.current.has(key)) {
+      return;
+    }
+    inFlightKeysRef.current.add(key);
+
+    const currentToken = requestCounterRef.current + 1;
+    requestCounterRef.current = currentToken;
+
+    if (!options?.background) {
+      setRefreshing(true);
+      setErrorMessage(null);
+    }
+
+    const result = await loadFileManagerSnapshotAction(input);
+    inFlightKeysRef.current.delete(key);
+
+    if (requestCounterRef.current !== currentToken && !options?.background) {
+      return;
+    }
+
+    if (!options?.background) {
+      setRefreshing(false);
+    }
+
+    if (!result.ok) {
+      if (!options?.background) {
+        setErrorMessage(result.error);
+        setFolders([]);
+        setFiles([]);
+        setSystemFolderIds({});
+        setPeopleByUserId({});
+        setOrganizationScopeIconUrl(null);
+        setPersonalScopeAvatarUrl(null);
+      }
+      return;
+    }
+
+    snapshotCacheRef.current.set(key, result.data);
+
+    if (!options?.background) {
+      applySnapshot(result.data);
+    } else {
+      const liveKey = snapshotCacheKey({
+        scope: activeScope,
+        orgSlug: activeRequest.options.orgSlug,
+        folderId: isSearching ? null : currentFolderId,
+        search: debouncedSearch.trim() ? debouncedSearch.trim() : undefined,
+        sort
+      });
+      if (liveKey === key) {
+        applySnapshot(result.data);
+      }
+    }
+
+    if (!initializedFolderRef.current && !options?.background) {
       initializedFolderRef.current = true;
       const targetFolderId = resolveDefaultFolderId({
         options: activeRequest.options,
@@ -562,7 +614,79 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
       setHistory([targetFolderId]);
       setHistoryIndex(0);
     }
-  }, [activeRequest, activeScope, currentFolderId, debouncedSearch, isSearching, sort]);
+  }, [activeRequest, activeScope, applySnapshot, currentFolderId, debouncedSearch, isSearching, sort]);
+
+  const loadSnapshot = useCallback(async () => {
+    if (!activeRequest) {
+      return;
+    }
+
+    const input: FileManagerLoadInput = {
+      scope: activeScope,
+      orgSlug: activeRequest.options.orgSlug,
+      folderId: isSearching ? null : currentFolderId,
+      search: debouncedSearch.trim() ? debouncedSearch.trim() : undefined,
+      sort
+    };
+
+    const cached = snapshotCacheRef.current.get(snapshotCacheKey(input));
+    if (cached) {
+      applySnapshot(cached);
+      setLoading(false);
+      setErrorMessage(null);
+      // Revalidate silently — fresh data lands without a visible spinner.
+      void fetchSnapshot(input, { background: true });
+      return;
+    }
+
+    if (!hasLoadedDataRef.current) {
+      setLoading(true);
+    }
+    await fetchSnapshot(input);
+    setLoading(false);
+  }, [activeRequest, activeScope, applySnapshot, currentFolderId, debouncedSearch, fetchSnapshot, isSearching, sort]);
+
+  // Session-warm prefetch: as soon as the provider mounts, fetch the snapshots
+  // the user is most likely to land on. Mutations still invalidate via
+  // withRefresh(); this just removes the cold-start network wait on the first
+  // popup-open (and any subsequent open thereafter, since the cache survives
+  // between requests now).
+  useEffect(() => {
+    if (prefetchStartedRef.current) {
+      return;
+    }
+    prefetchStartedRef.current = true;
+
+    const warm = async (input: FileManagerLoadInput) => {
+      const key = snapshotCacheKey(input);
+      if (snapshotCacheRef.current.has(key) || inFlightKeysRef.current.has(key)) {
+        return;
+      }
+      inFlightKeysRef.current.add(key);
+      const result = await loadFileManagerSnapshotAction(input);
+      inFlightKeysRef.current.delete(key);
+      if (result.ok) {
+        snapshotCacheRef.current.set(key, result.data);
+      }
+      return result.ok ? result.data : null;
+    };
+
+    void (async () => {
+      const personalRoot = await warm({ scope: "personal", folderId: null, sort: "newest" });
+      const personalMyUploadsId = personalRoot?.systemFolderIds["my-uploads"];
+      if (personalMyUploadsId) {
+        void warm({ scope: "personal", folderId: personalMyUploadsId, sort: "newest" });
+      }
+
+      if (prefetchOrgSlug) {
+        const orgRoot = await warm({ scope: "organization", orgSlug: prefetchOrgSlug, folderId: null, sort: "newest" });
+        const orgFilesId = orgRoot?.systemFolderIds["organization-files"];
+        if (orgFilesId) {
+          void warm({ scope: "organization", orgSlug: prefetchOrgSlug, folderId: orgFilesId, sort: "newest" });
+        }
+      }
+    })();
+  }, [prefetchOrgSlug]);
 
   useEffect(() => {
     if (!activeRequest) {
@@ -576,6 +700,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     setCurrentFolderId(folderId);
     setSelectedFileIds([]);
     setFileContextCard(null);
+    setInfoPanelFileId(null);
 
     if (!pushHistory) {
       return;
@@ -592,35 +717,11 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     setHistoryIndex((current) => current + 1);
   }, [historyIndex]);
 
-  const goBack = useCallback(() => {
-    if (historyIndex <= 0) {
-      return;
-    }
-
-    const nextIndex = historyIndex - 1;
-    setHistoryIndex(nextIndex);
-    const target = history[nextIndex] ?? null;
-    setCurrentFolderId(target);
-    setSelectedFileIds([]);
-    setFileContextCard(null);
-  }, [history, historyIndex]);
-
-  const goForward = useCallback(() => {
-    if (historyIndex >= history.length - 1) {
-      return;
-    }
-
-    const nextIndex = historyIndex + 1;
-    setHistoryIndex(nextIndex);
-    const target = history[nextIndex] ?? null;
-    setCurrentFolderId(target);
-    setSelectedFileIds([]);
-    setFileContextCard(null);
-  }, [history, historyIndex]);
-
   const resetStateForRequest = useCallback((request: ActiveRequest) => {
     initializedFolderRef.current = false;
-    hasLoadedDataRef.current = false;
+    // Keep snapshotCacheRef + hasLoadedDataRef across opens so the popup
+    // re-opens instantly from the session-warm cache. Mutations clear the
+    // cache via withRefresh().
     setActiveScope(resolveDefaultScope(request.options));
     setFolders([]);
     setFiles([]);
@@ -644,6 +745,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     setOrganizationScopeIconUrl(null);
     setPersonalScopeAvatarUrl(null);
     setFileContextCard(null);
+    setInfoPanelFileId(null);
   }, []);
 
   const closeRequest = useCallback((value: FileManagerFile[] | null) => {
@@ -665,6 +767,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
   }, [activeRequest, resetStateForRequest]);
 
   const withRefresh = useCallback(() => {
+    snapshotCacheRef.current.clear();
     setRefreshTick((value) => value + 1);
   }, []);
 
@@ -1032,12 +1135,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
     event.preventDefault();
     event.stopPropagation();
     if (fileId) {
-      setFileContextCard({
-        kind: "file",
-        fileId,
-        x: event.clientX,
-        y: event.clientY
-      });
+      setInfoPanelFileId(fileId);
     } else if (folderId) {
       setFileContextCard({
         kind: "folder",
@@ -1063,12 +1161,10 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
 
   const title = activeRequest?.options.title ?? (activeRequest?.options.mode === "select" ? "Select Files" : "File Manager");
   const subtitle = activeRequest?.options.subtitle ?? "Browse organization and personal files, upload, and manage folders in one place.";
-  const contextCardFile = useMemo(() => {
-    if (!fileContextCard || fileContextCard.kind !== "file") {
-      return null;
-    }
-    return files.find((entry) => entry.id === fileContextCard.fileId) ?? null;
-  }, [fileContextCard, files]);
+  const panelFile = useMemo(() => {
+    if (!infoPanelFileId) return null;
+    return files.find((entry) => entry.id === infoPanelFileId) ?? fileCache[infoPanelFileId] ?? null;
+  }, [files, fileCache, infoPanelFileId]);
   const contextCardFolder = useMemo(() => {
     if (!fileContextCard || fileContextCard.kind !== "folder") {
       return null;
@@ -1213,15 +1309,30 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
         }
         onClose={() => closeRequest(null)}
         open={Boolean(activeRequest)}
-        popupClassName="max-h-[92vh] max-w-[92vw] xl:max-w-[96rem]"
+        popupClassName="!max-h-[calc(100vh-3rem)] !max-w-[calc(100vw-3rem)]"
         size="xl"
         subtitle={subtitle}
         title={title}
       >
         {activeRequest ? (
-          <div className="grid min-h-[68vh] min-w-0 grid-cols-[280px_minmax(0,1fr)] overflow-hidden">
+          <div
+            className={cn(
+              "grid min-h-[68vh] min-w-0 overflow-hidden",
+              infoPanelFileId
+                ? "grid-cols-[260px_minmax(0,1fr)_340px]"
+                : "grid-cols-[260px_minmax(0,1fr)]"
+            )}
+          >
             <OrgAreaSidebarShell className="flex h-full min-h-0 w-full flex-col rounded-none border-b-0 border-l-0 border-r border-t-0 shadow-none">
               <OrgAreaSidebarSection className="flex min-h-0 flex-1 flex-col" title="Files">
+                <div className="mb-3">
+                  <SearchBar
+                    onValueChange={setSearchInput}
+                    placeholder="Search files"
+                    value={searchInput}
+                  />
+                </div>
+
                 <div className="space-y-1">
                   {scopeOptions
                     .filter((option) => allowedScopes.includes(option.value))
@@ -1238,6 +1349,7 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                           setHistoryIndex(0);
                           setSelectedFileIds([]);
                           setFileContextCard(null);
+                          setInfoPanelFileId(null);
                         }}
                         type="button"
                         variant="sidebar"
@@ -1278,48 +1390,24 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
               }}
             >
               <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-                <Button disabled={historyIndex <= 0} onClick={goBack} size="sm" variant="ghost">
-                  <ArrowLeft className="h-4 w-4" />
-                  Back
-                </Button>
-                <Button disabled={historyIndex >= history.length - 1} onClick={goForward} size="sm" variant="ghost">
-                  Forward
-                </Button>
-
-                <div className="mx-1 h-5 w-px bg-border" />
-
-                {breadcrumbs.length > 0 ? (
-                  <div className="flex min-w-0 items-center gap-1 text-xs text-text-muted">
-                    {breadcrumbs.map((folder, index) => (
-                      <button
-                        className="truncate rounded px-1 py-0.5 hover:bg-surface-muted hover:text-text"
-                        key={folder.id}
-                        onClick={() => navigateFolder(folder.id, true)}
-                        type="button"
-                      >
-                        {index > 0 ? " / " : ""}
-                        {folder.name}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-text-muted">Root</p>
-                )}
-
-                <div className="ml-auto flex min-w-[220px] max-w-[360px] flex-1 items-center gap-2 rounded border bg-surface px-2">
-                  <Search className="h-4 w-4 text-text-muted" />
-                  <Input
-                    className="h-8 border-0 bg-transparent px-0"
-                    onChange={(event) => setSearchInput(event.target.value)}
-                    placeholder="Search files"
-                    value={searchInput}
-                  />
-                </div>
-
-                <Select
-                  onChange={(event) => setSort(event.target.value as FileManagerSort)}
-                  options={sortOptions}
-                  value={sort}
+                <Breadcrumb
+                  className="min-w-0 flex-1"
+                  items={breadcrumbs.map<BreadcrumbItem>((folder) => ({
+                    id: folder.id,
+                    label: folder.name,
+                    icon: folderIcon(folder, "h-3.5 w-3.5"),
+                    onClick: () => navigateFolder(folder.id, true)
+                  }))}
+                  leading={
+                    <button
+                      className="flex items-center gap-1.5 rounded-control px-1.5 py-1 text-text-muted transition-colors hover:bg-surface-muted hover:text-text"
+                      onClick={() => navigateFolder(personalRootId ?? null, true)}
+                      type="button"
+                    >
+                      <Home className="h-3.5 w-3.5" />
+                      <span className="sr-only">Root</span>
+                    </button>
+                  }
                 />
 
                 {canManage ? (
@@ -1346,7 +1434,22 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                 ) : null}
               </div>
 
-              <div className={`min-h-0 flex-1 overflow-auto px-4 py-3 ${dragActive ? "bg-accent/5" : ""}`}>
+              <div
+                aria-busy={refreshing}
+                className={cn(
+                  "relative min-h-0 flex-1 overflow-auto px-4 py-3",
+                  dragActive ? "bg-accent/5" : null
+                )}
+              >
+                <div
+                  aria-hidden
+                  className={cn(
+                    "pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-transparent",
+                    refreshing ? "opacity-100" : "opacity-0"
+                  )}
+                >
+                  <div className="h-full w-1/3 animate-[fileManagerProgress_1.1s_ease-in-out_infinite] rounded-full bg-accent" />
+                </div>
                 {errorMessage ? <Alert variant="destructive">{errorMessage}</Alert> : null}
 
                 {uploads.length > 0 ? (
@@ -1420,26 +1523,57 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                       emptyMessage={isSearching ? "No files match your search." : "No files in this folder yet."}
                       getItemKey={(item) => (item.kind === "folder" ? `folder-${item.folder.id}` : `file-${item.file.id}`)}
                       getSearchValue={(item) => item.kind === "folder" ? item.folder.name : `${item.file.name} ${item.file.mime}`}
-                      gridClassName="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+                      gridClassName="grid gap-3 grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]"
                       initialView="grid"
                       items={browserItems}
                       listClassName="space-y-2"
+                      renderShell={({ toolbar, body }) => (
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center justify-start gap-2">
+                            <Select
+                              aria-label="Sort by"
+                              onChange={(event) => setSort(event.target.value as FileManagerSort)}
+                              options={sortOptions.map((opt) => ({ value: opt.value, label: `Sort: ${opt.label}` }))}
+                              value={sort}
+                            />
+                            {toolbar}
+                          </div>
+                          {body}
+                        </div>
+                      )}
                       renderItem={({ item, view }) => {
                       if (item.kind === "folder") {
                         const folder = item.folder;
                         if (view === "grid") {
                           return (
-                            <div className="rounded-card border bg-surface p-3" data-folder-id={folder.id}>
-                              <button className="w-full text-left" onClick={() => navigateFolder(folder.id, true)} type="button">
-                                <div className="mb-2 flex h-28 items-center justify-center rounded border bg-surface-muted/40">
-                                  {folderIcon(folder, "h-8 w-8 text-text-muted")}
+                            <Card
+                              className="overflow-hidden p-2 transition-colors hover:bg-surface-muted/60"
+                              data-folder-id={folder.id}
+                              onMouseEnter={() => {
+                                if (!activeRequest) return;
+                                void fetchSnapshot(
+                                  {
+                                    scope: activeScope,
+                                    orgSlug: activeRequest.options.orgSlug,
+                                    folderId: folder.id,
+                                    sort
+                                  },
+                                  { background: true }
+                                );
+                              }}
+                            >
+                              <button className="flex w-full flex-col gap-2 text-left" onClick={() => navigateFolder(folder.id, true)} type="button">
+                                <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-control bg-surface-muted/50">
+                                  {folderIcon(folder, "h-10 w-10 text-text-muted")}
                                 </div>
-                                <p className="text-sm font-semibold text-text">
-                                  <FolderTitle folder={folder} />
-                                </p>
-                                <p className="text-xs text-text-muted">Folder</p>
+                                <div className="px-1 pb-1">
+                                  <p className="line-clamp-2 break-words text-sm font-semibold text-text">
+                                    <FolderTitle folder={folder} />
+                                  </p>
+                                  <p className="text-xs text-text-muted">Folder</p>
+                                </div>
                               </button>
-                            </div>
+                            </Card>
                           );
                         }
 
@@ -1460,33 +1594,47 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                       const vectorPreview = isVectorPreview(file);
                       if (view === "grid") {
                         return (
-                          <div
-                            className={`rounded-card border bg-surface p-3 transition-colors ${selected ? "border-accent bg-accent/10" : "hover:bg-surface-muted"}`}
+                          <Card
+                            className={cn(
+                              "overflow-hidden p-2 transition-colors",
+                              selected ? "border-accent bg-accent/10" : "hover:bg-surface-muted/60"
+                            )}
                             data-file-id={file.id}
                             role="button"
                             tabIndex={0}
-                            onClick={() => toggleFileSelection(file)}
+                            onClick={() => {
+                              setFileCache((current) => ({ ...current, [file.id]: file }));
+                              setInfoPanelFileId(file.id);
+                            }}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                toggleFileSelection(file);
+                                setFileCache((current) => ({ ...current, [file.id]: file }));
+                                setInfoPanelFileId(file.id);
                               }
                             }}
                           >
-                            <div className="mb-2 overflow-hidden rounded border bg-surface-muted/40">
+                            <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-control bg-surface-muted/50">
                               {file.mime.startsWith("image/") && file.url ? (
-                                <img alt={file.name} className={`h-28 w-full ${vectorPreview ? "object-contain p-2" : "object-cover"}`} loading="lazy" src={file.url} />
+                                <img
+                                  alt={file.name}
+                                  className="h-full w-full object-contain p-2"
+                                  loading="lazy"
+                                  src={file.url}
+                                />
                               ) : (
-                                <div className="flex h-28 w-full items-center justify-center text-xs font-semibold tracking-wide text-text-muted">
+                                <span className="text-xs font-semibold tracking-wide text-text-muted">
                                   {extensionLabel(file.name)}
-                                </div>
+                                </span>
                               )}
                             </div>
-                            <p className="break-all text-sm font-semibold text-text">{file.name}</p>
-                            <p className="break-all text-xs text-text-muted">
-                              {file.mime || "Unknown"} • {formatFileSize(file.size)}
-                            </p>
-                          </div>
+                            <div className="px-1 pb-1 pt-2">
+                              <p className="line-clamp-2 break-words text-sm font-semibold text-text">{file.name}</p>
+                              <p className="truncate text-xs text-text-muted">
+                                {formatFileSize(file.size)}
+                              </p>
+                            </div>
+                          </Card>
                         );
                       }
 
@@ -1498,11 +1646,15 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                           data-file-id={file.id}
                           role="button"
                           tabIndex={0}
-                          onClick={() => toggleFileSelection(file)}
+                          onClick={() => {
+                            setFileCache((current) => ({ ...current, [file.id]: file }));
+                            setInfoPanelFileId(file.id);
+                          }}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" || event.key === " ") {
                               event.preventDefault();
-                              toggleFileSelection(file);
+                              setFileCache((current) => ({ ...current, [file.id]: file }));
+                              setInfoPanelFileId(file.id);
                             }
                           }}
                         >
@@ -1517,121 +1669,136 @@ export function FileManagerProvider({ children }: { children: React.ReactNode })
                       );
                     }}
                     />
-                    {refreshing ? (
-                      <div className="pointer-events-none absolute inset-0 flex items-start justify-end rounded-card bg-surface/35 p-2 backdrop-blur-[1px]">
-                        <Chip className="normal-case tracking-normal" color="neutral" size="compact">
-                          Refreshing...
-                        </Chip>
-                      </div>
-                    ) : null}
                   </div>
                 )}
               </div>
 
             </section>
+
+            {panelFile ? (
+              <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden border-l bg-surface">
+                <div className="flex items-start gap-2 border-b px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-text" title={panelFile.name}>
+                      {panelFile.name}
+                    </p>
+                    <p className="truncate text-xs text-text-muted">{panelFile.mime || "Unknown type"}</p>
+                  </div>
+                  <Button
+                    aria-label="Close info panel"
+                    iconOnly
+                    onClick={() => setInfoPanelFileId(null)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                  <div className="mb-3 flex aspect-square w-full items-center justify-center overflow-hidden rounded-control border bg-surface-muted/40">
+                    {panelFile.mime.startsWith("image/") && panelFile.url ? (
+                      <img
+                        alt={panelFile.name}
+                        className="h-full w-full object-contain p-2"
+                        loading="lazy"
+                        src={panelFile.url}
+                      />
+                    ) : (
+                      <span className="text-sm font-semibold tracking-wide text-text-muted">
+                        {extensionLabel(panelFile.name)}
+                      </span>
+                    )}
+                  </div>
+
+                  {activeRequest?.options.mode === "select" ? (
+                    <div className="mb-3">
+                      <Button
+                        className="w-full"
+                        onClick={() => toggleFileSelection(panelFile)}
+                        size="sm"
+                        variant={selectedFileIds.includes(panelFile.id) ? "secondary" : "primary"}
+                      >
+                        {selectedFileIds.includes(panelFile.id) ? "Deselect" : "Select"}
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {canManage ? (
+                    <div className="mb-3 flex flex-wrap gap-1 border-b pb-3">
+                      <Button
+                        onClick={() => {
+                          setMoveDraft({ type: "file", id: panelFile.id, name: panelFile.name, targetFolderId: panelFile.folderId });
+                        }}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        <MoveRight className="mr-1 h-3.5 w-3.5" />
+                        Move
+                      </Button>
+                      <Button onClick={() => void renameFile(panelFile)} size="sm" variant="ghost">
+                        Rename
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          void deleteFile(panelFile);
+                          setInfoPanelFileId(null);
+                        }}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-y-1.5 text-xs">
+                    <p className="text-text-muted">Size</p>
+                    <p className="truncate text-text">{formatFileSize(panelFile.size)}</p>
+                    <p className="text-text-muted">Dimensions</p>
+                    <p className="truncate text-text">
+                      {panelFile.width && panelFile.height ? `${panelFile.width} x ${panelFile.height}` : "Unknown"}
+                    </p>
+                    <p className="text-text-muted">Visibility</p>
+                    <p className="truncate text-text">{panelFile.visibility}</p>
+                    <p className="text-text-muted">Scope</p>
+                    <p className="truncate text-text">{panelFile.scope}</p>
+                    <p className="text-text-muted">Bucket</p>
+                    <p className="truncate text-text">{panelFile.bucket}</p>
+                    <p className="text-text-muted">Path</p>
+                    <p className="truncate text-text" title={panelFile.path}>
+                      {panelFile.path}
+                    </p>
+                    <p className="text-text-muted">Created</p>
+                    <p className="truncate text-text">{formatFileTimestamp(panelFile.createdAt)}</p>
+                    <p className="text-text-muted">Edited</p>
+                    <p className="truncate text-text">
+                      {formatFileTimestamp(asMetadataTimestamp(panelFile.metadataJson, "lastEditedAt") ?? panelFile.updatedAt)}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 border-t pt-3">
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Created By</p>
+                    {(() => {
+                      const createdByUserId = asMetadataUserId(panelFile.metadataJson, "createdByUserId") ?? panelFile.uploaderUserId;
+                      const createdBy = createdByUserId ? peopleByUserId[createdByUserId] : null;
+                      return createdBy ? <EntityChip avatarUrl={createdBy.avatarUrl} name={createdBy.name} /> : <p className="text-xs text-text-muted">Unknown</p>;
+                    })()}
+                  </div>
+
+                  <div className="mt-3 border-t pt-3">
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Edited By</p>
+                    {(() => {
+                      const createdByUserId = asMetadataUserId(panelFile.metadataJson, "createdByUserId") ?? panelFile.uploaderUserId;
+                      const editedByUserId = asMetadataUserId(panelFile.metadataJson, "lastEditedByUserId") ?? createdByUserId;
+                      const editedBy = editedByUserId ? peopleByUserId[editedByUserId] : null;
+                      return editedBy ? <EntityChip avatarUrl={editedBy.avatarUrl} name={editedBy.name} /> : <p className="text-xs text-text-muted">Unknown</p>;
+                    })()}
+                  </div>
+                </div>
+              </aside>
+            ) : null}
           </div>
         ) : null}
       </Popup>
-      {contextCardFile && contextCardPosition
-        ? createPortal(
-            <div
-              className="fixed z-[3000] w-[360px] max-w-[calc(100vw-24px)] rounded-card border bg-surface p-3 shadow-floating"
-              onClick={(event) => event.stopPropagation()}
-              onContextMenu={(event) => event.preventDefault()}
-              ref={contextCardRef}
-              style={{
-                left: contextCardPosition.left,
-                top: contextCardPosition.top
-              }}
-            >
-              <div className="border-b pb-2">
-                <p className="truncate text-sm font-semibold text-text">{contextCardFile.name}</p>
-                <p className="truncate text-xs text-text-muted">{contextCardFile.mime || "Unknown type"}</p>
-              </div>
-
-              {canManage ? (
-                <div className="mt-2 flex flex-wrap gap-1 border-b pb-2">
-                  <Button
-                    onClick={() => {
-                      setMoveDraft({ type: "file", id: contextCardFile.id, name: contextCardFile.name, targetFolderId: contextCardFile.folderId });
-                      setFileContextCard(null);
-                    }}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    <MoveRight className="mr-1 h-3.5 w-3.5" />
-                    Move
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      void renameFile(contextCardFile);
-                      setFileContextCard(null);
-                    }}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    Rename
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      void deleteFile(contextCardFile);
-                      setFileContextCard(null);
-                    }}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    Delete
-                  </Button>
-                </div>
-              ) : null}
-
-              <div className="mt-3 grid grid-cols-[120px_minmax(0,1fr)] gap-y-1 text-xs">
-                <p className="text-text-muted">Size</p>
-                <p className="truncate text-text">{formatFileSize(contextCardFile.size)}</p>
-                <p className="text-text-muted">Dimensions</p>
-                <p className="truncate text-text">
-                  {contextCardFile.width && contextCardFile.height ? `${contextCardFile.width} x ${contextCardFile.height}` : "Unknown"}
-                </p>
-                <p className="text-text-muted">Visibility</p>
-                <p className="truncate text-text">{contextCardFile.visibility}</p>
-                <p className="text-text-muted">Scope</p>
-                <p className="truncate text-text">{contextCardFile.scope}</p>
-                <p className="text-text-muted">Bucket</p>
-                <p className="truncate text-text">{contextCardFile.bucket}</p>
-                <p className="text-text-muted">Path</p>
-                <p className="truncate text-text" title={contextCardFile.path}>
-                  {contextCardFile.path}
-                </p>
-                <p className="text-text-muted">Created</p>
-                <p className="truncate text-text">{formatFileTimestamp(contextCardFile.createdAt)}</p>
-                <p className="text-text-muted">Edited</p>
-                <p className="truncate text-text">
-                  {formatFileTimestamp(asMetadataTimestamp(contextCardFile.metadataJson, "lastEditedAt") ?? contextCardFile.updatedAt)}
-                </p>
-              </div>
-
-              <div className="mt-3 border-t pt-3">
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Created By</p>
-                {(() => {
-                  const createdByUserId = asMetadataUserId(contextCardFile.metadataJson, "createdByUserId") ?? contextCardFile.uploaderUserId;
-                  const createdBy = createdByUserId ? peopleByUserId[createdByUserId] : null;
-                  return createdBy ? <EntityChip avatarUrl={createdBy.avatarUrl} name={createdBy.name} /> : <p className="text-xs text-text-muted">Unknown</p>;
-                })()}
-              </div>
-
-              <div className="mt-3 border-t pt-3">
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Edited By</p>
-                {(() => {
-                  const createdByUserId = asMetadataUserId(contextCardFile.metadataJson, "createdByUserId") ?? contextCardFile.uploaderUserId;
-                  const editedByUserId = asMetadataUserId(contextCardFile.metadataJson, "lastEditedByUserId") ?? createdByUserId;
-                  const editedBy = editedByUserId ? peopleByUserId[editedByUserId] : null;
-                  return editedBy ? <EntityChip avatarUrl={editedBy.avatarUrl} name={editedBy.name} /> : <p className="text-xs text-text-muted">Unknown</p>;
-                })()}
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
       {contextCardFolder && contextCardPosition
         ? createPortal(
             <div

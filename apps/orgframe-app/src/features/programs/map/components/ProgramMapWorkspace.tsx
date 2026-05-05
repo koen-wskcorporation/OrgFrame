@@ -6,9 +6,9 @@ import { useToast } from "@orgframe/ui/primitives/toast";
 import { useRouter } from "next/navigation";
 import type { CanvasBounds } from "@/src/features/canvas/core/types";
 import { EditorShell } from "@/src/features/canvas/components/EditorShell";
+import { saveProgramHierarchyAction } from "@/src/features/programs/actions";
 import { saveProgramMapAction } from "@/src/features/programs/map/actions";
-import { CreateDivisionWizard } from "@/src/features/programs/map/components/CreateDivisionWizard";
-import { CreateTeamWizard } from "@/src/features/programs/map/components/CreateTeamWizard";
+import { CreateNodeWizard } from "@/src/features/programs/map/components/CreateNodeWizard";
 import { EditNodeWizard } from "@/src/features/programs/map/components/EditNodeWizard";
 import { ProgramMapEditor } from "@/src/features/programs/map/components/ProgramMapEditor";
 import { ProgramAssignmentsPanel } from "@/src/features/programs/map/components/ProgramAssignmentsPanel";
@@ -33,8 +33,6 @@ type ProgramMapWorkspaceProps = {
   onEditorClose?: () => void;
 };
 
-type AddTeamRequest = { parentId: string | null };
-
 export function ProgramMapWorkspace({
   orgSlug,
   programId,
@@ -58,8 +56,9 @@ export function ProgramMapWorkspace({
   const draft = useProgramMapDraft(nodesFromServer);
   const [editingNodeId, setEditingNodeId] = React.useState<string | null>(null);
   const [assignmentsOpen, setAssignmentsOpen] = React.useState(false);
-  const [creatingDivision, setCreatingDivision] = React.useState(false);
-  const [addTeamRequest, setAddTeamRequest] = React.useState<AddTeamRequest | null>(null);
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createDefaultParentId, setCreateDefaultParentId] = React.useState<string | null>(null);
+  const [createDefaultKind, setCreateDefaultKind] = React.useState<"division" | "team" | null>(null);
   const [isSaving, setSaving] = React.useState(false);
 
   const editingNode = React.useMemo(
@@ -82,6 +81,21 @@ export function ProgramMapWorkspace({
   const refreshFromServer = React.useCallback(() => {
     router.refresh();
   }, [router]);
+
+  // Apply the latest authoritative node list from a hierarchy mutation
+  // (create/update/delete). The server action already refetches the full
+  // node list, so we update state directly instead of waiting on
+  // `router.refresh()` to re-render the parent server component — that
+  // race was causing newly-created divisions to not show on the canvas
+  // until a manual reload.
+  const applyNodesFromAction = React.useCallback(
+    (nextNodes: ProgramNode[]) => {
+      setNodesFromServer(nextNodes);
+      // Still refresh so the assignment dock + sibling data refetch.
+      router.refresh();
+    },
+    [router]
+  );
 
   const handleSave = React.useCallback(async () => {
     if (!canWrite) return;
@@ -106,30 +120,51 @@ export function ProgramMapWorkspace({
     toast.toast({ title: "Map saved" });
   }, [canWrite, draft, orgSlug, programId, toast]);
 
-  const handleAddDivision = React.useCallback(() => {
-    if (!canWrite) return;
-    setCreatingDivision(true);
-  }, [canWrite]);
+  const handleTogglePublished = React.useCallback(
+    async (nodeId: string, next: boolean) => {
+      if (!canWrite) return;
+      const result = await saveProgramHierarchyAction({
+        orgSlug,
+        programId,
+        action: "set-published",
+        nodeId,
+        isPublished: next
+      });
+      if (!result.ok) {
+        toast.toast({
+          title: "Couldn't update status",
+          description: result.error,
+          variant: "destructive"
+        });
+        return;
+      }
+      applyNodesFromAction(result.data.details.nodes);
+    },
+    [applyNodesFromAction, canWrite, orgSlug, programId, toast]
+  );
 
-  const handleAddTeam = React.useCallback(() => {
+  const handleAdd = React.useCallback(() => {
     if (!canWrite) return;
-    // Default the parent to whichever division contains the currently selected
-    // node — matches the user's mental "I clicked here, add under it" intent.
+    // Pre-fill the team-parent picker with whichever division contains the
+    // currently selected node — matches the "I clicked here, add under it"
+    // mental model when the user reaches the team step.
     let parentId: string | null = null;
     if (editingNode?.nodeKind === "division") parentId = editingNode.id;
     else if (editingNode?.nodeKind === "team") parentId = editingNode.parentId;
-    if (!parentId) parentId = divisions[0]?.id ?? null;
-    if (!parentId) {
-      toast.toast({
-        title: "Add a division first",
-        description: "Teams must live inside a division.",
-        variant: "destructive"
-      });
-      setCreatingDivision(true);
-      return;
-    }
-    setAddTeamRequest({ parentId });
-  }, [canWrite, divisions, editingNode, toast]);
+    setCreateDefaultParentId(parentId);
+    setCreateDefaultKind(null);
+    setCreateOpen(true);
+  }, [canWrite, editingNode]);
+
+  const handleAddTeamUnder = React.useCallback(
+    (divisionId: string) => {
+      if (!canWrite) return;
+      setCreateDefaultParentId(divisionId);
+      setCreateDefaultKind("team");
+      setCreateOpen(true);
+    },
+    [canWrite]
+  );
 
   const handleDragEnd = React.useCallback(
     async (event: DragEndEvent) => {
@@ -186,8 +221,7 @@ export function ProgramMapWorkspace({
     draft.discard();
     setEditingNodeId(null);
     setAssignmentsOpen(false);
-    setCreatingDivision(false);
-    setAddTeamRequest(null);
+    setCreateOpen(false);
   }, [draft]);
 
   // Drag-drop onto teams should only register while the assignments panel is open —
@@ -245,8 +279,9 @@ export function ProgramMapWorkspace({
               onSave={handleSave}
               assignmentsOpen={assignmentsOpen}
               onToggleAssignments={() => setAssignmentsOpen((open) => !open)}
-              onAddDivision={handleAddDivision}
-              onAddTeam={handleAddTeam}
+              onAdd={handleAdd}
+              onAddTeamUnder={handleAddTeamUnder}
+              onTogglePublished={handleTogglePublished}
             />
           )
         }
@@ -274,24 +309,16 @@ export function ProgramMapWorkspace({
         coaches={assignmentDock.coaches}
       />
 
-      <CreateDivisionWizard
-        open={creatingDivision}
-        onClose={() => setCreatingDivision(false)}
-        orgSlug={orgSlug}
-        programId={programId}
-        existingSlugs={existingSlugs}
-        onCreated={refreshFromServer}
-      />
-
-      <CreateTeamWizard
-        open={addTeamRequest !== null}
-        onClose={() => setAddTeamRequest(null)}
+      <CreateNodeWizard
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
         orgSlug={orgSlug}
         programId={programId}
         divisions={divisions}
-        defaultParentId={addTeamRequest?.parentId ?? null}
+        defaultParentId={createDefaultParentId}
+        defaultKind={createDefaultKind}
         existingSlugs={existingSlugs}
-        onCreated={refreshFromServer}
+        onCreated={applyNodesFromAction}
       />
     </DndContext>
   );

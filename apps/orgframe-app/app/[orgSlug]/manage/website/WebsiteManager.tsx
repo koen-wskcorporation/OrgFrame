@@ -6,24 +6,24 @@ import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChevronRight,
-  ExternalLink,
-  FolderTree,
+  Eye,
+  EyeOff,
   GripVertical,
-  Indent,
-  MoreHorizontal,
-  Outdent,
   Pencil,
   Plus,
+  Settings2,
   Trash2,
   X
 } from "lucide-react";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent
@@ -32,12 +32,11 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
-  verticalListSortingStrategy
+  type SortingStrategy
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@orgframe/ui/primitives/utils";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Badge, ChipPicker } from "@orgframe/ui/primitives/chip";
+import { Chip, ChipPicker } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
@@ -57,6 +56,20 @@ import { PageWizard } from "./PageWizard";
 type TreeNode = {
   item: OrgSiteStructureItem;
   children: TreeNode[];
+};
+
+/**
+ * One row as rendered in the flat list. `lines` describes the diagram-line
+ * column at each indentation level: lines[i] for i in [0, depth] is "does the
+ * level-i ancestor (or self at i=depth) have a sibling below this row?". The
+ * renderer uses this to decide where to draw vertical continuation lines and
+ * where to draw the elbow connector.
+ */
+type FlatRow = {
+  item: OrgSiteStructureItem;
+  depth: number;
+  hasChildren: boolean;
+  lines: boolean[];
 };
 
 type AddItemKind = "page" | "dropdown" | "link";
@@ -107,6 +120,31 @@ function buildTree(items: OrgSiteStructureItem[]): TreeNode[] {
     return list.map((item) => ({ item, children: walk(item.id) }));
   };
   return walk(null);
+}
+
+/**
+ * Flatten the tree into rows for rendering. Skips children of collapsed
+ * parents. Produces the per-row `lines` array used by the diagram renderer.
+ */
+function flattenTree(nodes: TreeNode[], collapsed: Set<string>): FlatRow[] {
+  const out: FlatRow[] = [];
+  const walk = (siblings: TreeNode[], ancestorLines: boolean[]) => {
+    siblings.forEach((node, index) => {
+      const hasNextSibling = index < siblings.length - 1;
+      const lines = [...ancestorLines, hasNextSibling];
+      out.push({
+        item: node.item,
+        depth: ancestorLines.length,
+        hasChildren: node.children.length > 0,
+        lines
+      });
+      if (node.children.length > 0 && !collapsed.has(node.item.id)) {
+        walk(node.children, lines);
+      }
+    });
+  };
+  walk(nodes, []);
+  return out;
 }
 
 /**
@@ -544,6 +582,11 @@ export function WebsiteManagerBody() {
           }
           mode="edit"
           onClose={() => setEditingItem(null)}
+          onDelete={async () => {
+            const target = editingItem;
+            await ctx.handleDelete(target);
+            setEditingItem(null);
+          }}
           onResult={(res) => {
             applyResult(res);
             if (res.ok) setEditingItem(null);
@@ -558,6 +601,11 @@ export function WebsiteManagerBody() {
         initialPages={pages}
         item={editingItem && editingItem.type !== "page" ? editingItem : null}
         onClose={() => setEditingItem(null)}
+        onDelete={async () => {
+          if (!editingItem) return;
+          await ctx.handleDelete(editingItem);
+          setEditingItem(null);
+        }}
         onResult={(res) => {
           applyResult(res);
           if (res.ok) setEditingItem(null);
@@ -589,6 +637,25 @@ function useDragState() {
   return React.useContext(DragStateContext);
 }
 
+/**
+ * Sortable strategy that explicitly does NOT shift items as the user drags.
+ * verticalListSortingStrategy auto-translates rows to "preview" reorder, but
+ * that interferes with the cursor-position-on-row math we use to detect nest
+ * intent (the over row's rect moves out from under the cursor). Without a
+ * shift, the rows stay put — the active item still translates with the
+ * cursor (handled by useDraggable, not the strategy) and the cursor lands
+ * exactly where the user expects.
+ */
+const noShiftStrategy: SortingStrategy = () => null;
+
+/**
+ * Plain closest-centre collision. With `<DragOverlay>` the original active
+ * row stays at its real layout position (it does NOT translate to follow the
+ * cursor), so it can never tie or "win" against the target row at distance
+ * zero. The target row directly under the cursor is unambiguously closest.
+ */
+const collisionDetectionForTree: CollisionDetection = closestCenter;
+
 /** Returns true if `candidateId` is `ancestorId` or a descendant of it. */
 function isInSubtree(
   itemsById: Map<string, OrgSiteStructureItem>,
@@ -606,12 +673,17 @@ function isInSubtree(
 }
 
 function TreeRoot() {
-  const { canWrite, treeNodes, items, handleNest, handleReorderRelative } = useWebsiteManager();
+  const { canWrite, collapsed, treeNodes, items, handleNest, handleReorderRelative } =
+    useWebsiteManager();
 
   const itemsById = React.useMemo(
     () => new Map(items.map((i) => [i.id, i])),
     [items]
   );
+
+  // Single flat list of rendered rows. Hides descendants of collapsed parents.
+  const flatRows = React.useMemo(() => flattenTree(treeNodes, collapsed), [treeNodes, collapsed]);
+  const flatIds = React.useMemo(() => flatRows.map((r) => r.item.id), [flatRows]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -620,67 +692,94 @@ function TreeRoot() {
 
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [overInfo, setOverInfo] = React.useState<DragState["overInfo"]>(null);
+  // The ref mirrors `overInfo` so `handleDragEnd` can read the very latest
+  // value without depending on whether React has committed the render that
+  // followed the last `handleDragOver`. State drives the visual feedback;
+  // the ref drives the drop dispatch.
+  const overInfoRef = React.useRef<DragState["overInfo"]>(null);
+  const setOver = (next: DragState["overInfo"]) => {
+    overInfoRef.current = next;
+    setOverInfo(next);
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
+    overInfoRef.current = null;
     setActiveId(String(event.active.id));
+    setOverInfo(null);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
+    const { active, over, activatorEvent, delta } = event;
     if (!over || active.id === over.id) {
-      setOverInfo(null);
+      setOver(null);
       return;
     }
     const overRect = over.rect;
-    const activeRect = active.rect.current.translated;
-    if (!overRect || !activeRect) {
-      setOverInfo(null);
+    if (!overRect) {
+      setOver(null);
       return;
     }
 
-    // Determine drop mode by the active item's vertical center relative to
-    // the over row. Top quarter = before, bottom quarter = after, middle =
-    // nest under that row.
-    const activeCenterY = activeRect.top + activeRect.height / 2;
-    const overTop = overRect.top;
-    const overHeight = overRect.height;
-    const relativeY = (activeCenterY - overTop) / overHeight;
+    // Resolve the actual pointer Y. The collision detector picked `over`
+    // based on the cursor already; we use the same coordinate for the
+    // before/nest/after split so the feedback the user sees matches where
+    // they're actually pointing.
+    let pointerY: number | null = null;
+    const ev = activatorEvent as PointerEvent | MouseEvent | null;
+    if (ev && typeof ev.clientY === "number") {
+      pointerY = ev.clientY + delta.y;
+    } else {
+      const r = active.rect.current.translated;
+      if (r) pointerY = r.top + r.height / 2;
+    }
+    if (pointerY === null) {
+      setOver(null);
+      return;
+    }
 
+    // Generous middle band (20%–80%) so the user doesn't have to bullseye
+    // the row's exact centre to nest. Top/bottom 20% is reorder-before /
+    // reorder-after.
+    const relativeY = (pointerY - overRect.top) / overRect.height;
     let mode: DropMode;
-    if (relativeY < 0.3) mode = "before";
-    else if (relativeY > 0.7) mode = "after";
+    if (relativeY < 0.2) mode = "before";
+    else if (relativeY > 0.8) mode = "after";
     else mode = "nest";
 
-    // Reject nesting under a descendant of the active item (would form a cycle).
+    // Reject nesting under a descendant of the active (would create a cycle).
     if (mode === "nest" && isInSubtree(itemsById, String(active.id), String(over.id))) {
-      setOverInfo(null);
+      setOver(null);
       return;
     }
 
-    setOverInfo({ id: String(over.id), mode });
+    setOver({ id: String(over.id), mode });
   };
 
   const reset = () => {
+    overInfoRef.current = null;
     setActiveId(null);
     setOverInfo(null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active } = event;
-    if (!overInfo) {
+    // Read from the ref — `overInfo` state may not have committed yet for
+    // the final pointermove that preceded this drop.
+    const finalOver = overInfoRef.current;
+    if (!finalOver) {
       reset();
       return;
     }
     const activeStr = String(active.id);
-    if (activeStr === overInfo.id) {
+    if (activeStr === finalOver.id) {
       reset();
       return;
     }
 
-    if (overInfo.mode === "nest") {
-      handleNest(activeStr, overInfo.id);
+    if (finalOver.mode === "nest") {
+      handleNest(activeStr, finalOver.id);
     } else {
-      handleReorderRelative(activeStr, overInfo.id, overInfo.mode);
+      handleReorderRelative(activeStr, finalOver.id, finalOver.mode);
     }
     reset();
   };
@@ -695,9 +794,14 @@ function TreeRoot() {
     );
   }
 
+  // The row currently being dragged — used by <DragOverlay> to render a
+  // floating preview that follows the cursor, so the original row can stay
+  // pinned at its layout position (which keeps collision detection clean).
+  const activeRow = activeId ? flatRows.find((r) => r.item.id === activeId) ?? null : null;
+
   return (
     <DndContext
-      collisionDetection={closestCenter}
+      collisionDetection={collisionDetectionForTree}
       onDragCancel={reset}
       onDragEnd={canWrite ? handleDragEnd : reset}
       onDragOver={handleDragOver}
@@ -705,30 +809,43 @@ function TreeRoot() {
       sensors={sensors}
     >
       <DragStateContext.Provider value={dragValue}>
-        <SiblingGroup nodes={treeNodes} />
+        <SortableContext items={flatIds} strategy={noShiftStrategy}>
+          {/* Tight spacing between rows so the diagram lines on the left
+              read as nearly-continuous tree connectors. */}
+          <div className="space-y-1">
+            {flatRows.map((row) => (
+              <TreeRow key={row.item.id} row={row} />
+            ))}
+          </div>
+        </SortableContext>
+        <DragOverlay dropAnimation={null}>
+          {activeRow ? <DragPreview row={activeRow} /> : null}
+        </DragOverlay>
       </DragStateContext.Provider>
     </DndContext>
   );
 }
 
-// ---------------------------------------------------------------------------
-// SiblingGroup: one SortableContext per group of siblings. Recursively
-// mounted by TreeRow for each parent's children.
-// ---------------------------------------------------------------------------
-
-function SiblingGroup({ nodes }: { nodes: TreeNode[] }) {
-  const ids = React.useMemo(() => nodes.map((n) => n.item.id), [nodes]);
-
-  if (nodes.length === 0) return null;
-
+/**
+ * Floating preview shown by `<DragOverlay>` while a row is being dragged.
+ * A non-interactive snapshot of the row — just enough to make it obvious
+ * what's moving with the cursor.
+ */
+function DragPreview({ row }: { row: FlatRow }) {
+  const { item } = row;
+  const typeLabel = rowTypeLabel(item);
   return (
-    <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-      <div className="space-y-3">
-        {nodes.map((node) => (
-          <TreeRow key={node.item.id} node={node} />
-        ))}
+    <div className="rounded-control border border-accent bg-surface px-4 py-3 shadow-floating ring-2 ring-accent/30">
+      <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-text">
+        <span className="truncate">{item.title}</span>
+        <Chip status={false} variant={typeLabel.variant}>
+          {typeLabel.label}
+        </Chip>
       </div>
-    </SortableContext>
+      {item.urlPath ? (
+        <div className="mt-1 text-xs text-text-muted">{item.urlPath}</div>
+      ) : null}
+    </div>
   );
 }
 
@@ -736,41 +853,45 @@ function SiblingGroup({ nodes }: { nodes: TreeNode[] }) {
 // TreeRow
 // ---------------------------------------------------------------------------
 
+const INDENT_PX = 24;
+
 type TreeRowProps = {
-  node: TreeNode;
+  row: FlatRow;
 };
 
-function TreeRow({ node }: TreeRowProps) {
+function TreeRow({ row }: TreeRowProps) {
+  const router = useRouter();
   const {
     canWrite,
     collapsed,
     handleDelete,
-    indent,
-    openAdd,
     orgSlug,
-    outdent,
     pending,
     setEditingItem,
     toggleCollapse,
     toggleField
   } = useWebsiteManager();
 
-  const { item, children } = node;
-  const hasChildren = children.length > 0;
+  const { item, depth, hasChildren, lines } = row;
+  const isTopLevel = depth === 0;
   const isCollapsed = collapsed.has(item.id);
 
   const sortable = useSortable({ id: item.id, disabled: !canWrite || isLocked(item) });
   const dragState = useDragState();
-  const isNestTarget =
-    dragState.overInfo?.id === item.id &&
-    dragState.overInfo?.mode === "nest" &&
-    dragState.activeId !== item.id;
+  const targetMode =
+    dragState.overInfo?.id === item.id && dragState.activeId !== item.id
+      ? dragState.overInfo.mode
+      : null;
+  const isNestTarget = targetMode === "nest";
+  const isBeforeTarget = targetMode === "before";
+  const isAfterTarget = targetMode === "after";
   const isBeingDragged = dragState.activeId === item.id;
 
+  // No transform here — `<DragOverlay>` renders the moving preview. The
+  // original row stays at its layout position so collision detection sees
+  // it as a static droppable, distinct from any potential drop target.
   const dragStyle: React.CSSProperties = {
-    transform: CSS.Translate.toString(sortable.transform),
-    transition: sortable.transition,
-    opacity: isBeingDragged ? 0.4 : undefined
+    opacity: isBeingDragged ? 0.35 : undefined
   };
   const setNodeRef = sortable.setNodeRef;
   const typeLabel = rowTypeLabel(item);
@@ -783,18 +904,20 @@ function TreeRow({ node }: TreeRowProps) {
         ? `/${orgSlug}`
         : `/${orgSlug}/${linkedPageSlug}`
       : null;
-  const [actionsOpen, setActionsOpen] = React.useState(false);
-
-  const onAddChild = (kind: AddItemKind) => openAdd(kind, item.id);
   const onDelete = () => handleDelete(item);
-  const onEdit = () => setEditingItem(item);
-  const onIndent = () => indent(item);
-  const onOutdent = () => outdent(item);
+  // "Manage" opens the wizard panel for settings (was the old Edit behavior).
+  const onManage = () => setEditingItem(item);
+  // "Edit" navigates to the live page. The user can open the editor from the
+  // page itself via the existing "Edit page" button in the org header — we
+  // intentionally don't auto-flip into edit mode on arrival.
+  const onEdit = () => {
+    if (!editorHref) return;
+    router.push(editorHref);
+  };
   const onToggleCollapse = () => toggleCollapse(item.id);
-  const onTogglePublished = () => toggleField(item, { isPublished: !item.isPublished });
   const onToggleShowInMenu = () => toggleField(item, { showInMenu: !item.showInMenu });
 
-  const titleNode = editorHref ? (
+  const titleText = editorHref ? (
     <Link className="truncate text-text hover:underline" href={editorHref}>
       {item.title}
     </Link>
@@ -804,6 +927,26 @@ function TreeRow({ node }: TreeRowProps) {
     </a>
   ) : (
     <span className="truncate">{item.title}</span>
+  );
+
+  // The collapse/expand toggle is offered only on top-level parents (depth 0
+  // with children). Deeper sub-trees are always visible — their structure is
+  // shown via the diagram lines on the left.
+  const showCollapseToggle = isTopLevel && hasChildren;
+  const titleNode = (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      {titleText}
+      {showCollapseToggle ? (
+        <Button
+          aria-label={isCollapsed ? "Expand" : "Collapse"}
+          className="!h-5 !w-5 flex-none [&_svg]:!h-3 [&_svg]:!w-3"
+          iconOnly
+          onClick={onToggleCollapse}
+        >
+          {isCollapsed ? <ChevronRight /> : <ChevronDown />}
+        </Button>
+      ) : null}
+    </span>
   );
 
   const metaText =
@@ -831,14 +974,10 @@ function TreeRow({ node }: TreeRowProps) {
     </Button>
   ) : null;
 
-  // Order: title text → metadata chips → expand/collapse arrow on the far right
-  // of the chip row. The chevron is only rendered when the row actually has
-  // children — and it sits AFTER the chips so the title text can land flush
-  // against the leading edge.
+  // Status chip is always the leftmost chip — it's the most actionable piece
+  // of metadata, and uniform positioning makes it scannable across rows.
   const chips = (
     <>
-      <Badge variant={typeLabel.variant}>{typeLabel.label}</Badge>
-      {/* Status chip — clickable, same options + colors as the wizard. */}
       <ChipPicker
         disabled={!canWrite || locked}
         onChange={(value) => toggleField(item, { isPublished: value === "published" })}
@@ -846,145 +985,151 @@ function TreeRow({ node }: TreeRowProps) {
         status
         value={item.isPublished ? "published" : "unpublished"}
       />
-      {!item.showInMenu ? <Badge variant="neutral">Hidden in nav</Badge> : null}
-      {locked ? <Badge variant="neutral">Locked</Badge> : null}
-      {hasChildren ? (
-        // Sized to match the chip-row baseline (h-5) so it doesn't push the
-        // title / meta apart. The default `iconOnly` size (h-8) was making
-        // rows-with-children visibly taller than rows-without.
-        <Button
-          aria-label={isCollapsed ? "Expand" : "Collapse"}
-          className="!h-5 !w-5 [&_svg]:!h-3 [&_svg]:!w-3"
-          iconOnly
-          onClick={onToggleCollapse}
-        >
-          {isCollapsed ? <ChevronRight /> : <ChevronDown />}
-        </Button>
+      <Chip status={false} variant={typeLabel.variant}>
+        {typeLabel.label}
+      </Chip>
+      {!item.showInMenu ? (
+        <Chip status={false} variant="neutral">
+          Hidden in nav
+        </Chip>
+      ) : null}
+      {locked ? (
+        <Chip status={false} variant="neutral">
+          Locked
+        </Chip>
       ) : null}
     </>
   );
 
+  // Order, left-to-right: Show/Hide → Edit → Manage. Delete now lives inside
+  // the Manage panel (in the wizard's Visibility step / dialog footer) — it's
+  // a destructive action and doesn't belong in the row's quick-actions.
   const secondaryActions = (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-2">
       <Button
-        aria-label={item.showInMenu ? "Hide from nav" : "Show in nav"}
         disabled={!canWrite || pending || locked}
-        iconOnly
         onClick={onToggleShowInMenu}
-        title={item.showInMenu ? "Visible in nav" : "Hidden from nav"}
+        size="sm"
         variant="ghost"
       >
-        <FolderTree className={item.showInMenu ? "" : "text-text-muted opacity-50"} />
-      </Button>
-      <Button
-        aria-label="Outdent"
-        disabled={!canWrite || pending || locked || !item.parentId}
-        iconOnly
-        onClick={onOutdent}
-        title="Move out one level"
-        variant="ghost"
-      >
-        <Outdent />
-      </Button>
-      <Button
-        aria-label="Indent"
-        disabled={!canWrite || pending || locked}
-        iconOnly
-        onClick={onIndent}
-        title="Nest under previous item"
-        variant="ghost"
-      >
-        <Indent />
+        {item.showInMenu ? <Eye /> : <EyeOff />}
+        {item.showInMenu ? "Hide" : "Show"}
       </Button>
     </div>
   );
 
   const primaryAction = (
-    <div className="flex items-center gap-0.5">
-      <Button aria-label="Edit" disabled={!canWrite || locked} iconOnly onClick={onEdit} variant="ghost">
-        <Pencil />
-      </Button>
-      <div className="relative">
-        <Button aria-label="More" disabled={!canWrite || locked} iconOnly onClick={() => setActionsOpen((v) => !v)} variant="ghost">
-          <MoreHorizontal />
+    <div className="flex items-center gap-2">
+      {editorHref ? (
+        <Button disabled={!canWrite || locked} onClick={onEdit} size="sm" variant="secondary">
+          <Pencil />
+          Edit
         </Button>
-        {actionsOpen ? (
-          <div
-            className="absolute right-0 top-full z-20 mt-1 w-48 overflow-hidden rounded-md border border-border bg-surface shadow-lg"
-            onMouseLeave={() => setActionsOpen(false)}
-          >
-            <button
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-muted"
-              onClick={() => {
-                setActionsOpen(false);
-                onAddChild("page");
-              }}
-              type="button"
-            >
-              <Plus className="h-3.5 w-3.5" /> Add page below
-            </button>
-            <button
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-muted"
-              onClick={() => {
-                setActionsOpen(false);
-                onAddChild("dropdown");
-              }}
-              type="button"
-            >
-              <FolderTree className="h-3.5 w-3.5" /> Add dropdown below
-            </button>
-            <button
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-muted"
-              onClick={() => {
-                setActionsOpen(false);
-                onAddChild("link");
-              }}
-              type="button"
-            >
-              <ExternalLink className="h-3.5 w-3.5" /> Add link below
-            </button>
-            <div className="border-t border-border" />
-            <button
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-status-danger hover:bg-surface-muted"
-              onClick={() => {
-                setActionsOpen(false);
-                onDelete();
-              }}
-              type="button"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Delete
-            </button>
-          </div>
-        ) : null}
-      </div>
+      ) : null}
+      <Button disabled={!canWrite || locked} onClick={onManage} size="sm" variant="secondary">
+        <Settings2 />
+        Manage
+      </Button>
     </div>
   );
 
   return (
     <div
       className={cn(
-        // Nest target highlight — ring + accent border so it's clear that the
-        // dragged row will become a child of THIS row on drop, not just be
-        // reordered next to it.
-        "rounded-control transition-shadow",
-        isNestTarget && "ring-2 ring-accent ring-offset-2 ring-offset-canvas"
+        "relative rounded-control transition-colors",
+        // Nest target highlight — recolour the row's own border to the org
+        // accent and tint its background. Done by reaching into the inner
+        // `.ui-list-row` element via Tailwind's arbitrary-variant syntax so
+        // the highlight wraps the actual visual card, not just an offset
+        // outline outside it.
+        isNestTarget &&
+          "[&_.ui-list-row]:!border-accent [&_.ui-list-row]:!ring-2 [&_.ui-list-row]:!ring-accent [&_.ui-list-row]:!bg-accent/5"
       )}
       ref={setNodeRef}
       style={dragStyle}
     >
-      <RepeaterItem
-        body={
-          hasChildren && !isCollapsed ? <SiblingGroup nodes={children} /> : null
-        }
-        chips={chips}
-        id={item.id}
-        leading={leading}
-        meta={metaText}
-        primaryAction={primaryAction}
-        secondaryActions={secondaryActions}
-        title={titleNode}
-        view="list"
-      />
+      {/* Before / after drop indicators — a thick accent line on the relevant
+          edge. Absolute-positioned so they don't shift the row layout. */}
+      {isBeforeTarget ? (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 -top-0.5 h-1 rounded-full bg-accent"
+        />
+      ) : null}
+      {isAfterTarget ? (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 -bottom-0.5 h-1 rounded-full bg-accent"
+        />
+      ) : null}
+      <div className="flex items-stretch">
+        <DiagramLines lines={lines} />
+        <div className="min-w-0 flex-1">
+          <RepeaterItem
+            chips={chips}
+            id={item.id}
+            leading={leading}
+            meta={metaText}
+            primaryAction={primaryAction}
+            secondaryActions={secondaryActions}
+            title={titleNode}
+            view="list"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Diagram lines — the "│" / "├─" / "└─" tree connectors drawn to the left of
+// each non-root row.
+// ---------------------------------------------------------------------------
+
+type DiagramCellKind = "empty" | "vertical" | "connector-mid" | "connector-end";
+
+function DiagramLines({ lines }: { lines: boolean[] }) {
+  const depth = lines.length - 1;
+  if (depth === 0) return null;
+
+  const cells: DiagramCellKind[] = [];
+  for (let i = 0; i < depth; i += 1) {
+    if (i < depth - 1) {
+      // Ancestor column: vertical line continues through this row only if the
+      // ancestor at level i+1 has another sibling below the current row.
+      cells.push(lines[i + 1] ? "vertical" : "empty");
+    } else {
+      // Connector cell for the current row's level.
+      cells.push(lines[depth] ? "connector-mid" : "connector-end");
+    }
+  }
+
+  return (
+    <div aria-hidden className="flex flex-none">
+      {cells.map((kind, i) => (
+        <DiagramCell key={i} kind={kind} />
+      ))}
+    </div>
+  );
+}
+
+function DiagramCell({ kind }: { kind: DiagramCellKind }) {
+  const baseStyle: React.CSSProperties = { width: INDENT_PX };
+  if (kind === "empty") {
+    return <div className="self-stretch" style={baseStyle} />;
+  }
+  return (
+    <div className="relative self-stretch" style={baseStyle}>
+      {/* Top half vertical (always shown for non-empty cells). */}
+      <div className="absolute left-1/2 top-0 h-1/2 w-px -translate-x-1/2 bg-border" />
+      {/* Bottom half vertical: through-vertical or "more siblings below". */}
+      {(kind === "vertical" || kind === "connector-mid") && (
+        <div className="absolute left-1/2 top-1/2 h-1/2 w-px -translate-x-1/2 bg-border" />
+      )}
+      {/* Horizontal stub: connects the connector elbow to the row content. */}
+      {(kind === "connector-mid" || kind === "connector-end") && (
+        <div className="absolute left-1/2 top-1/2 h-px w-1/2 bg-border" />
+      )}
     </div>
   );
 }
@@ -996,13 +1141,23 @@ function TreeRow({ node }: TreeRowProps) {
 type EditDialogProps = {
   item: OrgSiteStructureItem | null;
   onClose: () => void;
+  onDelete: () => void | Promise<void>;
   onResult: (res: WebsiteManagerActionResult) => void;
   orgSlug: string;
   pending: boolean;
   startTransition: React.TransitionStartFunction;
 };
 
-function EditItemDialog({ item, initialPages, onClose, onResult, orgSlug, pending, startTransition }: EditDialogProps & { initialPages: OrgManagePage[] }) {
+function EditItemDialog({
+  item,
+  initialPages,
+  onClose,
+  onDelete,
+  onResult,
+  orgSlug,
+  pending,
+  startTransition
+}: EditDialogProps & { initialPages: OrgManagePage[] }) {
   const linkKind = item ? getLinkKind(item) : "none";
   const linkedSlug = item ? getLinkedPageSlug(item) : null;
   const initialUrl = item ? getExternalUrl(item) ?? "" : "";
@@ -1077,13 +1232,19 @@ function EditItemDialog({ item, initialPages, onClose, onResult, orgSlug, pendin
     <EditorSettingsDialog
       description="Edit title, URL, and visibility."
       footer={
-        <div className="flex justify-end gap-2">
-          <Button onClick={onClose} size="sm" variant="ghost">
-            Cancel
+        <div className="flex items-center gap-2">
+          <Button disabled={pending} onClick={onDelete} size="sm" variant="danger">
+            <Trash2 />
+            Delete
           </Button>
-          <Button disabled={pending || !title.trim()} onClick={submit} size="sm">
-            Save
-          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button onClick={onClose} size="sm" variant="ghost">
+              Cancel
+            </Button>
+            <Button disabled={pending || !title.trim()} onClick={submit} size="sm">
+              Save
+            </Button>
+          </div>
         </div>
       }
       onClose={onClose}

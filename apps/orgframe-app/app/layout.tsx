@@ -132,7 +132,7 @@ export default async function RootLayout({
           <ToastProvider>
             <ConfirmDialogProvider>
               <OrderPanelProvider>
-                <FileManagerProvider>
+                <FileManagerProvider prefetchOrgSlug={headerRouting.currentOrgSlug}>
                   <UploadProvider>
                     {showHeaders ? (
                       <PrimaryHeader

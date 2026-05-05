@@ -9,6 +9,8 @@ import { boundsFromPoints, snapPoint, snapToGrid } from "@/src/features/canvas/c
 import type { CanvasPoint } from "@/src/features/canvas/core/types";
 import { getSpaceKindIcon, isKindBookable } from "@/src/features/facilities/lib/spaceKindIcon";
 import { FacilityMapToolbar } from "@/src/features/facilities/map/components/FacilityMapToolbar";
+import { MapSearchBar } from "@/src/features/canvas/components/MapSearchBar";
+import { computeWheelZoom } from "@/src/features/canvas/core/zoom";
 import type { FacilitySpaceStatus, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
 import type { MapShape } from "@/src/features/facilities/map/types";
 import { CANVAS_CORNER_RADIUS } from "@/src/features/canvas/core/constants";
@@ -511,20 +513,15 @@ export function FacilityMapEditor({
     // editing. Toolbar zoom buttons remain available.
     if (readOnly) return;
     event.preventDefault();
-    // Slightly punchier wheel sensitivity since the zoom range is now 0.1x–16x.
-    const factor = Math.exp(-event.deltaY * 0.0025);
-    const nextZoom = clampZoomForMode(view.zoom * factor, mapEnabled);
-    if (nextZoom === view.zoom) return;
-    const cursor = clientToWorld(event.clientX, event.clientY);
-    const nextWidth = pixelSize.width / nextZoom;
-    const nextHeight = pixelSize.height / nextZoom;
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const cursorOffsetX = (event.clientX - rect.left) / rect.width;
-    const cursorOffsetY = (event.clientY - rect.top) / rect.height;
-    const nextCenterX = cursor.x - (cursorOffsetX - 0.5) * nextWidth;
-    const nextCenterY = cursor.y - (cursorOffsetY - 0.5) * nextHeight;
-    setView({ centerX: nextCenterX, centerY: nextCenterY, zoom: nextZoom });
+    const next = computeWheelZoom(view, event, rect, {
+      minZoom: 0.1,
+      maxZoom: CANVAS_MAX_ZOOM,
+      // Satellite mode caps zoom lower than canvas-only mode.
+      clampZoom: (candidate) => clampZoomForMode(candidate, mapEnabled)
+    });
+    if (next) setView(next);
     setEdgeHover(null);
   }
 
@@ -533,6 +530,40 @@ export function FacilityMapEditor({
     const factor = direction === 1 ? 1.3 : 1 / 1.3;
     setView((current) => ({ ...current, zoom: clampZoomForMode(current.zoom * factor, mapEnabled) }));
   }
+
+  function focusNode(nodeId: string) {
+    const node = nodes.find((candidate) => candidate.id === nodeId);
+    if (!node || node.points.length === 0) return;
+    const bounds = boundsFromPoints(node.points);
+    const margin = 80;
+    const targetWidth = bounds.width + margin * 2;
+    const targetHeight = bounds.height + margin * 2;
+    const zoomX = pixelSize.width / Math.max(1, targetWidth);
+    const zoomY = pixelSize.height / Math.max(1, targetHeight);
+    // Cap focus-zoom to a sensible level so a tiny space doesn't blow up.
+    const FOCUS_MAX_ZOOM = 4;
+    const nextZoom = clampZoomForMode(Math.min(zoomX, zoomY, FOCUS_MAX_ZOOM), mapEnabled);
+    setView({
+      centerX: bounds.x + bounds.width / 2,
+      centerY: bounds.y + bounds.height / 2,
+      zoom: nextZoom
+    });
+  }
+
+  function handleSearchPick(nodeId: string) {
+    focusNode(nodeId);
+    onSelectNode(nodeId);
+  }
+
+  const searchItems = React.useMemo(
+    () =>
+      nodes.map((node) => ({
+        id: node.id,
+        label: node.label,
+        sublabel: node.spaceKind
+      })),
+    [nodes]
+  );
 
   function handleFit() {
     if (nodes.length === 0) {
@@ -1415,6 +1446,14 @@ export function FacilityMapEditor({
             })()
           : null}
       </svg>
+
+      {!readOnly ? (
+        <MapSearchBar
+          items={searchItems}
+          onPickItem={handleSearchPick}
+          placeholder="Search spaces"
+        />
+      ) : null}
 
       <FacilityMapToolbar
         aiMode={aiMode}

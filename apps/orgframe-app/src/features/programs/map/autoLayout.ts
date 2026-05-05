@@ -7,13 +7,25 @@ import { snapToGrid } from "@/src/features/canvas/core/geometry";
 import type { CanvasBounds } from "@/src/features/canvas/core/types";
 import type { ProgramNode } from "@/src/features/programs/types";
 
-const DIVISION_WIDTH = 240;
-const DIVISION_HEIGHT = 96;
-const TEAM_WIDTH = 192;
-const TEAM_HEIGHT = 72;
-const COLUMN_GAP = 48;
-const ROW_GAP = 24;
-const TEAMS_PER_ROW = 2;
+// Division layout — teams render *inside* the division card. Height is
+// computed from the team count so the parent visually contains its children.
+// All dimensions are exact multiples of CANVAS_GRID_SIZE (24) so that every
+// node corner lands on a grid line — keeps the background grid from looking
+// like it's sliding under the cards as the user pans/zooms.
+export const DIVISION_WIDTH = 240; // 10 × 24
+export const DIVISION_HEADER_HEIGHT = 48; // 2 × 24
+export const DIVISION_BODY_PAD = 0;
+
+// Team layout — teams render flush inside the division (no inner padding).
+// Their own border overlaps the division's border (same color, same width)
+// so visually it remains a single edge.
+export const TEAM_HEIGHT = 48; // 2 × 24
+export const TEAM_GAP = 0;
+export const TEAM_WIDTH = DIVISION_WIDTH;
+
+// Spacing between sibling division columns / between rows when wrapping.
+const COLUMN_GAP = 24; // 1 × 24
+const ROW_GAP = 24; // 1 × 24
 
 function snapBounds(bounds: CanvasBounds): CanvasBounds {
   return {
@@ -25,10 +37,31 @@ function snapBounds(bounds: CanvasBounds): CanvasBounds {
 }
 
 /**
+ * Total division height for a given number of nested teams. The height
+ * always reserves one extra slot below the last team for an "Add team"
+ * affordance — the editor draws a dashed click-to-add row there. We bake
+ * the slot into geometry (instead of conditionally on canWrite) so the
+ * persisted layout is identical for every viewer.
+ */
+export function divisionHeightFor(teamCount: number): number {
+  return DIVISION_HEADER_HEIGHT + (teamCount + 1) * TEAM_HEIGHT;
+}
+
+/** Position of the i-th nested team inside a division placed at `divisionBounds`. */
+export function nestedTeamBounds(divisionBounds: CanvasBounds, indexInParent: number): CanvasBounds {
+  return {
+    x: divisionBounds.x,
+    y: divisionBounds.y + DIVISION_HEADER_HEIGHT + indexInParent * TEAM_HEIGHT,
+    width: TEAM_WIDTH,
+    height: TEAM_HEIGHT
+  };
+}
+
+/**
  * Compute a deterministic grid layout for any nodes that don't have stored
- * map geometry yet. Divisions become column headers; their teams stack
- * underneath in two columns. Existing geometry is left alone — only nulls
- * get filled in. Result columns wrap when they would exceed canvas width.
+ * map geometry yet. Teams are nested inside their parent division — the
+ * division grows tall to fit them. Divisions wrap to the next row when the
+ * canvas width is exceeded.
  */
 export function computeAutoLayout(nodes: ProgramNode[]): Map<string, CanvasBounds> {
   const result = new Map<string, CanvasBounds>();
@@ -54,60 +87,45 @@ export function computeAutoLayout(nodes: ProgramNode[]): Map<string, CanvasBound
       (a, b) => a.sortIndex - b.sortIndex || a.name.localeCompare(b.name)
     );
 
-    const teamRows = Math.max(1, Math.ceil(teams.length / TEAMS_PER_ROW));
-    const columnWidth = Math.max(
-      DIVISION_WIDTH,
-      TEAMS_PER_ROW * TEAM_WIDTH + (TEAMS_PER_ROW - 1) * Math.max(CANVAS_GRID_SIZE, 24)
-    );
-    const columnHeight =
-      DIVISION_HEIGHT + ROW_GAP * 2 + teamRows * TEAM_HEIGHT + (teamRows - 1) * ROW_GAP;
+    const height = divisionHeightFor(teams.length);
 
-    if (cursorX + columnWidth > CANVAS_WIDTH - CANVAS_PADDING) {
+    if (cursorX + DIVISION_WIDTH > CANVAS_WIDTH - CANVAS_PADDING) {
       cursorX = CANVAS_PADDING;
-      cursorY += rowMaxHeight + ROW_GAP * 2;
+      cursorY += rowMaxHeight + ROW_GAP;
       rowMaxHeight = 0;
     }
 
     const divisionBounds = snapBounds({
-      x: cursorX + (columnWidth - DIVISION_WIDTH) / 2,
+      x: cursorX,
       y: cursorY,
       width: DIVISION_WIDTH,
-      height: DIVISION_HEIGHT
+      height
     });
     result.set(division.id, divisionBounds);
 
-    let teamY = cursorY + DIVISION_HEIGHT + ROW_GAP * 2;
     teams.forEach((team, index) => {
-      const col = index % TEAMS_PER_ROW;
-      const row = Math.floor(index / TEAMS_PER_ROW);
-      const teamX = cursorX + col * (TEAM_WIDTH + Math.max(CANVAS_GRID_SIZE, 24));
-      const teamBounds = snapBounds({
-        x: teamX,
-        y: teamY + row * (TEAM_HEIGHT + ROW_GAP),
-        width: TEAM_WIDTH,
-        height: TEAM_HEIGHT
-      });
-      result.set(team.id, teamBounds);
+      result.set(team.id, snapBounds(nestedTeamBounds(divisionBounds, index)));
     });
 
-    cursorX += columnWidth + COLUMN_GAP;
-    rowMaxHeight = Math.max(rowMaxHeight, columnHeight);
+    cursorX += DIVISION_WIDTH + COLUMN_GAP;
+    rowMaxHeight = Math.max(rowMaxHeight, height);
   }
 
-  // Orphan teams (no division parent or unknown parent) get appended in a row at the bottom.
+  // Orphan teams (no division parent or unknown parent) get a fallback row at
+  // the bottom — visible but visually unattached, prompting a re-parent.
   const orphanTeams = nodes.filter(
     (node) => node.nodeKind === "team" && (!node.parentId || !nodes.some((n) => n.id === node.parentId))
   );
   if (orphanTeams.length > 0) {
     let orphanX = CANVAS_PADDING;
-    const orphanY = cursorY + rowMaxHeight + ROW_GAP * 2;
+    const orphanY = cursorY + rowMaxHeight + ROW_GAP;
     for (const team of orphanTeams) {
       if (result.has(team.id)) continue;
       result.set(
         team.id,
         snapBounds({ x: orphanX, y: orphanY, width: TEAM_WIDTH, height: TEAM_HEIGHT })
       );
-      orphanX += TEAM_WIDTH + ROW_GAP;
+      orphanX += TEAM_WIDTH + Math.max(CANVAS_GRID_SIZE, 16);
     }
   }
 
@@ -116,7 +134,7 @@ export function computeAutoLayout(nodes: ProgramNode[]): Map<string, CanvasBound
 
 export const PROGRAM_MAP_DEFAULT_DIVISION_SIZE = {
   width: DIVISION_WIDTH,
-  height: DIVISION_HEIGHT
+  height: divisionHeightFor(0)
 } as const;
 
 export const PROGRAM_MAP_DEFAULT_TEAM_SIZE = {

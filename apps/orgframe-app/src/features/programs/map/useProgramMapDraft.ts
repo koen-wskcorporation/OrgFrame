@@ -4,12 +4,62 @@ import * as React from "react";
 import { normalizeBounds } from "@/src/features/canvas/core/geometry";
 import type { CanvasBounds } from "@/src/features/canvas/core/types";
 import type { ProgramNode } from "@/src/features/programs/types";
-import { computeAutoLayout } from "@/src/features/programs/map/autoLayout";
+import {
+  computeAutoLayout,
+  divisionHeightFor,
+  nestedTeamBounds
+} from "@/src/features/programs/map/autoLayout";
 import type {
   ProgramMapDraftSnapshot,
   ProgramMapNode,
   ProgramMapSavePayload
 } from "@/src/features/programs/map/types";
+
+/**
+ * Reproject team bounds onto their parent division's current bounds and
+ * resize each division to fit its team count. This is the single source of
+ * truth for "teams nest inside divisions" — both render and save go through
+ * here so the UI and the persisted geometry never disagree.
+ */
+function applyNestingLayout(draftNodes: ProgramMapNode[]): ProgramMapNode[] {
+  const teamsByParent = new Map<string, ProgramMapNode[]>();
+  for (const node of draftNodes) {
+    if (node.nodeKind === "team" && node.parentId) {
+      const list = teamsByParent.get(node.parentId) ?? [];
+      list.push(node);
+      teamsByParent.set(node.parentId, list);
+    }
+  }
+  // Stable team order inside a division: by name (matches auto-layout).
+  for (const list of teamsByParent.values()) {
+    list.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  return draftNodes.map((node) => {
+    if (node.nodeKind === "division") {
+      const teamCount = teamsByParent.get(node.id)?.length ?? 0;
+      const height = divisionHeightFor(teamCount);
+      if (node.bounds.height === height) return node;
+      return { ...node, bounds: { ...node.bounds, height } };
+    }
+    if (!node.parentId) return node;
+    const siblings = teamsByParent.get(node.parentId);
+    const parent = draftNodes.find((candidate) => candidate.id === node.parentId);
+    if (!siblings || !parent || parent.nodeKind !== "division") return node;
+    const indexInParent = siblings.indexOf(node);
+    if (indexInParent < 0) return node;
+    const nested = nestedTeamBounds(parent.bounds, indexInParent);
+    if (
+      node.bounds.x === nested.x &&
+      node.bounds.y === nested.y &&
+      node.bounds.width === nested.width &&
+      node.bounds.height === nested.height
+    ) {
+      return node;
+    }
+    return { ...node, bounds: nested };
+  });
+}
 
 function buildDraftFromNodes(nodes: ProgramNode[]): ProgramMapDraftSnapshot {
   const fallback = computeAutoLayout(nodes);
@@ -32,11 +82,14 @@ function buildDraftFromNodes(nodes: ProgramNode[]): ProgramMapDraftSnapshot {
       bounds,
       zIndex: node.mapZIndex ?? 0,
       capacity: node.capacity,
+      isPublished: node.settingsJson?.published === true,
       placedByFallback
     };
   });
 
-  return { nodes: draftNodes };
+  // Apply the nesting layout so initial render and save start from the
+  // canonical "teams inside their division" geometry.
+  return { nodes: applyNestingLayout(draftNodes) };
 }
 
 function diffSavePayload(
@@ -104,21 +157,31 @@ export function useProgramMapDraft(initialNodes: ProgramNode[]): UseProgramMapDr
   }, [initialNodes]);
 
   const setBounds = React.useCallback((nodeId: string, bounds: CanvasBounds) => {
-    setDraft((prev) => ({
-      nodes: prev.nodes.map((node) =>
+    setDraft((prev) => {
+      const target = prev.nodes.find((node) => node.id === nodeId);
+      if (!target) return prev;
+      // Teams nest inside their division — moving / resizing them
+      // independently is unsupported. The canvas only exposes drag handles
+      // on divisions, but guard here too in case a team somehow surfaces a
+      // bounds change (e.g. from drop logic).
+      if (target.nodeKind === "team") return prev;
+      const updated = prev.nodes.map((node) =>
         node.id === nodeId
           ? { ...node, bounds: normalizeBounds(bounds), placedByFallback: false }
           : node
-      )
-    }));
+      );
+      // Re-apply the nesting layout so child teams trail their division.
+      return { nodes: applyNestingLayout(updated) };
+    });
   }, []);
 
   const reparent = React.useCallback((nodeId: string, nextParentId: string | null) => {
-    setDraft((prev) => ({
-      nodes: prev.nodes.map((node) =>
+    setDraft((prev) => {
+      const updated = prev.nodes.map((node) =>
         node.id === nodeId ? { ...node, parentId: nextParentId } : node
-      )
-    }));
+      );
+      return { nodes: applyNestingLayout(updated) };
+    });
   }, []);
 
   const bringToFront = React.useCallback((nodeId: string) => {

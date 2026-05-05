@@ -5,7 +5,9 @@ import { AdaptiveLogo } from "@orgframe/ui/primitives/adaptive-logo";
 import { Plus } from "lucide-react";
 import type { DashboardV2Context, PersonalHubModule } from "@/src/features/core/dashboard/types-v2";
 import { DashboardOrgManageButton } from "@/src/features/core/dashboard/components/DashboardOrgManageButton";
-import { DashboardHeader } from "@/src/features/core/dashboard/components/DashboardHeader";
+import { AccountSidebar } from "@/src/features/core/account/components/AccountSidebar";
+import { AppShell } from "@/src/features/core/layout/components/AppShell";
+import { SidebarShell } from "@/src/features/core/layout/components/SidebarShell";
 import { getOrgAdminNavTree, prefixAdminNavHrefs } from "@/src/features/core/navigation/config/adminNav";
 import { ORG_TYPE_LABELS } from "@/src/shared/org/orgTypes";
 
@@ -152,17 +154,20 @@ function renderModuleSummary(module: PersonalHubModule) {
 
 export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
   return (
-    <main className="w-full min-w-0 px-[var(--layout-gap)] pb-10 pt-0">
-      <div className="app-page-stack">
-        <DashboardHeader
-          avatarUrl={context.user.avatarUrl}
-          email={context.user.email}
-          firstName={context.user.firstName}
-          lastName={context.user.lastName}
-          orgCount={context.organizations.length}
-        />
-
-        <Card>
+    <AppShell topbar={null}>
+      <SidebarShell
+        sidebar={
+          <AccountSidebar
+            avatarUrl={context.user.avatarUrl}
+            email={context.user.email}
+            firstName={context.user.firstName}
+            lastName={context.user.lastName}
+            orgCount={context.organizations.length}
+          />
+        }
+      >
+        <div className="app-page-stack">
+          <Card>
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -266,7 +271,8 @@ export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
             })}
           </div>
         </section>
-      </div>
-    </main>
+        </div>
+      </SidebarShell>
+    </AppShell>
   );
 }

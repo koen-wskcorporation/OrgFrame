@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { Plus, Settings2, X } from "lucide-react";
+import { ArrowLeft, Plus, Settings2, X } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { useToast } from "@orgframe/ui/primitives/toast";
@@ -47,6 +47,12 @@ type OrgSitePageProps = {
   initialBlocks: OrgPageBlock[];
   initialRuntimeData: OrgSiteRuntimeData;
   canEdit: boolean;
+  /**
+   * When set, the editor toolbar shows a "Back to website manager" button
+   * linking here. Pass `/{orgSlug}/manage/website` to drop the editor user
+   * back into the tree they came from.
+   */
+  manageReturnHref?: string;
 };
 
 function updateDraftBlock(blocks: OrgPageBlock[], nextBlock: OrgPageBlock) {
@@ -66,7 +72,8 @@ export function OrgSitePage({
   initialPage,
   initialBlocks,
   initialRuntimeData,
-  canEdit
+  canEdit,
+  manageReturnHref
 }: OrgSitePageProps) {
   const [page, setPage] = useState(initialPage);
   const [blocks, setBlocks] = useState(initialBlocks);
@@ -362,6 +369,12 @@ export function OrgSitePage({
 
   const editorToolbar = canEdit && isEditing ? (
     <div className="flex flex-wrap items-center gap-2">
+      {manageReturnHref ? (
+        <Button href={manageReturnHref} size="md" variant="ghost">
+          <ArrowLeft className="h-4 w-4" />
+          Back to website manager
+        </Button>
+      ) : null}
       <Button onClick={() => setSettingsOpen(true)} size="md" type="button" variant="secondary">
         <Settings2 className="h-4 w-4" />
         Page settings

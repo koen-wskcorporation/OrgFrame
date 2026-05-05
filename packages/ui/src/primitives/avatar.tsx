@@ -57,7 +57,7 @@ export function Avatar({ src, name, alt, sizePx, className, priority = false }: 
       <img
         alt={resolvedAlt}
         aria-hidden={alt === "" ? true : undefined}
-        className={cn("shrink-0 rounded-full border object-cover", className)}
+        className={cn("shrink-0 rounded-full object-cover", className)}
         height={sizePx}
         src={fallbackUri}
         style={roundedStyle}
@@ -71,7 +71,7 @@ export function Avatar({ src, name, alt, sizePx, className, priority = false }: 
   return (
     <Image
       alt={resolvedAlt}
-      className={cn("shrink-0 rounded-full border object-cover", className)}
+      className={cn("shrink-0 rounded-full object-cover", className)}
       height={sizePx}
       priority={priority}
       src={src}

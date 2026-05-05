@@ -52,6 +52,9 @@ export default async function OrgPublicHomePage({
       initialBlocks={pageData.blocks}
       initialPage={pageData.page}
       initialRuntimeData={pageData.runtimeData}
+      manageReturnHref={
+        pageData.canEdit ? `/${pageData.orgContext.orgSlug}/manage/website` : undefined
+      }
       orgName={pageData.orgContext.orgName}
       orgSlug={pageData.orgContext.orgSlug}
       pageSlug="home"
