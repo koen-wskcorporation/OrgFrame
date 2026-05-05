@@ -328,7 +328,8 @@ export async function signInAction(formData: FormData) {
   }
 
   await redirectToCanonicalIfNeeded({
-    targetPath: "/auth",
+    // Canonical auth host serves the auth UI at root via middleware rewrite.
+    targetPath: "/",
     nextPath,
     email
   });
