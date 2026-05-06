@@ -53,5 +53,9 @@ export async function redirectToAuth(nextPath?: string): Promise<never> {
     redirect(`/auth${search}`);
   }
 
-  redirect(`${protocol}://${canonicalHost}/${search}`);
+  // Preserve the current request port so dev (e.g. `orgframe.test:3000` →
+  // `auth.orgframe.test:3000`) doesn't collapse to the default 80/443.
+  const portIdx = hostHeader.indexOf(":");
+  const port = portIdx >= 0 ? hostHeader.slice(portIdx) : "";
+  redirect(`${protocol}://${canonicalHost}${port}/${search}`);
 }

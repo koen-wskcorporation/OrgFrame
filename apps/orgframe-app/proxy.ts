@@ -184,12 +184,26 @@ export async function proxy(request: NextRequest) {
   const platformHosts = getPlatformHosts();
   const canonicalAuthHost = normalizeHost(getCanonicalAuthHost());
 
-  if (canonicalAuthHost && host === canonicalAuthHost && !isPathAllowedOnCanonicalAuthHost(request.nextUrl.pathname)) {
-    const protocol = getRequestProtocol(request);
-    const platformHost = getPlatformHost();
-    if (platformHost && platformHost !== host) {
-      const redirectUrl = buildAbsoluteRequestUrl(protocol, platformHost, parsedHost.port, request.nextUrl.pathname, request.nextUrl.search);
-      return redirectAbsolute(redirectUrl, 307);
+  if (canonicalAuthHost && host === canonicalAuthHost) {
+    const { pathname, search } = request.nextUrl;
+
+    if (pathname === "/auth") {
+      const target = new URL(`/${search}`, request.url);
+      return NextResponse.redirect(target, 308);
+    }
+
+    if (pathname === "/") {
+      const rewriteUrl = new URL(`/auth${search}`, request.url);
+      return NextResponse.rewrite(rewriteUrl);
+    }
+
+    if (!isPathAllowedOnCanonicalAuthHost(pathname)) {
+      const protocol = getRequestProtocol(request);
+      const platformHost = getPlatformHost();
+      if (platformHost && platformHost !== host) {
+        const redirectUrl = buildAbsoluteRequestUrl(protocol, platformHost, parsedHost.port, pathname, search);
+        return redirectAbsolute(redirectUrl, 307);
+      }
     }
   }
 
