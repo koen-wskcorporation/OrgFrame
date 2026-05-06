@@ -590,7 +590,7 @@ export async function toggleFacilitySpaceBookableAction(
       // Server-side enforcement of the kind's intrinsic bookability.
       // A bathroom can never be marked bookable, regardless of what
       // the client claims — gives us one canonical source of truth.
-      isBookable: isKindBookable(parsed.data.spaceKind) ? parsed.data.isBookable : false,
+      isBookable: isKindBookable(space.spaceKind) ? parsed.data.isBookable : false,
       timezone: space.timezone,
       capacity: space.capacity,
       sortIndex: space.sortIndex,

@@ -152,19 +152,20 @@ export function FacilitySpacePanel({
     // workspace can route it straight into draft.updateShape — no
     // server round-trip, no waiting for Save.
     if (onLivePreview && nextValues) {
-      const capacityValue = nextValues.capacity.trim().length > 0
-        ? Number.parseInt(nextValues.capacity, 10)
+      const values: Draft = nextValues;
+      const capacityValue = values.capacity.trim().length > 0
+        ? Number.parseInt(values.capacity, 10)
         : null;
       onLivePreview({
         ...space,
-        name: nextValues.name,
-        slug: nextValues.slug,
-        spaceKind: nextValues.spaceKind,
-        statusId: nextValues.statusId,
-        isBookable: nextValues.isBookable,
-        timezone: nextValues.timezone,
+        name: values.name,
+        slug: values.slug,
+        spaceKind: values.spaceKind,
+        statusId: values.statusId,
+        isBookable: values.isBookable,
+        timezone: values.timezone,
         capacity: Number.isFinite(capacityValue ?? NaN) ? (capacityValue as number) : null,
-        sortIndex: Number.parseInt(nextValues.sortIndex || "0", 10) || 0
+        sortIndex: Number.parseInt(values.sortIndex || "0", 10) || 0
       });
     }
   }

@@ -35,16 +35,19 @@ const KIND_OPTIONS: Array<{ value: FacilitySpaceKind; label: string }> = [
   { value: "field", label: "Field" },
   { value: "court", label: "Court" },
   { value: "building", label: "Building" },
-  { value: "room", label: "Room" },
-  { value: "floor", label: "Floor" },
+  { value: "pavilion", label: "Pavilion" },
+  { value: "concessions", label: "Concessions" },
+  { value: "lobby", label: "Lobby" },
+  { value: "bathroom", label: "Bathroom" },
+  { value: "storage", label: "Storage" },
+  { value: "parking_lot", label: "Parking lot" },
   { value: "custom", label: "Custom" }
 ];
 
+const KIND_VALUES = new Set<FacilitySpaceKind>(KIND_OPTIONS.map((option) => option.value));
+
 function asKind(value: string): FacilitySpaceKind {
-  if (value === "field" || value === "court" || value === "building" || value === "room" || value === "floor" || value === "custom") {
-    return value;
-  }
-  return "custom";
+  return KIND_VALUES.has(value as FacilitySpaceKind) ? (value as FacilitySpaceKind) : "custom";
 }
 
 export function AiSuggestSpacesPopup({

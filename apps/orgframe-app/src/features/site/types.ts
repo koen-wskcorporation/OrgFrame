@@ -6,6 +6,7 @@ import type { PlayerPickerItem } from "@/src/features/players/types";
 import type { ProgramCatalogItem } from "@/src/features/programs/types";
 import type { ProgramNode } from "@/src/features/programs/types";
 import type { ProgramTeamDirectoryItem } from "@/src/features/programs/types";
+import type { FacilitySpaceKind } from "@/src/features/facilities/types";
 
 export type OrgSiteBlockType =
   | "hero"
@@ -394,7 +395,7 @@ export type OrgSiteRuntimeData = {
       parentSpaceId: string | null;
       name: string;
       slug: string;
-      spaceKind: "building" | "floor" | "room" | "field" | "court" | "custom";
+      spaceKind: FacilitySpaceKind;
       status: "open" | "closed" | "archived";
       isBookable: boolean;
       timezone: string;
