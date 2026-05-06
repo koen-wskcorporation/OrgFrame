@@ -12,13 +12,20 @@ function resolveProtocol(headerStore: Headers): "http" | "https" {
   return process.env.NODE_ENV === "production" ? "https" : "http";
 }
 
-function isLocalDevHost(host: string): boolean {
-  // Only treat true loopback hostnames as dev. Custom dev TLDs like
-  // `orgframe.test` are real names in the user's hosts file and resolve to
-  // genuine subdomains (`auth.orgframe.test`), so they must do the cross-host
-  // redirect like production would.
+function isEphemeralHost(host: string): boolean {
+  // Hosts where we should NOT cross-origin redirect to the canonical auth
+  // host because:
+  //   - localhost / 127.x — no DNS entry for the canonical host.
+  //   - `*.vercel.app` — Vercel preview/branch deploys with random URLs.
+  //     Bouncing them to the production canonical host either crosses
+  //     environments (staging preview → production auth) or hits Vercel's
+  //     deployment protection wall and returns a 403.
+  //
+  // For all of these we keep the redirect same-origin and serve `/auth`
+  // locally instead.
   if (!host) return true;
   if (host === "localhost" || host.startsWith("127.") || host === "0.0.0.0") return true;
+  if (host.endsWith(".vercel.app")) return true;
   return !host.includes(".");
 }
 
@@ -49,7 +56,7 @@ export async function redirectToAuth(nextPath?: string): Promise<never> {
     redirect(`/${search}`);
   }
 
-  if (isLocalDevHost(currentHost)) {
+  if (isEphemeralHost(currentHost)) {
     redirect(`/auth${search}`);
   }
 

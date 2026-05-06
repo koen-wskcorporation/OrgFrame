@@ -21,6 +21,16 @@ function getPort(hostHeader: string): string {
   return idx >= 0 ? hostHeader.slice(idx) : "";
 }
 
+// Hosts we never cross-origin redirect to/from. Mirrors the same set in
+// redirectToAuth.ts so preview deploys (`*.vercel.app`) and localhost stay
+// same-origin and don't hit production deployment-protection walls.
+function isEphemeralHost(host: string): boolean {
+  if (!host) return true;
+  if (host === "localhost" || host.startsWith("127.") || host === "0.0.0.0") return true;
+  if (host.endsWith(".vercel.app")) return true;
+  return !host.includes(".");
+}
+
 /**
  * After a successful sign-in / signup, redirect the user away from the
  * auth-host root to wherever they were going. If we're on the canonical
@@ -41,8 +51,9 @@ export async function redirectAfterAuth(nextPath: string): Promise<never> {
 
   // Off the canonical auth host (or no canonical configured) — same-origin
   // redirect is fine. The middleware only rewrites `/` → `/auth` on the
-  // canonical host.
-  if (!canonicalHost || currentHost !== canonicalHost) {
+  // canonical host. Same applies to ephemeral preview / dev hosts where the
+  // canonical host doesn't exist or doesn't accept us.
+  if (!canonicalHost || currentHost !== canonicalHost || isEphemeralHost(currentHost)) {
     redirect(trimmed);
   }
 
