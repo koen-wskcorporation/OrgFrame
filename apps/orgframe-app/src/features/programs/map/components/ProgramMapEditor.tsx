@@ -329,16 +329,16 @@ export function ProgramMapEditor({
   // previews don't make space for panels (they're not in the dock).
   const rawPanelOffset = usePanelOffset();
   const panelOffset = readOnly ? 0 : rawPanelOffset;
-  // Visible center on screen — half of the non-occluded canvas area.
-  // The world's `view.centerX` renders here so a fit-to-content selection
-  // sits centered in the part of the canvas the user can actually see.
-  const visibleCenterX = (containerSize.width - panelOffset) / 2;
   // Track container pixel size so the transform's screen-center offset uses
   // the actual visible width/height. CSS `translate(50%, 50%)` would resolve
   // against the inner div's 3200x2000 box, which puts the "world center" at
   // a fixed (1600, 1000)px from the container's top-left — that's why
   // fit-to-content was placing nodes off-screen on narrower viewports.
   const [containerSize, setContainerSize] = React.useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  // Visible center on screen — half of the non-occluded canvas area.
+  // The world's `view.centerX` renders here so a fit-to-content selection
+  // sits centered in the part of the canvas the user can actually see.
+  const visibleCenterX = (containerSize.width - panelOffset) / 2;
   React.useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
