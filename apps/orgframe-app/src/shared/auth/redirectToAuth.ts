@@ -13,11 +13,12 @@ function resolveProtocol(headerStore: Headers): "http" | "https" {
 }
 
 function isLocalDevHost(host: string): boolean {
-  // Treat hostnames without a dot (or explicit localhost / 127.x / 0.0.0.0) as
-  // dev/CI. We don't want to bounce dev traffic to the production auth host.
+  // Only treat true loopback hostnames as dev. Custom dev TLDs like
+  // `orgframe.test` are real names in the user's hosts file and resolve to
+  // genuine subdomains (`auth.orgframe.test`), so they must do the cross-host
+  // redirect like production would.
   if (!host) return true;
   if (host === "localhost" || host.startsWith("127.") || host === "0.0.0.0") return true;
-  if (host.endsWith(".local") || host.endsWith(".test")) return true;
   return !host.includes(".");
 }
 
