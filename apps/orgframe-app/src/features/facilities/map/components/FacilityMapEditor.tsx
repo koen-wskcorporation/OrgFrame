@@ -10,6 +10,7 @@ import type { CanvasPoint } from "@/src/features/canvas/core/types";
 import { getSpaceKindIcon, isKindBookable } from "@/src/features/facilities/lib/spaceKindIcon";
 import { FacilityMapToolbar } from "@/src/features/facilities/map/components/FacilityMapToolbar";
 import { MapSearchBar } from "@/src/features/canvas/components/MapSearchBar";
+import { usePanelOffset } from "@/src/features/canvas/core/usePanelOffset";
 import { computeWheelZoom } from "@/src/features/canvas/core/zoom";
 import type { FacilitySpaceStatus, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
 import type { MapShape } from "@/src/features/facilities/map/types";
@@ -445,9 +446,21 @@ export function FacilityMapEditor({
     return () => observer.disconnect();
   }, []);
 
+  // Smoothly-interpolated side-panel width in screen px. Drives the
+  // viewBox shift, the satellite mapCenter shift, and the toolbar
+  // translateX in lockstep so all three move on the same easing curve
+  // when a panel opens or closes — no drift between satellite tiles,
+  // polygons, and the floating toolbar mid-animation.
+  const rawPanelOffset = usePanelOffset();
+  const panelOffset = readOnly ? 0 : rawPanelOffset;
+  // Visible center on screen — half of the non-occluded canvas area.
+  const visibleCenterPx = (pixelSize.width - panelOffset) / 2;
+
   const viewBoxWidth = pixelSize.width / view.zoom;
   const viewBoxHeight = pixelSize.height / view.zoom;
-  const viewBoxX = view.centerX - viewBoxWidth / 2;
+  // Shift the viewBox so world point `view.centerX` renders at
+  // `visibleCenterPx` on screen instead of the geometric SVG center.
+  const viewBoxX = view.centerX - visibleCenterPx / view.zoom;
   const viewBoxY = view.centerY - viewBoxHeight / 2;
   const viewBox = `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`;
 
@@ -518,6 +531,10 @@ export function FacilityMapEditor({
     const next = computeWheelZoom(view, event, rect, {
       minZoom: 0.1,
       maxZoom: CANVAS_MAX_ZOOM,
+      // World on-screen center is shifted left by half the panel width
+      // when a side panel is open — the cursor-anchor math has to match
+      // or wheel zoom will drift away from the cursor.
+      viewportOffsetX: -panelOffset / 2,
       // Satellite mode caps zoom lower than canvas-only mode.
       clampZoom: (candidate) => clampZoomForMode(candidate, mapEnabled)
     });
@@ -538,7 +555,8 @@ export function FacilityMapEditor({
     const margin = 80;
     const targetWidth = bounds.width + margin * 2;
     const targetHeight = bounds.height + margin * 2;
-    const zoomX = pixelSize.width / Math.max(1, targetWidth);
+    const visibleWidth = Math.max(1, pixelSize.width - panelOffset);
+    const zoomX = visibleWidth / Math.max(1, targetWidth);
     const zoomY = pixelSize.height / Math.max(1, targetHeight);
     // Cap focus-zoom to a sensible level so a tiny space doesn't blow up.
     const FOCUS_MAX_ZOOM = 4;
@@ -584,7 +602,8 @@ export function FacilityMapEditor({
     const margin = 80;
     const targetWidth = bounds.width + margin * 2;
     const targetHeight = bounds.height + margin * 2;
-    const zoomX = pixelSize.width / targetWidth;
+    const visibleWidth = Math.max(1, pixelSize.width - panelOffset);
+    const zoomX = visibleWidth / targetWidth;
     const zoomY = pixelSize.height / targetHeight;
     // Auto-fit caps at 4x even though manual zoom goes to 16x — fitting a
     // single tiny space at 16x looks absurd, but the user can still zoom
@@ -1070,12 +1089,27 @@ export function FacilityMapEditor({
   const gridStrokeWidth = 1 * inversePixel;
   const stripeStrokeWidth = 1.5 * inversePixel;
 
+  // Satellite tile center has to match the world point that lands at the
+  // satellite container's geometric center (`pixelSize.width / 2`). With
+  // the viewBox shifted left by `panelOffset / (2 * zoom)` so polygons
+  // centre on the *visible* center, the world point at the geometric
+  // container center is `view.centerX + panelOffset / (2 * zoom)` — feed
+  // that to `metersToLatLng` so satellite and polygons stay aligned.
   const mapCenter = mapEnabled && geoAnchor
-    ? metersToLatLng(geoAnchor, view.centerX, view.centerY)
+    ? metersToLatLng(
+        geoAnchor,
+        view.centerX + panelOffset / (2 * view.zoom),
+        view.centerY
+      )
     : null;
   const mapZoom = mapEnabled && geoAnchor ? canvasZoomToMapZoom(view.zoom, geoAnchor.lat) : 1;
 
   return (
+    // The shell now hands us the full popup width. The satellite + SVG
+    // fill it edge-to-edge so they run behind the floating side panel.
+    // Polygons + satellite + toolbar all converge on the *visible* center
+    // via the JS-animated `panelOffset` (see viewBox / mapCenter / toolbar
+    // wrapper), so they stay aligned mid-animation.
     <div className="relative h-full w-full overflow-hidden bg-surface">
       {mapEnabled && mapCenter ? (
         <div className="pointer-events-none absolute inset-0">
@@ -1455,6 +1489,13 @@ export function FacilityMapEditor({
         />
       ) : null}
 
+      {/* Floating toolbar — translated by half the (smoothly interpolated)
+          panel offset so its centered pill sits in the visible canvas
+          rather than under the panel. */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ transform: `translateX(${-panelOffset / 2}px)` }}
+      >
       <FacilityMapToolbar
         aiMode={aiMode}
         canWrite={canWrite}
@@ -1476,6 +1517,7 @@ export function FacilityMapEditor({
         readOnly={readOnly}
         zoom={view.zoom}
       />
+      </div>
     </div>
   );
 }

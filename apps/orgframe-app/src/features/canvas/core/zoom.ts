@@ -38,6 +38,13 @@ export type WheelZoomOptions = {
   /** Optional clamp hook (e.g. satellite mode caps zoom lower). Receives
    *  the candidate zoom AFTER the min/max clamp and can pin it further. */
   clampZoom?: (candidate: number) => number;
+  /** Pixel offset of the world's on-screen center from the rect's geometric
+   *  center. When a side panel occupies the right portion of the canvas the
+   *  editor shifts the world content left by `panelWidth / 2`; pass that
+   *  same value as a negative number here so the cursor-anchor math stays
+   *  pinned to the world point that is actually under the cursor. */
+  viewportOffsetX?: number;
+  viewportOffsetY?: number;
 };
 
 const DEFAULT_SENSITIVITY = 0.0025;
@@ -59,9 +66,13 @@ export function computeWheelZoom(
   if (options.clampZoom) nextZoom = options.clampZoom(nextZoom);
   if (nextZoom === view.zoom) return null;
 
-  // Cursor offset from the container's screen-center, in screen pixels.
-  const offsetX = event.clientX - rect.left - rect.width / 2;
-  const offsetY = event.clientY - rect.top - rect.height / 2;
+  // Cursor offset from the world's screen-center, in screen pixels. When
+  // the canvas content is visually shifted (e.g. by a side panel), we add
+  // that shift to the geometric center to recover the actual world center.
+  const viewportOffsetX = options.viewportOffsetX ?? 0;
+  const viewportOffsetY = options.viewportOffsetY ?? 0;
+  const offsetX = event.clientX - rect.left - rect.width / 2 - viewportOffsetX;
+  const offsetY = event.clientY - rect.top - rect.height / 2 - viewportOffsetY;
   // World point currently rendered under the cursor.
   const worldX = view.centerX + offsetX / view.zoom;
   const worldY = view.centerY + offsetY / view.zoom;

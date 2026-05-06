@@ -1,44 +1,17 @@
-import { createServerClient } from "@supabase/ssr";
-import { NextRequest, NextResponse } from "next/server";
-import { getSupabasePublicConfig } from "@/src/shared/supabase/config";
-import { isHttpsRequest, normalizeSupabaseCookieOptions, type SupabaseCookieToSet } from "@/src/shared/supabase/cookies";
+import { NextResponse } from "next/server";
+import { getAppEntryUrl } from "@/src/shared/marketing/appOrigin";
 
-function getAppOrigin() {
-  const configuredOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? process.env.ORGFRAME_APP_ORIGIN ?? "https://orgframe.app";
-  return configuredOrigin.replace(/\/+$/, "");
-}
-
-export async function GET(request: NextRequest) {
-  const appOrigin = getAppOrigin();
-  const writableResponse = NextResponse.next();
-  const isHttps = isHttpsRequest(request);
-  const { supabaseUrl, supabasePublishableKey } = getSupabasePublicConfig();
-
-  const supabase = createServerClient<any>(supabaseUrl, supabasePublishableKey, {
-    cookieOptions: {
-      path: "/",
-      sameSite: "lax"
-    },
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet: SupabaseCookieToSet[]) {
-        cookiesToSet.forEach(({ name, value, options }) => {
-          writableResponse.cookies.set(name, value, normalizeSupabaseCookieOptions(options, isHttps));
-        });
-      }
-    }
-  });
-
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  const destination = user ? "/" : "/auth";
-  const redirectResponse = NextResponse.redirect(new URL(destination, appOrigin), { status: 307 });
-  writableResponse.cookies.getAll().forEach((cookie) => {
-    redirectResponse.cookies.set(cookie);
-  });
-  return redirectResponse;
+// Marketing-side `/login` is just a thin redirect into the app. We
+// deliberately do NOT consult Supabase here:
+//
+//   1. The marketing site lives on a different subdomain than the app, so
+//      the auth cookie isn't always present and any session check is
+//      unreliable.
+//   2. The app's home page (and middleware on the canonical auth host)
+//      already handles signed-in vs. unauthenticated routing correctly. We
+//      want a single source of truth for that decision.
+//
+// The result: marketing → orgframe.app → (if needed) auth.orgframe.app.
+export function GET() {
+  return NextResponse.redirect(getAppEntryUrl(), { status: 307 });
 }

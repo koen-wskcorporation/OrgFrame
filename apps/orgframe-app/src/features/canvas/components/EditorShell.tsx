@@ -165,18 +165,14 @@ export function EditorShell({
         subtitle={popupSubtitle}
         title={title}
       >
-        {/* The canvas leaves space for any open panels by padding-right with
-            the global `--panel-active-width` variable (set by PanelContainer
-            when at least one panel is mounted). 220ms transition keeps the
-            shrink/grow synced with the panel container's open animation. */}
-        <div
-          className="relative h-full w-full motion-reduce:transition-none"
-          style={{
-            paddingRight: "var(--panel-active-width, 0px)",
-            transition: "padding-right 220ms cubic-bezier(0.22, 1, 0.36, 1)",
-            willChange: "padding-right"
-          }}
-        >
+        {/* Pure passthrough — the canvas fills the popup edge-to-edge so
+            its background (grid, satellite) keeps running behind the
+            floating side panel. Editors offset their content + floating
+            UI inwards using `usePanelOffset` from canvas/core; that one
+            JS-animated value drives the world-transform centering, grid
+            background position, and action-bar translation in lockstep
+            so nothing drifts during the panel open/close animation. */}
+        <div className="relative h-full w-full">
           {renderEditor({ mode: "full", popupSession, requestEdit })}
         </div>
       </Popup>

@@ -16,6 +16,7 @@ import { snapToGrid, sortNodesDeterministic } from "@/src/features/canvas/core/g
 import type { CanvasBounds } from "@/src/features/canvas/core/types";
 import { EditorActionBar } from "@/src/features/canvas/components/EditorActionBar";
 import { MapSearchBar } from "@/src/features/canvas/components/MapSearchBar";
+import { usePanelOffset } from "@/src/features/canvas/core/usePanelOffset";
 import { computeWheelZoom } from "@/src/features/canvas/core/zoom";
 import {
   DIVISION_HEADER_HEIGHT,
@@ -82,9 +83,13 @@ function clientToWorld(
   clientX: number,
   clientY: number,
   rect: DOMRect,
-  view: View
+  view: View,
+  /** Screen-px offset of the world's on-screen center from the rect's
+   *  geometric center. Negative when a side panel pushes the visible
+   *  center to the left. */
+  viewportOffsetX = 0
 ): Pointer {
-  const offsetX = clientX - rect.left - rect.width / 2;
+  const offsetX = clientX - rect.left - rect.width / 2 - viewportOffsetX;
   const offsetY = clientY - rect.top - rect.height / 2;
   return {
     x: view.centerX + offsetX / view.zoom,
@@ -317,6 +322,17 @@ export function ProgramMapEditor({
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const [view, setView] = React.useState<View>(DEFAULT_VIEW);
   const [interaction, setInteraction] = React.useState<Interaction>(null);
+  // Smooth panel offset in screen pixels — drives the world-transform
+  // centering, the grid background-position, the action-bar translate,
+  // and the fit/cursor math. All four read this same value so they stay
+  // perfectly aligned during the panel open/close animation. Read-only
+  // previews don't make space for panels (they're not in the dock).
+  const rawPanelOffset = usePanelOffset();
+  const panelOffset = readOnly ? 0 : rawPanelOffset;
+  // Visible center on screen — half of the non-occluded canvas area.
+  // The world's `view.centerX` renders here so a fit-to-content selection
+  // sits centered in the part of the canvas the user can actually see.
+  const visibleCenterX = (containerSize.width - panelOffset) / 2;
   // Track container pixel size so the transform's screen-center offset uses
   // the actual visible width/height. CSS `translate(50%, 50%)` would resolve
   // against the inner div's 3200x2000 box, which puts the "world center" at
@@ -347,7 +363,7 @@ export function ProgramMapEditor({
     event.preventDefault();
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const pointer = clientToWorld(event.clientX, event.clientY, rect, view);
+    const pointer = clientToWorld(event.clientX, event.clientY, rect, view, -panelOffset / 2);
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) return;
     onBringToFront(nodeId);
@@ -367,7 +383,7 @@ export function ProgramMapEditor({
     event.preventDefault();
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const pointer = clientToWorld(event.clientX, event.clientY, rect, view);
+    const pointer = clientToWorld(event.clientX, event.clientY, rect, view, -panelOffset / 2);
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) return;
     setInteraction({
@@ -408,7 +424,7 @@ export function ProgramMapEditor({
       return;
     }
 
-    const pointer = clientToWorld(event.clientX, event.clientY, rect, view);
+    const pointer = clientToWorld(event.clientX, event.clientY, rect, view, -panelOffset / 2);
     const dx = pointer.x - interaction.pointerWorldStart.x;
     const dy = pointer.y - interaction.pointerWorldStart.y;
 
@@ -440,22 +456,25 @@ export function ProgramMapEditor({
     if (!rect) return;
     const next = computeWheelZoom(view, event, rect, {
       minZoom: CANVAS_MIN_ZOOM,
-      maxZoom: CANVAS_MAX_ZOOM
+      maxZoom: CANVAS_MAX_ZOOM,
+      viewportOffsetX: -panelOffset / 2
     });
     if (next) setView(next);
   };
 
   // Pixel-based screen-center translate so world (centerX, centerY) lands
-  // at the actual container center — see `containerSize` comment above.
-  const childTransform = `translate(${containerSize.width / 2}px, ${containerSize.height / 2}px) scale(${view.zoom}) translate(${-view.centerX}px, ${-view.centerY}px)`;
+  // at the *visible* center — accounts for the side panel pushing the
+  // visible center to the left of the geometric container center.
+  const childTransform = `translate(${visibleCenterX}px, ${containerSize.height / 2}px) scale(${view.zoom}) translate(${-view.centerX}px, ${-view.centerY}px)`;
 
   // Infinite grid: rendered on the outer (untransformed) container so it
   // covers the full viewport regardless of pan. We tile a unit grid at the
-  // current zoom and offset by the world origin's screen position so the
-  // lines visually move with the world.
+  // current zoom and place world origin at `visibleCenterX` on screen — the
+  // same anchor `childTransform` uses — so node corners stay on grid lines
+  // as the panel opens / closes.
   const gridCellPx = CANVAS_GRID_SIZE * view.zoom;
-  const gridOffsetX = -view.centerX * view.zoom;
-  const gridOffsetY = -view.centerY * view.zoom;
+  const gridOriginX = visibleCenterX - view.centerX * view.zoom;
+  const gridOriginY = containerSize.height / 2 - view.centerY * view.zoom;
 
   const zoomBy = (factor: number) => {
     const nextZoom = Math.max(CANVAS_MIN_ZOOM, Math.min(CANVAS_MAX_ZOOM, view.zoom * factor));
@@ -478,12 +497,13 @@ export function ProgramMapEditor({
     const pad = 64;
     const w = Math.max(1, maxX - minX + pad * 2);
     const h = Math.max(1, maxY - minY + pad * 2);
+    const visibleWidth = Math.max(1, rect.width - panelOffset);
     const zoom = Math.max(
       CANVAS_MIN_ZOOM,
-      Math.min(CANVAS_MAX_ZOOM, Math.min(rect.width / w, rect.height / h))
+      Math.min(CANVAS_MAX_ZOOM, Math.min(visibleWidth / w, rect.height / h))
     );
     setView({ centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, zoom });
-  }, [nodes]);
+  }, [nodes, panelOffset]);
 
   // Zoom to a specific node's bounds with a comfortable surrounding pad.
   // Used by the search bar to pop the user over to the matched item.
@@ -496,10 +516,11 @@ export function ProgramMapEditor({
       const pad = 96;
       const w = Math.max(1, node.bounds.width + pad * 2);
       const h = Math.max(1, node.bounds.height + pad * 2);
+      const visibleWidth = Math.max(1, rect.width - panelOffset);
       // Cap the zoom-in so a tiny node doesn't blow up to maximum zoom.
       const zoom = Math.max(
         CANVAS_MIN_ZOOM,
-        Math.min(CANVAS_MAX_ZOOM, 1.4, Math.min(rect.width / w, rect.height / h))
+        Math.min(CANVAS_MAX_ZOOM, 1.4, Math.min(visibleWidth / w, rect.height / h))
       );
       setView({
         centerX: node.bounds.x + node.bounds.width / 2,
@@ -507,7 +528,7 @@ export function ProgramMapEditor({
         zoom
       });
     },
-    [nodes]
+    [nodes, panelOffset]
   );
 
   const handleSearchPick = React.useCallback(
@@ -609,22 +630,19 @@ export function ProgramMapEditor({
       onPointerCancel={endInteraction}
       onWheel={onWheel}
     >
-      {/* Infinite grid layer. Extends past the popup body's panel-padding
-          so the grid runs behind the side panels — panels are opaque
-          (`bg-surface`) and sit on top, so the grid simply continues under
-          them. backgroundPosition compensates by `panel-width/2` so the
-          grid origin stays anchored to the visible (un-padded) area's
-          center as `--panel-active-width` animates. */}
+      {/* Infinite grid layer. Fills the whole canvas (no squeeze) so the
+          grid runs edge-to-edge under any floating side panel. The bg
+          origin uses `gridOriginX/Y` — the same values `childTransform`
+          uses to position world (0,0) — so node corners always land on
+          grid lines, including mid-animation when `usePanelOffset` is
+          interpolating during a panel open/close. */}
       <div
-        className="pointer-events-none absolute inset-y-0 left-0 bg-surface-subtle"
+        className="pointer-events-none absolute inset-0 bg-canvas"
         style={{
-          right: "calc(0px - var(--panel-active-width, 0px))",
           backgroundImage:
             "linear-gradient(to right, rgba(148, 163, 184, 0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(148, 163, 184, 0.18) 1px, transparent 1px)",
           backgroundSize: `${gridCellPx}px ${gridCellPx}px`,
-          backgroundPosition: `calc(50% - var(--panel-active-width, 0px) / 2 + ${gridOffsetX}px) calc(50% + ${gridOffsetY}px)`,
-          transition:
-            "right 220ms cubic-bezier(0.22, 1, 0.36, 1), background-position 220ms cubic-bezier(0.22, 1, 0.36, 1)"
+          backgroundPosition: `${gridOriginX}px ${gridOriginY}px`
         }}
       />
       <div
@@ -695,6 +713,13 @@ export function ProgramMapEditor({
         />
       ) : null}
 
+      {/* Floating action bar — translated left by half the (smoothly
+          interpolated) panel offset so its centered pill sits in the
+          visible canvas, not behind the panel. */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ transform: `translateX(${-panelOffset / 2}px)` }}
+      >
       <EditorActionBar
         readOnly={readOnly}
         onEdit={onEdit}
@@ -727,6 +752,7 @@ export function ProgramMapEditor({
           ) : undefined
         }
       />
+      </div>
     </div>
   );
 }
