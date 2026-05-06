@@ -17,20 +17,6 @@ export type SupabaseCookieToSet = {
   options?: SupabaseCookieOptions;
 };
 
-function normalizeCookieDomain(value: string) {
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed) {
-    return null;
-  }
-
-  const normalized = trimmed
-    .replace(/^https?:\/\//, "")
-    .replace(/\/.*$/, "")
-    .replace(/^\./, "");
-
-  return normalized || null;
-}
-
 function isIpHost(host: string) {
   if (host === "127.0.0.1" || host === "::1") {
     return true;
@@ -55,16 +41,9 @@ function getPlatformSharedCookieDomain(requestHost: string | null | undefined) {
 }
 
 function getSharedAuthCookieDomain(requestHost: string | null | undefined) {
-  const explicit = normalizeCookieDomain(process.env.AUTH_COOKIE_DOMAIN ?? "");
-  if (explicit) {
-    const host = normalizeHost(requestHost);
-    if (!host || host === explicit || host.endsWith(`.${explicit}`)) {
-      return explicit;
-    }
-    // Host is a custom domain outside the platform eTLD; fall through to host-only cookies.
-    return null;
-  }
-
+  // Cookie scope = the platform host, derived from NEXT_PUBLIC_PLATFORM_HOST.
+  // Custom-domain requests (org's own domain) get host-only cookies because
+  // the platform host doesn't apply to them.
   return getPlatformSharedCookieDomain(requestHost);
 }
 

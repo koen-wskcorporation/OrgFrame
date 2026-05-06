@@ -1,6 +1,7 @@
 import "server-only";
 
 import { sendEmail } from "@/src/shared/email/client";
+import { getPlatformOrigin } from "@/src/shared/domains/customDomains";
 import { resolveOrgSenderIdentity } from "./identity";
 import { isSuppressed } from "./suppression";
 import { tryReserveSendSlot } from "./quota";
@@ -8,11 +9,7 @@ import { recordSend } from "./logging";
 import { buildUnsubscribeUrl } from "./unsubscribe";
 
 function getAppOrigin(): string {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL;
-  if (siteUrl) {
-    return siteUrl.replace(/\/$/, "");
-  }
-  return "https://orgframe.app";
+  return getPlatformOrigin();
 }
 
 function injectUnsubscribeLink(html: string, unsubscribeUrl: string, orgName: string): string {

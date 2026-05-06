@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { createSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
+import { getPlatformOrigin } from "@/src/shared/domains/customDomains";
 import {
   batchUpdateSpreadsheet,
   clearSheetRange,
@@ -206,16 +207,8 @@ function buildImageFormula(url: string): string {
   return `=IFERROR(IMAGE("${safeUrl}",1),"")`;
 }
 
-function normalizeOrigin(value: string | null | undefined): string {
-  if (!value) {
-    return "";
-  }
-
-  return value.trim().replace(/\/+$/, "");
-}
-
 function resolveAppOrigin(): string {
-  const configured = normalizeOrigin(process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL);
+  const configured = getPlatformOrigin();
   if (configured && !configured.includes("localhost") && !configured.includes("127.0.0.1")) {
     return configured;
   }

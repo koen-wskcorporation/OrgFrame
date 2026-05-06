@@ -5,6 +5,7 @@ import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermiss
 import { requireOrgToolEnabled } from "@/src/shared/org/requireOrgToolEnabled";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import { getSupabasePublicConfig } from "@/src/shared/supabase/config";
+import { getPlatformOrigin } from "@/src/shared/domains/customDomains";
 import {
   type ConflictRecord,
   type ImportPlatformCatalogItem,
@@ -568,7 +569,7 @@ async function getSportsEngineAccessToken(input: { orgId: string; orgSlug: strin
     throw new Error("SportsEngine token expired and refresh token is missing.");
   }
 
-  const config = getSportsEngineOauthConfig(process.env.APP_ORIGIN ?? "http://localhost:3000");
+  const config = getSportsEngineOauthConfig(getPlatformOrigin());
   const refreshed = await refreshSportsEngineToken({
     config,
     refreshToken: decryptSportsEngineToken(refreshEncrypted)
@@ -604,7 +605,7 @@ export async function previewSportsEngineDatasetAction(input: z.input<typeof pre
   const org = await requireOrgPermission(payload.orgSlug, "org.manage.read");
   requireOrgToolEnabled(org.toolAvailability, "imports");
 
-  const config = getSportsEngineOauthConfig(process.env.APP_ORIGIN ?? "http://localhost:3000");
+  const config = getSportsEngineOauthConfig(getPlatformOrigin());
   const accessToken = await getSportsEngineAccessToken({ orgId: org.orgId, orgSlug: org.orgSlug });
   const normalizedRows = await fetchSportsEngineDataset({
     config,

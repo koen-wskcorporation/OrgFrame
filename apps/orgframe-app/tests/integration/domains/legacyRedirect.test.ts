@@ -11,21 +11,21 @@ import {
 } from "@/proxy";
 
 describe("legacy path redirect routing", () => {
-  const previousSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const previousPlatformHost = process.env.NEXT_PUBLIC_PLATFORM_HOST;
   const previousSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const previousSupabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
 
   before(() => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://orgframe.app";
+    process.env.NEXT_PUBLIC_PLATFORM_HOST = "orgframe.app";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY = "test-key";
   });
 
   after(() => {
-    if (previousSiteUrl === undefined) {
-      delete process.env.NEXT_PUBLIC_SITE_URL;
+    if (previousPlatformHost === undefined) {
+      delete process.env.NEXT_PUBLIC_PLATFORM_HOST;
     } else {
-      process.env.NEXT_PUBLIC_SITE_URL = previousSiteUrl;
+      process.env.NEXT_PUBLIC_PLATFORM_HOST = previousPlatformHost;
     }
 
     if (previousSupabaseUrl === undefined) {

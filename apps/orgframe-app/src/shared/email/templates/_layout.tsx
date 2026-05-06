@@ -14,9 +14,11 @@ import type { CSSProperties, ReactNode } from "react";
 
 // Absolute URL to the OrgFrame wordmark+mark lockup. Email clients can't
 // resolve relative URLs, so we serve the SVG from /public/brand/logo.svg.
-// Override SITE_URL via NEXT_PUBLIC_SITE_URL when running locally.
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://orgframe.app").replace(/\/$/, "");
-const LOGO_URL = `${SITE_URL}/brand/logo.svg`;
+// Hostname comes from the same NEXT_PUBLIC_PLATFORM_HOST as the rest of
+// the stack.
+const PLATFORM_HOST = (process.env.NEXT_PUBLIC_PLATFORM_HOST?.trim() || "orgframe.app").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+const PLATFORM_PROTOCOL = PLATFORM_HOST.endsWith(".test") || PLATFORM_HOST.endsWith(".local") || PLATFORM_HOST === "localhost" ? "http" : "https";
+const LOGO_URL = `${PLATFORM_PROTOCOL}://${PLATFORM_HOST}/brand/logo.svg`;
 
 // Mirrors the app's design tokens from apps/orgframe-app/app/globals.css and
 // packages/theme/src/tailwind-preset.js. Email clients don't support CSS

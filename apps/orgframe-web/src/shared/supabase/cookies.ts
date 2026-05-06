@@ -16,22 +16,13 @@ export type SupabaseCookieToSet = {
   options?: SupabaseCookieOptions;
 };
 
-function getSharedAuthCookieDomain() {
-  const raw = process.env.AUTH_COOKIE_DOMAIN;
-  if (typeof raw !== "string") {
-    return null;
-  }
-
-  const trimmed = raw.trim().toLowerCase();
-  if (!trimmed) {
-    return null;
-  }
-
-  const normalized = trimmed
-    .replace(/^https?:\/\//, "")
-    .replace(/\/.*$/, "")
-    .replace(/^\./, "");
-
+// The auth cookie scope is always the platform host (so cookies set on
+// `auth.<platform>` are visible from `<platform>` and any tenant subdomain).
+// Derived from the same NEXT_PUBLIC_PLATFORM_HOST env var as everything else.
+function getPlatformHost(): string | null {
+  const raw = process.env.NEXT_PUBLIC_PLATFORM_HOST?.trim().toLowerCase();
+  if (!raw) return null;
+  const normalized = raw.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/\.+$/, "");
   return normalized || null;
 }
 
@@ -45,7 +36,7 @@ export function isHttpsRequest(request: Pick<NextRequest, "headers" | "nextUrl">
 }
 
 export function normalizeSupabaseCookieOptions(options: SupabaseCookieOptions | undefined, isHttps: boolean) {
-  const sharedCookieDomain = getSharedAuthCookieDomain();
+  const platformHost = getPlatformHost();
   const normalized: SupabaseCookieOptions = {
     ...options,
     path: "/",
@@ -53,8 +44,8 @@ export function normalizeSupabaseCookieOptions(options: SupabaseCookieOptions | 
     secure: isHttps
   };
 
-  if (sharedCookieDomain) {
-    normalized.domain = sharedCookieDomain;
+  if (platformHost) {
+    normalized.domain = platformHost;
   } else {
     delete normalized.domain;
   }
