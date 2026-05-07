@@ -77,7 +77,7 @@ export function buildProgramEntitySource(input: ProgramEntityInput): DataSourceD
           .eq("program_id", input.programId);
 
         const { data: nodes } = await supabase
-          .schema("programs").from("program_structure_nodes")
+          .schema("programs").from("divisions")
           .select("id, node_kind")
           .eq("program_id", input.programId);
         const nodeList = nodes ?? [];

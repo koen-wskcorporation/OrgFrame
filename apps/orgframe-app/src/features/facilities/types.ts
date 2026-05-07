@@ -1,6 +1,68 @@
-export type FacilitySpaceKind = "building" | "floor" | "room" | "field" | "court" | "custom";
+export type FacilitySpaceKind =
+  | "building"
+  | "field"
+  | "court"
+  | "pavilion"
+  | "concessions"
+  | "lobby"
+  | "bathroom"
+  | "storage"
+  | "parking_lot"
+  | "custom";
 
 export type FacilitySpaceStatus = "open" | "closed" | "archived";
+
+// Stub for in-progress org-customizable space-status definitions. The full
+// shape (label, color, ordering) lives in the lost session and will replace
+// this when recovered. `color` is consumed by the FacilityMapEditor's
+// status chip — until the migration restores the real palette, callers
+// pass empty strings or status names.
+export type FacilitySpaceStatusDef = {
+  id: string;
+  label: string;
+  color: string;
+  /**
+   * Built-in statuses (open / closed / archived) are flagged `isSystem: true`
+   * so the UI can disable rename/delete on them. Org-defined statuses are
+   * `false`.
+   */
+  isSystem?: boolean;
+  /**
+   * Which built-in status this org-defined status behaves like for booking
+   * gating: a custom "Tournament-only" status might `behavesAs: "open"` so
+   * the calendar still considers it bookable.
+   */
+  behavesAs?: FacilitySpaceStatus;
+};
+
+/**
+ * A real-world venue. Lives in `facilities.facilities`. Top-level container
+ * for `FacilitySpace` rows (which represent shapes on the facility's map).
+ *
+ * NB: facilities used to be conflated with spaces — top-level rows in the
+ * `spaces` table with `parent_space_id IS NULL`. The 202605030001 migration
+ * promoted them out into their own table.
+ */
+export type Facility = {
+  id: string;
+  orgId: string;
+  name: string;
+  slug: string;
+  /** Facility lifecycle. Independent from per-space status. */
+  status: "active" | "archived";
+  timezone: string;
+  /** Indoor facilities render on the design grid only; outdoor enables the satellite layer. */
+  environment: "indoor" | "outdoor";
+  /** Lat/lng anchor used as canvas (0,0) when the satellite layer is on. */
+  geoAnchorLat: number | null;
+  geoAnchorLng: number | null;
+  geoAddress: string | null;
+  geoShowMap: boolean;
+  metadataJson: Record<string, unknown>;
+  sortIndex: number;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type FacilityReservationKind = "booking" | "blackout";
 
@@ -17,17 +79,33 @@ export type FacilityReservationExceptionKind = "skip" | "override";
 export type FacilitySpace = {
   id: string;
   orgId: string;
+  /** Required: every space belongs to a Facility. */
+  facilityId: string;
+  /** Parent space within the same facility, when nested (e.g. room inside a building floor). */
   parentSpaceId: string | null;
   name: string;
   slug: string;
   spaceKind: FacilitySpaceKind;
   status: FacilitySpaceStatus;
+  /**
+   * Optional id pointing at a `FacilitySpaceStatusDef` for org-customizable
+   * status labels. Stub — full feature lives in the lost session.
+   */
+  statusId?: string | null;
   isBookable: boolean;
   timezone: string;
   capacity: number | null;
   metadataJson: Record<string, unknown>;
   statusLabelsJson: Record<string, unknown>;
   sortIndex: number;
+  /**
+   * The space's polygon on its facility's canvas. NULL = "not yet
+   * placed" — the editor renders it as a default badge until the user
+   * drops a shape. There is exactly one polygon per space; this used to
+   * live in `facility_map_nodes` until the 202605030004 collapse.
+   */
+  mapPoints: Array<{ x: number; y: number; smooth?: boolean }> | null;
+  mapZIndex: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -108,7 +186,9 @@ export type FacilityReservationException = {
 };
 
 export type FacilityReservationReadModel = {
+  facilities: Facility[];
   spaces: FacilitySpace[];
+  spaceStatuses: FacilitySpaceStatusDef[];
   rules: FacilityReservationRule[];
   reservations: FacilityReservation[];
   exceptions: FacilityReservationException[];

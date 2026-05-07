@@ -832,11 +832,13 @@ export async function getCalendarWorkspaceDataAction(input: {
 
     const readModelRaw = readModelResult.value;
     const activeTeams = activeTeamsResult.status === "fulfilled" ? activeTeamsResult.value : [];
-    const facilityReadModel =
+    const facilityReadModel: Awaited<ReturnType<typeof listFacilityReservationReadModel>> =
       facilityReadModelResult.status === "fulfilled"
         ? facilityReadModelResult.value
         : {
+      facilities: [],
             spaces: [],
+            spaceStatuses: [],
             rules: [],
             reservations: [],
             exceptions: []
@@ -1280,9 +1282,6 @@ export async function createCalendarEntryAction(input: z.input<typeof createEntr
       }
     }
 
-    if (payload.entryType === "practice" && !payload.hostTeamId) {
-      return asError("Practices require a host team.");
-    }
 
     const created = await createCalendarEntryRecord({
       orgId: actor.orgId,
@@ -1312,7 +1311,9 @@ export async function createCalendarEntryAction(input: z.input<typeof createEntr
     };
   } catch (error) {
     rethrowIfNavigationError(error);
-    return asError("Unable to create this calendar entry right now.");
+    console.error("createCalendarEntryAction failed", error);
+    const message = error instanceof Error ? error.message : "unknown error";
+    return asError(`Unable to create this calendar entry right now: ${message}`);
   }
 }
 

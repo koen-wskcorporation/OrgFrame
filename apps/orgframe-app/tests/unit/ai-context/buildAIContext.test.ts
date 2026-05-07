@@ -111,7 +111,7 @@ let buildAIContext!: typeof import("@/src/features/ai/context/buildAIContext").b
 let withAIContext!: typeof import("@/src/features/ai/context/withAIContext").withAIContext;
 
 before(async () => {
-  process.env.NEXT_PUBLIC_SITE_URL = "https://orgframe.app";
+  process.env.NEXT_PUBLIC_PLATFORM_HOST = "orgframe.app";
   ({ buildAIContext } = await import("@/src/features/ai/context/buildAIContext"));
   ({ withAIContext } = await import("@/src/features/ai/context/withAIContext"));
 });

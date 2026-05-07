@@ -1,5 +1,6 @@
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type {
+  Facility,
   FacilityPublicAvailabilitySnapshot,
   FacilityPublicReservation,
   FacilityPublicSpaceAvailability,
@@ -10,8 +11,14 @@ import type {
 } from "@/src/features/facilities/types";
 import type { GeneratedFacilityReservationInput } from "@/src/features/facilities/schedule/rule-engine";
 
+// `status_labels_json` is referenced by app code but the migration that adds
+// the column hasn't been applied yet — selecting it raises
+// `column spaces.status_labels_json does not exist`. Until the migration
+// lands, we omit the column and synthesize an empty object in `mapSpace`.
 const spaceSelect =
-  "id, org_id, parent_space_id, name, slug, space_kind, status, is_bookable, timezone, capacity, metadata_json, status_labels_json, sort_index, created_at, updated_at";
+  "id, org_id, facility_id, parent_space_id, name, slug, space_kind, status, is_bookable, timezone, capacity, metadata_json, sort_index, map_points_json, map_z_index, created_at, updated_at";
+const facilitySelect =
+  "id, org_id, name, slug, status, timezone, environment, geo_anchor_lat, geo_anchor_lng, geo_address, geo_show_map, metadata_json, sort_index, created_at, updated_at";
 const ruleSelect =
   "id, org_id, space_id, mode, reservation_kind, default_status, public_label, internal_notes, timezone, start_date, end_date, start_time, end_time, interval_count, interval_unit, by_weekday, by_monthday, end_mode, until_date, max_occurrences, event_id, program_id, conflict_override, sort_index, is_active, config_json, rule_hash, created_by, created_at, updated_at";
 const reservationSelect =
@@ -22,6 +29,7 @@ const exceptionSelect =
 type SpaceRow = {
   id: string;
   org_id: string;
+  facility_id: string;
   parent_space_id: string | null;
   name: string;
   slug: string;
@@ -31,7 +39,26 @@ type SpaceRow = {
   timezone: string;
   capacity: number | null;
   metadata_json: unknown;
-  status_labels_json: unknown;
+  sort_index: number;
+  map_points_json: unknown;
+  map_z_index: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type FacilityRow = {
+  id: string;
+  org_id: string;
+  name: string;
+  slug: string;
+  status: Facility["status"];
+  timezone: string;
+  environment: Facility["environment"];
+  geo_anchor_lat: number | null;
+  geo_anchor_lng: number | null;
+  geo_address: string | null;
+  geo_show_map: boolean;
+  metadata_json: unknown;
   sort_index: number;
   created_at: string;
   updated_at: string;
@@ -120,19 +147,63 @@ function asObject(value: unknown): Record<string, unknown> {
 }
 
 function mapSpace(row: SpaceRow): FacilitySpace {
+  const metadata = asObject(row.metadata_json);
+  // statusId lives in metadata_json until its dedicated column is recovered.
+  // It falls back to the built-in matching the row's `status` so the picker
+  // stays consistent.
+  const metaStatusId = typeof metadata.statusId === "string" ? metadata.statusId : null;
+  const statusId = metaStatusId ?? row.status;
   return {
     id: row.id,
     orgId: row.org_id,
+    facilityId: row.facility_id,
     parentSpaceId: row.parent_space_id,
     name: row.name,
     slug: row.slug,
     spaceKind: row.space_kind,
     status: row.status,
+    statusId,
     isBookable: row.is_bookable,
     timezone: row.timezone,
     capacity: row.capacity,
+    metadataJson: metadata,
+    statusLabelsJson: {},
+    sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
+    mapPoints: asMapPoints(row.map_points_json),
+    mapZIndex: typeof row.map_z_index === "number" ? row.map_z_index : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function asMapPoints(input: unknown): FacilitySpace["mapPoints"] {
+  if (!Array.isArray(input)) return null;
+  const result: NonNullable<FacilitySpace["mapPoints"]> = [];
+  for (const point of input) {
+    if (!point || typeof point !== "object") continue;
+    const x = Number((point as { x?: unknown }).x);
+    const y = Number((point as { y?: unknown }).y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    const smooth = (point as { smooth?: unknown }).smooth === true;
+    result.push(smooth ? { x, y, smooth: true } : { x, y });
+  }
+  return result.length >= 3 ? result : null;
+}
+
+function mapFacility(row: FacilityRow): Facility {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    name: row.name,
+    slug: row.slug,
+    status: row.status,
+    timezone: row.timezone,
+    environment: row.environment,
+    geoAnchorLat: row.geo_anchor_lat,
+    geoAnchorLng: row.geo_anchor_lng,
+    geoAddress: row.geo_address,
+    geoShowMap: row.geo_show_map,
     metadataJson: asObject(row.metadata_json),
-    statusLabelsJson: asObject(row.status_labels_json),
     sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -220,12 +291,16 @@ function mapException(row: ExceptionRow): FacilityReservationException {
   };
 }
 
-export async function listFacilitySpacesForManage(orgId: string): Promise<FacilitySpace[]> {
+export async function listFacilitySpacesForManage(orgId: string, options?: { facilityId?: string }): Promise<FacilitySpace[]> {
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase
+  let query = supabase
     .schema("facilities").from("spaces")
     .select(spaceSelect)
-    .eq("org_id", orgId)
+    .eq("org_id", orgId);
+  if (options?.facilityId) {
+    query = query.eq("facility_id", options.facilityId);
+  }
+  const { data, error } = await query
     .order("sort_index", { ascending: true })
     .order("created_at", { ascending: true });
 
@@ -234,6 +309,126 @@ export async function listFacilitySpacesForManage(orgId: string): Promise<Facili
   }
 
   return (data ?? []).map((row) => mapSpace(row as SpaceRow));
+}
+
+export async function listFacilitiesForManage(orgId: string): Promise<Facility[]> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .schema("facilities").from("facilities")
+    .select(facilitySelect)
+    .eq("org_id", orgId)
+    .order("sort_index", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to list facilities: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => mapFacility(row as FacilityRow));
+}
+
+export async function getFacilityById(orgId: string, facilityId: string): Promise<Facility | null> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .schema("facilities").from("facilities")
+    .select(facilitySelect)
+    .eq("org_id", orgId)
+    .eq("id", facilityId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load facility: ${error.message}`);
+  }
+  return data ? mapFacility(data as FacilityRow) : null;
+}
+
+export async function createFacilityRecord(input: {
+  orgId: string;
+  name: string;
+  slug: string;
+  status?: Facility["status"];
+  timezone?: string;
+  environment?: Facility["environment"];
+  geoAnchorLat?: number | null;
+  geoAnchorLng?: number | null;
+  geoAddress?: string | null;
+  geoShowMap?: boolean;
+  metadataJson?: Record<string, unknown>;
+  sortIndex?: number;
+}): Promise<Facility> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .schema("facilities").from("facilities")
+    .insert({
+      org_id: input.orgId,
+      name: input.name,
+      slug: input.slug,
+      status: input.status ?? "active",
+      timezone: input.timezone ?? "UTC",
+      environment: input.environment ?? "outdoor",
+      geo_anchor_lat: input.geoAnchorLat ?? null,
+      geo_anchor_lng: input.geoAnchorLng ?? null,
+      geo_address: input.geoAddress ?? null,
+      geo_show_map: input.geoShowMap ?? false,
+      metadata_json: input.metadataJson ?? {},
+      sort_index: input.sortIndex ?? 0
+    })
+    .select(facilitySelect)
+    .single();
+  if (error) throw new Error(`Failed to create facility: ${error.message}`);
+  return mapFacility(data as FacilityRow);
+}
+
+export async function updateFacilityRecord(input: {
+  orgId: string;
+  facilityId: string;
+  name: string;
+  slug: string;
+  status: Facility["status"];
+  timezone: string;
+  environment: Facility["environment"];
+  geoAnchorLat: number | null;
+  geoAnchorLng: number | null;
+  geoAddress: string | null;
+  geoShowMap: boolean;
+  metadataJson: Record<string, unknown>;
+  sortIndex?: number;
+}): Promise<Facility> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .schema("facilities").from("facilities")
+    .update({
+      name: input.name,
+      slug: input.slug,
+      status: input.status,
+      timezone: input.timezone,
+      environment: input.environment,
+      geo_anchor_lat: input.geoAnchorLat,
+      geo_anchor_lng: input.geoAnchorLng,
+      geo_address: input.geoAddress,
+      geo_show_map: input.geoShowMap,
+      metadata_json: input.metadataJson,
+      ...(input.sortIndex !== undefined ? { sort_index: input.sortIndex } : {})
+    })
+    .eq("org_id", input.orgId)
+    .eq("id", input.facilityId)
+    .select(facilitySelect)
+    .single();
+  if (error) throw new Error(`Failed to update facility: ${error.message}`);
+  return mapFacility(data as FacilityRow);
+}
+
+export async function deleteFacilityRecord(input: { orgId: string; facilityId: string }): Promise<void> {
+  const supabase = await createSupabaseServer();
+  // FK on `spaces.facility_id` cascades; deleting the facility removes its
+  // spaces, and the FK on `facility_map_nodes.space_id` cascades from
+  // there. One delete, full cleanup.
+  const { error } = await supabase
+    .schema("facilities").from("facilities")
+    .delete()
+    .eq("org_id", input.orgId)
+    .eq("id", input.facilityId);
+  if (error) throw new Error(`Failed to delete facility: ${error.message}`);
 }
 
 export async function getFacilitySpaceById(orgId: string, spaceId: string): Promise<FacilitySpace | null> {
@@ -253,7 +448,10 @@ export async function getFacilitySpaceById(orgId: string, spaceId: string): Prom
 }
 
 export async function createFacilitySpaceRecord(input: {
+  /** Optional client-supplied UUID. When omitted the DB generates one. */
+  id?: string;
   orgId: string;
+  facilityId: string;
   parentSpaceId: string | null;
   name: string;
   slug: string;
@@ -265,12 +463,16 @@ export async function createFacilitySpaceRecord(input: {
   metadataJson?: Record<string, unknown>;
   statusLabelsJson?: Record<string, unknown>;
   sortIndex?: number;
+  mapPoints?: FacilitySpace["mapPoints"];
+  mapZIndex?: number | null;
 }): Promise<FacilitySpace> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
     .schema("facilities").from("spaces")
     .insert({
+      ...(input.id ? { id: input.id } : {}),
       org_id: input.orgId,
+      facility_id: input.facilityId,
       parent_space_id: input.parentSpaceId,
       name: input.name,
       slug: input.slug,
@@ -280,8 +482,9 @@ export async function createFacilitySpaceRecord(input: {
       timezone: input.timezone,
       capacity: input.capacity,
       metadata_json: input.metadataJson ?? {},
-      status_labels_json: input.statusLabelsJson ?? {},
-      sort_index: input.sortIndex ?? 0
+      sort_index: input.sortIndex ?? 0,
+      map_points_json: input.mapPoints ?? null,
+      map_z_index: input.mapZIndex ?? null
     })
     .select(spaceSelect)
     .single();
@@ -291,6 +494,33 @@ export async function createFacilitySpaceRecord(input: {
   }
 
   return mapSpace(data as SpaceRow);
+}
+
+/**
+ * Update the polygon geometry of an existing space. The dedicated entry
+ * point keeps the heavyweight "edit metadata" primitive
+ * (`updateFacilitySpaceRecord`) decoupled from map-editor saves: a save
+ * batch can update geometry on dozens of spaces without serializing the
+ * whole metadata payload for each row.
+ */
+export async function updateFacilitySpaceMapRecord(input: {
+  orgId: string;
+  spaceId: string;
+  mapPoints: FacilitySpace["mapPoints"];
+  mapZIndex: number | null;
+}): Promise<void> {
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase
+    .schema("facilities").from("spaces")
+    .update({
+      map_points_json: input.mapPoints,
+      map_z_index: input.mapZIndex
+    })
+    .eq("org_id", input.orgId)
+    .eq("id", input.spaceId);
+  if (error) {
+    throw new Error(`Failed to save space map geometry: ${error.message}`);
+  }
 }
 
 export async function updateFacilitySpaceRecord(input: {
@@ -321,7 +551,7 @@ export async function updateFacilitySpaceRecord(input: {
       timezone: input.timezone,
       capacity: input.capacity,
       metadata_json: input.metadataJson ?? {},
-      status_labels_json: input.statusLabelsJson ?? {},
+      // status_labels_json column not yet in DB; skip until migration lands.
       sort_index: input.sortIndex ?? 0
     })
     .eq("org_id", input.orgId)
@@ -359,8 +589,11 @@ export async function updateFacilitySpaceHierarchyRecord(input: {
 
 export async function deleteFacilitySpaceRecord(input: { orgId: string; spaceId: string }): Promise<void> {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.schema("facilities").from("spaces").delete().eq("org_id", input.orgId).eq("id", input.spaceId);
-
+  const { error } = await supabase
+    .schema("facilities").from("spaces")
+    .delete()
+    .eq("org_id", input.orgId)
+    .eq("id", input.spaceId);
   if (error) {
     throw new Error(`Failed to delete facility space: ${error.message}`);
   }
@@ -840,16 +1073,34 @@ export async function upsertRuleGeneratedReservations(
   }
 }
 
+// Built-in space-status definitions used until the org-customizable
+// `facility_space_statuses` migration is recovered. Keep these stable —
+// `id === FacilitySpaceStatus`, with `behavesAs` set so anything that
+// gates on "open" / "closed" / "archived" still works.
+export const BUILT_IN_FACILITY_SPACE_STATUSES = [
+  { id: "open", label: "Open", color: "green", isSystem: true, behavesAs: "open" as const },
+  { id: "closed", label: "Closed", color: "gray", isSystem: true, behavesAs: "closed" as const },
+  { id: "archived", label: "Archived", color: "neutral", isSystem: true, behavesAs: "archived" as const }
+];
+
+export async function listFacilitySpaceStatuses(_orgId: string) {
+  return BUILT_IN_FACILITY_SPACE_STATUSES;
+}
+
 export async function listFacilityReservationReadModel(orgId: string) {
-  const [spaces, rules, reservations, exceptions] = await Promise.all([
+  const [facilities, spaces, spaceStatuses, rules, reservations, exceptions] = await Promise.all([
+    listFacilitiesForManage(orgId),
     listFacilitySpacesForManage(orgId),
+    listFacilitySpaceStatuses(orgId),
     listFacilityReservationRules(orgId),
     listFacilityReservations(orgId, { includeInactive: true }),
     listFacilityReservationExceptions(orgId)
   ]);
 
   return {
+    facilities,
     spaces,
+    spaceStatuses,
     rules,
     reservations,
     exceptions

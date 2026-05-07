@@ -20,7 +20,7 @@ export const orgToolKeys = [
   "branding",
   "people",
   "billing",
-  "site",
+  "website",
   "programs",
   "calendar",
   "facilities",
@@ -80,10 +80,10 @@ export const ORG_TOOLS: Record<OrgToolKey, OrgToolMetadata> = {
     icon: "credit-card",
     enabledByDefault: true,
   },
-  site: {
-    key: "site",
-    label: "Site Builder",
-    description: "Build and manage organization pages.",
+  website: {
+    key: "website",
+    label: "Website",
+    description: "Manage pages, navigation, and public site structure.",
     icon: "layout",
     enabledByDefault: true,
   },
@@ -150,7 +150,7 @@ export const DEFAULT_TOOL_AVAILABILITY: OrgToolAvailability = {
   branding: true,
   people: true,
   billing: true,
-  site: true,
+  website: true,
   programs: true,
   calendar: true,
   facilities: true,
@@ -175,7 +175,7 @@ export function isOrgToolEnabled(toolAvailability: OrgToolAvailability, tool: Or
 export const TOOL_PERMISSION_MAP: Record<OrgToolKey, Permission[]> = {
   branding: ["org.branding.read", "org.branding.write"],
   people: ["people.read", "people.write"],
-  site: ["org.pages.read", "org.pages.write"],
+  website: ["org.pages.read", "org.pages.write"],
   programs: ["programs.read", "programs.write"],
   forms: ["forms.read", "forms.write"],
   calendar: ["calendar.read", "calendar.write", "events.read", "events.write"],
@@ -243,7 +243,7 @@ export function isToolVisible(
       return Boolean(capabilities?.people?.canAccess || capabilities?.manage?.canRead);
     case "billing":
       return Boolean(capabilities?.manage?.canRead);
-    case "site":
+    case "website":
       return true;
     case "programs":
       return Boolean(capabilities?.programs?.canAccess);
@@ -291,10 +291,12 @@ export function normalizeToolKey(value: string): OrgToolKey | null {
     case "payment":
     case "payments":
       return "billing";
+    case "website":
     case "site":
     case "pages":
     case "page-builder":
-      return "site";
+    case "site-builder":
+      return "website";
     case "program":
     case "programs":
       return "programs";

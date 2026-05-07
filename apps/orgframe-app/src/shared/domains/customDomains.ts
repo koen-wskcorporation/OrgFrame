@@ -1,3 +1,18 @@
+// All hostnames in the OrgFrame stack derive from a single env var:
+//
+//   NEXT_PUBLIC_PLATFORM_HOST  →  "orgframe.app" | "staging.orgframe.app" | "orgframe.test"
+//
+// From the platform host we derive the auth host (`auth.<platform>`), the
+// cookie scope (`<platform>` covers `auth.<platform>`), the tenant base
+// hosts used for org-subdomain routing, etc. Marketing lives on its own
+// domain, set independently via NEXT_PUBLIC_MARKETING_HOST and consumed by
+// orgframe-web.
+//
+// There used to be ~10 overlapping URL env vars (NEXT_PUBLIC_SITE_URL,
+// SITE_URL, AUTH_CANONICAL_HOST, STAGING_SITE_URL, etc.). They are gone.
+
+const DEFAULT_PLATFORM_HOST = "orgframe.app";
+
 function parseHostFromUrl(value: string) {
   try {
     return new URL(value).hostname;
@@ -17,31 +32,21 @@ export function normalizeHost(host: string | null | undefined) {
 }
 
 export function getPlatformHost() {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL;
-
-  if (!siteUrl) {
-    return "orgframe.app";
+  const raw = process.env.NEXT_PUBLIC_PLATFORM_HOST?.trim();
+  if (!raw) {
+    return DEFAULT_PLATFORM_HOST;
   }
 
-  const host = normalizeHost(parseHostFromUrl(siteUrl));
-  return host || "orgframe.app";
+  // Accept either a bare host ("orgframe.app") or a full URL — strip down to
+  // the hostname either way so callers don't have to care.
+  const candidate = raw.includes("://") ? parseHostFromUrl(raw) : raw;
+  const normalized = normalizeHost(candidate);
+  return normalized || DEFAULT_PLATFORM_HOST;
 }
 
 export function getCanonicalAuthHost() {
-  const explicit = process.env.AUTH_CANONICAL_HOST;
-  if (explicit) {
-    const host = normalizeHost(parseHostFromUrl(explicit));
-    if (host) {
-      return host;
-    }
-  }
-
   const platformHost = getPlatformHost();
-  if (platformHost) {
-    return `auth.${platformHost}`;
-  }
-
-  return "";
+  return platformHost ? `auth.${platformHost}` : "";
 }
 
 export function isCanonicalAuthHost(host: string | null | undefined) {
@@ -68,33 +73,15 @@ export function isPlatformHost(host: string | null | undefined) {
   return false;
 }
 
-function readOptionalHost(value: string | undefined) {
-  if (!value) {
-    return "";
-  }
-
-  return normalizeHost(parseHostFromUrl(value));
-}
-
+// The set of hosts that org subdomains can attach to (e.g.
+// `<orgSlug>.orgframe.app`). For a single deployment this is a one-element
+// set — the configured platform host.
 export function getTenantBaseHosts() {
-  const hosts = new Set<string>(["orgframe.app", "staging.orgframe.app", "orgframe.test", "staging.orgframe.test"]);
+  const hosts = new Set<string>();
   const primary = getPlatformHost();
-
   if (primary) {
     hosts.add(primary);
-
-    if (primary.startsWith("staging.")) {
-      hosts.add(primary.slice("staging.".length));
-    } else {
-      hosts.add(`staging.${primary}`);
-    }
   }
-
-  const explicitStagingHost = readOptionalHost(process.env.NEXT_PUBLIC_STAGING_SITE_URL || process.env.STAGING_SITE_URL);
-  if (explicitStagingHost) {
-    hosts.add(explicitStagingHost);
-  }
-
   return hosts;
 }
 
@@ -177,4 +164,45 @@ export function shouldSkipCustomDomainRoutingPath(pathname: string) {
     pathname.startsWith("/inbox") ||
     pathname.startsWith("/forbidden")
   );
+}
+
+// ─── Marketing host ─────────────────────────────────────────────────────
+// Marketing lives on its own domain set via NEXT_PUBLIC_MARKETING_HOST.
+// Defaults to a reasonable stand-in for local dev so a missing env var
+// doesn't crash the marketing build. In prod, set it explicitly.
+
+const DEFAULT_MARKETING_HOST = "orgframeapp.com";
+
+export function getMarketingHost() {
+  const raw = process.env.NEXT_PUBLIC_MARKETING_HOST?.trim();
+  if (!raw) {
+    return DEFAULT_MARKETING_HOST;
+  }
+
+  const candidate = raw.includes("://") ? parseHostFromUrl(raw) : raw;
+  const normalized = normalizeHost(candidate);
+  return normalized || DEFAULT_MARKETING_HOST;
+}
+
+// ─── Origin builders ───────────────────────────────────────────────────
+// Single source of truth for the protocol scheme. Local dev runs on http;
+// every other host gets https. Used to construct full URLs from a host.
+
+function getOrigin(host: string) {
+  if (!host) return "";
+  const isLocal = host === "localhost" || host.startsWith("127.") || host === "0.0.0.0" || host.endsWith(".test") || host.endsWith(".local");
+  const protocol = isLocal ? "http" : "https";
+  return `${protocol}://${host}`;
+}
+
+export function getPlatformOrigin() {
+  return getOrigin(getPlatformHost());
+}
+
+export function getCanonicalAuthOrigin() {
+  return getOrigin(getCanonicalAuthHost());
+}
+
+export function getMarketingOrigin() {
+  return getOrigin(getMarketingHost());
 }

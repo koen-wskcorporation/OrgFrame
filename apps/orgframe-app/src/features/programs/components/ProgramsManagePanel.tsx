@@ -6,18 +6,14 @@ import { useRouter } from "next/navigation";
 import { Copy, Plus } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { CalendarPicker } from "@orgframe/ui/primitives/calendar-picker";
-import { FormField } from "@orgframe/ui/primitives/form-field";
-import { Input } from "@orgframe/ui/primitives/input";
-import { Popup } from "@orgframe/ui/primitives/popup";
+import { RepeaterChip } from "@orgframe/ui/primitives/chip";
 import { PublishStatusIcon } from "@orgframe/ui/primitives/publish-status-icon";
-import { Select } from "@orgframe/ui/primitives/select";
-import { Textarea } from "@orgframe/ui/primitives/textarea";
-import { AssetTile } from "@orgframe/ui/primitives/asset-tile";
+import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { useToast } from "@orgframe/ui/primitives/toast";
-import { WorkspaceCardShell } from "@/src/features/core/layout/components/WorkspaceCardShell";
-import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 import { createProgramAction, duplicateProgramAction, updateProgramAction } from "@/src/features/programs/actions";
+import { ProgramCreateWizard, type ProgramCreateInput } from "@/src/features/programs/components/ProgramCreateWizard";
 import type { Program } from "@/src/features/programs/types";
 
 type ProgramsManagePanelProps = {
@@ -27,34 +23,15 @@ type ProgramsManagePanelProps = {
   canWrite?: boolean;
 };
 
-function slugify(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrite = true }: ProgramsManagePanelProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isSaving, startSaving] = useTransition();
   const [isTogglingStatus, startTogglingStatus] = useTransition();
   const [isDuplicating, startDuplicating] = useTransition();
   const [statusProgramId, setStatusProgramId] = useState<string | null>(null);
   const [duplicateProgramId, setDuplicateProgramId] = useState<string | null>(null);
   const [programItems, setProgramItems] = useState(programs);
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [programType, setProgramType] = useState<"league" | "season" | "clinic" | "custom">("season");
-  const [customTypeLabel, setCustomTypeLabel] = useState("");
-  const [status, setStatus] = useState<"draft" | "published" | "archived">("draft");
-  const [description, setDescription] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [coverImagePath, setCoverImagePath] = useState("");
 
   useEffect(() => {
     setProgramItems(programs);
@@ -65,9 +42,7 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
   }, [programItems]);
 
   function toggleProgramStatus(program: Program) {
-    if (!canWrite) {
-      return;
-    }
+    if (!canWrite) return;
 
     setStatusProgramId(program.id);
     startTogglingStatus(async () => {
@@ -100,12 +75,7 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
 
         setProgramItems((current) =>
           current.map((item) =>
-            item.id === program.id
-              ? {
-                  ...item,
-                  status: isPublished ? "draft" : "published"
-                }
-              : item
+            item.id === program.id ? { ...item, status: isPublished ? "draft" : "published" } : item
           )
         );
         toast({
@@ -118,78 +88,43 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
     });
   }
 
-  function handleCreate(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleCreate(input: ProgramCreateInput) {
+    const result = await createProgramAction({
+      orgSlug,
+      slug: input.slug,
+      name: input.name,
+      description: input.description,
+      programType: input.programType,
+      customTypeLabel: input.customTypeLabel,
+      status: input.status,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      coverImagePath: input.coverImagePath,
+      registrationOpenAt: undefined,
+      registrationCloseAt: undefined
+    });
 
-    if (!canWrite) {
-      return;
-    }
-
-    const resolvedSlug = slug || slugify(name);
-    if (!resolvedSlug) {
+    if (!result.ok) {
       toast({
-        title: "Missing slug",
-        description: "Provide a program name or slug.",
+        title: "Unable to create program",
+        description: result.error,
         variant: "destructive"
       });
-      return;
+      return { ok: false as const, message: result.error };
     }
 
-    startSaving(async () => {
-      const result = await createProgramAction({
-        orgSlug,
-        slug: resolvedSlug,
-        name,
-        description,
-        programType,
-        customTypeLabel,
-        status,
-        startDate,
-        endDate,
-        coverImagePath,
-        registrationOpenAt: undefined,
-        registrationCloseAt: undefined
-      });
-
-      if (!result.ok) {
-        toast({
-          title: "Unable to create program",
-          description: result.error,
-          variant: "destructive"
-        });
-        return;
-      }
-
-      toast({
-        title: "Program created",
-        variant: "success"
-      });
-      setIsCreateOpen(false);
-      setName("");
-      setSlug("");
-      setDescription("");
-      setCustomTypeLabel("");
-      setStatus("draft");
-      setProgramType("season");
-      setStartDate("");
-      setEndDate("");
-      setCoverImagePath("");
-      router.push(`/manage/programs/${result.data.programId}`);
-    });
+    toast({ title: "Program created", variant: "success" });
+    router.push(`/manage/programs/${result.data.programId}`);
+    return { ok: true as const };
   }
 
   function handleDuplicate(program: Program) {
-    if (!canWrite) {
-      return;
-    }
+    if (!canWrite) return;
 
     setDuplicateProgramId(program.id);
     startDuplicating(async () => {
       try {
-        const result = await duplicateProgramAction({
-          orgSlug,
-          programId: program.id
-        });
+        const result = await duplicateProgramAction({ orgSlug, programId: program.id });
 
         if (!result.ok) {
           toast({
@@ -200,10 +135,7 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
           return;
         }
 
-        toast({
-          title: "Program duplicated",
-          variant: "success"
-        });
+        toast({ title: "Program duplicated", variant: "success" });
         router.push(`/manage/programs/${result.data.programId}`);
       } finally {
         setDuplicateProgramId(null);
@@ -212,158 +144,83 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
   }
 
   return (
-    <div className="ui-stack-page">
-      <WorkspaceCardShell
-        actions={
-          <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
-            <Plus className="h-4 w-4" />
-            Create program
-          </Button>
-        }
-        contentClassName="ui-list-stack"
-        description="Manage program structure, schedules, and linked forms."
-        title="Programs"
-      >
-        {sortedPrograms.length === 0 ? <Alert variant="info">No programs yet.</Alert> : null}
-        {sortedPrograms.map((program) => (
-          <div className="ui-list-row ui-list-row-hover" key={program.id}>
-            <div className="ui-list-row-content">
-              <div className="flex items-center gap-1.5">
-                <PublishStatusIcon
-                  disabled={!canWrite}
-                  isLoading={isTogglingStatus && statusProgramId === program.id}
-                  isPublished={program.status === "published"}
-                  onToggle={() => toggleProgramStatus(program)}
-                  statusLabel={program.status === "published" ? `Published status for ${program.name}` : `Unpublished status for ${program.name}`}
-                />
-                <Link className="ui-list-row-title hover:underline" href={`/manage/programs/${program.id}`}>
+    <>
+      <PageShell title="Programs">
+        {!canWrite ? <Alert variant="info">You have read-only access to programs.</Alert> : null}
+        <Repeater
+          emptyMessage="No programs yet."
+          getSearchValue={(program) => `${program.name} ${program.slug}`}
+          initialView="list"
+          items={sortedPrograms}
+          searchPlaceholder="Search programs"
+          viewKey="manage.programs"
+          renderShell={({ toolbar, body }) => (
+            <ManageSection
+              actions={
+                <div className="flex flex-wrap items-center gap-2">
+                  {toolbar}
+                  <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
+                    <Plus className="h-4 w-4" />
+                    Add
+                  </Button>
+                </div>
+              }
+              description="Manage program structure, schedules, and linked forms."
+              fill={false}
+              title="Programs"
+            >
+              {body}
+            </ManageSection>
+          )}
+          getItem={(program) => ({
+              id: program.id,
+              title: (
+                <Link className="hover:underline" href={`/manage/programs/${program.id}`}>
                   {program.name}
                 </Link>
-              </div>
-              <p className="ui-list-row-meta">
-                {program.programType === "custom" ? program.customTypeLabel ?? "Custom" : program.programType} · {program.status}
-              </p>
-              <p className="text-sm text-text-muted">{orgDisplayHost}/programs/{program.slug}</p>
-            </div>
-            <div className="ui-list-row-actions">
-              <Button href={`/manage/programs/${program.id}`} size="sm" variant="secondary">
-                Open
-              </Button>
-              <Button
-                disabled={!canWrite || (isDuplicating && duplicateProgramId !== program.id)}
-                loading={isDuplicating && duplicateProgramId === program.id}
-                onClick={() => handleDuplicate(program)}
-                size="sm"
-                type="button"
-                variant="secondary"
-              >
-                <Copy className="h-3.5 w-3.5" />
-                Duplicate
-              </Button>
-            </div>
-          </div>
-        ))}
-      </WorkspaceCardShell>
+              ),
+              chips: (
+                <>
+                  <PublishStatusIcon
+                    disabled={!canWrite}
+                    isLoading={isTogglingStatus && statusProgramId === program.id}
+                    isPublished={program.status === "published"}
+                    onToggle={() => toggleProgramStatus(program)}
+                    statusLabel={program.status === "published" ? `Published status for ${program.name}` : `Unpublished status for ${program.name}`}
+                  />
+                  <RepeaterChip label={program.programType === "custom" ? program.customTypeLabel ?? "Custom" : program.programType} />
+                </>
+              ),
+              meta: <>/{program.slug}</>,
+              secondaryActions: (
+                <Button
+                  disabled={!canWrite || (isDuplicating && duplicateProgramId !== program.id)}
+                  loading={isDuplicating && duplicateProgramId === program.id}
+                  onClick={() => handleDuplicate(program)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Duplicate
+                </Button>
+              ),
+              primaryAction: (
+                <Button href={`/manage/programs/${program.id}`} size="sm" variant="secondary">
+                  Open
+                </Button>
+              )
+            })}
+        />
+      </PageShell>
 
-      <Popup
-        footer={
-          <>
-            <Button onClick={() => setIsCreateOpen(false)} type="button" variant="ghost">
-              Cancel
-            </Button>
-            <Button disabled={isSaving || !canWrite} form="create-program-form" loading={isSaving} type="submit">
-              {isSaving ? "Saving..." : "Create program"}
-            </Button>
-          </>
-        }
+      <ProgramCreateWizard
+        canWrite={canWrite}
         onClose={() => setIsCreateOpen(false)}
+        onSubmit={handleCreate}
         open={isCreateOpen}
-        size="lg"
-        subtitle="Set up leagues, seasons, clinics, and custom programs."
-        title="Create program"
-      >
-        <form className="grid gap-4" id="create-program-form" onSubmit={handleCreate}>
-          <FormField label="Program name">
-            <Input disabled={!canWrite} onChange={(event) => setName(event.target.value)} required value={name} />
-          </FormField>
-          <FormField hint="Auto-generated from name if blank." label="Slug">
-            <Input
-              disabled={!canWrite}
-              onChange={(event) => setSlug(slugify(event.target.value))}
-              onSlugAutoChange={setSlug}
-              slugAutoSource={name}
-              slugValidation={{
-                kind: "program",
-                orgSlug
-              }}
-              value={slug}
-            />
-          </FormField>
-          <FormField label="Type">
-            <Select
-              disabled={!canWrite}
-              onChange={(event) => setProgramType(event.target.value as "league" | "season" | "clinic" | "custom")}
-              options={[
-                { value: "league", label: "League" },
-                { value: "season", label: "Season" },
-                { value: "clinic", label: "Clinic" },
-                { value: "custom", label: "Custom" }
-              ]}
-              value={programType}
-            />
-          </FormField>
-          <FormField label="Status">
-            <Select
-              disabled={!canWrite}
-              onChange={(event) => setStatus(event.target.value as "draft" | "published" | "archived")}
-              options={[
-                { value: "draft", label: "Draft" },
-                { value: "published", label: "Published" },
-                { value: "archived", label: "Archived" }
-              ]}
-              value={status}
-            />
-          </FormField>
-          {programType === "custom" ? (
-            <FormField label="Custom type label">
-              <Input disabled={!canWrite} onChange={(event) => setCustomTypeLabel(event.target.value)} required value={customTypeLabel} />
-            </FormField>
-          ) : null}
-          <FormField label="Description">
-            <Textarea className="min-h-[90px]" disabled={!canWrite} onChange={(event) => setDescription(event.target.value)} value={description} />
-          </FormField>
-          <FormField label="Cover photo">
-            <AssetTile
-              constraints={{
-                accept: "image/*,.svg",
-                maxSizeMB: 10,
-                aspect: "wide",
-                recommendedPx: {
-                  w: 1600,
-                  h: 900
-                }
-              }}
-              disabled={!canWrite}
-              fit="cover"
-              initialPath={coverImagePath || null}
-              initialUrl={getOrgAssetPublicUrl(coverImagePath)}
-              kind="org"
-              onChange={(asset) => setCoverImagePath(asset.path)}
-              onRemove={() => setCoverImagePath("")}
-              orgSlug={orgSlug}
-              purpose="program-cover"
-              specificationText="PNG, JPG, WEBP, HEIC, or SVG"
-              title="Program cover"
-            />
-          </FormField>
-          <FormField label="Start date">
-            <CalendarPicker disabled={!canWrite} onChange={setStartDate} value={startDate} />
-          </FormField>
-          <FormField label="End date">
-            <CalendarPicker disabled={!canWrite} onChange={setEndDate} value={endDate} />
-          </FormField>
-        </form>
-      </Popup>
-    </div>
+        orgSlug={orgSlug}
+      />
+    </>
   );
 }

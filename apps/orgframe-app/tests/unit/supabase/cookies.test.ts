@@ -1,21 +1,24 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import { normalizeSupabaseCookieOptions } from "@/src/shared/supabase/cookies";
 
-const originalAuthCookieDomain = process.env.AUTH_COOKIE_DOMAIN;
+const originalPlatformHost = process.env.NEXT_PUBLIC_PLATFORM_HOST;
+
+beforeEach(() => {
+  delete process.env.NEXT_PUBLIC_PLATFORM_HOST;
+});
 
 afterEach(() => {
-  if (originalAuthCookieDomain === undefined) {
-    delete process.env.AUTH_COOKIE_DOMAIN;
+  if (originalPlatformHost === undefined) {
+    delete process.env.NEXT_PUBLIC_PLATFORM_HOST;
   } else {
-    process.env.AUTH_COOKIE_DOMAIN = originalAuthCookieDomain;
+    process.env.NEXT_PUBLIC_PLATFORM_HOST = originalPlatformHost;
   }
 });
 
 describe("normalizeSupabaseCookieOptions", () => {
-  it("shares auth cookies across production org subdomains by default", () => {
-    delete process.env.AUTH_COOKIE_DOMAIN;
-
+  it("shares auth cookies across production org subdomains", () => {
+    process.env.NEXT_PUBLIC_PLATFORM_HOST = "orgframe.app";
     const options = normalizeSupabaseCookieOptions(undefined, true, "baycitysoccer.orgframe.app");
     assert.equal(options.domain, "orgframe.app");
     assert.equal(options.path, "/");
@@ -23,31 +26,21 @@ describe("normalizeSupabaseCookieOptions", () => {
     assert.equal(options.secure, true);
   });
 
-  it("shares auth cookies across staging org subdomains by default", () => {
-    delete process.env.AUTH_COOKIE_DOMAIN;
-
+  it("shares auth cookies across staging org subdomains", () => {
+    process.env.NEXT_PUBLIC_PLATFORM_HOST = "staging.orgframe.app";
     const options = normalizeSupabaseCookieOptions(undefined, true, "riverdale.staging.orgframe.app");
     assert.equal(options.domain, "staging.orgframe.app");
   });
 
   it("shares auth cookies across local test-domain org subdomains", () => {
-    delete process.env.AUTH_COOKIE_DOMAIN;
-
+    process.env.NEXT_PUBLIC_PLATFORM_HOST = "orgframe.test";
     const options = normalizeSupabaseCookieOptions(undefined, false, "batmen.orgframe.test");
     assert.equal(options.domain, "orgframe.test");
   });
 
   it("does not force a shared domain for unrelated hosts", () => {
-    delete process.env.AUTH_COOKIE_DOMAIN;
-
+    process.env.NEXT_PUBLIC_PLATFORM_HOST = "orgframe.app";
     const options = normalizeSupabaseCookieOptions(undefined, true, "example.com");
     assert.equal(options.domain, undefined);
-  });
-
-  it("respects explicit AUTH_COOKIE_DOMAIN override", () => {
-    process.env.AUTH_COOKIE_DOMAIN = "orgframe.test";
-
-    const options = normalizeSupabaseCookieOptions(undefined, true, "example.com");
-    assert.equal(options.domain, "orgframe.test");
   });
 });

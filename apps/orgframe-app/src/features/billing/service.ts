@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import Stripe from "stripe";
 import { createOptionalSupabaseServiceRoleClient, createSupabaseServer } from "@/src/shared/data-api/server";
+import { getPlatformOrigin } from "@/src/shared/domains/customDomains";
 import type { SessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import type {
   AccountPaymentMethod,
@@ -145,12 +146,7 @@ function getStripeSecretKey() {
 }
 
 function getSiteOrigin() {
-  const value = (process.env.NEXT_PUBLIC_SITE_URL ?? process.env.SITE_URL ?? "").trim();
-  if (!value) {
-    throw new Error("SITE_URL_NOT_CONFIGURED");
-  }
-
-  return value.replace(/\/$/, "");
+  return getPlatformOrigin();
 }
 
 function getStripeClient() {

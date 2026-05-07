@@ -7,6 +7,7 @@ import { proposeWidgetTool, type ProposeWidgetResult } from "@/src/features/ai/t
 import { queryOrgDataTool, type QueryOrgDataResult } from "@/src/features/ai/tools/query-org-data";
 import { resolveEntitiesTool, type ResolveEntitiesResult } from "@/src/features/ai/tools/resolve-entities";
 import { widgetTypes } from "@/src/features/manage-dashboard/types";
+import { recordAuditEvent } from "@/src/features/audit/recorder";
 
 export const aiTools = {
   resolve_entities: resolveEntitiesTool,
@@ -120,6 +121,43 @@ export async function runAiTool(
   input: unknown
 ): Promise<ResolveEntitiesResult | ProposeChangesResult | QueryOrgDataResult | ExecuteChangesResult | ProposeWidgetResult>;
 export async function runAiTool(name: AiToolName, context: AiToolExecutionContext, input: unknown) {
+  // Record an AI-tagged audit event for every tool invocation. This is what
+  // gives admins a "the AI did X on behalf of Koen" view in the audit log,
+  // separate from any low-level row writes the trigger captures.
+  const orgId = context.requestContext.org?.orgId ?? null;
+  const userId = context.requestContext.userId;
+  const startedAt = Date.now();
+  const result = await runAiToolInner(name, context, input).then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error })
+  );
+
+  if (orgId) {
+    await recordAuditEvent({
+      orgId,
+      action: `ai.tool.${name}`,
+      status: result.ok ? "success" : "failure",
+      source: "ai",
+      actorUserId: userId,
+      actorKind: "ai",
+      onBehalfOfUserId: userId,
+      summary: `AI invoked tool '${name}' on behalf of user.`,
+      metadata: {
+        tool: name,
+        mode: context.mode,
+        durationMs: Date.now() - startedAt,
+        ...(result.ok
+          ? {}
+          : { error: result.error instanceof Error ? result.error.message : String(result.error) })
+      }
+    });
+  }
+
+  if (!result.ok) throw result.error;
+  return result.value;
+}
+
+async function runAiToolInner(name: AiToolName, context: AiToolExecutionContext, input: unknown) {
   if (name === "resolve_entities") {
     if (!canUseTool(context.requestContext.permissionEnvelope.permissions, resolveEntitiesTool.requiredPermissions)) {
       throw new Error("Insufficient permissions for AI tool execution.");

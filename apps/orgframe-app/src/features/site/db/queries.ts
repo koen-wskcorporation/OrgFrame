@@ -2,9 +2,7 @@ import { asText, defaultPageTitleFromSlug, sanitizePageSlug } from "@/src/featur
 import { createDefaultBlocksForPage, normalizeDraftBlocks, normalizeRowBlocks } from "@/src/features/site/blocks/registry";
 import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type { LinkPickerPageOption } from "@/src/shared/links";
-import { listPublishedCalendarCatalog } from "@/src/features/calendar/db/queries";
 import { listPublishedFormsForOrg } from "@/src/features/forms/db/queries";
-import { listProgramNodes, listPublishedProgramsForCatalog } from "@/src/features/programs/db/queries";
 import type {
   BlockContext,
   DraftBlockInput,
@@ -17,7 +15,7 @@ import type {
 } from "@/src/features/site/types";
 
 const pageSelect =
-  "id, org_id, slug, title, is_published, page_lifecycle, temporary_window_start_utc, temporary_window_end_utc, sort_index, created_at, updated_at";
+  "id, org_id, slug, title, is_published, page_lifecycle, temporary_window_start_utc, temporary_window_end_utc, sort_index, seo_title, meta_description, og_image_path, created_at, updated_at";
 const blockSelect = "id, type, sort_index, config";
 const navSelect = "id, org_id, parent_id, label, link_type, page_slug, external_url, open_in_new_tab, is_visible, sort_index, created_at, updated_at";
 const siteStructureItemSelect =
@@ -33,6 +31,9 @@ type PageRow = {
   temporary_window_start_utc: string | null;
   temporary_window_end_utc: string | null;
   sort_index: number;
+  seo_title: string | null;
+  meta_description: string | null;
+  og_image_path: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -99,6 +100,9 @@ function mapPage(row: PageRow): OrgSitePage {
     temporaryWindowStartUtc: row.temporary_window_start_utc,
     temporaryWindowEndUtc: row.temporary_window_end_utc,
     sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
+    seoTitle: row.seo_title,
+    metaDescription: row.meta_description,
+    ogImagePath: row.og_image_path,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -114,6 +118,9 @@ function mapManagePage(row: PageRow): OrgManagePage {
     temporaryWindowStartUtc: row.temporary_window_start_utc,
     temporaryWindowEndUtc: row.temporary_window_end_utc,
     sortIndex: Number.isFinite(row.sort_index) ? row.sort_index : 0,
+    seoTitle: row.seo_title,
+    metaDescription: row.meta_description,
+    ogImagePath: row.og_image_path,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -901,7 +908,10 @@ export async function updateOrgPageSettingsById({
   isPublished,
   pageLifecycle,
   temporaryWindowStartUtc,
-  temporaryWindowEndUtc
+  temporaryWindowEndUtc,
+  seoTitle,
+  metaDescription,
+  ogImagePath
 }: {
   orgId: string;
   pageId: string;
@@ -911,6 +921,9 @@ export async function updateOrgPageSettingsById({
   pageLifecycle?: OrgManagePage["pageLifecycle"];
   temporaryWindowStartUtc?: string | null;
   temporaryWindowEndUtc?: string | null;
+  seoTitle?: string | null;
+  metaDescription?: string | null;
+  ogImagePath?: string | null;
 }): Promise<OrgManagePage | null> {
   const supabase = await createSupabaseServer();
   const { data: existing, error: existingError } = await supabase
@@ -929,16 +942,20 @@ export async function updateOrgPageSettingsById({
   }
 
   const previousPage = mapManagePage(existing as PageRow);
+  const updatePayload: Record<string, unknown> = {
+    title,
+    slug,
+    is_published: isPublished,
+    page_lifecycle: pageLifecycle,
+    temporary_window_start_utc: temporaryWindowStartUtc,
+    temporary_window_end_utc: temporaryWindowEndUtc
+  };
+  if (seoTitle !== undefined) updatePayload.seo_title = seoTitle;
+  if (metaDescription !== undefined) updatePayload.meta_description = metaDescription;
+  if (ogImagePath !== undefined) updatePayload.og_image_path = ogImagePath;
   const { data, error } = await supabase
     .schema("site").from("pages")
-    .update({
-      title,
-      slug,
-      is_published: isPublished,
-      page_lifecycle: pageLifecycle,
-      temporary_window_start_utc: temporaryWindowStartUtc,
-      temporary_window_end_utc: temporaryWindowEndUtc
-    })
+    .update(updatePayload)
     .eq("org_id", orgId)
     .eq("id", pageId)
     .select(pageSelect)
@@ -1135,6 +1152,85 @@ export async function listOrgPagesForLinkPicker(orgId: string): Promise<LinkPick
   }
 
   return pages;
+}
+
+export type ResolvedOrgUrlPath =
+  | { kind: "page"; pageSlug: string; itemId: string }
+  | { kind: "external"; url: string; openInNewTab: boolean }
+  | { kind: "none" };
+
+/**
+ * Walks the site structure tree, computing a canonical multi-segment url_path
+ * for each item by joining ancestor slugs. Used to resolve incoming public
+ * URLs like `/about/team` to the underlying page or external link.
+ *
+ * Falls back to a flat lookup against `org_pages.slug` when no structure item
+ * matches, so legacy flat URLs (`/about` for an unstructured page) keep working.
+ */
+export async function resolveOrgUrlPath(orgId: string, urlPath: string): Promise<ResolvedOrgUrlPath> {
+  const normalized = "/" + urlPath.replace(/^\/+|\/+$/g, "");
+
+  const items = await listOrgSiteStructureNodesForManage(orgId);
+  const byParent = new Map<string | null, OrgSiteStructureItem[]>();
+  for (const item of items) {
+    if (!item.isPublished || !item.showInMenu) {
+      // Hidden or draft items aren't routable. (Unpublished pages still 404.)
+    }
+    const list = byParent.get(item.parentId) ?? [];
+    list.push(item);
+    byParent.set(item.parentId, list);
+  }
+
+  const pathToItem = new Map<string, OrgSiteStructureItem>();
+  const walk = (parentId: string | null, prefix: string) => {
+    const list = byParent.get(parentId) ?? [];
+    for (const item of list) {
+      if (item.type === "dynamic") continue;
+      const segment = item.slug.replace(/^\/+|\/+$/g, "");
+      const path = prefix === "/" ? `/${segment}` : `${prefix}/${segment}`;
+      pathToItem.set(path, item);
+      walk(item.id, path);
+    }
+  };
+  walk(null, "/");
+
+  const match = pathToItem.get(normalized);
+  if (match) {
+    if (!match.isPublished) return { kind: "none" };
+    const link = match.linkTargetJson ?? {};
+    const kind = typeof link.kind === "string" ? link.kind : "none";
+    if (kind === "page") {
+      const pageSlug = typeof link.pageSlug === "string" ? link.pageSlug : null;
+      if (pageSlug) {
+        return { kind: "page", pageSlug, itemId: match.id };
+      }
+    }
+    if (kind === "external") {
+      const url = typeof link.url === "string" ? link.url : null;
+      if (url) {
+        return { kind: "external", url, openInNewTab: match.openInNewTab };
+      }
+    }
+    return { kind: "none" };
+  }
+
+  // Legacy fallback: try the last segment as a flat page slug.
+  const segments = normalized.split("/").filter(Boolean);
+  if (segments.length === 1) {
+    const supabase = await createSupabaseServer();
+    const { data } = await supabase
+      .schema("site")
+      .from("pages")
+      .select("slug")
+      .eq("org_id", orgId)
+      .eq("slug", segments[0])
+      .maybeSingle();
+    if (data && typeof data.slug === "string") {
+      return { kind: "page", pageSlug: data.slug, itemId: "" };
+    }
+  }
+
+  return { kind: "none" };
 }
 
 export async function listOrgSiteStructureNodesForManage(orgId: string): Promise<OrgSiteStructureItem[]> {
@@ -1423,12 +1519,10 @@ export async function resolveOrgSiteStructureForHeader({
   orgSlug: string;
   includeUnpublished: boolean;
 }): Promise<ResolvedOrgSiteStructureItemNode[]> {
-  const [items, pages, programs, forms, events] = await Promise.all([
+  const [items, pages, forms] = await Promise.all([
     listOrgSiteStructureNodesForManage(orgId),
     listOrgPagesForHeader({ orgId, includeUnpublished: true }),
-    listPublishedProgramsForCatalog(orgId).catch(() => []),
-    listPublishedFormsForOrg(orgId).catch(() => []),
-    listPublishedCalendarCatalog(orgId, { limit: 200 }).catch(() => [])
+    listPublishedFormsForOrg(orgId).catch(() => [])
   ]);
 
   const pagesBySlug = new Map(pages.map((page) => [page.slug, page]));
@@ -1470,95 +1564,8 @@ export async function resolveOrgSiteStructureForHeader({
     }
 
     const dynamicConfig = item.dynamicConfigJson ?? {};
-    const sourceType = typeof dynamicConfig.sourceType === "string" ? dynamicConfig.sourceType : "programs";
-    const hierarchyMode = typeof dynamicConfig.hierarchyMode === "string" ? dynamicConfig.hierarchyMode : "programs_divisions_teams";
+    const sourceType = typeof dynamicConfig.sourceType === "string" ? dynamicConfig.sourceType : "forms";
     const includeEmptyGroups = dynamicConfig.includeEmptyGroups !== false;
-
-    if (sourceType === "programs") {
-      for (const [programIndex, program] of programs.entries()) {
-        const programNodeId = `${item.id}:generated:program:${program.id}`;
-        base.push({
-          id: programNodeId,
-          parentId: item.id,
-          title: program.name,
-          href: `/${orgSlug}/programs/${program.slug}`,
-          target: null,
-          rel: null,
-          orderIndex: programIndex,
-          itemType: "dynamic",
-          isVisible: true,
-          isGenerated: true,
-          isEditable: false,
-          reasonDisabled: "Generated from program data.",
-          badges: ["generated", "program"],
-          metaJson: { generatedLevel: "program", programId: program.id },
-          children: []
-        });
-
-        if (hierarchyMode === "programs_only") {
-          continue;
-        }
-
-        const programNodes = await listProgramNodes(program.id, { publishedOnly: true }).catch(() => []);
-        const divisions = programNodes.filter((entry) => entry.nodeKind === "division");
-        const teams = programNodes.filter((entry) => entry.nodeKind === "team");
-        const teamsByDivision = new Map<string, Array<{ id: string; name: string; slug: string }>>();
-        for (const team of teams) {
-          const parentId = team.parentId ?? "";
-          const current = teamsByDivision.get(parentId) ?? [];
-          current.push({ id: team.id, name: team.name, slug: team.slug });
-          teamsByDivision.set(parentId, current);
-        }
-
-        for (const [divisionIndex, division] of divisions.entries()) {
-          const divisionNodeId = `${item.id}:generated:division:${division.id}`;
-          base.push({
-            id: divisionNodeId,
-            parentId: programNodeId,
-            title: division.name,
-            href: `/${orgSlug}/programs/${program.slug}/${division.slug}`,
-            target: null,
-            rel: null,
-            orderIndex: divisionIndex,
-            itemType: "dynamic",
-            isVisible: true,
-            isGenerated: true,
-            isEditable: false,
-            reasonDisabled: "Generated from division data.",
-            badges: ["generated", "division"],
-            metaJson: { generatedLevel: "division", divisionId: division.id, programId: program.id },
-            children: []
-          });
-
-          if (hierarchyMode === "programs_divisions") {
-            continue;
-          }
-
-          const divisionTeams = (teamsByDivision.get(division.id) ?? []).sort((a, b) => a.name.localeCompare(b.name));
-          for (const [teamIndex, team] of divisionTeams.entries()) {
-            const teamParentId = hierarchyMode === "teams_by_division" ? divisionNodeId : divisionNodeId;
-            base.push({
-              id: `${item.id}:generated:team:${team.id}`,
-              parentId: teamParentId,
-              title: team.name,
-              href: `/${orgSlug}/programs/${program.slug}/${division.slug}/${team.slug}`,
-              target: null,
-              rel: null,
-              orderIndex: teamIndex,
-              itemType: "dynamic",
-              isVisible: true,
-              isGenerated: true,
-              isEditable: false,
-              reasonDisabled: "Generated from team data.",
-              badges: ["generated", "team"],
-              metaJson: { generatedLevel: "team", teamId: team.id, divisionId: division.id, programId: program.id },
-              children: []
-            });
-          }
-        }
-      }
-      continue;
-    }
 
     if (sourceType === "forms") {
       for (const [index, form] of forms.entries()) {
@@ -1581,29 +1588,6 @@ export async function resolveOrgSiteStructureForHeader({
         });
       }
       continue;
-    }
-
-    if (sourceType === "events") {
-      const eventItems = events.filter((entry) => entry.entryType === "event");
-      for (const [index, event] of eventItems.entries()) {
-        base.push({
-          id: `${item.id}:generated:event:${event.occurrenceId}`,
-          parentId: item.id,
-          title: event.title,
-          href: `/${orgSlug}/calendar/${event.occurrenceId}`,
-          target: null,
-          rel: null,
-          orderIndex: index,
-          itemType: "dynamic",
-          isVisible: true,
-          isGenerated: true,
-          isEditable: false,
-          reasonDisabled: "Generated from published events.",
-          badges: ["generated", "event"],
-          metaJson: { generatedLevel: "event", occurrenceId: event.occurrenceId },
-          children: []
-        });
-      }
     }
 
     if (includeEmptyGroups && base.every((entry) => entry.parentId !== item.id)) {

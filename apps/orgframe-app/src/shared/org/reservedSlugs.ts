@@ -1,5 +1,6 @@
 const reservedSlugs = new Set([
   "account",
+  "admin",
   "auth",
   "create",
   "debug",

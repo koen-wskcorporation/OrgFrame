@@ -7,6 +7,7 @@ import { createOptionalSupabaseServiceRoleClient } from "@/src/shared/data-api/s
 import { getCanonicalAuthHost, getPlatformHost, normalizeHost } from "@/src/shared/domains/customDomains";
 import { parseHostWithPort } from "@/src/shared/domains/hostHeaders";
 import { mintHandoffToken, resolveAllowedReturnOrigin, revokeHandoffTokensForUser } from "@/src/shared/auth/handoff";
+import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 
 function cleanValue(value: FormDataEntryValue | null) {
   if (typeof value !== "string") {
@@ -327,7 +328,8 @@ export async function signInAction(formData: FormData) {
   }
 
   await redirectToCanonicalIfNeeded({
-    targetPath: "/auth",
+    // Canonical auth host serves the auth UI at root via middleware rewrite.
+    targetPath: "/",
     nextPath,
     email
   });
@@ -345,37 +347,207 @@ export async function signInAction(formData: FormData) {
   await handlePostAuthRedirect({ formData, nextPath });
 }
 
-export async function signUpAction(formData: FormData) {
-  const email = cleanValue(formData.get("email")).toLowerCase();
-  const password = cleanValue(formData.get("password"));
-  const nextPath = normalizeNextPath(formData.get("next"));
+type SignUpResult =
+  | { ok: true; needsEmailConfirmation: boolean }
+  | { ok: false; error: string };
 
-  if (!isLikelyEmail(email) || password.length < 8) {
-    redirect(withNext("/auth?mode=signup&error=1", nextPath));
+export async function signUpAction(input: { email: string; password: string; nextPath?: string; returnTo?: string | null }): Promise<SignUpResult> {
+  const email = cleanValue(input.email).toLowerCase();
+  const password = cleanValue(input.password);
+  const nextPath = normalizeNextPath(input.nextPath ?? null);
+
+  if (!isLikelyEmail(email)) {
+    return { ok: false, error: "Enter a valid email address." };
+  }
+  if (password.length < 8) {
+    return { ok: false, error: "Password must be at least 8 characters." };
   }
 
-  await redirectToCanonicalIfNeeded({
-    targetPath: "/auth",
-    nextPath,
-    email,
-    prefill: { mode: "signup" }
-  });
+  // Cross-origin signup must happen on the canonical auth host so the cookie
+  // is set on the right domain. Bounce the browser there if needed.
+  const context = await getRequestContext();
+  const canonicalHost = normalizeHost(getCanonicalAuthHost());
+  if (canonicalHost && context.host !== canonicalHost) {
+    return {
+      ok: false,
+      error: `Open ${canonicalHost} to create an account.`
+    };
+  }
 
   const supabase = await createSupabaseServer();
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password
-  });
+  const { data, error } = await supabase.auth.signUp({ email, password });
 
   if (error) {
-    redirect(withNext("/auth?mode=signup&error=1", nextPath));
+    return { ok: false, error: error.message };
   }
 
   if (!data.session) {
-    redirect(withNext("/auth?mode=signin&message=signup_check_email", nextPath));
+    return { ok: true, needsEmailConfirmation: true };
   }
 
-  await handlePostAuthRedirect({ formData, nextPath });
+  void nextPath;
+  void input.returnTo;
+  return { ok: true, needsEmailConfirmation: false };
+}
+
+const onboardingSchema = {
+  firstName: (value: unknown) => (typeof value === "string" ? value.trim().slice(0, 80) : ""),
+  lastName: (value: unknown) => (typeof value === "string" ? value.trim().slice(0, 80) : ""),
+  themeMode: (value: unknown) => (value === "light" || value === "dark" || value === "auto" ? value : "auto"),
+  orgIds: (value: unknown) => {
+    if (!Array.isArray(value)) return [] as string[];
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return value.filter((entry): entry is string => typeof entry === "string" && uuid.test(entry));
+  }
+};
+
+type CompleteOnboardingInput = {
+  firstName: string;
+  lastName: string;
+  themeMode: "auto" | "light" | "dark";
+  orgIds: string[];
+  nextPath?: string;
+  returnTo?: string | null;
+};
+
+type CompleteOnboardingResult = { ok: true; redirectUrl: string } | { ok: false; error: string };
+
+export async function completeSignupOnboardingAction(input: CompleteOnboardingInput): Promise<CompleteOnboardingResult> {
+  const firstName = onboardingSchema.firstName(input.firstName);
+  const lastName = onboardingSchema.lastName(input.lastName);
+  const themeMode = onboardingSchema.themeMode(input.themeMode);
+  const orgIds = onboardingSchema.orgIds(input.orgIds);
+  const nextPath = normalizeNextPath(input.nextPath ?? null);
+
+  const supabase = await createSupabaseServer();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { ok: false, error: "You must be signed in to finish setup." };
+  }
+
+  const { error: profileError } = await supabase
+    .schema("people")
+    .from("users")
+    .upsert(
+      {
+        user_id: user.id,
+        first_name: firstName.length > 0 ? firstName : null,
+        last_name: lastName.length > 0 ? lastName : null
+      },
+      { onConflict: "user_id" }
+    );
+  if (profileError) {
+    return { ok: false, error: "Unable to save your name." };
+  }
+
+  const { data: existingPrefs } = await supabase
+    .schema("people")
+    .from("user_preferences")
+    .select("preferences_json")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const currentPrefs =
+    existingPrefs && typeof existingPrefs.preferences_json === "object" && existingPrefs.preferences_json !== null && !Array.isArray(existingPrefs.preferences_json)
+      ? (existingPrefs.preferences_json as Record<string, unknown>)
+      : {};
+  const nextPrefs = { ...currentPrefs, themeMode };
+  const { error: prefsError } = await supabase
+    .schema("people")
+    .from("user_preferences")
+    .upsert({ user_id: user.id, preferences_json: nextPrefs }, { onConflict: "user_id" });
+  if (prefsError) {
+    return { ok: false, error: "Unable to save preferences." };
+  }
+
+  if (orgIds.length > 0) {
+    const serviceClient = createOptionalSupabaseServiceRoleClient();
+    if (!serviceClient) {
+      return { ok: false, error: "Service role key is required to join organizations." };
+    }
+    const { data: publicOrgs, error: publicOrgsError } = await serviceClient
+      .from("orgs")
+      .select("id")
+      .in("id", orgIds)
+      .eq("is_public", true);
+    if (publicOrgsError) {
+      return { ok: false, error: "Unable to join the selected organizations." };
+    }
+    const allowedIds = (publicOrgs ?? []).map((row) => row.id as string);
+    if (allowedIds.length > 0) {
+      const rows = allowedIds.map((orgId) => ({ org_id: orgId, user_id: user.id, role: "member" }));
+      const { error: membershipError } = await serviceClient
+        .from("org_memberships")
+        .upsert(rows, { onConflict: "org_id,user_id", ignoreDuplicates: true });
+      if (membershipError) {
+        return { ok: false, error: "Unable to join the selected organizations." };
+      }
+    }
+  }
+
+  // Build the redirect URL but return it instead of throwing — the dialog will
+  // navigate after we hand back control so it can clear local state first.
+  const ctx = await getRequestContext();
+  const canonicalHost = normalizeHost(getCanonicalAuthHost());
+  const returnToRaw = typeof input.returnTo === "string" ? input.returnTo.trim() : "";
+  if (returnToRaw) {
+    const allowed = await resolveAllowedReturnOrigin(returnToRaw);
+    if (allowed && allowed.host !== canonicalHost) {
+      if (allowed.isPlatform) {
+        return { ok: true, redirectUrl: `${allowed.origin}${nextPath}` };
+      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (session) {
+        try {
+          const minted = await mintHandoffToken({
+            session: { accessToken: session.access_token, refreshToken: session.refresh_token },
+            targetOrigin: allowed.origin,
+            nextPath,
+            userId: session.user.id
+          });
+          return { ok: true, redirectUrl: minted.url };
+        } catch {
+          // fall through
+        }
+      }
+    }
+  }
+
+  return { ok: true, redirectUrl: `${getPlatformOrigin(ctx)}${nextPath}` };
+}
+
+type PublicOrgItem = {
+  id: string;
+  slug: string;
+  name: string;
+  logoUrl: string | null;
+};
+
+export async function listPublicOrgsAction(): Promise<{ ok: true; orgs: PublicOrgItem[] } | { ok: false; error: string }> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .from("orgs")
+    .select("id, slug, name")
+    .eq("is_public", true)
+    .order("name", { ascending: true })
+    .limit(500);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  const orgs: PublicOrgItem[] = (data ?? []).map((row) => ({
+    id: row.id as string,
+    slug: row.slug as string,
+    name: row.name as string,
+    logoUrl: null
+  }));
+
+  return { ok: true, orgs };
 }
 
 function normalizeReturnToOrigin(value: FormDataEntryValue | null): string | null {
@@ -478,23 +650,49 @@ function buildCallbackRedirectTo(context: { protocol: string; host: string; host
   return `${canonicalOrigin}/auth/callback?${params.toString()}`;
 }
 
-export async function requestPasswordResetAction(formData: FormData) {
-  const email = cleanValue(formData.get("email")).toLowerCase();
+type SendPasswordResetResult = { ok: true } | { ok: false; error: string };
+
+export async function sendPasswordResetEmailAction(input: { email: string }): Promise<SendPasswordResetResult> {
+  const email = cleanValue(input.email).toLowerCase();
 
   if (!isLikelyEmail(email)) {
-    redirect("/auth/reset?error=invalid_email");
+    return { ok: false, error: "Enter a valid email address." };
   }
 
-  const context = await getRequestContext();
-  const redirectTo = buildCallbackRedirectTo(context);
+  try {
+    const context = await getRequestContext();
+    const redirectTo = buildCallbackRedirectTo(context);
+    const supabase = await createSupabaseServer();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
 
-  const supabase = await createSupabaseServer();
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo
-  });
+    if (error) {
+      // Surface the underlying Supabase / SMTP provider error so the user
+      // (and ops) can see why it failed. The generic "Unable to send reset
+      // email right now" message used to hide useful diagnostics like
+      // "Error sending recovery email" (custom SMTP misconfigured) or rate
+      // limit messages from Supabase's default mailer.
+      console.error("[auth] resetPasswordForEmail failed", { email, code: error.code, message: error.message });
+      return { ok: false, error: error.message || "Supabase rejected the password reset request." };
+    }
 
-  if (error) {
-    redirect("/auth/reset?error=reset_request_failed");
+    return { ok: true };
+  } catch (caught) {
+    rethrowIfNavigationError(caught);
+    const message = caught instanceof Error ? caught.message : "Unexpected error sending reset email.";
+    console.error("[auth] resetPasswordForEmail threw", caught);
+    return { ok: false, error: message };
+  }
+}
+
+export async function requestPasswordResetAction(formData: FormData) {
+  const email = cleanValue(formData.get("email")).toLowerCase();
+  const result = await sendPasswordResetEmailAction({ email });
+
+  if (!result.ok) {
+    if (result.error.toLowerCase().includes("valid email")) {
+      redirect("/auth/reset?error=invalid_email");
+    }
+    redirect(`/auth/reset?error=reset_request_failed&detail=${encodeURIComponent(result.error)}`);
   }
 
   redirect("/auth/reset?message=reset_email_sent");

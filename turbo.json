@@ -1,0 +1,74 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalDependencies": ["**/.env.*local", ".env"],
+  "globalEnv": [
+    "NEXT_PUBLIC_PLATFORM_HOST",
+    "NEXT_PUBLIC_MARKETING_HOST",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY",
+    "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY",
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "SENDGRID_API_KEY",
+    "SENDGRID_FROM_EMAIL",
+    "SENDGRID_FROM_NAME",
+    "SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY",
+    "SUPABASE_AUTH_EMAIL_HOOK_SECRET",
+    "EMAIL_UNSUBSCRIBE_SECRET",
+    "EMAIL_DEFAULT_DAILY_CAP",
+    "AUTH_HANDOFF_ENC_KEY",
+    "FACEBOOK_APP_ID",
+    "FACEBOOK_APP_SECRET",
+    "FACEBOOK_OAUTH_REDIRECT_URI",
+    "FACEBOOK_OAUTH_STATE_SECRET",
+    "FACEBOOK_MESSENGER_WEBHOOK_VERIFY_TOKEN",
+    "FACEBOOK_WEBHOOK_VERIFY_TOKEN",
+    "GOOGLE_SHEETS_AUTH_MODE",
+    "GOOGLE_SHEETS_OAUTH_CLIENT_ID",
+    "GOOGLE_SHEETS_OAUTH_CLIENT_SECRET",
+    "GOOGLE_SHEETS_OAUTH_STATE_SECRET",
+    "GOOGLE_SHEETS_OAUTH_REDIRECT_URI",
+    "GOOGLE_SHEETS_WEBHOOK_HMAC_SECRET",
+    "GOOGLE_SHEETS_CRON_BEARER_TOKEN",
+    "GCP_PROJECT_ID",
+    "GCP_PROJECT_NUMBER",
+    "GCP_SERVICE_ACCOUNT_EMAIL",
+    "GCP_WORKLOAD_IDENTITY_POOL_ID",
+    "GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID",
+    "INBOX_INGEST_BEARER_TOKEN",
+    "INBOX_INGEST_HMAC_SECRET",
+    "COMM_CHANNEL_CREDENTIALS_SECRET",
+    "REPLICATE_API_TOKEN",
+    "PLATFORM_ADMIN_EMAILS",
+    "FLAGS",
+    "FLAGS_SECRET",
+    "ORGFRAME_AI_FIRST_MODE",
+    "NODE_ENV"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

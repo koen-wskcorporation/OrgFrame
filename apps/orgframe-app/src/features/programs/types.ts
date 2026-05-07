@@ -31,6 +31,13 @@ export type Program = {
   updatedAt: string;
 };
 
+export type ProgramNodeMapBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type ProgramNode = {
   id: string;
   programId: string;
@@ -42,6 +49,9 @@ export type ProgramNode = {
   capacity: number | null;
   waitlistEnabled: boolean;
   settingsJson: Record<string, unknown>;
+  /** Null when the node has not yet been placed on the program map. */
+  mapBounds: ProgramNodeMapBounds | null;
+  mapZIndex: number;
   createdAt: string;
   updatedAt: string;
 };

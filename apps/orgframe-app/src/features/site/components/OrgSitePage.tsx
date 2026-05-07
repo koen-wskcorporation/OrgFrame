@@ -3,15 +3,13 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { Plus, Settings2, X } from "lucide-react";
+import { ArrowLeft, Plus, Settings2, X } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
-import { Checkbox } from "@orgframe/ui/primitives/checkbox";
-import { Input } from "@orgframe/ui/primitives/input";
-import { Popup } from "@orgframe/ui/primitives/popup";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { createDefaultRuntimeBlock, getRuntimeBlockDefinition } from "@/src/features/site/blocks/runtime-registry";
 import { loadOrgPageAction, saveOrgPageAction } from "@/src/features/site/actions";
+import { PageSettingsWizardLauncher } from "@/src/features/site/components/PageSettingsWizardLauncher";
 import {
   ORG_HEADER_EDITOR_TOOLBAR_SLOT_ID,
   ORG_SITE_EDITOR_STATE_EVENT,
@@ -49,6 +47,12 @@ type OrgSitePageProps = {
   initialBlocks: OrgPageBlock[];
   initialRuntimeData: OrgSiteRuntimeData;
   canEdit: boolean;
+  /**
+   * When set, the editor toolbar shows a "Back to website manager" button
+   * linking here. Pass `/{orgSlug}/manage/website` to drop the editor user
+   * back into the tree they came from.
+   */
+  manageReturnHref?: string;
 };
 
 function updateDraftBlock(blocks: OrgPageBlock[], nextBlock: OrgPageBlock) {
@@ -68,7 +72,8 @@ export function OrgSitePage({
   initialPage,
   initialBlocks,
   initialRuntimeData,
-  canEdit
+  canEdit,
+  manageReturnHref
 }: OrgSitePageProps) {
   const [page, setPage] = useState(initialPage);
   const [blocks, setBlocks] = useState(initialBlocks);
@@ -364,6 +369,12 @@ export function OrgSitePage({
 
   const editorToolbar = canEdit && isEditing ? (
     <div className="flex flex-wrap items-center gap-2">
+      {manageReturnHref ? (
+        <Button href={manageReturnHref} size="md" variant="ghost">
+          <ArrowLeft className="h-4 w-4" />
+          Back to website manager
+        </Button>
+      ) : null}
       <Button onClick={() => setSettingsOpen(true)} size="md" type="button" variant="secondary">
         <Settings2 className="h-4 w-4" />
         Page settings
@@ -383,7 +394,7 @@ export function OrgSitePage({
   ) : null;
 
   return (
-    <main className="app-container pb-10 pt-0 md:pb-10 md:pt-0">
+    <main>
       <div className="ui-stack-page">
         {!isEditing ? (
           <div className="ui-stack-page">
@@ -442,51 +453,12 @@ export function OrgSitePage({
 
       {editorToolbar && toolbarSlotEl ? createPortal(editorToolbar, toolbarSlotEl) : null}
 
-      <Popup
+      <PageSettingsWizardLauncher
         onClose={() => setSettingsOpen(false)}
         open={canEdit && isEditing && settingsOpen}
-        subtitle="Update metadata, visibility, and access for this page."
-        title="Page settings"
-      >
-        <div className="space-y-5">
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-text" htmlFor="page-settings-title">
-              Title
-            </label>
-            <Input
-              className="h-9 w-full"
-              id="page-settings-title"
-              onChange={(event) => setDraftTitle(event.target.value)}
-              placeholder="Page title"
-              value={draftTitle}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <span className="text-sm font-semibold text-text">Slug</span>
-            <Input className="h-9 w-full" disabled readOnly value={page.slug} />
-            <p className="text-xs text-text-muted">The URL path cannot be changed from here.</p>
-          </div>
-
-          <label className="flex items-start gap-2.5 rounded-control border bg-surface px-3 py-2.5 text-sm">
-            <Checkbox
-              checked={draftIsPublished}
-              onChange={(event) => setDraftIsPublished(event.target.checked)}
-            />
-            <span className="flex flex-col gap-0.5">
-              <span className="font-semibold text-text">Published</span>
-              <span className="text-xs text-text-muted">Visible to visitors without edit access.</span>
-            </span>
-          </label>
-
-          <div className="space-y-1.5">
-            <span className="text-sm font-semibold text-text">Permissions</span>
-            <p className="rounded-control border border-dashed border-border/70 bg-surface-muted px-3 py-2.5 text-xs text-text-muted">
-              Per-page access controls are managed in the organization settings area.
-            </p>
-          </div>
-        </div>
-      </Popup>
+        orgSlug={orgSlug}
+        pageSlug={page.slug}
+      />
     </main>
   );
 }

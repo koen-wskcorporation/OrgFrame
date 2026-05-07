@@ -164,7 +164,6 @@ export function AiComposer({
               key={suggestion}
               onClick={() => onChange(suggestion)}
               size="compact"
-              variant="flat"
             >
               {suggestion}
             </ChipButton>

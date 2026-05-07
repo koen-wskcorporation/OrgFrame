@@ -6,9 +6,6 @@
 
 :root {
   --primary-header-height: 65px;
-  --org-header-height: 0px;
-  --org-header-bottom: 0px;
-  --org-header-sticky-offset: 12px;
   --panel-width: 325px;
   --content-max-width: 1400px;
   --content-readable-width: 960px;
@@ -66,6 +63,12 @@
   --shadow-strong: 0 22px 54px hsl(220 45% 3% / 0.5);
 }
 
+@media (min-width: 768px) {
+  :root {
+    --layout-gap: 1.167rem;
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -86,88 +89,205 @@ body {
   overflow-x: clip;
 }
 
-.org-layout-root {
-  margin-right: 0;
-  display: flex;
-  min-height: 100vh;
-  flex-direction: column;
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
-.org-layout-content {
-  margin-right: 0;
-  min-height: 0;
-  flex: 1 1 auto;
+/* ─────────────────────────────────────────────────────────────────────────
+ * App Shell
+ *
+ *   <main class="app">
+ *     ├── <div class="app__topbar">  (only when topbar non-null)
+ *     └── <div class="app__content">
+ *         └── (page children, optionally wrapped in .sidebar-shell)
+ *
+ * Sidebars are owned by the route group that needs them (currently
+ * /manage via ManageShell), not by the AppShell. This avoids
+ * parallel-slot bleed where a stale sidebar would persist on routes
+ * that don't render one.
+ *
+ * Body scroll is the only scroll. PrimaryHeader scrolls away naturally;
+ * .app__topbar pins below; the page-header inside .app__content pins
+ * below the topbar.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+.app {
   display: flex;
   flex-direction: column;
-  transition: margin-right 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: margin-right;
+  gap: var(--layout-gap);
+  padding: var(--layout-gap);
+  min-height: 100dvh;
 }
 
-.app-root {
-  width: 100%;
-  max-width: none;
+.app__topbar {
+  /*
+   * Sticky to the viewport with a layout-gap of canvas above it once
+   * pinned. PrimaryHeader (position: relative, not sticky) scrolls away
+   * first; the topbar then pins. z:11 sits above the in-content page
+   * header (z:10) so the OrgHeader card's drop shadow can extend down
+   * into the body without being clipped.
+   *
+   * isolation: isolate lets the ::before canvas cap (below) sit at z:-1
+   * inside this box without escaping the stacking context.
+   */
+  position: sticky;
+  top: var(--layout-gap);
+  z-index: 11;
+  isolation: isolate;
+}
+
+.app__topbar::before {
+  /*
+   * Canvas cap covering the entire pinned-topbar region — from the
+   * viewport top, through the layout-gap above the topbar, down to and
+   * including the topbar's own bbox. Two leaks fixed: the gap-above-
+   * topbar leak (scrolling content showed through), and the OrgHeader's
+   * rounded-corner leak (canvas-behind showed through where the corners
+   * cut the bbox). Extends one full layout-gap to either side so it
+   * lines up with the page-header ::before cap below.
+   */
+  content: "";
+  position: absolute;
+  top: calc(var(--layout-gap) * -1);
+  left: calc(var(--layout-gap) * -1);
+  right: calc(var(--layout-gap) * -1);
+  bottom: 0;
+  z-index: -1;
+  background: hsl(var(--canvas));
+  pointer-events: none;
+}
+
+.app__content {
   min-width: 0;
-  transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: width;
+  /*
+   * flex: 1 1 auto stretches the content column to fill .app's remaining
+   * height after the topbar. This is what gives the sidebar's sticky
+   * parent (.sidebar-shell, below) something to stick against on short
+   * pages — without it the sidebar would un-pin and scroll under the
+   * topbar once the page content ends.
+   *
+   * No padding here: `.app` already provides one layout-gap on every
+   * side. Adding more here would double the top/bottom gap.
+   */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-gap);
+  transition: padding-right 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.app-frame {
-  display: block;
-  min-height: 100vh;
-  width: 100%;
-  max-width: 100%;
+/* Sidebar shell — body grid for routes that need a sidebar. Lives
+ * inside .app__content so panel-docking + scroll behavior continue
+ * to work uniformly. */
+.sidebar-shell {
+  display: grid;
+  grid-template-areas: "sidebar content";
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--layout-gap);
+  min-width: 0;
+  /*
+   * Stretch to fill .app__content (which fills .app via flex: 1) so the
+   * sidebar's sticky parent always extends to the bottom of the layout.
+   * Without this, sticky releases at the bottom of the page content on
+   * short pages and the sidebar scrolls up under the topbar.
+   */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-.panel-dock {
-  position: fixed;
-  right: 0;
-  top: 0;
-  width: 0;
-  height: 0;
+.sidebar-shell__sidebar {
+  grid-area: sidebar;
+  min-width: 0;
+  /*
+   * Sticky just below the topbar. AppShell measures the topbar's
+   * rendered height into --app-topbar-height. align-self: start
+   * prevents the grid row from stretching the sidebar to match the
+   * (taller) content column — without it sticky has nothing to release
+   * against. Deliberately no overflow / max-height — those clip the
+   * sidebar card's drop shadow.
+   */
+  position: sticky;
+  top: calc(var(--app-topbar-height, 0px) + var(--layout-gap) * 2);
+  align-self: start;
 }
 
-body.panel-open-content .org-layout-content {
-  margin-right: calc(var(--panel-active-width, 325px) + var(--layout-gap));
+.sidebar-shell__content {
+  grid-area: content;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-gap);
 }
 
-body.panel-open-app .app-root {
-  width: calc(100% - (var(--panel-active-width, 325px) + var(--layout-gap)));
-}
-
-body.panel-open-app .org-layout-content {
-  margin-right: 0;
+/* Panel docking — content column shrinks; topbar stays full width. */
+body.panel-open-content .app__content {
+  padding-right: calc(var(--panel-active-width, 325px) + var(--layout-gap));
 }
 
 @media (max-width: 1023px) {
-  body.panel-open-content .org-layout-content,
-  body.panel-open-app .app-root,
-  body.panel-open-app .org-layout-content {
-    margin-right: 0;
-    width: 100%;
-  }
-}
-
-@media (min-width: 768px) {
-  :root {
-    --org-header-sticky-offset: 16px;
-    --layout-gap: 1.167rem;
+  body.panel-open-content .app__content {
+    padding-right: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .org-layout-content,
-  .app-root {
+  .app__content {
     transition: none;
+  }
+}
+
+#panel-dock {
+  display: flex;
+}
+
+.panel-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 102;
+  touch-action: none;
+}
+
+.panel-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+
+.panel-resize-handle:hover::after,
+body.panel-resizing .panel-resize-handle::after {
+  background: var(--color-primary, rgba(120, 120, 120, 0.6));
+}
+
+body.panel-resizing {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+body.panel-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+@media (max-width: 1023px) {
+  .panel-resize-handle {
+    display: none;
   }
 }
 
 .app-panel [class*="grid-cols-"] {
   grid-template-columns: minmax(0, 1fr) !important;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
 }
 
 @layer base {
@@ -207,43 +327,37 @@ a {
 }
 
 @layer components {
-  .app-shell {
-    width: 100%;
-    min-width: 0;
-  }
-
   .app-container {
     width: 100%;
     min-width: 0;
     padding-inline: var(--layout-gap);
   }
 
-  .app-page-shell {
-    width: 100%;
-    min-width: 0;
-    padding-inline: var(--layout-gap);
-    padding-bottom: 2rem;
-    min-height: 0;
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-  }
-
   .app-page-stack {
     display: flex;
     min-width: 0;
+    flex: 1 1 auto;
     flex-direction: column;
     gap: var(--layout-gap);
+    /* Default: hug content. Stack takes at least the viewport space
+     * below the pinned topbar (so a single short section doesn't leave
+     * a sad empty page) but is allowed to grow past it — body scroll
+     * picks up overflow when sections stack past the viewport. */
+    min-height: calc(
+      100dvh - var(--app-topbar-height, 0px) - var(--layout-gap) * 3
+    );
   }
 
-  .app-page-stack--fill {
+  /* Fill mode: when any descendant section opts in via `app-card-fill`
+   * (e.g. a map / calendar / inbox workspace), pin the stack at exactly
+   * the viewport space below the topbar so `flex: 1 1 0` on that card
+   * has a definite parent to grow into, and inner content scrolls
+   * inside the card rather than the page. */
+  .app-page-stack:has(.app-card-fill) {
+    height: calc(
+      100dvh - var(--app-topbar-height, 0px) - var(--layout-gap) * 3
+    );
     min-height: 0;
-    flex: 1 1 auto;
-  }
-
-  .app-workspace-content {
-    width: 100%;
-    min-width: 0;
   }
 
   .app-section-stack {
@@ -253,6 +367,8 @@ a {
   .ui-stack-page {
     display: flex;
     min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
     flex-direction: column;
     gap: var(--layout-gap);
   }
@@ -266,6 +382,106 @@ a {
     font-weight: 700;
     line-height: 1.14;
     letter-spacing: -0.02em;
+  }
+
+  /* Section card that fills the available viewport. `flex: 1 1 0` turns
+   * the .app-page-stack height cap into "fill remaining space". */
+  .app-card-fill {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .app-card-fill > .app-card-fill__header {
+    flex: 0 0 auto;
+  }
+
+  .app-card-fill > .app-card-fill__content {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* Sticky page-header chrome. Sits below the pinned topbar with one
+   * layout-gap of breathing room. z:10 sits below the topbar (z:11) so
+   * the OrgHeader drop shadow paints over the page-header chrome. */
+  .app-page-header-sticky {
+    position: sticky;
+    top: calc(var(--app-topbar-height, 0px) + var(--layout-gap) * 2);
+    z-index: 10;
+    isolation: isolate;
+  }
+
+  /* Single ::before doing three jobs at once:
+   *   • covers the layout-gap above the header (so content scrolling
+   *     under the pinned chrome is invisible up to the topbar)
+   *   • covers the header bbox
+   *   • fades from canvas → transparent in the layout-gap below the
+   *     header, so content fades under it as it scrolls
+   *
+   * Extends one full layout-gap to either side so it terminates on the
+   * canvas grid gaps (canvas-on-canvas, invisible). */
+  .app-page-header-sticky::before {
+    content: "";
+    position: absolute;
+    inset: calc(var(--layout-gap) * -1);
+    z-index: -1;
+    background: linear-gradient(
+      to bottom,
+      hsl(var(--canvas)) 0%,
+      hsl(var(--canvas)) calc(100% - var(--layout-gap)),
+      hsl(var(--canvas) / 0) 100%
+    );
+    pointer-events: none;
+  }
+
+  /* Compact-on-scroll behavior for the sticky page header. AppShell sets
+   * data-scrolled="true" on .app__content when window scrollY > 4. The
+   * description collapses and the tabs row tightens so only the title
+   * (and tabs, if present) remain visible. Hover/focus on the tabs
+   * expands the per-tab descriptions back so they stay reachable. */
+  .app-page-header__tabs {
+    transition: margin-top 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .app__content[data-scrolled="true"] .app-page-header__tabs {
+    margin-top: 0.5rem;
+  }
+
+  .ws-tab {
+    transition: padding-block 220ms ease, font-size 220ms ease;
+  }
+
+  .ws-tab-desc {
+    display: block;
+    overflow: hidden;
+    transition: max-height 220ms ease, opacity 200ms ease, margin-top 220ms ease;
+    max-height: 1.5rem;
+    opacity: 1;
+  }
+
+  .app__content[data-scrolled="true"] .ws-tab {
+    padding-block: 0.375rem;
+    font-size: 0.8125rem;
+  }
+
+  .app__content[data-scrolled="true"] .ws-tab-desc {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+  }
+
+  .app__content[data-scrolled="true"] .ws-tabs:hover .ws-tab,
+  .app__content[data-scrolled="true"] .ws-tabs:focus-within .ws-tab {
+    padding-block: 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  .app__content[data-scrolled="true"] .ws-tabs:hover .ws-tab-desc,
+  .app__content[data-scrolled="true"] .ws-tabs:focus-within .ws-tab-desc {
+    max-height: 1.5rem;
+    opacity: 1;
+    margin-top: 0.375rem;
   }
 
   .ui-card-grid {
@@ -293,7 +509,7 @@ a {
   }
 
   .ui-list-row {
-    @apply flex flex-wrap items-start justify-between gap-3 rounded-control border bg-surface px-4 py-3 shadow-sm;
+    @apply flex flex-wrap items-center justify-between gap-3 rounded-control border bg-surface px-4 py-3 shadow-sm;
   }
 
   .ui-list-row-hover {
@@ -314,6 +530,30 @@ a {
 
   .ui-list-row-actions {
     @apply ml-auto flex flex-wrap items-center gap-2;
+  }
+
+  .ui-repeat-card {
+    @apply flex h-full flex-col gap-3 rounded-control border bg-surface p-4 shadow-sm;
+  }
+
+  .ui-repeat-card-hover {
+    @apply transition-colors hover:bg-surface-muted/65;
+  }
+
+  .ui-repeat-card-head {
+    @apply flex items-start justify-between gap-2;
+  }
+
+  .ui-repeat-card-title {
+    @apply text-sm font-semibold text-text;
+  }
+
+  .ui-repeat-card-meta {
+    @apply text-xs text-text-muted;
+  }
+
+  .ui-repeat-card-footer {
+    @apply mt-auto flex flex-wrap items-center gap-2 pt-1;
   }
 
   .ui-surface-block {
@@ -412,10 +652,13 @@ a {
       animation: none;
     }
   }
-}
 
-@media (min-width: 1024px) {
-  .app-page-shell {
-    padding-bottom: 2.5rem;
+  @keyframes fileManagerProgress {
+    0% {
+      transform: translateX(-110%);
+    }
+    100% {
+      transform: translateX(330%);
+    }
   }
 }

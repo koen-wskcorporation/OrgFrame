@@ -4,7 +4,8 @@ import { isProgramNodePublished } from "@/src/features/programs/utils";
 
 const programSelect =
   "id, org_id, slug, name, description, status, program_type, custom_type_label, registration_open_at, registration_close_at, start_date, end_date, cover_image_path, settings_json, created_at, updated_at";
-const nodeSelect = "id, program_id, parent_id, name, slug, node_kind, sort_index, capacity, waitlist_enabled, settings_json, created_at, updated_at";
+const nodeSelect =
+  "id, program_id, parent_id, name, slug, node_kind, sort_index, capacity, waitlist_enabled, settings_json, map_x, map_y, map_width, map_height, map_z_index, created_at, updated_at";
 const scheduleSelect =
   "id, program_id, program_node_id, block_type, title, timezone, start_date, end_date, start_time, end_time, by_day, one_off_at, sort_index, settings_json, created_at, updated_at";
 
@@ -38,6 +39,11 @@ type NodeRow = {
   capacity: number | null;
   waitlist_enabled: boolean;
   settings_json: unknown;
+  map_x: number | null;
+  map_y: number | null;
+  map_width: number | null;
+  map_height: number | null;
+  map_z_index: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -91,6 +97,12 @@ function mapProgram(row: ProgramRow): Program {
 }
 
 function mapNode(row: NodeRow): ProgramNode {
+  const hasBounds =
+    typeof row.map_x === "number" &&
+    typeof row.map_y === "number" &&
+    typeof row.map_width === "number" &&
+    typeof row.map_height === "number";
+
   return {
     id: row.id,
     programId: row.program_id,
@@ -102,6 +114,15 @@ function mapNode(row: NodeRow): ProgramNode {
     capacity: row.capacity,
     waitlistEnabled: row.waitlist_enabled,
     settingsJson: asObject(row.settings_json),
+    mapBounds: hasBounds
+      ? {
+          x: row.map_x as number,
+          y: row.map_y as number,
+          width: row.map_width as number,
+          height: row.map_height as number
+        }
+      : null,
+    mapZIndex: typeof row.map_z_index === "number" ? row.map_z_index : 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -299,7 +320,7 @@ export async function getProgramDetailsBySlug(
 export async function listProgramNodes(programId: string, options?: { publishedOnly?: boolean }): Promise<ProgramNode[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .select(nodeSelect)
     .eq("program_id", programId)
     .order("sort_index", { ascending: true })
@@ -468,7 +489,7 @@ export async function createProgramNodeRecord(input: {
       ? input.sortIndex
       : await (async () => {
           const { data: latest } = await supabase
-            .schema("programs").from("program_structure_nodes")
+            .schema("programs").from("divisions")
             .select("sort_index")
             .eq("program_id", input.programId)
             .eq("parent_id", input.parentId)
@@ -484,7 +505,7 @@ export async function createProgramNodeRecord(input: {
         })();
 
   const { data, error } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .insert({
       program_id: input.programId,
       parent_id: input.parentId,
@@ -508,7 +529,7 @@ export async function createProgramNodeRecord(input: {
 
 export async function deleteProgramNodeRecord(programId: string, nodeId: string) {
   const supabase = await createSupabaseServer();
-  const { error } = await supabase.schema("programs").from("program_structure_nodes").delete().eq("program_id", programId).eq("id", nodeId);
+  const { error } = await supabase.schema("programs").from("divisions").delete().eq("program_id", programId).eq("id", nodeId);
 
   if (error) {
     throw new Error(`Failed to delete program node: ${error.message}`);
@@ -524,7 +545,7 @@ export async function updateProgramNodeHierarchyRecord(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .update({
       parent_id: input.parentId,
       node_kind: input.nodeKind,
@@ -545,7 +566,7 @@ export async function updateProgramNodeSettingsRecord(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .update({
       settings_json: input.settingsJson
     })
@@ -568,7 +589,7 @@ export async function updateProgramNodeRecord(input: {
 }) {
   const supabase = await createSupabaseServer();
   const { error } = await supabase
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .update({
       name: input.name,
       slug: input.slug,
@@ -652,5 +673,43 @@ export async function deleteProgramScheduleBlockRecord(programId: string, blockI
 
   if (error) {
     throw new Error(`Failed to delete schedule block: ${error.message}`);
+  }
+}
+
+export type ProgramNodeMapUpdate = {
+  nodeId: string;
+  mapX: number;
+  mapY: number;
+  mapWidth: number;
+  mapHeight: number;
+  mapZIndex: number;
+};
+
+export async function updateProgramNodeMapGeometryBatch(input: {
+  programId: string;
+  updates: ProgramNodeMapUpdate[];
+}) {
+  if (input.updates.length === 0) return;
+  const supabase = await createSupabaseServer();
+
+  // Per-row updates rather than upsert: we only want to touch geometry, not
+  // overwrite name/slug/etc. Supabase JS doesn't support batched updates with
+  // different values, so loop. Counts are small (one per dirty node).
+  for (const update of input.updates) {
+    const { error } = await supabase
+      .schema("programs").from("divisions")
+      .update({
+        map_x: update.mapX,
+        map_y: update.mapY,
+        map_width: update.mapWidth,
+        map_height: update.mapHeight,
+        map_z_index: update.mapZIndex
+      })
+      .eq("program_id", input.programId)
+      .eq("id", update.nodeId);
+
+    if (error) {
+      throw new Error(`Failed to update node map geometry: ${error.message}`);
+    }
   }
 }

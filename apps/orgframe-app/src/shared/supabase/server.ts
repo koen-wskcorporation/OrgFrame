@@ -16,7 +16,28 @@ function isHttpsFromHeaders(headerStore: Headers) {
   return typeof origin === "string" && origin.startsWith("https://");
 }
 
-export async function createSupabaseServer() {
+export type SupabaseActorContext = {
+  // Tags every PostgREST request so audit triggers and audit.record_event
+  // know whether a write was initiated by a user, the AI, or a system task.
+  actorKind?: "user" | "ai" | "system";
+  onBehalfOfUserId?: string;
+  requestId?: string;
+  // Tells audit triggers to skip auto-logging — used when the caller is
+  // about to record a richer app-level event for the same change.
+  skipTriggerAudit?: boolean;
+};
+
+function actorContextHeaders(context: SupabaseActorContext | undefined): Record<string, string> {
+  if (!context) return {};
+  const out: Record<string, string> = {};
+  if (context.actorKind) out["x-actor-kind"] = context.actorKind;
+  if (context.onBehalfOfUserId) out["x-on-behalf-of"] = context.onBehalfOfUserId;
+  if (context.requestId) out["x-request-id"] = context.requestId;
+  if (context.skipTriggerAudit) out["x-audit-skip"] = "true";
+  return out;
+}
+
+export async function createSupabaseServer(actorContext?: SupabaseActorContext) {
   const cookieStore = await cookies();
   const headerStore = await headers();
   const isHttps = isHttpsFromHeaders(headerStore);
@@ -24,8 +45,10 @@ export async function createSupabaseServer() {
   const hostHeader = headerStore.get("host")?.split(",")[0]?.trim() ?? "";
   const requestHost = parseHostWithPort(forwardedHost || hostHeader).host;
   const { supabaseUrl, supabasePublishableKey } = getSupabasePublicConfig();
+  const extraHeaders = actorContextHeaders(actorContext);
 
   return createServerClient<any>(supabaseUrl, supabasePublishableKey, {
+    ...(Object.keys(extraHeaders).length > 0 ? { global: { headers: extraHeaders } } : {}),
     cookieOptions: {
       path: "/",
       sameSite: "lax"

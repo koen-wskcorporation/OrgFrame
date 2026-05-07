@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Badge } from "@orgframe/ui/primitives/badge";
+import { Badge } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";

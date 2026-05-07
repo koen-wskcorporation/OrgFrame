@@ -4,7 +4,8 @@ import { Bell, ChevronDown, Home, Inbox, LogOut, Monitor, Moon, Settings2, Sun, 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Avatar } from "@orgframe/ui/primitives/avatar";
-import { Button, buttonVariants } from "@orgframe/ui/primitives/button";
+import { buttonVariants } from "@orgframe/ui/primitives/button";
+import { IconToggleGroup } from "@orgframe/ui/primitives/icon-toggle-group";
 import { NavItem } from "@orgframe/ui/primitives/nav-item";
 import { Popover } from "@orgframe/ui/primitives/popover";
 import { ThemeMode, useThemeMode } from "@orgframe/ui/primitives/theme-mode";
@@ -386,29 +387,16 @@ export function AccountMenu({
             </button>
           </form>
 
-          <div aria-label="Theme mode" className="inline-flex items-center gap-0.5 rounded-full border border-border/70 bg-surface p-0.5 shadow-sm" role="radiogroup">
-            {themeOptions.map((option) => {
-              const Icon = option.icon;
-              const isActive = mode === option.mode;
-              return (
-                <Button
-                  iconOnly
-                  aria-checked={isActive}
-                  aria-label={option.label}
-                  className={cn(
-                    "h-7 w-7 border",
-                    isActive ? "border-transparent bg-accent/15 text-text" : "border-transparent text-text-muted hover:bg-surface-muted"
-                  )}
-                  key={option.mode}
-                  onClick={() => setMode(option.mode)}
-                  role="radio"
-                  title={option.label}
-                >
-                  <Icon />
-                </Button>
-              );
-            })}
-          </div>
+          <IconToggleGroup<ThemeMode>
+            ariaLabel="Theme mode"
+            onChange={setMode}
+            options={themeOptions.map((option) => ({
+              value: option.mode,
+              icon: option.icon,
+              label: option.label
+            }))}
+            value={mode}
+          />
         </div>
       </Popover>
     </div>

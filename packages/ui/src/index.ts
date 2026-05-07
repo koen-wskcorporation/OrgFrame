@@ -5,7 +5,7 @@ export { AppPage, CardGrid, PageStack, SectionStack } from "./primitives/layout"
 export { Panel } from "./primitives/panel";
 export { Popover } from "./primitives/popover";
 export { Popup } from "./primitives/popup";
-export { PersonChip } from "./primitives/person-chip";
+export { EntityChip, type EntityChipProps } from "./primitives/entity-chip";
 export { PersonCard, type PersonCardProps } from "./primitives/person-card";
 export { SelectionBox, type SelectionBoxProps } from "./primitives/selection-box";
 export { Tooltip } from "./primitives/tooltip";

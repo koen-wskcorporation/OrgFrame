@@ -173,7 +173,7 @@ export function EventsBlockRender({ block, context, runtimeData }: BlockRenderPr
             events.length === 0 ? (
               <Alert variant="info">{block.config.emptyMessage}</Alert>
             ) : (
-              <CalendarWorkspace items={events} mode="public" orgSlug={context.orgSlug} title={block.config.title} />
+              <CalendarWorkspace context={{ kind: "public", items: events, title: block.config.title }} orgSlug={context.orgSlug} />
             )
           ) : events.length === 0 ? (
             <Alert variant="info">{block.config.emptyMessage}</Alert>

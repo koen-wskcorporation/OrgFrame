@@ -9,7 +9,6 @@ function buildNode(id: string, x: number, y: number): CanvasNode {
     entityId: id,
     parentEntityId: null,
     label: id,
-    shapeType: "rectangle",
     points: [],
     bounds: {
       x,

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Avatar } from "@orgframe/ui/primitives/avatar";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
-import { AccountEditPopup } from "@/src/features/core/account/components/AccountEditPopup";
+import { AccountEditPanel } from "@/src/features/people/components/AccountEditPanel";
 import { EditableAvatar } from "@/src/features/core/account/components/EditableAvatar";
 import { saveProfilePhoto } from "@/src/features/core/account/components/saveProfilePhoto";
 
@@ -75,7 +75,7 @@ export function AccountProfileCard({
       </Card>
 
       {allowEdit ? (
-        <AccountEditPopup
+        <AccountEditPanel
           email={email}
           initialAvatarPath={avatarPath}
           initialAvatarUrl={avatarUrl}
@@ -83,6 +83,7 @@ export function AccountProfileCard({
           initialLastName={lastName}
           onClose={() => setEditOpen(false)}
           open={editOpen}
+          panelKey="account-self-edit"
         />
       ) : null}
     </>

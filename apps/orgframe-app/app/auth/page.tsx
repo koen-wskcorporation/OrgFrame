@@ -1,9 +1,8 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { AuthLoginPagePopup } from "@/src/features/core/auth/components/AuthLoginPagePopup";
-import { AuthShell } from "@/src/features/core/auth/components/AuthShell";
+import { CenteredFormShell } from "@/src/features/core/layout/components/CenteredFormShell";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
+import { redirectAfterAuth } from "@/src/shared/auth/redirectAfterAuth";
 import type { AuthMode } from "@/src/features/core/auth/components/AuthDialog";
 
 export const metadata: Metadata = {
@@ -59,7 +58,7 @@ export default async function AuthPage({
   const returnTo = normalizeReturnTo(query.return_to);
 
   if (user) {
-    redirect(nextPath);
+    await redirectAfterAuth(nextPath);
   }
 
   const errorMessage = query.error ? errorMessageByCode[query.error] ?? "Authentication failed." : null;
@@ -67,7 +66,7 @@ export default async function AuthPage({
   const initialMode: AuthMode = query.mode === "signup" ? "signup" : "signin";
 
   return (
-    <AuthShell subtitle="Continue with your email to sign in or create your account." title="Login">
+    <CenteredFormShell subtitle="Continue with your email to sign in or create your account." title="Login">
       <AuthLoginPagePopup
         errorMessage={errorMessage}
         infoMessage={infoMessage}
@@ -75,12 +74,7 @@ export default async function AuthPage({
         nextPath={nextPath}
         returnTo={returnTo}
       />
-      <p className="mt-5 text-center text-sm text-text-muted">
-        Need to reset your password?{" "}
-        <Link className="font-medium text-text underline underline-offset-2 hover:text-text-muted" href="/auth/reset">
-          Reset it here
-        </Link>
-      </p>
-    </AuthShell>
+      
+    </CenteredFormShell>
   );
 }

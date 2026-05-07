@@ -52,7 +52,7 @@ export type DashboardScheduleItem = {
   entryType: string;
   startsAtUtc: string;
   endsAtUtc: string;
-  href: string;
+  href: string | null;
 };
 
 export type DashboardRegistrationItem = {

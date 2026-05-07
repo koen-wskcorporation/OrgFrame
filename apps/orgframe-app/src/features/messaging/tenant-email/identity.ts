@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createSupabaseServiceRoleClient } from "@/src/shared/data-api/server";
+import { getPlatformHost } from "@/src/shared/domains/customDomains";
 
 export type ResolvedSenderIdentity = {
   identityId: string | null;
@@ -12,7 +13,9 @@ export type ResolvedSenderIdentity = {
 };
 
 function getFallbackDomain(): string {
-  return (process.env.EMAIL_DEFAULT_TENANT_DOMAIN?.trim() || "orgframe.app").toLowerCase();
+  // Default email-from domain matches the platform host. No separate
+  // EMAIL_DEFAULT_TENANT_DOMAIN env var anymore — one source of truth.
+  return getPlatformHost();
 }
 
 function buildFallbackFrom(orgSlug: string | null, orgName: string | null): { email: string; name: string } {

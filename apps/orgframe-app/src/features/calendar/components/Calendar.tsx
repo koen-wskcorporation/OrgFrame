@@ -352,7 +352,31 @@ export function Calendar({
   }, [onQuickAddDraftChange, quickAddEndsAtUtc, quickAddOpen, quickAddStartsAtUtc, quickAddTitle, quickAddUx]);
 
   useEffect(() => {
+    function isEditableTarget(target: EventTarget | null) {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        return true;
+      }
+      if (target.isContentEditable) {
+        return true;
+      }
+      // Catch composed paths through shadow DOM / custom controls.
+      return Boolean(target.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']"));
+    }
+
     function onKeyDown(event: KeyboardEvent) {
+      // Don't hijack typing inside form controls or when the user is using a
+      // modifier shortcut (e.g. Cmd+T to open a browser tab).
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+
       if (event.key === "n" || event.key === "N") {
         event.preventDefault();
         if (quickAddUx === "external") {
@@ -582,24 +606,24 @@ export function Calendar({
   return (
     <div className={cn(rootClasses, className)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex items-center gap-1 rounded-control border bg-surface p-1">
-          <button className="inline-flex h-8 w-8 items-center justify-center rounded-control hover:bg-surface-muted" onClick={() => shiftAnchor("previous")} type="button">
+        <div className="inline-flex h-10 items-center gap-1 rounded-full border border-border bg-surface p-1 shadow-sm">
+          <button className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-surface-muted" onClick={() => shiftAnchor("previous")} type="button">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button className="rounded-control px-2 py-1 text-xs font-semibold text-text-muted hover:bg-surface-muted" onClick={() => setAnchorDate(todayInTimezone(referenceTimezone))} type="button">
+          <button className="inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold text-text-muted hover:bg-surface-muted" onClick={() => setAnchorDate(todayInTimezone(referenceTimezone))} type="button">
             Today
           </button>
-          <button className="inline-flex h-8 w-8 items-center justify-center rounded-control hover:bg-surface-muted" onClick={() => shiftAnchor("next")} type="button">
+          <button className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-surface-muted" onClick={() => shiftAnchor("next")} type="button">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1 rounded-control border bg-surface p-1">
+          <div className="inline-flex h-10 items-center gap-1 rounded-full border border-border bg-surface p-1 shadow-sm">
             {(["month", "week", "day"] as const).map((candidateView) => (
               <button
                 className={cn(
-                  "rounded-control px-2 py-1 text-xs font-semibold capitalize transition-colors",
+                  "inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold capitalize transition-colors",
                   view === candidateView ? "bg-surface-muted text-text" : "text-text-muted hover:bg-surface-muted hover:text-text"
                 )}
                 key={candidateView}

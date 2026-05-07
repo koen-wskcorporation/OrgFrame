@@ -2,7 +2,7 @@
 
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import * as React from "react";
-import { Badge } from "@orgframe/ui/primitives/badge";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { cn } from "@orgframe/ui/primitives/utils";
 
@@ -71,7 +71,7 @@ export function OrgAreaSidebarHeader({
           <div className="flex items-center gap-2">
             <h2 className="truncate text-base font-semibold leading-tight tracking-tight text-text">{title}</h2>
             {roleChipLabel ? (
-              <Badge variant="neutral">{roleChipLabel}</Badge>
+              <Chip status={false} variant="neutral">{roleChipLabel}</Chip>
             ) : null}
           </div>
         </div>

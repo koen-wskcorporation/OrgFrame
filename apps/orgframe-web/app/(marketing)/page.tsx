@@ -10,7 +10,7 @@ import { ProofStrip } from "@/components/marketing/ProofStrip";
 import { CTA } from "@/components/marketing/CTA";
 import { Reveal } from "@/components/marketing/Reveal";
 import { getSessionUser } from "@/src/features/auth/server/getSessionUser";
-import { getAppAuthUrl, getAppDashboardUrl } from "@/src/shared/marketing/appOrigin";
+import { getAppEntryUrl } from "@/src/shared/marketing/appOrigin";
 import { MODULES } from "@/src/shared/marketing/modules";
 
 export const metadata: Metadata = {
@@ -21,7 +21,9 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   const user = await getSessionUser();
-  const primaryCta = user ? getAppDashboardUrl() : getAppAuthUrl();
+  // Always send marketing CTAs to the app root — the app routes signed-in
+  // users to the dashboard and unauthenticated users on to the auth host.
+  const primaryCta = getAppEntryUrl();
   const primaryLabel = user ? "Open Dashboard" : "Sign In";
 
   const moduleItems: FeatureGridItem[] = MODULES.map((m) => ({

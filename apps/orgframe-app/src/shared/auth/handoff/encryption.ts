@@ -16,7 +16,7 @@ function resolveKey(): Buffer {
     }
   }
 
-  const seed = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.AUTH_COOKIE_DOMAIN ?? "orgframe-handoff-default-seed";
+  const seed = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_PLATFORM_HOST ?? "orgframe-handoff-default-seed";
   return createHash("sha256").update(seed).digest();
 }
 

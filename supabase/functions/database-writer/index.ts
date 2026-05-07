@@ -260,7 +260,7 @@ function buildNodeSlug(baseName: string, seed: string, attempt: number) {
 function isSlugConflictError(message: string) {
   return (
     message.includes("program_nodes_program_id_slug_key") ||
-    message.includes("program_structure_nodes_program_slug_uidx") ||
+    message.includes("divisions_program_slug_uidx") ||
     message.includes("duplicate key value violates unique constraint")
   );
 }
@@ -933,7 +933,7 @@ async function resolveOrCreateProgramStructure(input: {
 
   let divisionNodeId: string | null = null;
   const { data: existingDivisionBySource } = await input.service
-    .schema("programs").from("program_structure_nodes")
+    .schema("programs").from("divisions")
     .select("id")
     .eq("program_id", programId)
     .eq("source_external_key", divisionSourceKey)
@@ -946,7 +946,7 @@ async function resolveOrCreateProgramStructure(input: {
 
   if (!divisionNodeId) {
     const { data: existingDivisionByName } = await input.service
-      .schema("programs").from("program_structure_nodes")
+      .schema("programs").from("divisions")
       .select("id")
       .eq("program_id", programId)
       .is("parent_id", null)
@@ -957,7 +957,7 @@ async function resolveOrCreateProgramStructure(input: {
     if (existingDivisionByName?.id) {
       divisionNodeId = String(existingDivisionByName.id);
       await input.service
-        .schema("programs").from("program_structure_nodes")
+        .schema("programs").from("divisions")
         .update({ source_external_key: divisionSourceKey })
         .eq("id", divisionNodeId);
     }
@@ -969,7 +969,7 @@ async function resolveOrCreateProgramStructure(input: {
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const { data: createdDivision, error: divisionError } = await input.service
-        .schema("programs").from("program_structure_nodes")
+        .schema("programs").from("divisions")
         .insert({
           program_id: programId,
           parent_id: null,
@@ -1008,7 +1008,7 @@ async function resolveOrCreateProgramStructure(input: {
     const teamSourceKey = `sportsconnect:team:${input.orgId}:${programId}:${divisionNodeId}:${teamName.toLowerCase()}`;
 
     const { data: existingTeamBySource } = await input.service
-      .schema("programs").from("program_structure_nodes")
+      .schema("programs").from("divisions")
       .select("id")
       .eq("program_id", programId)
       .eq("source_external_key", teamSourceKey)
@@ -1021,7 +1021,7 @@ async function resolveOrCreateProgramStructure(input: {
 
     if (!teamNodeId) {
       const { data: existingTeamByName } = await input.service
-        .schema("programs").from("program_structure_nodes")
+        .schema("programs").from("divisions")
         .select("id")
         .eq("program_id", programId)
         .eq("parent_id", divisionNodeId)
@@ -1032,7 +1032,7 @@ async function resolveOrCreateProgramStructure(input: {
       if (existingTeamByName?.id) {
         teamNodeId = String(existingTeamByName.id);
         await input.service
-          .schema("programs").from("program_structure_nodes")
+          .schema("programs").from("divisions")
           .update({ source_external_key: teamSourceKey })
           .eq("id", teamNodeId);
       }
@@ -1044,7 +1044,7 @@ async function resolveOrCreateProgramStructure(input: {
 
       for (let attempt = 0; attempt < 5; attempt += 1) {
         const { data: createdTeam, error: teamError } = await input.service
-          .schema("programs").from("program_structure_nodes")
+          .schema("programs").from("divisions")
           .insert({
             program_id: programId,
             parent_id: divisionNodeId,
@@ -2283,10 +2283,10 @@ Deno.serve(async (request: Request) => {
                     ? {
                         delete_ids: [
                           structure.teamCreatedId
-                            ? { schema: "programs", table: "program_structure_nodes", id: structure.teamCreatedId }
+                            ? { schema: "programs", table: "divisions", id: structure.teamCreatedId }
                             : null,
                           structure.divisionCreatedId
-                            ? { schema: "programs", table: "program_structure_nodes", id: structure.divisionCreatedId }
+                            ? { schema: "programs", table: "divisions", id: structure.divisionCreatedId }
                             : null
                         ].filter(Boolean)
                       }

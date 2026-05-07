@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Button } from "@orgframe/ui/primitives/button";
+import { useMemo } from "react";
 import { CalendarPicker } from "@orgframe/ui/primitives/calendar-picker";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { Input } from "@orgframe/ui/primitives/input";
@@ -67,7 +66,6 @@ function resolveStartWeekday(draft: ScheduleRuleDraft) {
 }
 
 export function RecurringEventEditor({ draft, canWrite, onChange, className }: RecurringEventEditorProps) {
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const summary = useMemo(() => buildSummary(draft), [draft]);
 
   const intervalCount = Math.max(1, Number.isFinite(draft.intervalCount) ? draft.intervalCount : 1);
@@ -76,7 +74,7 @@ export function RecurringEventEditor({ draft, canWrite, onChange, className }: R
   const untilDateValue = draft.untilDate || draft.startDate;
 
   return (
-    <div className={cn("space-y-3 rounded-control border bg-surface p-3", className)}>
+    <div className={cn("space-y-3", className)}>
       <p className="rounded-control border border-border/70 bg-surface-muted/40 px-2 py-1 text-xs text-text-muted">{summary}</p>
 
       <label className="ui-inline-toggle">
@@ -191,62 +189,6 @@ export function RecurringEventEditor({ draft, canWrite, onChange, className }: R
             </div>
           </div>
 
-          <div className="pt-1">
-            <Button onClick={() => setShowAdvanced((current) => !current)} size="sm" type="button" variant="ghost">
-              {showAdvanced ? "Hide Advanced Options" : "Show Advanced Options"}
-            </Button>
-          </div>
-
-          {showAdvanced ? (
-            <div className="grid gap-3 rounded-control border bg-surface-muted/40 p-3 md:grid-cols-2">
-              <label className="space-y-1 text-xs text-text-muted">
-                <span>Interval unit</span>
-                <select
-                  className="h-10 w-full rounded-control border border-border bg-surface px-3 text-sm text-text"
-                  disabled={!canWrite}
-                  onChange={(event) => onChange({ ...draft, intervalUnit: event.target.value as "day" | "week" | "month" })}
-                  value={draft.intervalUnit}
-                >
-                  <option value="week">Weeks</option>
-                  <option value="day">Days</option>
-                  <option value="month">Months</option>
-                </select>
-              </label>
-
-              <label className="space-y-1 text-xs text-text-muted">
-                <span>End mode</span>
-                <select
-                  className="h-10 w-full rounded-control border border-border bg-surface px-3 text-sm text-text"
-                  disabled={!canWrite}
-                  onChange={(event) => onChange({ ...draft, endMode: event.target.value as ScheduleRuleDraft["endMode"] })}
-                  value={draft.endMode}
-                >
-                  <option value="until_date">On date</option>
-                  <option value="after_occurrences">After occurrences</option>
-                  <option value="never">Never (18-month preview)</option>
-                </select>
-              </label>
-
-              <label className="space-y-1 text-xs text-text-muted md:col-span-2">
-                <span>Month days (advanced, comma-separated 1-31)</span>
-                <Input
-                  disabled={!canWrite}
-                  onChange={(event) => {
-                    const values = event.target.value
-                      .split(",")
-                      .map((value) => Number.parseInt(value.trim(), 10))
-                      .filter((value) => Number.isInteger(value) && value >= 1 && value <= 31);
-                    onChange({
-                      ...draft,
-                      byMonthday: values
-                    });
-                  }}
-                  placeholder="1, 15, 28"
-                  value={draft.byMonthday.join(",")}
-                />
-              </label>
-            </div>
-          ) : null}
         </div>
       ) : null}
     </div>

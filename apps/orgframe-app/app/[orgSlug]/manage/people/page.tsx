@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { PageStack } from "@orgframe/ui/primitives/layout";
 import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
 import { isOrgToolEnabled } from "@/src/shared/org/features";
 import { getPeopleDirectoryPageData } from "@/src/features/people/actions";
 import { PeopleDirectoryPanel } from "@/src/features/people/components/PeopleDirectoryPanel";
 import { PeoplePageTabs } from "@/src/features/people/components/PeoplePageTabs";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
 
 export const metadata: Metadata = {
   title: "People"
@@ -31,32 +31,36 @@ export default async function OrgPeoplePage({
 
   if (!isOrgToolEnabled(data.toolAvailability, "people")) {
     return (
-      <PageStack>
-        <PageHeader
-          description="Manage accounts, linked player/staff profiles, and relationship access."
-          showBorder={false}
-          title="People"
-        />
+      <PageShell
+        description="Manage accounts, linked player/staff profiles, and relationship access."
+        tabs={<PeoplePageTabs active="directory" orgSlug={orgSlug} />}
+        title="People"
+      >
         <ToolUnavailablePanel title="People" />
-      </PageStack>
+      </PageShell>
     );
   }
 
   return (
-    <PageStack>
-      <PageHeader
+    <PageShell
+      description="Manage accounts, linked player/staff profiles, and relationship access."
+      tabs={<PeoplePageTabs active="directory" orgSlug={data.orgSlug} />}
+      title="People"
+
+    >
+      <ManageSection
         description="Manage accounts, linked player/staff profiles, and relationship access."
-        showBorder={false}
-        title="People"
-      />
-      <PeoplePageTabs active="directory" orgSlug={data.orgSlug} />
-      <PeopleDirectoryPanel
-        canWritePeople={data.canWritePeople}
-        currentUserId={data.currentUserId}
-        initialAccounts={data.directory.accounts}
-        loadError={data.loadError}
-        orgSlug={data.orgSlug}
-      />
-    </PageStack>
+        fill={false}
+        title="Directory"
+      >
+        <PeopleDirectoryPanel
+          canWritePeople={data.canWritePeople}
+          currentUserId={data.currentUserId}
+          initialAccounts={data.directory.accounts}
+          loadError={data.loadError}
+          orgSlug={data.orgSlug}
+        />
+      </ManageSection>
+    </PageShell>
   );
 }

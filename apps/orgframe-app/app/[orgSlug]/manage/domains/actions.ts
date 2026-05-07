@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { normalizeDomain, getPlatformHost } from "@/src/shared/domains/customDomains";
 import { verifyCustomDomainDns } from "@/src/shared/domains/verification";
-import { attachDomainToVercelProject } from "@/src/shared/domains/vercelProjectDomains";
+import { attachDomainToVercelProject, detachDomainFromVercelProject } from "@/src/shared/domains/vercelProjectDomains";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
 import { requireOrgToolEnabled } from "@/src/shared/org/requireOrgToolEnabled";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
@@ -254,13 +254,36 @@ export async function removeOrgCustomDomainAction(orgSlug: string) {
     requireOrgToolEnabled(orgContext.toolAvailability, "domains");
     const supabase = await createSupabaseServer();
 
+    // Read the domain first so we can also detach it from the Vercel project.
+    // The previous implementation deleted only the database row, leaving the
+    // domain attached in Vercel — which then took precedence over the
+    // wildcard `*.<platform>` entry on the org subdomain and 403'd traffic.
+    const { data: existing, error: existingError } = await supabase
+      .schema("orgs").from("custom_domains")
+      .select("domain")
+      .eq("org_id", orgContext.orgId)
+      .maybeSingle();
+
+    if (existingError) {
+      throw new Error(existingError.message);
+    }
+
+    if (existing?.domain) {
+      const detachResult = await detachDomainFromVercelProject(existing.domain);
+      if (!detachResult.ok && detachResult.reason !== "not_configured") {
+        // Don't block the DB cleanup on Vercel-side errors — surface a
+        // soft warning via query string so the dashboard can prompt the
+        // user to clean up Vercel manually if needed.
+        redirect(`/manage/domains?error=vercel_detach_failed&detail=${encodeURIComponent(detachResult.message)}`);
+      }
+    }
+
     const { error } = await supabase.schema("orgs").from("custom_domains").delete().eq("org_id", orgContext.orgId);
 
     if (error) {
       throw new Error(error.message);
     }
 
-    revalidatePath(`/${orgSlug}/manage/domains`);
     revalidatePath(`/${orgSlug}/manage/domains`);
     redirect(`/manage/domains?removed=1`);
   } catch (error) {

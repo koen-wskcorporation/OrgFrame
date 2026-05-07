@@ -1,5 +1,5 @@
 import type { CalendarReadModel } from "@/src/features/calendar/types";
-import type { FacilityReservationReadModel, FacilitySpace } from "@/src/features/facilities/types";
+import type { Facility, FacilityReservationReadModel, FacilitySpace } from "@/src/features/facilities/types";
 import type { FacilityLockMode } from "@/src/features/calendar/types";
 
 export type FacilityBookingSelection = {
@@ -44,14 +44,14 @@ export function buildSpaceById(spaces: FacilitySpace[]) {
   return new Map(spaces.map((space) => [space.id, space]));
 }
 
+/**
+ * Returns the facility id a space belongs to. After the facility/space
+ * split (migration 202605030001), this is just `space.facilityId` — but
+ * we accept the same `(spaceId, spaceById)` shape the callers already
+ * have so existing call sites keep working unchanged.
+ */
 export function resolveRootSpaceId(spaceId: string, spaceById: Map<string, FacilitySpace>) {
-  let current = spaceById.get(spaceId);
-  let guard = 0;
-  while (current && current.parentSpaceId && guard < 50) {
-    current = spaceById.get(current.parentSpaceId);
-    guard += 1;
-  }
-  return current?.id ?? null;
+  return spaceById.get(spaceId)?.facilityId ?? null;
 }
 
 export function collectDescendantSpaces(spaces: FacilitySpace[], rootId: string) {
@@ -81,7 +81,7 @@ export function collectDescendantSpaces(spaces: FacilitySpace[], rootId: string)
   return results;
 }
 
-export function formatFacilityLocation(facility: FacilitySpace | null, selectedSpaces: FacilitySpace[]) {
+export function formatFacilityLocation(facility: Facility | null, selectedSpaces: FacilitySpace[]) {
   if (!facility) {
     return "";
   }
@@ -92,8 +92,8 @@ export function formatFacilityLocation(facility: FacilitySpace | null, selectedS
   return address ? `${baseLocation} · ${address}` : baseLocation;
 }
 
-export function resolveFacilityStatusDot(status: FacilitySpace["status"]): "success" | "destructive" | "muted" {
-  if (status === "open") {
+export function resolveFacilityStatusDot(status: FacilitySpace["status"] | Facility["status"]): "success" | "destructive" | "muted" {
+  if (status === "open" || status === "active") {
     return "success";
   }
   if (status === "closed") {
@@ -106,12 +106,17 @@ function asStringValue(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function getFacilityAddress(space: FacilitySpace | null) {
-  if (!space) {
+export function getFacilityAddress(facility: Facility | null) {
+  if (!facility) {
     return null;
   }
 
-  const metadata = space.metadataJson ?? {};
+  // After the split, the address lives directly on the Facility.
+  if (facility.geoAddress) {
+    return facility.geoAddress;
+  }
+
+  const metadata = facility.metadataJson ?? {};
   const direct =
     asStringValue(metadata.address) ||
     asStringValue(metadata.fullAddress) ||
@@ -134,11 +139,11 @@ export function getFacilityAddress(space: FacilitySpace | null) {
   return segments.length > 0 ? segments.join(", ") : null;
 }
 
-export function getFacilityMapUrl(space: FacilitySpace | null) {
-  if (!space) {
+export function getFacilityMapUrl(facility: Facility | null) {
+  if (!facility) {
     return null;
   }
-  const query = getFacilityAddress(space) ?? space.name;
+  const query = getFacilityAddress(facility) ?? facility.name;
   if (!query) {
     return null;
   }

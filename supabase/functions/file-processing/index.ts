@@ -360,7 +360,7 @@ async function resolveCandidates(input: {
     }
 
     const { data } = await input.service
-      .schema("programs").from("program_structure_nodes")
+      .schema("programs").from("divisions")
       .select("id, name, node_kind")
       .eq("org_id", input.orgId)
       .ilike("name", candidateName)

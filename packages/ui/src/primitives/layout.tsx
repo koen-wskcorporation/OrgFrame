@@ -28,7 +28,7 @@ type AppPageProps<T extends React.ElementType> = {
 export function AppPage<T extends React.ElementType = "main">({ as, className, children, ...props }: AppPageProps<T>) {
   const Component = (as ?? "main") as React.ElementType;
   return (
-    <Component className={cn("app-page-shell", className)} {...props}>
+    <Component className={cn("w-full min-w-0 px-[var(--layout-gap)]", className)} {...props}>
       {children}
     </Component>
   );

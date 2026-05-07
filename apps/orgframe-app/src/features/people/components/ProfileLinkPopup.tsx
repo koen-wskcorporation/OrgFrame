@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { FormField } from "@orgframe/ui/primitives/form-field";
+import { EmailInput } from "@orgframe/ui/primitives/email-input";
 import { Input } from "@orgframe/ui/primitives/input";
 import { CreateModal } from "@orgframe/ui/primitives/interaction-containers";
 import { Select } from "@orgframe/ui/primitives/select";
@@ -79,7 +80,7 @@ export function ProfileLinkPopup({ open, onClose, onSubmit, loading = false }: P
           />
         </FormField>
         <FormField label="Account email">
-          <Input disabled={loading} onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
+          <EmailInput disabled={loading} onChange={(event) => setEmail(event.target.value)} required value={email} />
         </FormField>
       </form>
     </CreateModal>

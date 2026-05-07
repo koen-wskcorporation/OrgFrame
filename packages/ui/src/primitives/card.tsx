@@ -1,9 +1,17 @@
 import * as React from "react";
 import { cn } from "./utils";
 
-export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("rounded-card border bg-surface text-text shadow-card", className)} {...props} />;
-}
+export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  function Card({ className, ...props }, ref) {
+    return (
+      <div
+        ref={ref}
+        className={cn("rounded-card border bg-surface text-text shadow-card", className)}
+        {...props}
+      />
+    );
+  }
+);
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("space-y-1.5 px-5 pb-4 pt-5 md:px-6 md:pb-5 md:pt-6", className)} {...props} />;

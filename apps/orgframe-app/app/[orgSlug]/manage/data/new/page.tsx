@@ -1,18 +1,18 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { PageStack } from "@orgframe/ui/primitives/layout";
 import { Button } from "@orgframe/ui/primitives/button";
 import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
 import { TOOL_DATA_SOURCES } from "@/src/features/data/registry";
-import { CollectionBuilder } from "@/src/features/data/components/CollectionBuilder";
 import { can } from "@/src/shared/permissions/can";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { CollectionBuilder } from "@/src/features/data/components/CollectionBuilder";
 
 export const metadata: Metadata = {
-  title: "New collection",
+  title: "New collection"
 };
 
 export default async function NewCollectionPage({
-  params,
+  params
 }: {
   params: Promise<{ orgSlug: string }>;
 }) {
@@ -27,23 +27,23 @@ export default async function NewCollectionPage({
     tables: src.tables.map((t) => ({
       key: t.key,
       label: t.label,
-      columns: t.columns.map((c) => ({ key: c.key, label: c.label })),
-    })),
+      columns: t.columns.map((c) => ({ key: c.key, label: c.label }))
+    }))
   }));
 
   return (
-    <PageStack>
-      <PageHeader
-        description="Save a filtered view and pin it alongside your other data sources."
-        showBorder={false}
-        title="New data collection"
-        actions={
-          <Button href={`/${orgSlug}/manage/data`} variant="ghost" size="sm">
-            ← Back
-          </Button>
-        }
-      />
-      <CollectionBuilder orgSlug={orgSlug} sources={sources} />
-    </PageStack>
+    <PageShell
+      actions={
+        <Button href={`/${orgSlug}/manage/data`} size="sm" variant="ghost">
+          ← Back
+        </Button>
+      }
+      description="Save a filtered view and pin it alongside your other data sources."
+      title="New data collection"
+    >
+      <ManageSection description="Pick a source and filter the rows you want pinned." fill={false} title="Builder">
+        <CollectionBuilder orgSlug={orgSlug} sources={sources} />
+      </ManageSection>
+    </PageShell>
   );
 }

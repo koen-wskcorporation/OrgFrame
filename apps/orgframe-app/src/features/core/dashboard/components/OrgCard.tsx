@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AdaptiveLogo } from "@orgframe/ui/primitives/adaptive-logo";
-import { Badge } from "@orgframe/ui/primitives/badge";
+import { Badge } from "@orgframe/ui/primitives/chip";
 import { buttonVariants } from "@orgframe/ui/primitives/button";
 import { Card, CardTitle } from "@orgframe/ui/primitives/card";
 import { cn } from "@orgframe/ui/primitives/utils";

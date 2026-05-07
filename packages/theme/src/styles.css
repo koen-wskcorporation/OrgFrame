@@ -12,6 +12,7 @@
   --ring: var(--brand-primary);
   --warning: 39 94% 46%;
   --destructive: 0 72% 50%;
+  --destructive-foreground: 0 0% 100%;
   --success: var(--brand-accent);
   --radius: 24px;
   --shadow: 0 10px 28px hsl(220 28% 18% / 0.08);

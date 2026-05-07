@@ -15,7 +15,8 @@ const buttonVariants = cva(
       variant: {
         primary: "bg-accent text-accent-foreground shadow-sm hover:bg-accent/90",
         secondary: "border-border bg-surface text-text shadow-sm hover:bg-surface-muted/60",
-        ghost: "border-transparent bg-transparent text-text hover:border-border/60 hover:bg-surface-muted"
+        ghost: "border-transparent bg-transparent text-text hover:border-border/60 hover:bg-surface-muted",
+        danger: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
       },
       size: {
         sm: "h-9 px-3",

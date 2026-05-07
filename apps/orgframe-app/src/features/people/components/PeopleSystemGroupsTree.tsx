@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Badge } from "@orgframe/ui/primitives/badge";
+import { Badge } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Chip } from "@orgframe/ui/primitives/chip";

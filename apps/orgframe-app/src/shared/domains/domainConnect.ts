@@ -1,5 +1,5 @@
 import { resolveTxt } from "node:dns/promises";
-import { normalizeDomain } from "@/src/shared/domains/customDomains";
+import { getPlatformHost, normalizeDomain } from "@/src/shared/domains/customDomains";
 
 type DomainConnectSettings = {
   providerId: string;
@@ -68,17 +68,8 @@ function toRootDomain(domain: string) {
   return normalized;
 }
 
-function parseHostFromUrl(value: string) {
-  try {
-    return new URL(value).hostname;
-  } catch {
-    return value.replace(/^https?:\/\//, "").split("/")[0] ?? "";
-  }
-}
-
 function deriveProviderIdFromSiteUrl() {
-  const siteUrl = getEnv("NEXT_PUBLIC_SITE_URL") || getEnv("SITE_URL");
-  const host = normalizeDomain(parseHostFromUrl(siteUrl));
+  const host = getPlatformHost();
 
   if (!host) {
     return "sportssaas.local";

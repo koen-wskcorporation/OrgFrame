@@ -4,7 +4,7 @@ import { Alert } from "@orgframe/ui/primitives/alert";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { SubmitButton } from "@orgframe/ui/primitives/submit-button";
-import { AuthShell } from "@/src/features/core/auth/components/AuthShell";
+import { CenteredFormShell } from "@/src/features/core/layout/components/CenteredFormShell";
 import { requestPasswordResetAction, updatePasswordFromResetAction } from "@/app/auth/actions";
 
 export const metadata: Metadata = {
@@ -28,15 +28,16 @@ const infoMessageByCode: Record<string, string> = {
 export default async function ResetPage({
   searchParams
 }: {
-  searchParams: Promise<{ mode?: string; error?: string; message?: string }>;
+  searchParams: Promise<{ mode?: string; error?: string; message?: string; detail?: string }>;
 }) {
   const query = await searchParams;
   const isUpdateMode = query.mode === "update";
-  const errorMessage = query.error ? errorMessageByCode[query.error] ?? "Unable to continue." : null;
+  const baseError = query.error ? errorMessageByCode[query.error] ?? "Unable to continue." : null;
+  const errorMessage = baseError && query.detail ? `${baseError} (${query.detail})` : baseError;
   const infoMessage = query.message ? infoMessageByCode[query.message] ?? query.message : null;
 
   return (
-    <AuthShell
+    <CenteredFormShell
       subtitle={isUpdateMode ? "Choose a new account password to finish reset." : "Enter your account email to receive a reset link."}
       title={isUpdateMode ? "Set new password" : "Reset password"}
     >
@@ -70,6 +71,6 @@ export default async function ResetPage({
           </Link>
         </p>
       </div>
-    </AuthShell>
+    </CenteredFormShell>
   );
 }

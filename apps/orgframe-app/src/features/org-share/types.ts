@@ -7,6 +7,12 @@ export type ShareTarget = {
   type: ShareTargetType;
   label: string;
   subtitle?: string;
+  /**
+   * Optional parent id used to render hierarchical entities (teams under
+   * divisions, divisions under programs) in pickers. Top-level items omit it.
+   */
+  parentId?: string;
+  parentType?: ShareTargetType;
 };
 
 export type ShareSelectionPayload = {

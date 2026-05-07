@@ -1,52 +1,49 @@
 import type { Metadata } from "next";
-import { Card } from "@orgframe/ui/primitives/card";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { PageStack } from "@orgframe/ui/primitives/layout";
-import { ToolUnavailablePanel } from "../../ToolUnavailablePanel";
-import { isOrgToolEnabled } from "@/src/shared/org/features";
-import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermission";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
+import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { listPeopleSystemGroupsWorkspace } from "@/src/features/org-share/server";
 import { PeoplePageTabs } from "@/src/features/people/components/PeoplePageTabs";
 import { PeopleSystemGroupsTree } from "@/src/features/people/components/PeopleSystemGroupsTree";
+import { ToolUnavailablePanel } from "../../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
-  title: "People Groups"
+  title: "People — Groups"
 };
 
-export default async function OrgPeopleGroupsPage({
-  params
-}: {
-  params: Promise<{ orgSlug: string }>;
-}) {
+export default async function OrgPeopleGroupsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
-  const org = await requireOrgPermission(orgSlug, "people.read");
+  const { orgContext, unavailable } = await gateManageSection(orgSlug, {
+    permission: "org.manage.read",
+    tool: "people"
+  });
 
-  if (!isOrgToolEnabled(org.toolAvailability, "people")) {
-    return (
-      <PageStack>
-        <PageHeader
-          description="Manage accounts, linked player/staff profiles, and relationship access."
-          showBorder={false}
-          title="People"
-        />
-        <ToolUnavailablePanel title="People" />
-      </PageStack>
-    );
+  const unavailableShellProps = {
+    description: "Manage accounts, linked player/staff profiles, and relationship access.",
+    tabs: <PeoplePageTabs active="groups" orgSlug={orgSlug} />,
+    title: "People"
+  };
+
+  if (unavailable) {
+    return <PageShell {...unavailableShellProps}><ToolUnavailablePanel title="People" /></PageShell>;
   }
 
-  const groups = await listPeopleSystemGroupsWorkspace(org.orgId).catch(() => []);
+  const groups = await listPeopleSystemGroupsWorkspace(orgContext.orgId).catch(() => []);
 
   return (
-    <PageStack>
-      <PageHeader
+    <PageShell
+      description="Manage accounts, linked player/staff profiles, and relationship access."
+      tabs={<PeoplePageTabs active="groups" orgSlug={orgSlug} />}
+      title="People"
+
+    >
+      <ManageSection
         description="Manage accounts, linked player/staff profiles, and relationship access."
-        showBorder={false}
-        title="People"
-      />
-      <PeoplePageTabs active="groups" orgSlug={orgSlug} />
-      <Card>
+        fill={false}
+        title="Groups"
+      >
         <PeopleSystemGroupsTree groups={groups} />
-      </Card>
-    </PageStack>
+      </ManageSection>
+    </PageShell>
   );
 }

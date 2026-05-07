@@ -79,7 +79,20 @@ export async function listOrgShareCatalogAction(
         options
       }
     };
-  } catch (_error) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Always log on the server so the underlying failure (RLS, schema, FK
+    // resolution, etc.) is visible in the Next.js terminal regardless of
+    // environment. The generic message goes to the user in production; the
+    // real one helps diagnose in development.
+    console.error("listOrgShareCatalogAction failed", {
+      orgSlug: parsed.data.orgSlug,
+      requestedTypes: parsed.data.requestedTypes,
+      error: message
+    });
+    if (process.env.NODE_ENV !== "production") {
+      return asError(`Unable to load sharing recipients: ${message}`);
+    }
     return asError("Unable to load sharing recipients right now.");
   }
 }

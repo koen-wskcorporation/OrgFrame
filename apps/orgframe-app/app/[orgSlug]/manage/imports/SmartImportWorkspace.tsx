@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Boxes, FileSpreadsheet, Layers3, RefreshCw, Trophy } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Badge } from "@orgframe/ui/primitives/badge";
+import { Badge } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";

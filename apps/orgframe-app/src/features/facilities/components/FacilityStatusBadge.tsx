@@ -1,120 +1,68 @@
 "use client";
 
-import { Check } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { Badge } from "@orgframe/ui/primitives/badge";
-import { cn } from "@orgframe/ui/primitives/utils";
-import type { FacilityPublicSpaceStatus, FacilityReservationStatus, FacilitySpaceStatus } from "@/src/features/facilities/types";
+import { Chip, ChipPicker, type ChipVariant } from "@orgframe/ui/primitives/chip";
+import type { FacilityPublicSpaceStatus, FacilityReservationStatus, FacilitySpaceStatus, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
 
-type FacilitySpaceStatusOption = {
-  value: FacilitySpaceStatus;
-  label: string;
-};
+type StatusLike = FacilitySpaceStatus | FacilityReservationStatus | FacilityPublicSpaceStatus;
 
-type FacilityStatusBadgeProps = {
-  status: FacilitySpaceStatus | FacilityReservationStatus | FacilityPublicSpaceStatus;
-  label?: string;
-  disabled?: boolean;
-  onSelectSpaceStatus?: (status: FacilitySpaceStatus) => void;
-  spaceStatusOptions?: FacilitySpaceStatusOption[];
-};
-
-function resolveVariant(status: FacilityStatusBadgeProps["status"]) {
-  if (status === "open" || status === "approved") {
-    return "success" as const;
-  }
-
-  if (status === "pending" || status === "booked") {
-    return "warning" as const;
-  }
-
-  if (status === "closed" || status === "cancelled" || status === "archived" || status === "rejected") {
-    return "destructive" as const;
-  }
-
-  return "neutral" as const;
+function resolveVariant(status: StatusLike): ChipVariant {
+  if (status === "open" || status === "approved") return "success";
+  if (status === "pending" || status === "booked") return "warning";
+  if (status === "closed" || status === "cancelled" || status === "archived" || status === "rejected") return "destructive";
+  return "neutral";
 }
 
-function resolveLabel(status: FacilityStatusBadgeProps["status"]) {
+function resolveLabel(status: StatusLike) {
   return status.replace(/_/g, " ");
 }
 
-export function FacilityStatusBadge({ status, label, disabled = false, onSelectSpaceStatus, spaceStatusOptions }: FacilityStatusBadgeProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const canSelectSpaceStatus = Boolean(onSelectSpaceStatus && spaceStatusOptions && spaceStatusOptions.length > 0);
+function colorFromStatus(status: FacilitySpaceStatus): string {
+  if (status === "open") return "emerald";
+  if (status === "closed") return "rose";
+  return "slate";
+}
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
+type FacilityStatusBadgeProps = {
+  status: StatusLike;
+  label?: string;
+  disabled?: boolean;
+  /** Full status definitions from the saved status system (preferred over spaceStatusOptions). */
+  spaceStatuses?: FacilitySpaceStatusDef[];
+  /** @deprecated Pass `spaceStatuses` instead. */
+  spaceStatusOptions?: { value: FacilitySpaceStatus; label: string }[];
+  onSelectSpaceStatus?: (status: FacilitySpaceStatus) => void;
+};
 
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) {
-        return;
-      }
+export function FacilityStatusBadge({
+  status,
+  label,
+  disabled = false,
+  spaceStatuses,
+  spaceStatusOptions,
+  onSelectSpaceStatus
+}: FacilityStatusBadgeProps) {
+  const displayLabel = label ?? resolveLabel(status);
 
-      if (wrapperRef.current?.contains(target)) {
-        return;
-      }
+  const pickerOptions = spaceStatuses
+    ? spaceStatuses.map((s) => ({ value: s.id, label: s.label, color: s.color }))
+    : (spaceStatusOptions ?? []).map((s) => ({ value: s.value, label: s.label, color: colorFromStatus(s.value) }));
 
-      setIsOpen(false);
-    };
+  const canPick = Boolean(onSelectSpaceStatus && pickerOptions.length > 0);
 
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [isOpen]);
-
-  const badge = (
-    <Badge className={cn(canSelectSpaceStatus ? "cursor-pointer" : undefined)} variant={resolveVariant(status)}>
-      {label ?? resolveLabel(status)}
-    </Badge>
-  );
-
-  if (!canSelectSpaceStatus) {
-    return badge;
+  if (canPick) {
+    return (
+      <ChipPicker
+        disabled={disabled}
+        onChange={(value) => onSelectSpaceStatus!(value as FacilitySpaceStatus)}
+        options={pickerOptions}
+        value={status}
+      />
+    );
   }
 
   return (
-    <div className="relative" data-no-progress="true" ref={wrapperRef}>
-      <button
-        className="inline-flex"
-        disabled={disabled}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setIsOpen((current) => !current);
-        }}
-        type="button"
-      >
-        {badge}
-      </button>
-      {isOpen ? (
-        <div className="absolute left-0 top-7 z-20 min-w-36 rounded-control border border-border bg-surface p-1.5 shadow-floating">
-          {spaceStatusOptions?.map((option) => (
-            <button
-              className={cn(
-                "flex w-full items-center justify-between gap-2 rounded-control px-2 py-1.5 text-left text-xs font-medium text-text transition-colors hover:bg-surface-muted",
-                status === option.value ? "bg-surface-muted" : undefined
-              )}
-              key={option.value}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onSelectSpaceStatus?.(option.value);
-                setIsOpen(false);
-              }}
-              type="button"
-            >
-              <span>{option.label}</span>
-              {status === option.value ? <Check className="h-3.5 w-3.5 text-text-muted" /> : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
+    <Chip status={true} variant={resolveVariant(status)}>
+      {displayLabel}
+    </Chip>
   );
 }
