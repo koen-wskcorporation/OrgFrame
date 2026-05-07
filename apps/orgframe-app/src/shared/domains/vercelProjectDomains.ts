@@ -249,6 +249,60 @@ export async function attachDomainToVercelProject(domain: string): Promise<Attac
   }
 }
 
+type DetachResult =
+  | { ok: true; alreadyMissing: boolean }
+  | { ok: false; reason: "not_configured" | "api_error"; message: string };
+
+export async function detachDomainFromVercelProject(domain: string): Promise<DetachResult> {
+  const normalizedDomain = normalizeDomain(domain);
+  const { token, projectIdOrName } = getVercelProjectConfig();
+
+  if (!normalizedDomain) {
+    return { ok: false, reason: "api_error", message: "Domain is empty." };
+  }
+
+  if (!token || !projectIdOrName) {
+    return {
+      ok: false,
+      reason: "not_configured",
+      message: "VERCEL_API_TOKEN and VERCEL_PROJECT_ID (or VERCEL_PROJECT_NAME) must be set to detach domains."
+    };
+  }
+
+  try {
+    const response = await fetch(buildProjectDomainUrl(projectIdOrName, normalizedDomain), {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (response.ok) {
+      return { ok: true, alreadyMissing: false };
+    }
+
+    // 404 means the domain wasn't attached to this project — treat as success
+    // so removing-an-already-removed domain is idempotent and never blocks the
+    // database cleanup.
+    if (response.status === 404) {
+      return { ok: true, alreadyMissing: true };
+    }
+
+    const payload = (await response.json().catch(() => null)) as unknown;
+    return {
+      ok: false,
+      reason: "api_error",
+      message: `Unable to detach domain in Vercel: ${parseApiError(payload)}`
+    };
+  } catch {
+    return {
+      ok: false,
+      reason: "api_error",
+      message: "Unable to reach Vercel API to detach domain. Try again in a minute."
+    };
+  }
+}
+
 export async function getVercelDomainDnsInstructions(domain: string): Promise<DnsInstructionsResult> {
   const normalizedDomain = normalizeDomain(domain);
   const { token, projectIdOrName } = getVercelProjectConfig();
