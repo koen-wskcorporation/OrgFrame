@@ -49,10 +49,7 @@ export function ProfileLinkPopup({ open, onClose, onSubmit, loading = false }: P
     <CreateModal
       footer={
         <>
-          <Button disabled={loading} onClick={onClose} type="button" variant="ghost">
-            <X className="h-4 w-4" />
-            Cancel
-          </Button>
+          <Button intent="cancel" disabled={loading} onClick={onClose} type="button" variant="ghost">Cancel</Button>
           <Button disabled={loading} form="profile-link-form" loading={loading} type="submit">
             {loading ? "Linking..." : "Link profile"}
           </Button>

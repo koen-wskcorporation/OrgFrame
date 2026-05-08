@@ -1,13 +1,12 @@
-"use client";
+import * as React from "react";
+import { Card, CardContent, CardHeader, CardHeaderRow } from "./card";
+import { cn } from "./utils";
 
-import { Card, CardContent, CardHeader, CardHeaderRow } from "@orgframe/ui/primitives/card";
-import { cn } from "@orgframe/ui/primitives/utils";
-
-type ManageSectionProps = {
+type SectionProps = {
   title: React.ReactNode;
   description?: React.ReactNode;
   actions?: React.ReactNode;
-  children: React.ReactNode;
+  children?: React.ReactNode;
   className?: string;
   contentClassName?: string;
   headerClassName?: string;
@@ -21,7 +20,7 @@ type ManageSectionProps = {
   fill?: boolean;
 };
 
-export function ManageSection({
+export function Section({
   title,
   description,
   actions,
@@ -30,15 +29,17 @@ export function ManageSection({
   contentClassName,
   headerClassName,
   fill = true
-}: ManageSectionProps) {
+}: SectionProps) {
   return (
     <Card className={cn(fill ? "app-card-fill" : null, className)}>
       <CardHeader className={cn(fill ? "app-card-fill__header" : null, headerClassName)}>
         <CardHeaderRow actions={actions} description={description} title={title} />
       </CardHeader>
-      <CardContent className={cn(fill ? "app-card-fill__content" : null, contentClassName)}>
-        {children}
-      </CardContent>
+      {children !== undefined ? (
+        <CardContent className={cn(fill ? "app-card-fill__content" : null, contentClassName)}>
+          {children}
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

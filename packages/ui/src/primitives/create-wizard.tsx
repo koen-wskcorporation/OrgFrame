@@ -544,9 +544,7 @@ export function WizardChrome({
 
   const defaultFooter = isEdit ? (
     <>
-      <Button onClick={onClose} type="button" variant="ghost" disabled={submitting}>
-        Cancel
-      </Button>
+      <Button intent="cancel" onClick={onClose} type="button" variant="ghost" disabled={submitting}>Cancel</Button>
       <div className="ml-auto flex items-center gap-2">
         <Button onClick={onSubmit} type="button" loading={submitting} disabled={submitting || !canAdvance}>
           <Save className="h-4 w-4" />
@@ -556,9 +554,7 @@ export function WizardChrome({
     </>
   ) : (
     <>
-      <Button onClick={onClose} type="button" variant="ghost" disabled={submitting}>
-        Cancel
-      </Button>
+      <Button intent="cancel" onClick={onClose} type="button" variant="ghost" disabled={submitting}>Cancel</Button>
       <div className="ml-auto flex items-center gap-2">
         {!isFirstStep ? (
           <Button onClick={onBack} type="button" variant="secondary" disabled={submitting}>
@@ -636,6 +632,10 @@ export type CreateWizardProps<TState> = {
    * an existing entity.
    */
   mode?: "create" | "edit";
+  /** Forwarded to the underlying Panel header (sidebar frame only). */
+  headerShowAvatar?: boolean;
+  headerAvatarSlot?: React.ReactNode;
+  headerAvatarAlt?: string;
 };
 
 export function CreateWizard<TState>({
@@ -655,7 +655,10 @@ export function CreateWizard<TState>({
   popupSize = "lg",
   sidebarPushMode = "content",
   hideCancel = false,
-  mode = "create"
+  mode = "create",
+  headerShowAvatar,
+  headerAvatarSlot,
+  headerAvatarAlt
 }: CreateWizardProps<TState>) {
   const isEdit = mode === "edit";
   const { confirm } = useConfirmDialog();
@@ -791,9 +794,7 @@ export function CreateWizard<TState>({
   ) : (
     <>
       {hideCancel ? null : (
-        <Button onClick={requestClose} type="button" variant="ghost" disabled={flow.submitting}>
-          Cancel
-        </Button>
+        <Button intent="cancel" onClick={requestClose} type="button" variant="ghost" disabled={flow.submitting}>Cancel</Button>
       )}
       <div className="ml-auto flex items-center gap-2">
         {!flow.isFirstStep ? (
@@ -838,6 +839,9 @@ export function CreateWizard<TState>({
   return (
     <Panel
       footer={footer}
+      headerAvatarAlt={headerAvatarAlt}
+      headerAvatarSlot={headerAvatarSlot}
+      headerShowAvatar={headerShowAvatar}
       onClose={requestClose}
       open={open}
       pushMode={sidebarPushMode}

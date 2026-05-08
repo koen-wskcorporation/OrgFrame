@@ -4,7 +4,7 @@ import { PrimaryAccountControls } from "@/src/features/core/layout/components/Pr
 import { AdaptiveLogo } from "@orgframe/ui/primitives/adaptive-logo";
 import type { HeaderAccountState } from "@/src/features/core/layout/types";
 
-type PrimaryHeaderProps = {
+type AppHeaderProps = {
   homeHref?: string;
   currentOrgSlug?: string | null;
   tenantBaseOrigin?: string | null;
@@ -12,7 +12,7 @@ type PrimaryHeaderProps = {
   initialAccountState?: HeaderAccountState | null;
 };
 
-export function PrimaryHeader({ homeHref = "/", currentOrgSlug = null, tenantBaseOrigin = null, orgOptions = [], initialAccountState = null }: PrimaryHeaderProps) {
+export function AppHeader({ homeHref = "/", currentOrgSlug = null, tenantBaseOrigin = null, orgOptions = [], initialAccountState = null }: AppHeaderProps) {
   return (
     <header className="relative z-[200] w-full border-b bg-surface/95 backdrop-blur" id="app-primary-header">
       <div className="app-container grid h-16 w-full grid-cols-[minmax(0,1fr)_minmax(0,26rem)_minmax(0,1fr)] items-center gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,30rem)_minmax(0,1fr)]">
@@ -22,7 +22,7 @@ export function PrimaryHeader({ homeHref = "/", currentOrgSlug = null, tenantBas
               alt="OrgFrame logo"
               className="block max-w-full object-contain"
               src="/brand/logo.svg"
-              style={{ height: "auto", maxHeight: "auto", maxWidth: "110px", width: "auto" }}
+              style={{ height: "25px", maxWidth: "143px", width: "auto" }}
             />
           </Link>
         </div>

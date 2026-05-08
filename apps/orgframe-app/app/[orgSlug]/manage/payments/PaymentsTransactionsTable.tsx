@@ -37,7 +37,7 @@ function statusChip(status: string | null) {
   const normalized = (status ?? "").toLowerCase();
   if (normalized === "paid" || normalized === "succeeded" || normalized === "successful" || normalized === "complete") {
     return (
-      <Chip color="green" size="compact">
+      <Chip color="green">
         {status ?? "paid"}
       </Chip>
     );
@@ -45,7 +45,7 @@ function statusChip(status: string | null) {
 
   if (normalized === "failed" || normalized === "canceled" || normalized === "cancelled" || normalized === "expired") {
     return (
-      <Chip color="red" size="compact">
+      <Chip color="red">
         {status ?? "failed"}
       </Chip>
     );
@@ -53,14 +53,14 @@ function statusChip(status: string | null) {
 
   if (normalized === "pending" || normalized === "processing" || normalized === "open") {
     return (
-      <Chip color="yellow" size="compact">
+      <Chip color="yellow">
         {status ?? "pending"}
       </Chip>
     );
   }
 
   return (
-    <Chip color="neutral" size="compact">
+    <Chip color="neutral">
       {status ?? "unknown"}
     </Chip>
   );

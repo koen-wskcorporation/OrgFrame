@@ -4,7 +4,7 @@ import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermiss
 import { TOOL_DATA_SOURCES } from "@/src/features/data/registry";
 import { can } from "@/src/shared/permissions/can";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { CollectionBuilder } from "@/src/features/data/components/CollectionBuilder";
 
 export const metadata: Metadata = {
@@ -41,9 +41,9 @@ export default async function NewCollectionPage({
       description="Save a filtered view and pin it alongside your other data sources."
       title="New data collection"
     >
-      <ManageSection description="Pick a source and filter the rows you want pinned." fill={false} title="Builder">
+      <Section description="Pick a source and filter the rows you want pinned." fill={false} title="Builder">
         <CollectionBuilder orgSlug={orgSlug} sources={sources} />
-      </ManageSection>
+      </Section>
     </PageShell>
   );
 }

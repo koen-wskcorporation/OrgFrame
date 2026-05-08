@@ -51,22 +51,22 @@ function toTaxFormState(data: BillingWorkspaceData): TaxFormState {
 
 function connectStatusChip(status: ConnectStatus) {
   if (status === "ready") {
-    return <Chip color="green" size="compact">Ready</Chip>;
+    return <Chip color="green">Ready</Chip>;
   }
 
   if (status === "restricted") {
-    return <Chip color="yellow" size="compact">Restricted</Chip>;
+    return <Chip color="yellow">Restricted</Chip>;
   }
 
   if (status === "disabled") {
-    return <Chip color="red" size="compact">Disabled</Chip>;
+    return <Chip color="red">Disabled</Chip>;
   }
 
   if (status === "onboarding") {
-    return <Chip color="yellow" size="compact">Onboarding</Chip>;
+    return <Chip color="yellow">Onboarding</Chip>;
   }
 
-  return <Chip color="neutral" size="compact">Not connected</Chip>;
+  return <Chip color="neutral">Not connected</Chip>;
 }
 
 export function BillingWorkspace({ data }: { data: BillingWorkspaceData }) {
@@ -326,7 +326,7 @@ export function BillingWorkspace({ data }: { data: BillingWorkspaceData }) {
             <Button disabled={isPending || !data.canManage} onClick={handleSaveTaxProfile} variant="secondary">
               Save tax profile
             </Button>
-            {data.taxAcknowledged ? <Chip color="green" size="compact">Tax responsibility acknowledged</Chip> : null}
+            {data.taxAcknowledged ? <Chip color="green">Tax responsibility acknowledged</Chip> : null}
           </div>
         </CardContent>
       </Card>

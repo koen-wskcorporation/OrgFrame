@@ -4,11 +4,11 @@ import { useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { ChipPicker, RepeaterChip } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { FacilityMapWorkspace } from "@/src/features/facilities/map/components/FacilityMapWorkspace";
 import { SpaceCreateWizard } from "@/src/features/facilities/components/SpaceCreateWizard";
 import { updateFacilityAction } from "@/src/features/facilities/actions";
@@ -65,7 +65,7 @@ export function FacilitiesManagePanel({ orgSlug, orgId, canWrite, initialReadMod
     <>
       <PageShell title="Facilities">
         {!canWrite ? <Alert variant="info">You have read-only access to facilities.</Alert> : null}
-        <ManageSection
+        <Section
           actions={
             <Button disabled={!canWrite} onClick={() => setIsCreateOpen(true)} type="button">
               <Plus className="h-4 w-4" />
@@ -91,14 +91,16 @@ export function FacilitiesManagePanel({ orgSlug, orgId, canWrite, initialReadMod
                 meta: <>/{facility.slug}</>,
                 chips: (
                   <>
-                    <ChipPicker
-                      disabled={!canWrite || pendingStatusId === facility.id}
-                      onChange={(next) => handleStatusChange(facility, next)}
-                      options={STATUS_OPTIONS}
-                      value={facility.status}
+                    <Chip
+                      picker={{
+                        disabled: !canWrite || pendingStatusId === facility.id,
+                        onChange: (next: string) => handleStatusChange(facility, next),
+                        options: STATUS_OPTIONS,
+                        value: facility.status
+                      }}
                     />
-                    <RepeaterChip label={`${childCount} ${childCount === 1 ? "space" : "spaces"}`} />
-                    <RepeaterChip label={facility.environment === "indoor" ? "Indoor" : "Outdoor"} />
+                    <Chip status={false} label={`${childCount} ${childCount === 1 ? "space" : "spaces"}`} />
+                    <Chip status={false} label={facility.environment === "indoor" ? "Indoor" : "Outdoor"} />
                   </>
                 ),
                 secondaryActions: (
@@ -120,7 +122,7 @@ export function FacilitiesManagePanel({ orgSlug, orgId, canWrite, initialReadMod
               };
             }}
           />
-        </ManageSection>
+        </Section>
       </PageShell>
 
       {/* Create wizard */}

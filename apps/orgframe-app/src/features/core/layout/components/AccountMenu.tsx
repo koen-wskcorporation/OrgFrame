@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, ChevronDown, Home, Inbox, LogOut, Monitor, Moon, Settings2, Sun, Users } from "lucide-react";
+import { Bell, ChevronDown, Home, LogOut, Monitor, Moon, Settings2, Sun, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Avatar } from "@orgframe/ui/primitives/avatar";
@@ -144,12 +144,6 @@ export function AccountMenu({
         label: "Profiles",
         icon: Users,
         active: pathname === "/profiles" || pathname.startsWith("/profiles/")
-      },
-      {
-        href: toTenantBaseHref("/inbox", tenantBaseOrigin),
-        label: "Inbox",
-        icon: Inbox,
-        active: pathname === "/inbox" || pathname.startsWith("/inbox/")
       },
       {
         href: toTenantBaseHref("/settings", tenantBaseOrigin),

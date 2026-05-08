@@ -6,14 +6,14 @@ import { Chip } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { cn } from "@orgframe/ui/primitives/utils";
 
-type OrgAreaSidebarShellProps = {
+type AppSidebarShellProps = {
   children: React.ReactNode;
   mobile?: boolean;
   collapsed?: boolean;
   className?: string;
 };
 
-export function OrgAreaSidebarShell({ children, mobile = false, collapsed = false, className }: OrgAreaSidebarShellProps) {
+export function AppSidebarShell({ children, mobile = false, collapsed = false, className }: AppSidebarShellProps) {
   return (
     <aside
       className={cn(
@@ -27,7 +27,7 @@ export function OrgAreaSidebarShell({ children, mobile = false, collapsed = fals
   );
 }
 
-type OrgAreaSidebarHeaderProps = {
+type AppSidebarHeaderProps = {
   title: string;
   subtitle?: string;
   roleChipLabel?: string;
@@ -38,7 +38,7 @@ type OrgAreaSidebarHeaderProps = {
   onExpand?: () => void;
 };
 
-export function OrgAreaSidebarHeader({
+export function AppSidebarHeader({
   title,
   roleChipLabel,
   show = true,
@@ -46,7 +46,7 @@ export function OrgAreaSidebarHeader({
   canCollapse = false,
   onCollapse,
   onExpand
-}: OrgAreaSidebarHeaderProps) {
+}: AppSidebarHeaderProps) {
   if (!show) {
     return null;
   }
@@ -86,13 +86,13 @@ export function OrgAreaSidebarHeader({
   );
 }
 
-type OrgAreaSidebarSectionProps = {
+type AppSidebarSectionProps = {
   title: string;
   children: React.ReactNode;
   className?: string;
 };
 
-export function OrgAreaSidebarSection({ title, children, className }: OrgAreaSidebarSectionProps) {
+export function AppSidebarSection({ title, children, className }: AppSidebarSectionProps) {
   return (
     <section className={cn("space-y-2", className)}>
       <p className="px-1 text-xs font-semibold uppercase tracking-wide text-text-muted">{title}</p>

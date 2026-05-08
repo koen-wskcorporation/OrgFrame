@@ -33,10 +33,7 @@ export function CollectionActionsBar({ orgSlug, collectionId, pinned }: Collecti
         {pinned ? <PinOff aria-hidden /> : <Pin aria-hidden />}
         {pinned ? "Unpin" : "Pin"}
       </Button>
-      <Button type="button" variant="ghost" size="sm" onClick={remove} disabled={isPending}>
-        <Trash2 aria-hidden />
-        Delete
-      </Button>
+      <Button intent="delete" type="button" variant="ghost" size="sm" onClick={remove} disabled={isPending}>Delete</Button>
     </div>
   );
 }

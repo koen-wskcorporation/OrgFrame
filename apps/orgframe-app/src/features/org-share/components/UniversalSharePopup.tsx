@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Chip, ChipButton } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Popup } from "@orgframe/ui/primitives/popup";
 import { Select } from "@orgframe/ui/primitives/select";
@@ -146,9 +146,7 @@ export function UniversalSharePopup({
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-text-muted">{targets.length} recipients selected</div>
           <div className="flex gap-2">
-            <Button onClick={onClose} type="button" variant="ghost">
-              Cancel
-            </Button>
+            <Button intent="cancel" onClick={onClose} type="button" variant="ghost">Cancel</Button>
             <Button
               onClick={() => {
                 onApply({ targets, permission });
@@ -194,7 +192,7 @@ export function UniversalSharePopup({
 
         <div className="flex flex-wrap gap-2">
           {visibleFilters.map((option) => (
-            <ChipButton
+            <Chip
               className={cn(
                 "normal-case tracking-normal",
                 filter !== option.id ? "text-text-muted hover:text-text" : undefined
@@ -202,11 +200,10 @@ export function UniversalSharePopup({
               color={filter === option.id ? "yellow" : "neutral"}
               key={option.id}
               onClick={() => setFilter(option.id)}
-              size="compact"
               type="button"
             >
               {option.label}
-            </ChipButton>
+            </Chip>
           ))}
         </div>
 
@@ -228,7 +225,7 @@ export function UniversalSharePopup({
                     <span className="block truncate text-sm font-medium text-text">{option.label}</span>
                     {option.subtitle ? <span className="block truncate text-xs text-text-muted">{option.subtitle}</span> : null}
                   </span>
-                  <Chip color="neutral" size="compact">
+                  <Chip color="neutral">
                     {option.type}
                   </Chip>
                 </button>
@@ -242,18 +239,17 @@ export function UniversalSharePopup({
           {targets.length === 0 ? <p className="text-sm text-text-muted">No recipients selected yet.</p> : null}
           <div className="flex flex-wrap gap-2">
             {targets.map((target) => (
-              <ChipButton
+              <Chip
                 className="normal-case tracking-normal"
                 color="neutral"
                 key={`${target.type}:${target.id}`}
                 onClick={() => removeTarget(target)}
-                size="compact"
                 type="button"
               >
                 <span className="text-text">{target.label}</span>
                 <span className="text-text-muted">{target.type}</span>
                 <span className="text-text-muted">x</span>
-              </ChipButton>
+              </Chip>
             ))}
           </div>
         </div>

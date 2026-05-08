@@ -62,7 +62,7 @@ export function StatusPicker({
       >
         <span className="flex min-w-0 items-center gap-2">
           {selected ? (
-            <Chip color={selected.color} label={selected.label} size="sm" />
+            <Chip color={selected.color} label={selected.label} />
           ) : (
             <span className="truncate">{placeholder}</span>
           )}
@@ -99,7 +99,7 @@ export function StatusPicker({
                     type="button"
                   >
                     <span className="min-w-0 flex-1">
-                      <Chip color={option.color} label={option.label} size="sm" />
+                      <Chip color={option.color} label={option.label} />
                     </span>
                     {isSelected ? <Check className="h-4 w-4 shrink-0 text-text-muted" /> : null}
                   </button>

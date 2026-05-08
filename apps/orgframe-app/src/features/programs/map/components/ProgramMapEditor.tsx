@@ -5,7 +5,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { Plus, Users } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card } from "@orgframe/ui/primitives/card";
-import { Chip, ChipButton } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { cn } from "@orgframe/ui/primitives/utils";
 import {
   CANVAS_GRID_SIZE,
@@ -109,10 +109,10 @@ function StatusChip({
   const label = published ? "Published" : "Draft";
   const variant = published ? "success" : "warning";
   if (!canWrite || !onToggle) {
-    return <Chip label={label} size="sm" status={true} variant={variant} />;
+    return <Chip label={label} status={true} variant={variant} />;
   }
   return (
-    <ChipButton
+    <Chip
       aria-label={`Status: ${label}. Click to toggle.`}
       label={label}
       onClick={(event) => {
@@ -121,7 +121,6 @@ function StatusChip({
         onToggle(!published);
       }}
       onPointerDown={(event) => event.stopPropagation()}
-      size="sm"
       status={true}
       title={published ? "Click to unpublish" : "Click to publish"}
       variant={variant}
@@ -745,10 +744,7 @@ export function ProgramMapEditor({
         }
         trailingSlot={
           !readOnly && effectiveCanWrite && onAdd ? (
-            <Button onClick={onAdd} size="sm" variant="ghost">
-              <Plus />
-              Add
-            </Button>
+            <Button intent="add" onClick={onAdd} size="sm" variant="ghost">Add</Button>
           ) : undefined
         }
       />

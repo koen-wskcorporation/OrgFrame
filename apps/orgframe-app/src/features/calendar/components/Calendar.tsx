@@ -988,7 +988,6 @@ export function Calendar({
                               <p className="truncate font-semibold">{item.title}</p>
                               <Chip
                                 color={item.entryType === "practice" ? "green" : item.entryType === "game" ? "neutral" : "yellow"}
-                                size="compact"
                               >
                                 {item.entryType}
                               </Chip>
@@ -996,7 +995,7 @@ export function Calendar({
                             {item.teamChips && item.teamChips.length > 0 ? (
                               <div className="mt-1 flex flex-wrap items-center gap-1">
                                 {item.teamChips.map((teamChip, index) => (
-                                  <Chip className="max-w-full normal-case tracking-normal" color="neutral" key={`${item.id}-team-chip-${index}-${teamChip}`} size="compact">
+                                  <Chip className="max-w-full normal-case tracking-normal" color="neutral" key={`${item.id}-team-chip-${index}-${teamChip}`}>
                                     <span className="truncate">{teamChip}</span>
                                   </Chip>
                                 ))}
@@ -1210,7 +1209,6 @@ export function Calendar({
                             <p className="truncate font-semibold">{item.title}</p>
                             <Chip
                               color={item.entryType === "practice" ? "green" : item.entryType === "game" ? "neutral" : "yellow"}
-                              size="compact"
                             >
                               {item.entryType}
                             </Chip>
@@ -1218,7 +1216,7 @@ export function Calendar({
                           {item.teamChips && item.teamChips.length > 0 ? (
                             <div className="mt-1 flex flex-wrap items-center gap-1">
                               {item.teamChips.map((teamChip, index) => (
-                                <Chip className="max-w-full normal-case tracking-normal" color="neutral" key={`${item.id}-team-chip-day-grid-${index}-${teamChip}`} size="compact">
+                                <Chip className="max-w-full normal-case tracking-normal" color="neutral" key={`${item.id}-team-chip-day-grid-${index}-${teamChip}`}>
                                   <span className="truncate">{teamChip}</span>
                                 </Chip>
                               ))}
@@ -1261,7 +1259,6 @@ export function Calendar({
         <Chip
           className="pointer-events-none fixed z-50 shadow-sm"
           color="neutral"
-          size="compact"
           style={{ left: `${resizeSnap.x}px`, top: `${resizeSnap.y}px` }}
         >
           {resizeSnap.label}

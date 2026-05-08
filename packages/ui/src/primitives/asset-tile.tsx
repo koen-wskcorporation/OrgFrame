@@ -176,15 +176,13 @@ export function AssetTile({
             </Button>
 
             {hasSelection ? (
-              <Button
+              <Button intent="remove"
                 aria-label={title ? `Remove ${title}` : "Remove asset"}
                 disabled={disabled}
                 onClick={handleRemoveAsset}
                 size="sm"
                 variant="secondary"
-              >
-                Remove
-              </Button>
+              >Remove</Button>
             ) : null}
           </div>
 

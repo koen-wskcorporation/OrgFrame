@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { cva, type VariantProps } from "class-variance-authority";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Pencil, Plus, Settings2, Trash2, X, type LucideIcon } from "lucide-react";
 import { Popover } from "./popover";
 import { SpinnerIcon } from "./spinner-icon";
 import { cn } from "./utils";
@@ -33,6 +33,34 @@ const buttonVariants = cva(
 
 type DropdownPlacement = "bottom-start" | "bottom-end" | "top-start" | "top-end";
 
+export type ButtonIntent =
+  | "add"
+  | "create"
+  | "save"
+  | "submit"
+  | "edit"
+  | "manage"
+  | "delete"
+  | "remove"
+  | "cancel";
+
+type ButtonVariant = NonNullable<VariantProps<typeof buttonVariants>["variant"]>;
+
+const intentRegistry: Record<
+  ButtonIntent,
+  { icon: LucideIcon | null; verb: string; variant: ButtonVariant }
+> = {
+  add: { icon: Plus, verb: "Add", variant: "primary" },
+  create: { icon: Plus, verb: "Create", variant: "primary" },
+  save: { icon: Check, verb: "Save", variant: "primary" },
+  submit: { icon: Check, verb: "Submit", variant: "primary" },
+  edit: { icon: Pencil, verb: "Edit", variant: "secondary" },
+  manage: { icon: Settings2, verb: "Manage", variant: "secondary" },
+  delete: { icon: Trash2, verb: "Delete", variant: "danger" },
+  remove: { icon: X, verb: "Remove", variant: "ghost" },
+  cancel: { icon: null, verb: "Cancel", variant: "ghost" }
+};
+
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
@@ -42,6 +70,14 @@ export interface ButtonProps
   replace?: boolean;
   scroll?: boolean;
   iconOnly?: boolean;
+  intent?: ButtonIntent;
+  /**
+   * Object/noun the action applies to (e.g. "Player" → "Add Player").
+   * Use sentence case. Ignored if `children` is provided.
+   */
+  object?: string;
+  /** Hide the intent's default icon (for cases where surrounding context already conveys it). */
+  hideIntentIcon?: boolean;
   dropdown?: React.ReactNode;
   dropdownOnly?: boolean;
   dropdownPlacement?: DropdownPlacement;
@@ -72,6 +108,9 @@ const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonPro
       variant,
       size,
       iconOnly = false,
+      intent,
+      object,
+      hideIntentIcon = false,
       dropdown,
       dropdownOnly = false,
       dropdownPlacement = "bottom-end",
@@ -83,13 +122,33 @@ const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonPro
     },
     ref
   ) => {
-    const resolvedVariant = variant ?? (iconOnly ? "ghost" : undefined);
+    const intentDef = intent ? intentRegistry[intent] : null;
+    const resolvedVariant = variant ?? intentDef?.variant ?? (iconOnly ? "ghost" : undefined);
     const resolvedSizeProp = size ?? (iconOnly ? "sm" : undefined);
     const classes = cn(buttonVariants({ variant: resolvedVariant, size: resolvedSizeProp }), iconOnly ? iconOnlyClasses : undefined, className);
+
+    const intentChildren = (() => {
+      if (!intentDef) return null;
+      const Icon = intentDef.icon;
+      const label =
+        children !== undefined && children !== null && children !== false
+          ? children
+          : object
+            ? `${intentDef.verb} ${object}`
+            : intentDef.verb;
+      return (
+        <>
+          {Icon && !hideIntentIcon ? <Icon aria-hidden="true" /> : null}
+          <span>{label}</span>
+        </>
+      );
+    })();
+
+    const baseChildren = intentChildren ?? children;
     const renderedChildren = (() => {
-      if (!loading) return children;
+      if (!loading) return baseChildren;
       const spinner = <SpinnerIcon className="pointer-events-none h-4 w-4" key="loading-spinner" />;
-      const arr = React.Children.toArray(children);
+      const arr = React.Children.toArray(baseChildren);
       const iconIndex = arr.findIndex((c) => React.isValidElement(c));
       if (iconIndex === -1) return [spinner, ...arr];
       const next = [...arr];

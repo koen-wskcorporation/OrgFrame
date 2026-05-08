@@ -166,7 +166,7 @@ function buildCanonicalAuthRedirect(request: NextRequest, parsedHost: ParsedHost
   return targetUrl;
 }
 
-const CANONICAL_AUTH_ALLOWED_PREFIXES = ["/auth", "/api", "/_next", "/favicon", "/brand"];
+const CANONICAL_AUTH_ALLOWED_PREFIXES = ["/auth", "/password-reset", "/api", "/_next", "/favicon", "/brand"];
 
 function isPathAllowedOnCanonicalAuthHost(pathname: string) {
   for (const prefix of CANONICAL_AUTH_ALLOWED_PREFIXES) {
@@ -194,6 +194,11 @@ export async function proxy(request: NextRequest) {
 
     if (pathname === "/") {
       const rewriteUrl = new URL(`/auth${search}`, request.url);
+      return NextResponse.rewrite(rewriteUrl);
+    }
+
+    if (pathname === "/password-reset" || pathname.startsWith("/password-reset/")) {
+      const rewriteUrl = new URL(`/auth${pathname}${search}`, request.url);
       return NextResponse.rewrite(rewriteUrl);
     }
 

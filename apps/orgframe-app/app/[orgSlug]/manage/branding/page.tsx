@@ -4,7 +4,7 @@ import { getOrgAssetPublicUrl } from "@/src/shared/branding/getOrgAssetPublicUrl
 import { can } from "@/src/shared/permissions/can";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { BrandingForm } from "./BrandingForm";
 import { saveOrgBrandingAction } from "./actions";
 import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
@@ -52,7 +52,7 @@ export default async function OrgBrandingSettingsPage({
     <PageShell description="Control how your organization appears across public and staff routes." title="Branding">
       {query.saved === "1" ? <Alert variant="success">Branding saved successfully.</Alert> : null}
       {errorMessage ? <Alert variant="destructive">{errorMessage}</Alert> : null}
-      <ManageSection
+      <Section
         contentClassName="space-y-4 p-5 md:p-6"
         description="Control how your organization appears across public and staff routes."
         fill={false}
@@ -69,7 +69,7 @@ export default async function OrgBrandingSettingsPage({
           orgSlug={orgSlug}
           saveAction={saveBranding}
         />
-      </ManageSection>
+      </Section>
     </PageShell>
   );
 }

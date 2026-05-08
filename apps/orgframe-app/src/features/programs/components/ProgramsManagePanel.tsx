@@ -6,12 +6,12 @@ import { useRouter } from "next/navigation";
 import { Copy, Plus } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { RepeaterChip } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { PublishStatusIcon } from "@orgframe/ui/primitives/publish-status-icon";
 import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { createProgramAction, duplicateProgramAction, updateProgramAction } from "@/src/features/programs/actions";
 import { ProgramCreateWizard, type ProgramCreateInput } from "@/src/features/programs/components/ProgramCreateWizard";
 import type { Program } from "@/src/features/programs/types";
@@ -155,7 +155,7 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
           searchPlaceholder="Search programs"
           viewKey="manage.programs"
           renderShell={({ toolbar, body }) => (
-            <ManageSection
+            <Section
               actions={
                 <div className="flex flex-wrap items-center gap-2">
                   {toolbar}
@@ -170,7 +170,7 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
               title="Programs"
             >
               {body}
-            </ManageSection>
+            </Section>
           )}
           getItem={(program) => ({
               id: program.id,
@@ -188,7 +188,7 @@ export function ProgramsManagePanel({ orgSlug, orgDisplayHost, programs, canWrit
                     onToggle={() => toggleProgramStatus(program)}
                     statusLabel={program.status === "published" ? `Published status for ${program.name}` : `Unpublished status for ${program.name}`}
                   />
-                  <RepeaterChip label={program.programType === "custom" ? program.customTypeLabel ?? "Custom" : program.programType} />
+                  <Chip status={false} label={program.programType === "custom" ? program.customTypeLabel ?? "Custom" : program.programType} />
                 </>
               ),
               meta: <>/{program.slug}</>,

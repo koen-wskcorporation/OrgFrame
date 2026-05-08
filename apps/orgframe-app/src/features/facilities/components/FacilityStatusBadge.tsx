@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip, ChipPicker, type ChipVariant } from "@orgframe/ui/primitives/chip";
+import { Chip, type ChipVariant } from "@orgframe/ui/primitives/chip";
 import type { FacilityPublicSpaceStatus, FacilityReservationStatus, FacilitySpaceStatus, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
 
 type StatusLike = FacilitySpaceStatus | FacilityReservationStatus | FacilityPublicSpaceStatus;
@@ -51,11 +51,13 @@ export function FacilityStatusBadge({
 
   if (canPick) {
     return (
-      <ChipPicker
-        disabled={disabled}
-        onChange={(value) => onSelectSpaceStatus!(value as FacilitySpaceStatus)}
-        options={pickerOptions}
-        value={status}
+      <Chip
+        picker={{
+          disabled,
+          onChange: (value: string) => onSelectSpaceStatus!(value as FacilitySpaceStatus),
+          options: pickerOptions,
+          value: status
+        }}
       />
     );
   }

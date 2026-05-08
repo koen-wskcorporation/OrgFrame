@@ -65,10 +65,7 @@ export function UploadDialog({
       description={description}
       footer={
         <>
-          <Button onClick={onClose} size="sm" variant="ghost">
-            <X className="h-4 w-4" />
-            Cancel
-          </Button>
+          <Button intent="cancel" onClick={onClose} size="sm" variant="ghost">Cancel</Button>
           <Button disabled={!canSave || isSaving} loading={isSaving} onClick={onSave} size="sm">
             {isSaving ? "Saving..." : saveLabel}
           </Button>

@@ -334,7 +334,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
               value={query}
             />
             {selectedOption?.chip && !query ? (
-              <Chip color={selectedOption.chip.color} size="compact" status={selectedOption.chip.status} showDot={selectedOption.chip.status ? undefined : false}>
+              <Chip color={selectedOption.chip.color} status={selectedOption.chip.status} showDot={selectedOption.chip.status ? undefined : false}>
                 {selectedOption.chip.label}
               </Chip>
             ) : null}
@@ -382,7 +382,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
               {selectedOption?.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(selectedOption.statusDot))} /> : null}
               <span className="min-w-0 flex-1 truncate">{selectedOption?.label ?? placeholder}</span>
               {selectedOption?.chip ? (
-                <Chip color={selectedOption.chip.color} showDot={false} size="compact">
+                <Chip color={selectedOption.chip.color} showDot={false}>
                   {selectedOption.chip.label}
                 </Chip>
               ) : null}
@@ -450,7 +450,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                     {option.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(option.statusDot))} /> : null}
                     <span className="min-w-0 flex-1 truncate">{option.label}</span>
                     {option.chip ? (
-                      <Chip color={option.chip.color} size="compact" status={option.chip.status} showDot={option.chip.status ? undefined : false}>
+                      <Chip color={option.chip.color} status={option.chip.status} showDot={option.chip.status ? undefined : false}>
                         {option.chip.label}
                       </Chip>
                     ) : null}

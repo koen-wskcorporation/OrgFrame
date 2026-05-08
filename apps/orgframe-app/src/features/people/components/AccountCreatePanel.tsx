@@ -189,9 +189,7 @@ export function AccountCreatePanel({ open, onClose, orgSlug }: AccountCreatePane
     <Panel
       footer={
         <>
-          <Button disabled={isSaving} onClick={onClose} type="button" variant="ghost">
-            Cancel
-          </Button>
+          <Button intent="cancel" disabled={isSaving} onClick={onClose} type="button" variant="ghost">Cancel</Button>
           <Button disabled={submitDisabled} form="account-create-form" loading={isSaving} type="submit">
             {isSaving ? "Saving..." : isExistingAccount ? "Add to org" : "Add account"}
           </Button>

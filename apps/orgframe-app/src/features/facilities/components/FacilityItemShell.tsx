@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Settings2 } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
-import { ItemPageHeader } from "@orgframe/ui/primitives/item-page-header";
+import { PageHeader } from "@orgframe/ui/primitives/page-header";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { SpaceCreateWizard } from "@/src/features/facilities/components/SpaceCreateWizard";
 import type { Facility, FacilityReservationReadModel, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
@@ -50,7 +50,7 @@ export function FacilityItemShell({
 
   return (
     <>
-      <ItemPageHeader
+      <PageHeader
         title={facility.name}
         description="Manage this facility's map and the spaces inside it."
         actions={

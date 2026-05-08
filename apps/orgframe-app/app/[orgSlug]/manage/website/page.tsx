@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
 import {
@@ -55,14 +55,14 @@ export default async function OrgManageWebsitePage({
         initialPages={pages}
         orgSlug={orgContext.orgSlug}
       >
-        <ManageSection
+        <Section
           actions={<WebsiteManagerActions />}
           description="Pages, navigation, and public site structure. Drag to reorder or nest."
           fill={false}
           title="Website"
         >
           <WebsiteManagerBody />
-        </ManageSection>
+        </Section>
       </WebsiteManagerProvider>
     </PageShell>
   );

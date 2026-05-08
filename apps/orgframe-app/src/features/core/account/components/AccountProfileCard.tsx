@@ -43,7 +43,7 @@ export function AccountProfileCard({
           <CardTitle>{title}</CardTitle>
           <CardDescription>{description}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent>
           <div className="flex items-center gap-3 rounded-control border bg-surface-muted p-3">
             {allowEdit ? (
               <EditableAvatar
@@ -58,19 +58,16 @@ export function AccountProfileCard({
             ) : (
               <Avatar alt={`${fullName} avatar`} name={fullName} sizePx={48} src={avatarUrl} />
             )}
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold">{fullName}</p>
               <p className="text-xs text-text-muted">{email ?? "No email available"}</p>
             </div>
-          </div>
-
-          {allowEdit ? (
-            <div>
-              <Button onClick={() => setEditOpen(true)} type="button" variant="secondary">
+            {allowEdit ? (
+              <Button className="ml-auto" onClick={() => setEditOpen(true)} type="button" variant="secondary">
                 Edit account details
               </Button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 

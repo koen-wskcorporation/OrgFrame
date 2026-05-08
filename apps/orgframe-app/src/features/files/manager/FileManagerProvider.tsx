@@ -17,7 +17,7 @@ import { Select } from "@orgframe/ui/primitives/select";
 import { Tooltip } from "@orgframe/ui/primitives/tooltip";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { cn } from "@orgframe/ui/primitives/utils";
-import { OrgAreaSidebarSection, OrgAreaSidebarShell } from "@/src/features/core/navigation/components/OrgAreaSidebarShell";
+import { AppSidebarSection, AppSidebarShell } from "@/src/features/core/navigation/components/AppSidebarShell";
 import { ORG_HIERARCHY_ENTITY_CONFIG } from "@/src/features/core/navigation/config/iconRegistry";
 import { loadFileManagerSnapshotAction, mutateFileManagerAction } from "@/src/features/files/manager/actions";
 import { fileMatchesAccept, formatFileSize, isImageFile, readImageDimensions } from "@/src/features/files/uploads/client-utils";
@@ -361,7 +361,7 @@ function FolderTitle({ folder, showDynamicTag = true }: { folder: FileManagerFol
       <span className="min-w-0 break-all whitespace-normal">{folder.name}</span>
       {showDynamicTag && isSpecialFolder(folder) ? (
         <Tooltip content="Dynamic folder. This is system-managed and cannot be renamed or deleted.">
-          <Chip color="yellow" size="compact">
+          <Chip color="yellow">
             Dynamic
           </Chip>
         </Tooltip>
@@ -1323,8 +1323,8 @@ export function FileManagerProvider({ children, prefetchOrgSlug }: FileManagerPr
                 : "grid-cols-[260px_minmax(0,1fr)]"
             )}
           >
-            <OrgAreaSidebarShell className="flex h-full min-h-0 w-full flex-col rounded-none border-b-0 border-l-0 border-r border-t-0 shadow-none">
-              <OrgAreaSidebarSection className="flex min-h-0 flex-1 flex-col" title="Files">
+            <AppSidebarShell className="flex h-full min-h-0 w-full flex-col rounded-none border-b-0 border-l-0 border-r border-t-0 shadow-none">
+              <AppSidebarSection className="flex min-h-0 flex-1 flex-col" title="Files">
                 <div className="mb-3">
                   <SearchBar
                     onValueChange={setSearchInput}
@@ -1362,8 +1362,8 @@ export function FileManagerProvider({ children, prefetchOrgSlug }: FileManagerPr
                 {activeScope === "organization" ? (
                   <div className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">{renderTree(sidebarTreeStartId)}</div>
                 ) : null}
-              </OrgAreaSidebarSection>
-            </OrgAreaSidebarShell>
+              </AppSidebarSection>
+            </AppSidebarShell>
 
             <section
               className="flex min-w-0 flex-1 flex-col"

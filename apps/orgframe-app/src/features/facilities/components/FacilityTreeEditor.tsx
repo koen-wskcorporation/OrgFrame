@@ -9,7 +9,7 @@ import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { ContextPanel, CreateModal } from "@orgframe/ui/primitives/interaction-containers";
 import { Select } from "@orgframe/ui/primitives/select";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { formatFacilitySpaceStatusLabel, resolveFacilitySpaceStatusLabels } from "@/src/features/facilities/status";
 import type { FacilitySpace, FacilitySpaceStatusDef } from "@/src/features/facilities/types";
 import { FacilityStatusBadge } from "@/src/features/facilities/components/FacilityStatusBadge";
@@ -144,9 +144,7 @@ function renderTree(
 
           <div className="ui-list-row-actions">
             {orgSlug ? (
-              <Button href={`/manage/facilities/${space.id}`} size="sm" variant="secondary">
-                Manage
-              </Button>
+              <Button intent="manage" href={`/manage/facilities/${space.id}`} size="sm" variant="secondary">Manage</Button>
             ) : null}
             {canWrite ? (
               <>
@@ -338,7 +336,7 @@ export function FacilityTreeEditor({
   );
 
   return (
-    <ManageSection
+    <Section
       actions={
         <Button disabled={!canWrite} onClick={openCreatePanel} type="button">
           <Plus className="h-4 w-4" />
@@ -383,6 +381,6 @@ export function FacilityTreeEditor({
       >
         {editorBody}
       </ContextPanel>
-    </ManageSection>
+    </Section>
   );
 }

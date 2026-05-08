@@ -100,9 +100,7 @@ export function AccountEditPanel({
     <Panel
       footer={
         <>
-          <Button disabled={isSaving} onClick={onClose} type="button" variant="ghost">
-            Cancel
-          </Button>
+          <Button intent="cancel" disabled={isSaving} onClick={onClose} type="button" variant="ghost">Cancel</Button>
           <Button disabled={isSaving} form="account-edit-panel-form" loading={isSaving} type="submit">
             {isSaving ? "Saving..." : "Save account"}
           </Button>

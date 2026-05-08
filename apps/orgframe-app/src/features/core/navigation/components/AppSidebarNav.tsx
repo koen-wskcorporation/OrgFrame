@@ -4,7 +4,7 @@ import { ChevronDown, Menu, type LucideIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Chip } from "@orgframe/ui/primitives/chip";
-import { OrgAreaSidebarHeader, OrgAreaSidebarShell } from "@/src/features/core/navigation/components/OrgAreaSidebarShell";
+import { AppSidebarHeader, AppSidebarShell } from "@/src/features/core/navigation/components/AppSidebarShell";
 import { NavItem } from "@orgframe/ui/primitives/nav-item";
 import { cn } from "@orgframe/ui/primitives/utils";
 
@@ -20,27 +20,27 @@ type SidebarNavItemBase = {
   soon?: boolean;
 };
 
-export type OrgAreaSidebarLeafItem = SidebarNavItemBase & {
+export type AppSidebarLeafItem = SidebarNavItemBase & {
   children?: never;
   subtreePrefixes?: never;
 };
 
-export type OrgAreaSidebarChildItem = SidebarNavItemBase;
+export type AppSidebarChildItem = SidebarNavItemBase;
 
-export type OrgAreaSidebarParentItem = SidebarNavItemBase & {
-  children: OrgAreaSidebarChildItem[];
+export type AppSidebarParentItem = SidebarNavItemBase & {
+  children: AppSidebarChildItem[];
   subtreePrefixes?: string[];
 };
 
-export type OrgAreaSidebarNode = OrgAreaSidebarLeafItem | OrgAreaSidebarParentItem;
+export type AppSidebarNode = AppSidebarLeafItem | AppSidebarParentItem;
 
-export type OrgAreaSidebarConfig = {
+export type AppSidebarConfig = {
   title: string;
   subtitle: string;
   roleChipLabel?: string;
   mobileLabel: string;
   ariaLabel: string;
-  items: OrgAreaSidebarNode[];
+  items: AppSidebarNode[];
   collapseStorageKey?: string;
   autoCollapse?: {
     enabled?: boolean;
@@ -49,18 +49,18 @@ export type OrgAreaSidebarConfig = {
   };
 };
 
-type OrgAreaSidebarNavProps = {
-  config: OrgAreaSidebarConfig;
+type AppSidebarNavProps = {
+  config: AppSidebarConfig;
   mobile?: boolean;
   showHeader?: boolean;
 };
 
-type OrgAreaSidebarNavMobileProps = {
-  config: OrgAreaSidebarConfig;
+type AppSidebarNavMobileProps = {
+  config: AppSidebarConfig;
 };
 
-function isParentNode(node: OrgAreaSidebarNode): node is OrgAreaSidebarParentItem {
-  return "children" in node && Array.isArray((node as OrgAreaSidebarParentItem).children);
+function isParentNode(node: AppSidebarNode): node is AppSidebarParentItem {
+  return "children" in node && Array.isArray((node as AppSidebarParentItem).children);
 }
 
 function matchesPath(pathname: string, href: string, mode: MatchMode = "prefix") {
@@ -71,7 +71,7 @@ function matchesPath(pathname: string, href: string, mode: MatchMode = "prefix")
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function isParentActive(pathname: string, item: OrgAreaSidebarParentItem) {
+function isParentActive(pathname: string, item: AppSidebarParentItem) {
   const parentHrefActive = item.href ? matchesPath(pathname, item.href, item.match ?? "prefix") : false;
   const subtreeActive = (item.subtreePrefixes ?? []).some((prefix) => matchesPath(pathname, prefix, "prefix"));
   const childActive = item.children.some((child) => (child.href ? matchesPath(pathname, child.href, child.match ?? "prefix") : false));
@@ -95,7 +95,7 @@ function pathSegmentCount(path: string) {
   return normalized.split("/").filter(Boolean).length;
 }
 
-function collectAutoCollapseRoots(items: OrgAreaSidebarNode[], includeChildItemHrefs: boolean) {
+function collectAutoCollapseRoots(items: AppSidebarNode[], includeChildItemHrefs: boolean) {
   const roots = new Set<string>();
 
   for (const node of items) {
@@ -117,7 +117,7 @@ function collectAutoCollapseRoots(items: OrgAreaSidebarNode[], includeChildItemH
   return [...roots];
 }
 
-function shouldAutoCollapse(pathname: string, config: OrgAreaSidebarConfig) {
+function shouldAutoCollapse(pathname: string, config: AppSidebarConfig) {
   const autoCollapseConfig = config.autoCollapse;
   if (!autoCollapseConfig?.enabled) {
     return false;
@@ -145,7 +145,7 @@ function SoonBadge() {
   return <Chip className="normal-case tracking-normal" color="neutral">Soon</Chip>;
 }
 
-export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }: OrgAreaSidebarNavProps) {
+export function AppSidebarNav({ config, mobile = false, showHeader = true }: AppSidebarNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [optimisticPathname, setOptimisticPathname] = useState<string | null>(null);
@@ -234,7 +234,7 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
     }
   }, [config.items, router]);
 
-  function renderLeafItem(item: OrgAreaSidebarChildItem, options?: { size?: "sm" | "md"; variant?: "sidebar" | "dropdown" }) {
+  function renderLeafItem(item: AppSidebarChildItem, options?: { size?: "sm" | "md"; variant?: "sidebar" | "dropdown" }) {
     const isActive = item.href ? matchesPath(activePathname, item.href, item.match ?? "prefix") : false;
     const Icon = item.icon;
 
@@ -265,8 +265,8 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
   }
 
   return (
-    <OrgAreaSidebarShell collapsed={collapsed} mobile={mobile}>
-      <OrgAreaSidebarHeader
+    <AppSidebarShell collapsed={collapsed} mobile={mobile}>
+      <AppSidebarHeader
         canCollapse={canCollapse}
         collapsed={collapsed}
         onCollapse={() => setCollapsed(true)}
@@ -279,7 +279,7 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
       <nav aria-label={config.ariaLabel} className={cn(collapsed ? "flex flex-col items-center gap-2" : "space-y-1")}>
         {config.items.map((node) => {
           if (!isParentNode(node) || collapsed) {
-            return renderLeafItem(node as OrgAreaSidebarChildItem);
+            return renderLeafItem(node as AppSidebarChildItem);
           }
 
           const Icon = node.icon;
@@ -310,11 +310,11 @@ export function OrgAreaSidebarNav({ config, mobile = false, showHeader = true }:
           );
         })}
       </nav>
-    </OrgAreaSidebarShell>
+    </AppSidebarShell>
   );
 }
 
-export function OrgAreaSidebarNavMobile({ config }: OrgAreaSidebarNavMobileProps) {
+export function AppSidebarNavMobile({ config }: AppSidebarNavMobileProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -339,7 +339,7 @@ export function OrgAreaSidebarNavMobile({ config }: OrgAreaSidebarNavMobileProps
 
       {open ? (
         <div className="mt-3">
-          <OrgAreaSidebarNav config={config} mobile showHeader={false} />
+          <AppSidebarNav config={config} mobile showHeader={false} />
         </div>
       ) : null}
     </div>

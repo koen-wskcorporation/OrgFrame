@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { getAuditEventsPage } from "@/src/features/audit/actions";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { AuditLogPanel } from "@/src/features/audit/components/AuditLogPanel";
 
 export const metadata: Metadata = {
@@ -16,13 +16,13 @@ export default async function OrgManageAuditPage({ params }: { params: Promise<{
 
   return (
     <PageShell description="Every write and serious read taken in this org over the last year, including AI-driven actions on behalf of users." title="Audit log">
-      <ManageSection
+      <Section
         description="Every write and serious read taken in this org over the last year, including AI-driven actions on behalf of users."
         fill={false}
         title="Audit log"
       >
         <AuditLogPanel orgSlug={orgSlug} initialPage={initialPage} />
-      </ManageSection>
+      </Section>
     </PageShell>
   );
 }

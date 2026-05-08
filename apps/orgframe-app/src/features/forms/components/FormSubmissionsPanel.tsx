@@ -2796,7 +2796,7 @@ function addSummaryCard() {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="app-section-stack px-5 pb-5 pt-2 md:px-6 md:pb-6">
+      <CardContent className="space-y-4 px-5 pb-5 pt-2 md:px-6 md:pb-6">
         {showGoogleSheetsUi && canWrite ? (
           <div className="ui-surface-block">
             <div className="flex items-center justify-between gap-2 rounded-control border bg-surface px-2 py-1.5">
