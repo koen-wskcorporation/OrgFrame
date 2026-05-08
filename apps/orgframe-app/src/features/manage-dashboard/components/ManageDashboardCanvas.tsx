@@ -113,20 +113,31 @@ export function ManageDashboardCanvas({ orgSlug, initialLayout, initialData, ava
     updateLayout({ ...layout, widgets: arrayMove(layout.widgets, oldIndex, newIndex) });
   }, [layout, updateLayout]);
 
+  const fetchWidgetData = useCallback(
+    async (id: string, type: WidgetType, settings?: Record<string, unknown>) => {
+      try {
+        const response = await fetch(`/api/manage-dashboard/widget-data?orgSlug=${encodeURIComponent(orgSlug)}&type=${encodeURIComponent(type)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ settings: settings ?? {} })
+        });
+        if (response.ok) {
+          const payload = (await response.json()) as WidgetInitialData;
+          setDataByWidget((current) => ({ ...current, [id]: payload }));
+        }
+      } catch {
+        // keep silent; widget renders with null data
+      }
+    },
+    [orgSlug]
+  );
+
   const addWidget = useCallback(async (type: WidgetType) => {
     const id = createId(type);
     const next: DashboardLayout = { ...layout, widgets: [...layout.widgets, { id, type }] };
     updateLayout(next);
-    try {
-      const response = await fetch(`/api/manage-dashboard/widget-data?orgSlug=${encodeURIComponent(orgSlug)}&type=${encodeURIComponent(type)}`);
-      if (response.ok) {
-        const payload = (await response.json()) as WidgetInitialData;
-        setDataByWidget((current) => ({ ...current, [id]: payload }));
-      }
-    } catch {
-      // keep silent; widget renders with null data
-    }
-  }, [layout, orgSlug, updateLayout]);
+    await fetchWidgetData(id, type);
+  }, [fetchWidgetData, layout, updateLayout]);
 
   const removeWidget = useCallback((id: string) => {
     updateLayout({ ...layout, widgets: layout.widgets.filter((w) => w.id !== id) });
@@ -137,17 +148,21 @@ export function ManageDashboardCanvas({ orgSlug, initialLayout, initialData, ava
   }, [layout, updateLayout]);
 
   const updateWidgetSettings = useCallback((id: string, settings: Record<string, unknown>) => {
+    const widget = layout.widgets.find((w) => w.id === id);
     updateLayout({
       ...layout,
       widgets: layout.widgets.map((w) => (w.id === id ? { ...w, settings } : w))
     });
-  }, [layout, updateLayout]);
+    if (widget?.type === "metric-card") {
+      void fetchWidgetData(id, widget.type, settings);
+    }
+  }, [fetchWidgetData, layout, updateLayout]);
 
   const availableToAdd = useMemo(() => {
     const usedTypes = new Set(layout.widgets.map((w) => w.type));
     return availableWidgetTypes.filter((type) => {
-      // Allow duplicates only for quick-links (user-curated) — all others single-instance for v1
-      if (type === "quick-links") return true;
+      // Multi-instance widgets: metric-card and quick-links. Others single-instance for v1.
+      if (type === "metric-card" || type === "quick-links") return true;
       return !usedTypes.has(type);
     });
   }, [availableWidgetTypes, layout.widgets]);

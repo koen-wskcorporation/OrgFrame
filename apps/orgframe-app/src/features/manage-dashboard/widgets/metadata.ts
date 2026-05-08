@@ -10,6 +10,11 @@ export type WidgetMetadata = {
 };
 
 export const widgetMetadata: Record<WidgetType, WidgetMetadata> = {
+  "metric-card": {
+    type: "metric-card",
+    title: "Metric Card",
+    description: "Display a single metric of your choice. Pick a source in settings."
+  },
   "forms-summary": {
     type: "forms-summary",
     title: "Forms",
@@ -27,12 +32,6 @@ export const widgetMetadata: Record<WidgetType, WidgetMetadata> = {
     title: "Programs",
     description: "Program totals.",
     requiredAnyPermission: ["programs.read", "programs.write"]
-  },
-  "ai-summary": {
-    type: "ai-summary",
-    title: "AI Daily Brief",
-    description: "AI-generated snapshot of what's changed and what needs attention.",
-    colSpan: "full"
   },
   "quick-links": {
     type: "quick-links",

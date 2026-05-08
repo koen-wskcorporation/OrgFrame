@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 export const widgetTypes = [
+  "metric-card",
   "forms-summary",
   "events-summary",
   "programs-summary",
-  "ai-summary",
   "quick-links"
 ] as const;
 

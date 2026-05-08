@@ -4,7 +4,11 @@ import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { Section } from "@orgframe/ui/primitives/section";
-import { AiDashboard } from "@/src/features/manage-dashboard/components/AiDashboard";
+import { ManageDashboardCanvas, type WidgetInitialData } from "@/src/features/manage-dashboard/components/ManageDashboardCanvas";
+import { loadDashboardLayout } from "@/src/features/manage-dashboard/layout-storage";
+import { widgetTypes, type WidgetType } from "@/src/features/manage-dashboard/types";
+import { hasAnyPermission, widgetMetadata } from "@/src/features/manage-dashboard/widgets/metadata";
+import { loadWidgetData } from "@/src/features/manage-dashboard/widgets/server-loaders";
 
 export const metadata: Metadata = {
   title: "Dashboard"
@@ -21,10 +25,34 @@ export default async function OrgManageDashboardPage({ params }: { params: Promi
     );
   }
 
+  const layout = await loadDashboardLayout({ userId: sessionUser.id, orgId: orgContext.orgId });
+
+  const initialDataEntries = await Promise.all(
+    layout.widgets.map(async (widget) => {
+      const data = await loadWidgetData(widget.type, {
+        orgId: orgContext.orgId,
+        orgSlug: orgContext.orgSlug,
+        permissions: orgContext.membershipPermissions,
+        settings: widget.settings
+      });
+      return [widget.id, data] as const;
+    })
+  );
+  const initialData: Record<string, WidgetInitialData> = Object.fromEntries(initialDataEntries);
+
+  const availableWidgetTypes: WidgetType[] = widgetTypes.filter((type) =>
+    hasAnyPermission(orgContext.membershipPermissions, widgetMetadata[type].requiredAnyPermission)
+  );
+
   return (
     <PageShell description="Overview of your organization's activity and quick links to management tools." title="Dashboard">
       <Section title="Dashboard">
-        <AiDashboard orgName={orgContext.orgName} orgSlug={orgContext.orgSlug} />
+        <ManageDashboardCanvas
+          availableWidgetTypes={availableWidgetTypes}
+          initialData={initialData}
+          initialLayout={layout}
+          orgSlug={orgContext.orgSlug}
+        />
       </Section>
     </PageShell>
   );

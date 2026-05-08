@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Chip } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { Input } from "@orgframe/ui/primitives/input";
+import { Select, type SelectOption } from "@orgframe/ui/primitives/select";
 import { Plus, Trash2 } from "lucide-react";
 import type { WidgetType } from "@/src/features/manage-dashboard/types";
+import { DEFAULT_METRIC_SOURCE, METRIC_SOURCES, type MetricCardData } from "@/src/features/manage-dashboard/widgets/metric-sources";
 
 type RenderProps = {
   orgSlug: string;
@@ -180,94 +182,63 @@ function EventsSummarySettings({ settings, onUpdateSettings }: RenderProps) {
   );
 }
 
-function AiSummaryWidget({ orgSlug }: RenderProps) {
-  const [text, setText] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+type MetricCardSettings = { source?: string; label?: string };
 
-  const run = async () => {
-    setLoading(true);
-    setError(null);
-    setText("");
-    try {
-      const response = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orgSlug,
-          mode: "ask",
-          phase: "plan",
-          userMessage: "Give me a concise 3-bullet daily brief of this organization's status: forms, events, programs, and anything urgent. Use query_org_data with metric org_overview.",
-          threadId: crypto.randomUUID(),
-          turnId: crypto.randomUUID(),
-          surface: "command",
-          conversation: []
-        })
-      });
-      if (!response.ok || !response.body) {
-        setError("AI unavailable.");
-        return;
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let streamed = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx = buffer.indexOf("\n\n");
-        while (idx !== -1) {
-          const block = buffer.slice(0, idx).trim();
-          buffer = buffer.slice(idx + 2);
-          if (block) {
-            const lines = block.split("\n");
-            let event = "";
-            const dataLines: string[] = [];
-            for (const line of lines) {
-              if (line.startsWith("event:")) event = line.slice(6).trim();
-              else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
-            }
-            if (event && dataLines.length > 0) {
-              try {
-                const payload = JSON.parse(dataLines.join("\n")) as { text?: string };
-                if (event === "assistant.delta" && typeof payload.text === "string") {
-                  streamed += payload.text;
-                  setText(streamed);
-                }
-                if (event === "assistant.done" && typeof payload.text === "string") {
-                  setText(payload.text);
-                }
-              } catch {}
-            }
-          }
-          idx = buffer.indexOf("\n\n");
-        }
-      }
-    } catch {
-      setError("AI unavailable.");
-    } finally {
-      setLoading(false);
-    }
-  };
+function MetricCardWidget({ data, settings }: RenderProps) {
+  if (!data.ok) return <Missing error={data.error} />;
+  const s = (settings ?? {}) as MetricCardSettings;
+  const sourceValue = s.source ?? DEFAULT_METRIC_SOURCE;
+  const source = METRIC_SOURCES.find((m) => m.value === sourceValue);
+  const fallbackLabel = source?.label ?? "Metric";
+  const customLabel = typeof s.label === "string" ? s.label.trim() : "";
+  const label = customLabel.length > 0 ? customLabel : fallbackLabel;
 
-  useEffect(() => {
-    if (!text && !loading && !error) {
-      void run();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const payload = data.data as MetricCardData | null;
+  const value = payload?.value;
+  const display = value === null || value === undefined ? "—" : value.toLocaleString();
 
   return (
-    <div className="flex flex-col gap-2">
-      {error ? <Alert variant="destructive">{error}</Alert> : null}
-      {loading && !text ? <p className="text-sm text-text-muted">Generating brief…</p> : null}
-      {text ? <p className="whitespace-pre-wrap text-sm text-text-strong">{text}</p> : null}
-      <div>
-        <Button onClick={() => void run()} disabled={loading} size="sm" type="button" variant="secondary">
-          {loading ? "Refreshing…" : "Refresh"}
-        </Button>
-      </div>
+    <div className="flex flex-col gap-1">
+      <span className="ui-kv-label">{label}</span>
+      <span className="text-3xl font-semibold leading-tight text-text-strong">{display}</span>
+      {value === null ? (
+        <span className="text-xs text-text-muted">No permission to view this metric.</span>
+      ) : null}
+    </div>
+  );
+}
+
+function MetricCardSettingsPanel({ settings, onUpdateSettings }: RenderProps) {
+  const s = (settings ?? {}) as MetricCardSettings;
+  const sourceValue = s.source ?? DEFAULT_METRIC_SOURCE;
+  const labelValue = typeof s.label === "string" ? s.label : "";
+
+  const options: SelectOption[] = METRIC_SOURCES.map((m) => ({
+    value: m.value,
+    label: m.label,
+    meta: m.group
+  }));
+
+  const update = (patch: Partial<MetricCardSettings>) => onUpdateSettings?.({ ...s, ...patch });
+
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex flex-col gap-1 text-sm text-text">
+        <span className="ui-kv-label">Metric source</span>
+        <Select
+          onChange={(e) => update({ source: e.target.value })}
+          options={options}
+          value={sourceValue}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-sm text-text">
+        <span className="ui-kv-label">Custom label (optional)</span>
+        <Input
+          onChange={(e) => update({ label: e.target.value })}
+          placeholder={METRIC_SOURCES.find((m) => m.value === sourceValue)?.label ?? "Metric"}
+          value={labelValue}
+        />
+      </label>
     </div>
   );
 }
@@ -347,14 +318,14 @@ function QuickLinksSettings({ settings, onUpdateSettings }: RenderProps) {
 
 export function renderWidget(type: WidgetType, props: RenderProps) {
   switch (type) {
+    case "metric-card":
+      return <MetricCardWidget {...props} />;
     case "forms-summary":
       return <FormsSummaryWidget {...props} />;
     case "programs-summary":
       return <ProgramsSummaryWidget {...props} />;
     case "events-summary":
       return <EventsSummaryWidget {...props} />;
-    case "ai-summary":
-      return <AiSummaryWidget {...props} />;
     case "quick-links":
       return <QuickLinksWidget {...props} />;
     default:
@@ -364,6 +335,8 @@ export function renderWidget(type: WidgetType, props: RenderProps) {
 
 export function renderWidgetSettings(type: WidgetType, props: RenderProps) {
   switch (type) {
+    case "metric-card":
+      return <MetricCardSettingsPanel {...props} />;
     case "forms-summary":
       return <FormsSummarySettings {...props} />;
     case "programs-summary":
@@ -377,6 +350,6 @@ export function renderWidgetSettings(type: WidgetType, props: RenderProps) {
   }
 }
 
-export function widgetHasSettings(type: WidgetType): boolean {
-  return type !== "ai-summary";
+export function widgetHasSettings(_type: WidgetType): boolean {
+  return true;
 }
