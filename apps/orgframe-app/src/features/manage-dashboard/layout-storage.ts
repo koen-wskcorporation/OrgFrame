@@ -1,5 +1,5 @@
 import { createSupabaseServer } from "@/src/shared/data-api/server";
-import { defaultDashboardLayout, normalizeDashboardLayout, type DashboardLayout } from "@/src/features/manage-dashboard/types";
+import { buildDefaultDashboardLayout, normalizeDashboardLayout, type DashboardLayout } from "@/src/features/manage-dashboard/types";
 
 export async function loadDashboardLayout(input: { userId: string; orgId: string }): Promise<DashboardLayout> {
   const supabase = await createSupabaseServer();
@@ -12,9 +12,13 @@ export async function loadDashboardLayout(input: { userId: string; orgId: string
     .maybeSingle();
 
   if (!data?.config_json) {
-    return defaultDashboardLayout;
+    return buildDefaultDashboardLayout();
   }
-  return normalizeDashboardLayout(data.config_json);
+  const normalized = normalizeDashboardLayout(data.config_json);
+  if (normalized.widgets.length === 0) {
+    return buildDefaultDashboardLayout();
+  }
+  return normalized;
 }
 
 export async function saveDashboardLayout(input: { userId: string; orgId: string; layout: DashboardLayout }) {

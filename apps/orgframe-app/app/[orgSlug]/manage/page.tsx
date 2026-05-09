@@ -3,11 +3,8 @@ import { Alert } from "@orgframe/ui/primitives/alert";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { Section } from "@orgframe/ui/primitives/section";
-import { ManageDashboardCanvas, type WidgetInitialData } from "@/src/features/manage-dashboard/components/ManageDashboardCanvas";
+import { ManageDashboardClient, type WidgetInitialData } from "@/src/features/manage-dashboard/components/ManageDashboardClient";
 import { loadDashboardLayout } from "@/src/features/manage-dashboard/layout-storage";
-import { widgetTypes, type WidgetType } from "@/src/features/manage-dashboard/types";
-import { hasAnyPermission, widgetMetadata } from "@/src/features/manage-dashboard/widgets/metadata";
 import { loadWidgetData } from "@/src/features/manage-dashboard/widgets/server-loaders";
 
 export const metadata: Metadata = {
@@ -40,20 +37,11 @@ export default async function OrgManageDashboardPage({ params }: { params: Promi
   );
   const initialData: Record<string, WidgetInitialData> = Object.fromEntries(initialDataEntries);
 
-  const availableWidgetTypes: WidgetType[] = widgetTypes.filter((type) =>
-    hasAnyPermission(orgContext.membershipPermissions, widgetMetadata[type].requiredAnyPermission)
-  );
-
   return (
-    <PageShell description="Overview of your organization's activity and quick links to management tools." title="Dashboard">
-      <Section title="Dashboard">
-        <ManageDashboardCanvas
-          availableWidgetTypes={availableWidgetTypes}
-          initialData={initialData}
-          initialLayout={layout}
-          orgSlug={orgContext.orgSlug}
-        />
-      </Section>
-    </PageShell>
+    <ManageDashboardClient
+      initialData={initialData}
+      initialLayout={layout}
+      orgSlug={orgContext.orgSlug}
+    />
   );
 }

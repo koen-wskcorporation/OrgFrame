@@ -13,30 +13,7 @@ export const widgetMetadata: Record<WidgetType, WidgetMetadata> = {
   "metric-card": {
     type: "metric-card",
     title: "Metric Card",
-    description: "Display a single metric of your choice. Pick a source in settings."
-  },
-  "forms-summary": {
-    type: "forms-summary",
-    title: "Forms",
-    description: "Form counts by status and total submissions.",
-    requiredAnyPermission: ["forms.read", "forms.write"]
-  },
-  "events-summary": {
-    type: "events-summary",
-    title: "Events",
-    description: "Upcoming calendar items and totals.",
-    requiredAnyPermission: ["calendar.read", "calendar.write", "events.read", "events.write"]
-  },
-  "programs-summary": {
-    type: "programs-summary",
-    title: "Programs",
-    description: "Program totals.",
-    requiredAnyPermission: ["programs.read", "programs.write"]
-  },
-  "quick-links": {
-    type: "quick-links",
-    title: "Quick Links",
-    description: "Your own curated shortcuts."
+    description: "A single metric of your choice."
   }
 };
 
