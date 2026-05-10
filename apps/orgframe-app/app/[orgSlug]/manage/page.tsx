@@ -39,6 +39,7 @@ export default async function OrgManageDashboardPage({ params }: { params: Promi
 
   return (
     <ManageDashboardClient
+      availablePermissions={orgContext.membershipPermissions}
       initialData={initialData}
       initialLayout={layout}
       orgSlug={orgContext.orgSlug}

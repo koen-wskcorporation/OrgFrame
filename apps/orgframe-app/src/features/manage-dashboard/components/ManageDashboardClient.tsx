@@ -5,6 +5,7 @@ import { DndContext, PointerSensor, useSensor, useSensors, closestCenter, type D
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@orgframe/ui/primitives/button";
+import type { Permission } from "@/src/features/core/access";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import type { DashboardLayout, WidgetInstance } from "@/src/features/manage-dashboard/types";
 import { WidgetFrame } from "@/src/features/manage-dashboard/components/WidgetFrame";
@@ -16,6 +17,7 @@ export type WidgetInitialData = { ok: true; data: unknown } | { ok: false; error
 
 type ManageDashboardClientProps = {
   orgSlug: string;
+  availablePermissions: Permission[];
   initialLayout: DashboardLayout;
   initialData: Record<string, WidgetInitialData>;
 };
@@ -33,7 +35,7 @@ function SortableCard({
   dragAttributes,
   dragListeners,
   setActivatorNodeRef,
-  onRemove
+  onManage
 }: {
   widget: WidgetInstance;
   data: WidgetInitialData | undefined;
@@ -41,7 +43,7 @@ function SortableCard({
   dragAttributes: ReturnType<typeof useSortable>["attributes"];
   dragListeners: ReturnType<typeof useSortable>["listeners"];
   setActivatorNodeRef: ReturnType<typeof useSortable>["setActivatorNodeRef"];
-  onRemove: () => void;
+  onManage: () => void;
 }) {
   const meta = widgetMetadata[widget.type];
   const resolvedData: WidgetInitialData = data ?? { ok: true, data: null };
@@ -53,8 +55,7 @@ function SortableCard({
       dragHandleProps={{ ...dragAttributes, ...dragListeners }}
       dragHandleRef={setActivatorNodeRef}
       editing
-      hasSettings={false}
-      onRemove={onRemove}
+      onOpenSettings={onManage}
       title={title}
     >
       {renderWidget(widget.type, { orgSlug, settings: widget.settings, data: resolvedData })}
@@ -66,12 +67,12 @@ function DraggableSlot({
   widget,
   data,
   orgSlug,
-  onRemove
+  onManage
 }: {
   widget: WidgetInstance;
   data: WidgetInitialData | undefined;
   orgSlug: string;
-  onRemove: () => void;
+  onManage: () => void;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: widget.id });
   const style: React.CSSProperties = {
@@ -85,7 +86,7 @@ function DraggableSlot({
         data={data}
         dragAttributes={attributes}
         dragListeners={listeners}
-        onRemove={onRemove}
+        onManage={onManage}
         orgSlug={orgSlug}
         setActivatorNodeRef={setActivatorNodeRef}
         widget={widget}
@@ -94,10 +95,11 @@ function DraggableSlot({
   );
 }
 
-export function ManageDashboardClient({ orgSlug, initialLayout, initialData }: ManageDashboardClientProps) {
+export function ManageDashboardClient({ orgSlug, availablePermissions, initialLayout, initialData }: ManageDashboardClientProps) {
   const [layout, setLayout] = useState<DashboardLayout>(initialLayout);
   const [dataByWidget, setDataByWidget] = useState<Record<string, WidgetInitialData>>(initialData);
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardMode, setWizardMode] = useState<"create" | "edit" | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const saveTimer = useRef<number | null>(null);
 
@@ -155,17 +157,31 @@ export function ManageDashboardClient({ orgSlug, initialLayout, initialData }: M
   }, [persist]);
 
   const handleWizardFinish = useCallback((result: MetricCardWizardResult) => {
-    const id = createId();
     const settings = { source: result.source, label: result.label };
-    const widget: WidgetInstance = { id, type: "metric-card", settings };
-    setLayout((current) => {
-      const next: DashboardLayout = { ...current, widgets: [...current.widgets, widget] };
-      persist(next);
-      return next;
-    });
-    setWizardOpen(false);
-    void fetchWidgetData(id, settings);
-  }, [fetchWidgetData, persist]);
+    if (wizardMode === "edit" && editingId) {
+      const id = editingId;
+      setLayout((current) => {
+        const next: DashboardLayout = {
+          ...current,
+          widgets: current.widgets.map((w) => (w.id === id ? { ...w, settings } : w))
+        };
+        persist(next);
+        return next;
+      });
+      void fetchWidgetData(id, settings);
+    } else {
+      const id = createId();
+      const widget: WidgetInstance = { id, type: "metric-card", settings };
+      setLayout((current) => {
+        const next: DashboardLayout = { ...current, widgets: [...current.widgets, widget] };
+        persist(next);
+        return next;
+      });
+      void fetchWidgetData(id, settings);
+    }
+    setWizardMode(null);
+    setEditingId(null);
+  }, [wizardMode, editingId, fetchWidgetData, persist]);
 
   const removeWidget = useCallback((id: string) => {
     setLayout((current) => {
@@ -179,8 +195,26 @@ export function ManageDashboardClient({ orgSlug, initialLayout, initialData }: M
     });
   }, [persist]);
 
+  const closeWizard = useCallback(() => {
+    setWizardMode(null);
+    setEditingId(null);
+  }, []);
+
+  const handleDelete = useCallback(() => {
+    if (editingId) removeWidget(editingId);
+    closeWizard();
+  }, [editingId, removeWidget, closeWizard]);
+
+  const editingWidget = editingId ? layout.widgets.find((w) => w.id === editingId) : undefined;
+  const editingInitial: MetricCardWizardResult | undefined = editingWidget
+    ? {
+        label: typeof editingWidget.settings?.label === "string" ? (editingWidget.settings.label as string) : "",
+        source: typeof editingWidget.settings?.source === "string" ? (editingWidget.settings.source as string) : ""
+      }
+    : undefined;
+
   const headerActions = (
-    <Button intent="add" object="Card" onClick={() => setWizardOpen(true)} />
+    <Button intent="add" object="Card" onClick={() => setWizardMode("create")} />
   );
 
   return (
@@ -196,7 +230,10 @@ export function ManageDashboardClient({ orgSlug, initialLayout, initialData }: M
               <DraggableSlot
                 data={dataByWidget[widget.id]}
                 key={widget.id}
-                onRemove={() => removeWidget(widget.id)}
+                onManage={() => {
+                  setEditingId(widget.id);
+                  setWizardMode("edit");
+                }}
                 orgSlug={orgSlug}
                 widget={widget}
               />
@@ -206,9 +243,13 @@ export function ManageDashboardClient({ orgSlug, initialLayout, initialData }: M
       </DndContext>
 
       <MetricCardWizard
-        onClose={() => setWizardOpen(false)}
+        availablePermissions={availablePermissions}
+        initial={editingInitial}
+        mode={wizardMode === "edit" ? "edit" : "create"}
+        onClose={closeWizard}
+        onDelete={handleDelete}
         onFinish={handleWizardFinish}
-        open={wizardOpen}
+        open={wizardMode !== null}
       />
     </PageShell>
   );

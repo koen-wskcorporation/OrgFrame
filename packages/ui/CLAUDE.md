@@ -55,3 +55,43 @@ Do NOT for action buttons:
 - Hand-write `<Button><Pencil />Edit</Button>` — use `<Button intent="edit" />`.
 - Use Title Case ("Save Changes" → prefer `intent="save"` / `<Button intent="save">Save changes</Button>`).
 - Mix bespoke icons across screens for the same intent.
+
+## Panel footers — never include a Cancel/Close button
+
+Every `Panel` (and any wizard built on `CreateWizard` / `WizardChrome`) already
+has an X in the header that dismisses it. The footer must therefore contain
+**only forward-progress actions**: Back / Next / Save / Submit / Delete.
+
+Do NOT add to a panel footer:
+- A Cancel button
+- A Close button
+- A "Discard" button (use the close-confirm dialog flow instead)
+
+This applies to both create and edit wizard modes, and to bare `Panel` usages.
+The `hideCancel` prop on `CreateWizard` is retained for API stability but is a
+no-op — there is no cancel button to hide.
+
+## Wizard delete — pass `delete` to the wizard, never roll your own
+
+`CreateWizard` and `WizardChrome` accept an optional `delete` config:
+
+```tsx
+<CreateWizard
+  mode="edit"
+  delete={{
+    onDelete: async () => { await deleteAction(...); },
+    confirmTitle: "Delete team?",
+    confirmDescription: "This cannot be undone."
+  }}
+  ...
+/>
+```
+
+When provided, the wizard renders a Trash2 icon-only button on the **left**
+side of the footer and shows a destructive confirm dialog before invoking
+`onDelete`. **Do NOT** put a Delete button inside a wizard step body, in a
+header, or as a separate primary footer action — the `delete` prop is the only
+sanctioned location.
+
+The prop is optional. Create-mode wizards usually omit it; edit-mode wizards
+that own a deletable entity should pass it.
