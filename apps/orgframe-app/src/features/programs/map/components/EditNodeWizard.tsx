@@ -1,9 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { Trash2 } from "lucide-react";
-import { Button } from "@orgframe/ui/primitives/button";
-import { useConfirmDialog } from "@orgframe/ui/primitives/confirm-dialog";
 import { CreateWizard } from "@orgframe/ui/primitives/create-wizard";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
@@ -29,8 +26,6 @@ type State = {
 
 export function EditNodeWizard({ open, onClose, orgSlug, programId, node, canWrite, onMutated }: EditNodeWizardProps) {
   const toast = useToast();
-  const { confirm } = useConfirmDialog();
-  const [deleting, setDeleting] = React.useState(false);
 
   const initialState = React.useMemo<State>(
     () => ({
@@ -43,22 +38,12 @@ export function EditNodeWizard({ open, onClose, orgSlug, programId, node, canWri
 
   const handleDelete = async () => {
     if (!canWrite) return;
-    const ok = await confirm({
-      title: `Delete ${node.nodeKind} "${node.name}"?`,
-      description: "This cannot be undone. Children of this node will also be removed.",
-      confirmLabel: "Delete",
-      cancelLabel: "Keep",
-      variant: "destructive"
-    });
-    if (!ok) return;
-    setDeleting(true);
     const result = await saveProgramHierarchyAction({
       orgSlug,
       programId,
       action: "delete",
       nodeId: node.id
     });
-    setDeleting(false);
     if (!result.ok) {
       toast.toast({ title: "Couldn't delete", description: result.error, variant: "destructive" });
       return;
@@ -77,6 +62,16 @@ export function EditNodeWizard({ open, onClose, orgSlug, programId, node, canWri
       subtitle={node.name}
       submitLabel="Save"
       initialState={initialState}
+      delete={
+        canWrite
+          ? {
+              onDelete: handleDelete,
+              confirmTitle: `Delete ${node.nodeKind} "${node.name}"?`,
+              confirmDescription: "This cannot be undone. Children of this node will also be removed.",
+              ariaLabel: `Delete ${node.nodeKind}`
+            }
+          : undefined
+      }
       steps={[
         {
           id: "details",
@@ -117,14 +112,6 @@ export function EditNodeWizard({ open, onClose, orgSlug, programId, node, canWri
                   onChange={(event) => setField("capacity", event.target.value)}
                 />
               </FormField>
-              {canWrite ? (
-                <div className="mt-2 border-t border-border pt-3">
-                  <Button variant="ghost" onClick={handleDelete} disabled={deleting}>
-                    <Trash2 />
-                    Delete {node.nodeKind}
-                  </Button>
-                </div>
-              ) : null}
             </div>
           )
         }

@@ -303,9 +303,7 @@ function StatusEditor({
         </div>
       </FormField>
       <div className="flex justify-end gap-2 pt-1">
-        <Button disabled={busy} onClick={onCancel} variant="ghost">
-          Cancel
-        </Button>
+        <Button intent="cancel" disabled={busy} onClick={onCancel} variant="ghost">Cancel</Button>
         <Button disabled={!canWrite || busy} loading={busy} onClick={onSave} variant="primary">
           {state.mode === "create" ? "Add status" : "Save"}
         </Button>

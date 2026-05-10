@@ -1,4 +1,4 @@
-import { WorkspaceSectionNav } from "@orgframe/ui/primitives/workspace-section-nav";
+import { PageTabs } from "@orgframe/ui/primitives/page-tabs";
 
 const sectionItems = [
   {
@@ -22,5 +22,5 @@ const sectionItems = [
 ] as const;
 
 export function PaymentsSectionNav({ active }: { active: "overview" | "settings" | "links" }) {
-  return <WorkspaceSectionNav active={active} ariaLabel="Payments sections" items={sectionItems} />;
+  return <PageTabs active={active} ariaLabel="Payments sections" items={sectionItems} />;
 }

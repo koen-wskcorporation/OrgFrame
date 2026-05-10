@@ -55,12 +55,6 @@ body {
     gap: var(--layout-gap);
   }
 
-  .app-section-stack {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: var(--layout-gap);
-  }
 
   .ui-card-grid {
     display: grid;

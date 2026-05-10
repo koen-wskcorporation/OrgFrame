@@ -195,10 +195,7 @@ export function LinkPickerDialog({
       description={description}
       footer={
         <>
-          <Button onClick={onClose} size="sm" variant="ghost">
-            <X className="h-4 w-4" />
-            Cancel
-          </Button>
+          <Button intent="cancel" onClick={onClose} size="sm" variant="ghost">Cancel</Button>
           <Button onClick={handleConfirm} size="sm">
             Use Link
           </Button>

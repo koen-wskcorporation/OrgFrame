@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { OrgAreaSidebarNav, OrgAreaSidebarNavMobile, type OrgAreaSidebarConfig } from "@/src/features/core/navigation/components/OrgAreaSidebarNav";
+import { AppSidebarNav, AppSidebarNavMobile, type AppSidebarConfig } from "@/src/features/core/navigation/components/AppSidebarNav";
 import { getOrgAdminNavTree } from "@/src/features/core/navigation/config/adminNav";
 import { ORG_ADMIN_ICON_MAP } from "@/src/features/core/navigation/config/iconRegistry";
 import type { OrgCapabilities } from "@/src/shared/permissions/orgCapabilities";
@@ -21,7 +21,7 @@ function navConfig(
   capabilities: OrgCapabilities | null,
   toolAvailability: OrgToolAvailability,
   roleLabel?: string
-): OrgAreaSidebarConfig {
+): AppSidebarConfig {
   const tree = getOrgAdminNavTree(orgSlug, { capabilities, toolAvailability });
 
   const manageNode = tree.find((node) => node.key === "manage");
@@ -29,7 +29,7 @@ function navConfig(
     ? [...tree.filter((node) => node.key !== "manage"), manageNode]
     : tree;
 
-  const items: OrgAreaSidebarConfig["items"] = orderedTree.map((node) => {
+  const items: AppSidebarConfig["items"] = orderedTree.map((node) => {
     const icon = ORG_ADMIN_ICON_MAP[node.icon];
     const base = {
       key: node.key,
@@ -74,7 +74,7 @@ function navConfig(
 
 export function ManageSidebar({ orgSlug, capabilities, toolAvailability, roleLabel, mobile = false, showHeader = true }: ManageSidebarProps) {
   const config = useMemo(() => navConfig(orgSlug, capabilities, toolAvailability, roleLabel), [capabilities, orgSlug, roleLabel, toolAvailability]);
-  return <OrgAreaSidebarNav config={config} mobile={mobile} showHeader={showHeader} />;
+  return <AppSidebarNav config={config} mobile={mobile} showHeader={showHeader} />;
 }
 
 type ManageSidebarMobileProps = {
@@ -86,7 +86,7 @@ type ManageSidebarMobileProps = {
 
 export function ManageSidebarMobile({ orgSlug, capabilities, toolAvailability, roleLabel }: ManageSidebarMobileProps) {
   const config = useMemo(() => navConfig(orgSlug, capabilities, toolAvailability, roleLabel), [capabilities, orgSlug, roleLabel, toolAvailability]);
-  return <OrgAreaSidebarNavMobile config={config} />;
+  return <AppSidebarNavMobile config={config} />;
 }
 
 // Backward-compat aliases while imports migrate.

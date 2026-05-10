@@ -114,10 +114,7 @@ export function ButtonConfigDialog({
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               {mode === "edit" && onDelete ? (
-                <Button className="ui-button-danger" onClick={onDelete} size="sm" variant="secondary">
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </Button>
+                <Button intent="delete" className="ui-button-danger" onClick={onDelete} size="sm" variant="secondary">Delete</Button>
               ) : null}
 
               {mode === "edit" && onMoveUp ? (
@@ -136,10 +133,7 @@ export function ButtonConfigDialog({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={onClose} size="sm" variant="ghost">
-                <X className="h-4 w-4" />
-                Cancel
-              </Button>
+              <Button intent="cancel" onClick={onClose} size="sm" variant="ghost">Cancel</Button>
               <Button onClick={handleSave} size="sm">
                 <Check className="h-4 w-4" />
                 Save Button

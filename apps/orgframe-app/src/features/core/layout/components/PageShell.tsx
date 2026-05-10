@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { PageStack } from "@orgframe/ui/primitives/layout";
+import { cn } from "@orgframe/ui/primitives/utils";
 import { PageHeader } from "@orgframe/ui/primitives/page-header";
 
 type PageShellProps = {
@@ -9,21 +9,23 @@ type PageShellProps = {
   actions?: React.ReactNode;
   /** Tabs / section nav pinned inside the sticky header. */
   tabs?: React.ReactNode;
-  /** Extra classes applied to the outer PageStack. */
+  /** Extra classes applied to the page stack. */
   className?: string;
   children: React.ReactNode;
 };
 
 /**
  * Sticky page header + a stack for the page's children. Children should
- * be one or more <ManageSection>s. The stack hugs content by default and
- * pins to the viewport when any descendant uses `fill` (e.g. a map).
+ * be one or more <Section>s. The stack hugs content by default and pins
+ * to the viewport when any descendant Section uses `fill` (the
+ * `app-page-stack:has(.app-card-fill)` rule in globals.css switches
+ * min-height → height so fill-mode sections have a definite parent).
  */
 export function PageShell({ title, description, actions, tabs, className, children }: PageShellProps) {
   return (
-    <PageStack className={className}>
+    <div className={cn("app-page-stack", className)}>
       <PageHeader actions={actions} description={description} showBorder={false} tabs={tabs} title={title} />
       {children}
-    </PageStack>
+    </div>
   );
 }

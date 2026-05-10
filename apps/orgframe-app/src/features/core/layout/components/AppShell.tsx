@@ -8,28 +8,27 @@ type AppShellProps = {
    * is omitted from the DOM entirely so there's no extra gap.
    */
   topbar: React.ReactNode;
+  /**
+   * Optional left sidebar. When provided, the content column is
+   * replaced by a `sidebar-shell` grid (sidebar + content). Omit on
+   * routes that don't have a sidebar (e.g. the public org site).
+   * Nested layouts that can't pass a sidebar to a parent AppShell
+   * should render the same `sidebar-shell` grid inline.
+   */
+  sidebar?: React.ReactNode;
   children: React.ReactNode;
 };
 
 /**
  * Application shell. Owns the layout-gap padding, the sticky topbar,
- * and the content column.
- *
- *   <main class="app">
- *     ├── <div class="app__topbar">  (only when topbar non-null)
- *     └── <div class="app__content">
+ * and the content column (or sidebar+content grid when `sidebar` is
+ * provided).
  *
  * Sets `data-scrolled` on the content div based on window scroll, so
  * page-header CSS can compact tabs on scroll. Tracks topbar height
- * into `--app-topbar-height` so a sticky sidebar (rendered by a
- * nested layout, e.g. ManageShell) can pin below it.
- *
- * Sidebars are NOT owned by this shell — they're rendered by the
- * route group that needs them (currently just /manage via
- * ManageShell). This avoids parallel-route slot bleed where a stale
- * sidebar would persist on routes that don't use one.
+ * into `--app-topbar-height` so a sticky sidebar can pin below it.
  */
-export function AppShell({ topbar, children }: AppShellProps) {
+export function AppShell({ topbar, sidebar, children }: AppShellProps) {
   const [scrolled, setScrolled] = React.useState(false);
   const topbarRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -65,12 +64,20 @@ export function AppShell({ topbar, children }: AppShellProps) {
   }, [topbar]);
 
   const hasTopbar = topbar != null && topbar !== false;
+  const hasSidebar = sidebar != null && sidebar !== false;
 
   return (
     <main className="app" data-no-topbar={hasTopbar ? undefined : "true"}>
       {hasTopbar ? <div className="app__topbar" ref={topbarRef}>{topbar}</div> : null}
       <div className="app__content" data-scrolled={scrolled ? "true" : undefined}>
-        {children}
+        {hasSidebar ? (
+          <div className="sidebar-shell">
+            <aside className="sidebar-shell__sidebar">{sidebar}</aside>
+            <div className="sidebar-shell__content">{children}</div>
+          </div>
+        ) : (
+          children
+        )}
       </div>
     </main>
   );

@@ -360,10 +360,6 @@ body.panel-resizing * {
     min-height: 0;
   }
 
-  .app-section-stack {
-    @apply space-y-4;
-  }
-
   .ui-stack-page {
     display: flex;
     min-width: 0;

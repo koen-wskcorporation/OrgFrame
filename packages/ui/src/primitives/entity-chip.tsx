@@ -25,6 +25,8 @@ type EntityChipProps = Omit<React.HTMLAttributes<HTMLSpanElement>, "onRemove"> &
   hideAvatar?: boolean;
   /** Status indicator rendered inside the chip. Optional. */
   status?: EntityStatus;
+  /** Optional trailing element rendered after status (e.g. a non-status Chip). */
+  accessory?: React.ReactNode;
   /** When provided, renders a small `X` button at the end. */
   onRemove?: () => void;
   removeAriaLabel?: string;
@@ -36,6 +38,7 @@ export function EntityChip({
   hideAvatar = false,
   name,
   status,
+  accessory,
   onRemove,
   removeAriaLabel,
   ...props
@@ -56,10 +59,10 @@ export function EntityChip({
           color={status.color}
           label={status.label}
           showDot={status.showDot}
-          size="sm"
           variant={status.variant}
         />
       ) : null}
+      {accessory}
       {onRemove ? (
         <button
           aria-label={removeAriaLabel ?? `Remove ${name}`}

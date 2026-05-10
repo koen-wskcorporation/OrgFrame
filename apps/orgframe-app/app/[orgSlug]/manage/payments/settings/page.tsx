@@ -4,7 +4,7 @@ import { getBillingWorkspaceData, getOrCreateStripeConnectAccount, syncStripeCon
 import { can } from "@/src/shared/permissions/can";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { BillingWorkspace } from "../../billing/BillingWorkspace";
 import { ToolUnavailablePanel } from "../../ToolUnavailablePanel";
 import { PaymentsSectionNav } from "../PaymentsSectionNav";
@@ -64,14 +64,14 @@ export default async function OrgPaymentsSettingsPage({
     >
       {query.connect === "return" ? <Alert variant="success">Stripe onboarding returned successfully. Status was refreshed.</Alert> : null}
       {query.connect === "refresh" ? <Alert variant="info">Stripe onboarding session refreshed. Continue onboarding when ready.</Alert> : null}
-      <ManageSection
+      <Section
         contentClassName="space-y-4 p-5 md:p-6"
         description="Manage Stripe Connect onboarding and tax defaults for this organization."
         fill={false}
         title="Settings"
       >
         <BillingWorkspace data={workspaceData} />
-      </ManageSection>
+      </Section>
     </PageShell>
   );
 }

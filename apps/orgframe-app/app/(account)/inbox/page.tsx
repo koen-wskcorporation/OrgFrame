@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@orgframe/ui/primitives/page-header";
-import { PageStack } from "@orgframe/ui/primitives/layout";
+import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { requireAuth } from "@/src/features/core/auth/server/requireAuth";
 
 export const metadata: Metadata = {
@@ -11,9 +10,8 @@ export default async function InboxPage() {
   await requireAuth();
 
   return (
-    <PageStack>
-      <PageHeader description="Messages and notifications across your profiles." showBorder={false} title="Inbox" />
+    <PageShell description="Messages and notifications across your profiles." title="Inbox">
       <p className="text-sm text-text-muted">Your inbox is empty.</p>
-    </PageStack>
+    </PageShell>
   );
 }

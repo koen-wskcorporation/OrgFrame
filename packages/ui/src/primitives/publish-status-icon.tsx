@@ -4,7 +4,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "./utils";
 import { Button } from "@orgframe/ui/primitives/button";
-import { ChipButton, type ChipProps } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 
 type PublishStatusIconProps = {
   isPublished: boolean;
@@ -19,7 +19,6 @@ type PublishStatusIconProps = {
   className?: string;
   menuClassName?: string;
   align?: "left" | "right";
-  size?: ChipProps["size"];
 };
 
 export function PublishStatusIcon({
@@ -34,8 +33,7 @@ export function PublishStatusIcon({
   unpublishLabel = "Unpublish",
   className,
   menuClassName,
-  align = "left",
-  size = "regular"
+  align = "left"
 }: PublishStatusIconProps) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -66,7 +64,7 @@ export function PublishStatusIcon({
 
   return (
     <div className={cn("relative", className)} data-no-progress="true" ref={wrapperRef}>
-      <ChipButton
+      <Chip
         aria-label={statusLabel ?? (isPublished ? "Published status" : "Unpublished status")}
         color={isPublished ? "green" : "red"}
         disabled={disabled || isLoading}
@@ -75,11 +73,9 @@ export function PublishStatusIcon({
           event.stopPropagation();
           setOpen((current) => !current);
         }}
-        size={size}
-        type="button"
       >
         {isPublished ? publishedStatusText : unpublishedStatusText}
-      </ChipButton>
+      </Chip>
       {open ? (
         <div
           className={cn(

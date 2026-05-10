@@ -5,7 +5,7 @@ import { getPeopleDirectoryPageData } from "@/src/features/people/actions";
 import { PeopleDirectoryPanel } from "@/src/features/people/components/PeopleDirectoryPanel";
 import { PeoplePageTabs } from "@/src/features/people/components/PeoplePageTabs";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 
 export const metadata: Metadata = {
   title: "People"
@@ -48,7 +48,7 @@ export default async function OrgPeoplePage({
       title="People"
 
     >
-      <ManageSection
+      <Section
         description="Manage accounts, linked player/staff profiles, and relationship access."
         fill={false}
         title="Directory"
@@ -60,7 +60,7 @@ export default async function OrgPeoplePage({
           loadError={data.loadError}
           orgSlug={data.orgSlug}
         />
-      </ManageSection>
+      </Section>
     </PageShell>
   );
 }

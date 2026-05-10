@@ -297,7 +297,7 @@ export function FacilitySpacePanel({
       {KindIcon ? <KindIcon className="h-4 w-4 shrink-0 text-text-muted" /> : null}
       <span className="min-w-0 truncate">{draft?.name ?? space.name}</span>
       {showStatus && currentStatusDef ? (
-        <Chip color={currentStatusDef.color} label={currentStatusDef.label} size="sm" status={true} />
+        <Chip color={currentStatusDef.color} label={currentStatusDef.label} status={true} />
       ) : null}
     </div>
   ) : (

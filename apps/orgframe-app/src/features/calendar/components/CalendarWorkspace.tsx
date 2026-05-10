@@ -46,7 +46,7 @@ import { FacilityBookingFullscreen } from "@/src/features/calendar/components/Fa
 import { CalendarSourceFilterPopover } from "@/src/features/calendar/components/CalendarSourceFilterPopover";
 import { ScrollableSheetBody } from "@/src/features/calendar/components/ScrollableSheetBody";
 import { UniversalAddressField } from "@/src/features/calendar/components/UniversalAddressField";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { useOrgSharePopup } from "@/src/features/org-share/OrgShareProvider";
 import type { ShareTarget } from "@/src/features/org-share/types";
 import {
@@ -128,7 +128,7 @@ function PublicCalendarView({ items, title }: { items: CalendarPublicCatalogItem
   }));
 
   return (
-    <ManageSection contentClassName="space-y-3" title={title}>
+    <Section contentClassName="space-y-3" title={title}>
       <Calendar canEdit={false} items={calendarItems} onSelectItem={() => {}} />
       <div className="space-y-2">
         {items.slice(0, 20).map((item) => (
@@ -145,7 +145,7 @@ function PublicCalendarView({ items, title }: { items: CalendarPublicCatalogItem
           </article>
         ))}
       </div>
-    </ManageSection>
+    </Section>
   );
 }
 

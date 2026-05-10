@@ -1,4 +1,4 @@
-import { Badge } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { AdaptiveLogo } from "@orgframe/ui/primitives/adaptive-logo";
@@ -7,7 +7,6 @@ import type { DashboardV2Context, PersonalHubModule } from "@/src/features/core/
 import { DashboardOrgManageButton } from "@/src/features/core/dashboard/components/DashboardOrgManageButton";
 import { AccountSidebar } from "@/src/features/core/account/components/AccountSidebar";
 import { AppShell } from "@/src/features/core/layout/components/AppShell";
-import { SidebarShell } from "@/src/features/core/layout/components/SidebarShell";
 import { getOrgAdminNavTree, prefixAdminNavHrefs } from "@/src/features/core/navigation/config/adminNav";
 import { ORG_TYPE_LABELS } from "@/src/shared/org/orgTypes";
 
@@ -70,7 +69,7 @@ function renderModuleBody(module: PersonalHubModule) {
                   {item.body ? <p className="line-clamp-2 text-xs text-text-muted">{item.body}</p> : null}
                   <p className="text-[11px] text-text-muted">{item.orgName}</p>
                 </div>
-                {!item.isRead ? <Badge variant="warning">Unread</Badge> : null}
+                {!item.isRead ? <Chip status={false} variant="warning">Unread</Chip> : null}
               </div>
             </a>
           ))}
@@ -111,7 +110,7 @@ function renderModuleBody(module: PersonalHubModule) {
                     {item.orgName} · {formatRelativeDateTime(item.updatedAt)}
                   </p>
                 </div>
-                <Badge variant={item.status === "approved" ? "success" : item.status === "rejected" ? "destructive" : "neutral"}>{item.status}</Badge>
+                <Chip status={false} variant={item.status === "approved" ? "success" : item.status === "rejected" ? "destructive" : "neutral"}>{item.status}</Chip>
               </div>
             </a>
           ))}
@@ -154,18 +153,18 @@ function renderModuleSummary(module: PersonalHubModule) {
 
 export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
   return (
-    <AppShell topbar={null}>
-      <SidebarShell
-        sidebar={
-          <AccountSidebar
-            avatarUrl={context.user.avatarUrl}
-            email={context.user.email}
-            firstName={context.user.firstName}
-            lastName={context.user.lastName}
-            orgCount={context.organizations.length}
-          />
-        }
-      >
+    <AppShell
+      topbar={null}
+      sidebar={
+        <AccountSidebar
+          avatarUrl={context.user.avatarUrl}
+          email={context.user.email}
+          firstName={context.user.firstName}
+          lastName={context.user.lastName}
+          orgCount={context.organizations.length}
+        />
+      }
+    >
         <div className="app-page-stack">
           <Card>
           <CardHeader>
@@ -175,10 +174,7 @@ export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
                 <CardDescription>Switch org context and open management modules when available.</CardDescription>
               </div>
               {context.organizations.length > 0 ? (
-                <Button href="/create" size="sm" variant="secondary">
-                  <Plus className="h-4 w-4" />
-                  Add
-                </Button>
+                <Button intent="add" href="/create" size="sm" variant="secondary">Add</Button>
               ) : null}
             </div>
           </CardHeader>
@@ -214,7 +210,7 @@ export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
                     <div className="flex min-w-0 items-center gap-2">
                       <p className="truncate text-sm font-semibold text-text">{organization.orgName}</p>
                       {organization.orgType ? (
-                        <Badge variant="neutral">{ORG_TYPE_LABELS[organization.orgType]}</Badge>
+                        <Chip status={false} variant="neutral">{ORG_TYPE_LABELS[organization.orgType]}</Chip>
                       ) : null}
                     </div>
                     <p className="truncate text-xs text-text-muted">{organization.displayHost}</p>
@@ -258,7 +254,7 @@ export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
                         <CardDescription>{module.description}</CardDescription>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge>{renderModuleSummary(module)}</Badge>
+                        <Chip status={false}>{renderModuleSummary(module)}</Chip>
                         <Button href={cta.href} size="sm" variant="secondary">
                           {cta.label}
                         </Button>
@@ -272,7 +268,6 @@ export function DashboardV2Page({ context }: { context: DashboardV2Context }) {
           </div>
         </section>
         </div>
-      </SidebarShell>
     </AppShell>
   );
 }

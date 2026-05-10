@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { listPeopleSystemGroupsWorkspace } from "@/src/features/org-share/server";
 import { PeoplePageTabs } from "@/src/features/people/components/PeoplePageTabs";
@@ -37,13 +37,13 @@ export default async function OrgPeopleGroupsPage({ params }: { params: Promise<
       title="People"
 
     >
-      <ManageSection
+      <Section
         description="Manage accounts, linked player/staff profiles, and relationship access."
         fill={false}
         title="Groups"
       >
         <PeopleSystemGroupsTree groups={groups} />
-      </ManageSection>
+      </Section>
     </PageShell>
   );
 }

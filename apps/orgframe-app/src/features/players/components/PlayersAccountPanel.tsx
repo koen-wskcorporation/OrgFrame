@@ -3,7 +3,7 @@
 import { Pencil, Plus, X } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Badge } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { FormField } from "@orgframe/ui/primitives/form-field";
@@ -332,14 +332,14 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
                 </Button>
               }
               badges={[
-                <Badge key="type" variant="neutral">
+                <Chip status={false} key="type" variant="neutral">
                   Player Profile
-                </Badge>,
+                </Chip>,
                 ...(isSelf
                   ? [
-                      <Badge key="you" variant="success">
+                      <Chip status={false} key="you" variant="success">
                         You
-                      </Badge>
+                      </Chip>
                     ]
                   : [])
               ]}
@@ -398,10 +398,7 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
       <ContextPanel
         footer={
           <>
-            <Button disabled={isSavingEdit} onClick={closeEdit} type="button" variant="ghost">
-              <X className="h-4 w-4" />
-              Cancel
-            </Button>
+            <Button intent="cancel" disabled={isSavingEdit} onClick={closeEdit} type="button" variant="ghost">Cancel</Button>
             <Button disabled={isSavingEdit} form="edit-player-form" loading={isSavingEdit} type="submit">
               {isSavingEdit ? "Saving..." : "Save player"}
             </Button>
@@ -475,10 +472,7 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
       <CreateModal
         footer={
           <>
-            <Button disabled={isLinkingGuardian} onClick={closeGuardianLinkDialog} type="button" variant="ghost">
-              <X className="h-4 w-4" />
-              Cancel
-            </Button>
+            <Button intent="cancel" disabled={isLinkingGuardian} onClick={closeGuardianLinkDialog} type="button" variant="ghost">Cancel</Button>
             <Button
               disabled={!guardianLinkPlayerId || !guardianLinkEmail || isLinkingGuardian}
               loading={isLinkingGuardian}

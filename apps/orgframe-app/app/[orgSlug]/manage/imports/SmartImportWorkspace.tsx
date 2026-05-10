@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Boxes, FileSpreadsheet, Layers3, RefreshCw, Trophy } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Badge } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
@@ -981,9 +981,9 @@ export function SmartImportWorkspace({ orgSlug, initialRuns }: SmartImportWorksp
               </Alert>
 
               <div className="flex items-center gap-2 text-xs text-text-muted">
-                <Badge variant={addDataStep === "platform" ? "warning" : "neutral"}>1. Platform</Badge>
-                <Badge variant={addDataStep === "upload" ? "warning" : "neutral"}>2. Upload</Badge>
-                <Badge variant={addDataStep === "select" ? "warning" : "neutral"}>3. Select</Badge>
+                <Chip status={false} variant={addDataStep === "platform" ? "warning" : "neutral"}>1. Platform</Chip>
+                <Chip status={false} variant={addDataStep === "upload" ? "warning" : "neutral"}>2. Upload</Chip>
+                <Chip status={false} variant={addDataStep === "select" ? "warning" : "neutral"}>3. Select</Chip>
               </div>
 
               {addDataStep === "platform" ? (
@@ -996,9 +996,9 @@ export function SmartImportWorkspace({ orgSlug, initialRuns }: SmartImportWorksp
                           <span className="space-y-2">
                             <span>{platform.description}</span>
                             <span className="flex flex-wrap gap-1">
-                              {platform.supportsApiPull ? <Badge variant="neutral">API</Badge> : null}
-                              {platform.supportsFileUpload ? <Badge variant="neutral">File Upload</Badge> : null}
-                              {platform.requiresOauth ? <Badge variant="warning">OAuth Required</Badge> : null}
+                              {platform.supportsApiPull ? <Chip status={false} variant="neutral">API</Chip> : null}
+                              {platform.supportsFileUpload ? <Chip status={false} variant="neutral">File Upload</Chip> : null}
+                              {platform.requiresOauth ? <Chip status={false} variant="warning">OAuth Required</Chip> : null}
                             </span>
                           </span>
                         }
@@ -1330,7 +1330,7 @@ export function SmartImportWorkspace({ orgSlug, initialRuns }: SmartImportWorksp
                     {activeRun.sourcePlatformLogoPath ? (
                       <img alt={`${activeRun.sourcePlatformLabel ?? "Unknown"} logo`} className="h-4 w-4 object-contain" src={activeRun.sourcePlatformLogoPath} />
                     ) : null}
-                    <Badge variant="neutral">{activeRun.sourcePlatformLabel ?? "Unknown Platform"}</Badge>
+                    <Chip status={false} variant="neutral">{activeRun.sourcePlatformLabel ?? "Unknown Platform"}</Chip>
                   </div>
                   <p className="text-xs text-text-muted">{activeRun.status} • {progressPercent}%</p>
                 </div>
@@ -1367,7 +1367,7 @@ export function SmartImportWorkspace({ orgSlug, initialRuns }: SmartImportWorksp
                           {lead?.sourcePlatformLogoPath ? (
                             <img alt={`${lead.sourcePlatformLabel ?? "Unknown"} logo`} className="h-4 w-4 object-contain" src={lead.sourcePlatformLogoPath} />
                           ) : null}
-                          <Badge variant="neutral">{lead?.sourcePlatformLabel ?? "Unknown Platform"}</Badge>
+                          <Chip status={false} variant="neutral">{lead?.sourcePlatformLabel ?? "Unknown Platform"}</Chip>
                         </div>
                         <p className="text-xs text-text-muted">
                           {group.runs.length} run{group.runs.length === 1 ? "" : "s"} • {formatDateTime(lead?.createdAt ?? new Date().toISOString())}
@@ -1381,7 +1381,7 @@ export function SmartImportWorkspace({ orgSlug, initialRuns }: SmartImportWorksp
                               {run.sourcePlatformLogoPath ? (
                                 <img alt={`${run.sourcePlatformLabel ?? "Unknown"} logo`} className="h-4 w-4 object-contain" src={run.sourcePlatformLogoPath} />
                               ) : null}
-                              <Badge variant="neutral">{run.sourcePlatformLabel ?? "Unknown Platform"}</Badge>
+                              <Chip status={false} variant="neutral">{run.sourcePlatformLabel ?? "Unknown Platform"}</Chip>
                             </div>
                             <p className="text-xs text-text-muted">{run.status} • {Math.round(run.progress)}%</p>
                             <div className="mt-2 flex gap-2">

@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/src/shared/data-api/server";
 import type {
   PeopleDirectoryResult,
   PeopleProfile,
+  PeopleProfileAddress,
   PeopleProfileLink,
   PeopleProfileStatus,
   PeopleProfileType,
@@ -10,16 +11,25 @@ import type {
   PeopleInviteStatus
 } from "@/src/features/people/types";
 
+const PROFILE_COLUMNS =
+  "id, person_user_id, org_id, profile_type, status, display_name, first_name, last_name, dob, email, sex, school, grade, avatar_path, address_json, metadata_json, created_at, updated_at";
+
 type ProfileRow = {
   id: string;
   person_user_id: string | null;
-  org_id: string;
+  org_id: string | null;
   profile_type: PeopleProfileType;
   status: PeopleProfileStatus;
   display_name: string;
   first_name: string | null;
   last_name: string | null;
   dob: string | null;
+  email: string | null;
+  sex: string | null;
+  school: string | null;
+  grade: string | null;
+  avatar_path: string | null;
+  address_json: unknown;
   metadata_json: unknown;
   created_at: string;
   updated_at: string;
@@ -27,16 +37,20 @@ type ProfileRow = {
 
 type LinkRow = {
   id: string;
-  org_id: string;
+  org_id: string | null;
   account_user_id: string | null;
   profile_id: string;
   relationship_type: PeopleRelationshipType;
   can_manage: boolean;
   pending_invite_email: string | null;
   invite_status: PeopleInviteStatus;
+  metadata_json: unknown;
   created_at: string;
   updated_at: string;
 };
+
+const LINK_COLUMNS =
+  "id, org_id, account_user_id, profile_id, relationship_type, can_manage, pending_invite_email, invite_status, metadata_json, created_at, updated_at";
 
 type MembershipRow = {
   id: string;
@@ -71,6 +85,12 @@ function mapProfile(row: ProfileRow): PeopleProfile {
     firstName: row.first_name,
     lastName: row.last_name,
     dob: row.dob,
+    email: row.email,
+    sex: row.sex,
+    school: row.school,
+    grade: row.grade,
+    avatarPath: row.avatar_path,
+    addressJson: asObject(row.address_json) as PeopleProfileAddress,
     metadataJson: asObject(row.metadata_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -87,6 +107,7 @@ function mapLink(row: LinkRow): PeopleProfileLink {
     canManage: row.can_manage,
     pendingInviteEmail: row.pending_invite_email,
     inviteStatus: row.invite_status,
+    metadataJson: asObject(row.metadata_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -97,7 +118,7 @@ export async function listProfilesForAccount(userId: string): Promise<Array<{ pr
   const { data: linksData, error: linksError } = await supabase
     .schema("people")
     .from("profile_links")
-    .select("id, org_id, account_user_id, profile_id, relationship_type, can_manage, pending_invite_email, invite_status, created_at, updated_at")
+    .select(LINK_COLUMNS)
     .eq("account_user_id", userId)
     .order("created_at", { ascending: true });
 
@@ -114,7 +135,7 @@ export async function listProfilesForAccount(userId: string): Promise<Array<{ pr
   const { data: profilesData, error: profilesError } = await supabase
     .schema("people")
     .from("profiles")
-    .select("id, person_user_id, org_id, profile_type, status, display_name, first_name, last_name, dob, metadata_json, created_at, updated_at")
+    .select(PROFILE_COLUMNS)
     .in("id", profileIds);
 
   if (profilesError) {
@@ -171,7 +192,7 @@ export async function listPeopleDirectoryForOrg(input: {
   const { data: linksData, error: linksError } = await supabase
     .schema("people")
     .from("profile_links")
-    .select("id, org_id, account_user_id, profile_id, relationship_type, can_manage, pending_invite_email, invite_status, created_at, updated_at")
+    .select(LINK_COLUMNS)
     .eq("org_id", input.orgId)
     .in("account_user_id", accountIds.length > 0 ? accountIds : ["00000000-0000-0000-0000-000000000000"]);
 
@@ -205,7 +226,7 @@ export async function listPeopleDirectoryForOrg(input: {
           const { data, error } = await supabase
             .schema("people")
             .from("profiles")
-            .select("id, person_user_id, org_id, profile_type, status, display_name, first_name, last_name, dob, metadata_json, created_at, updated_at")
+            .select(PROFILE_COLUMNS)
             .in("id", profileIds)
             .eq("org_id", input.orgId);
 
@@ -267,7 +288,7 @@ export async function listPeopleDirectoryForOrg(input: {
 }
 
 export async function createProfileRecord(input: {
-  orgId: string;
+  orgId: string | null;
   personUserId: string | null;
   profileType: PeopleProfileType;
   status?: PeopleProfileStatus;
@@ -275,9 +296,16 @@ export async function createProfileRecord(input: {
   firstName?: string | null;
   lastName?: string | null;
   dob?: string | null;
+  email?: string | null;
+  sex?: string | null;
+  school?: string | null;
+  grade?: string | null;
+  avatarPath?: string | null;
+  addressJson?: PeopleProfileAddress;
   metadataJson?: Record<string, unknown>;
+  supabase?: SupabaseClient<any>;
 }): Promise<PeopleProfile> {
-  const supabase = await createSupabaseServer();
+  const supabase = input.supabase ?? (await createSupabaseServer());
   const { data, error } = await supabase
     .schema("people")
     .from("profiles")
@@ -290,9 +318,15 @@ export async function createProfileRecord(input: {
       first_name: input.firstName ?? null,
       last_name: input.lastName ?? null,
       dob: input.dob ?? null,
+      email: input.email ?? null,
+      sex: input.sex ?? null,
+      school: input.school ?? null,
+      grade: input.grade ?? null,
+      avatar_path: input.avatarPath ?? null,
+      address_json: input.addressJson ?? {},
       metadata_json: input.metadataJson ?? {}
     })
-    .select("id, person_user_id, org_id, profile_type, status, display_name, first_name, last_name, dob, metadata_json, created_at, updated_at")
+    .select(PROFILE_COLUMNS)
     .single();
 
   if (error) {
@@ -304,25 +338,38 @@ export async function createProfileRecord(input: {
 
 export async function updateProfileRecord(input: {
   profileId: string;
-  displayName: string;
+  displayName?: string;
   firstName?: string | null;
   lastName?: string | null;
   dob?: string | null;
+  email?: string | null;
+  sex?: string | null;
+  school?: string | null;
+  grade?: string | null;
+  avatarPath?: string | null;
+  addressJson?: PeopleProfileAddress;
   metadataJson?: Record<string, unknown>;
+  supabase?: SupabaseClient<any>;
 }): Promise<PeopleProfile> {
-  const supabase = await createSupabaseServer();
+  const supabase = input.supabase ?? (await createSupabaseServer());
   const { data, error } = await supabase
     .schema("people")
     .from("profiles")
     .update({
-      display_name: input.displayName,
-      first_name: input.firstName ?? null,
-      last_name: input.lastName ?? null,
-      dob: input.dob ?? null,
+      ...(input.displayName !== undefined ? { display_name: input.displayName } : {}),
+      ...(input.firstName !== undefined ? { first_name: input.firstName } : {}),
+      ...(input.lastName !== undefined ? { last_name: input.lastName } : {}),
+      ...(input.dob !== undefined ? { dob: input.dob } : {}),
+      ...(input.email !== undefined ? { email: input.email } : {}),
+      ...(input.sex !== undefined ? { sex: input.sex } : {}),
+      ...(input.school !== undefined ? { school: input.school } : {}),
+      ...(input.grade !== undefined ? { grade: input.grade } : {}),
+      ...(input.avatarPath !== undefined ? { avatar_path: input.avatarPath } : {}),
+      ...(input.addressJson !== undefined ? { address_json: input.addressJson } : {}),
       ...(input.metadataJson !== undefined ? { metadata_json: input.metadataJson } : {})
     })
     .eq("id", input.profileId)
-    .select("id, person_user_id, org_id, profile_type, status, display_name, first_name, last_name, dob, metadata_json, created_at, updated_at")
+    .select(PROFILE_COLUMNS)
     .single();
 
   if (error) {
@@ -333,15 +380,17 @@ export async function updateProfileRecord(input: {
 }
 
 export async function linkProfileRecord(input: {
-  orgId: string;
+  orgId: string | null;
   accountUserId: string | null;
   profileId: string;
   relationshipType: PeopleRelationshipType;
   canManage?: boolean;
   pendingInviteEmail?: string | null;
   inviteStatus?: PeopleInviteStatus;
+  metadataJson?: Record<string, unknown>;
+  supabase?: SupabaseClient<any>;
 }): Promise<PeopleProfileLink> {
-  const supabase = await createSupabaseServer();
+  const supabase = input.supabase ?? (await createSupabaseServer());
   const { data, error } = await supabase
     .schema("people")
     .from("profile_links")
@@ -353,13 +402,14 @@ export async function linkProfileRecord(input: {
         relationship_type: input.relationshipType,
         can_manage: input.canManage ?? true,
         pending_invite_email: input.pendingInviteEmail ?? null,
-        invite_status: input.inviteStatus ?? "accepted"
+        invite_status: input.inviteStatus ?? "accepted",
+        metadata_json: input.metadataJson ?? {}
       },
       {
         onConflict: "org_id,account_user_id,profile_id,relationship_type"
       }
     )
-    .select("id, org_id, account_user_id, profile_id, relationship_type, can_manage, pending_invite_email, invite_status, created_at, updated_at")
+    .select(LINK_COLUMNS)
     .single();
 
   if (error) {

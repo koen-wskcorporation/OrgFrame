@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Button } from "@orgframe/ui/primitives/button";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
@@ -115,7 +115,7 @@ export function FormSettingsPanel({ orgSlug, form, programs, programNodes, canWr
   }
 
   return (
-    <ManageSection
+    <Section
       actions={
         <Button disabled={isSaving || !canWrite} form="form-settings-form" loading={isSaving} type="submit">
           {isSaving ? "Saving..." : "Save Settings"}
@@ -235,6 +235,6 @@ export function FormSettingsPanel({ orgSlug, form, programs, programNodes, canWr
             <Textarea className="min-h-[90px]" disabled={!canWrite} onChange={(event) => setDescription(event.target.value)} value={description} />
           </FormField>
         </form>
-    </ManageSection>
+    </Section>
   );
 }

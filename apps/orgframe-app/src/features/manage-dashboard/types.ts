@@ -1,12 +1,7 @@
 import { z } from "zod";
+import { DEFAULT_METRIC_SOURCE, METRIC_SOURCES } from "@/src/features/manage-dashboard/widgets/metric-sources";
 
-export const widgetTypes = [
-  "forms-summary",
-  "events-summary",
-  "programs-summary",
-  "ai-summary",
-  "quick-links"
-] as const;
+export const widgetTypes = ["metric-card"] as const;
 
 export type WidgetType = (typeof widgetTypes)[number];
 
@@ -28,15 +23,32 @@ export type DashboardLayout = {
   widgets: WidgetInstance[];
 };
 
-export const defaultDashboardLayout: DashboardLayout = {
-  version: 1,
-  widgets: []
-};
+const DEFAULT_CARDS: Array<{ source: string; label?: string }> = [
+  { source: "forms_total" },
+  { source: "forms_submissions" },
+  { source: "programs_total" },
+  { source: "events_upcoming" }
+];
+
+export function buildDefaultDashboardLayout(): DashboardLayout {
+  const known = new Set(METRIC_SOURCES.map((s) => s.value));
+  const widgets: WidgetInstance[] = DEFAULT_CARDS.map((card, i) => ({
+    id: `default-${i}-${card.source}`,
+    type: "metric-card" as const,
+    settings: {
+      source: known.has(card.source) ? card.source : DEFAULT_METRIC_SOURCE,
+      ...(card.label ? { label: card.label } : {})
+    }
+  }));
+  return { version: 1, widgets };
+}
+
+export const defaultDashboardLayout: DashboardLayout = buildDefaultDashboardLayout();
 
 export function normalizeDashboardLayout(raw: unknown): DashboardLayout {
   const parsed = dashboardLayoutSchema.safeParse(raw);
   if (!parsed.success) {
-    return defaultDashboardLayout;
+    return { version: 1, widgets: [] };
   }
   const seen = new Set<string>();
   const widgets = (parsed.data.widgets ?? []).filter((widget) => {

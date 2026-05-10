@@ -68,10 +68,7 @@ export function ReservationEditorPanel({ open, onClose, onSubmit, canWrite, spac
     <Panel
       footer={
         <>
-          <Button onClick={onClose} type="button" variant="ghost">
-            <X className="h-4 w-4" />
-            Cancel
-          </Button>
+          <Button intent="cancel" onClick={onClose} type="button" variant="ghost">Cancel</Button>
           <Button
             disabled={!canWrite || !draft.spaceId || !draft.localDate}
             onClick={() => {

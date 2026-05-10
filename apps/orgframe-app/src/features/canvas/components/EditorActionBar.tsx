@@ -104,10 +104,7 @@ export function EditorActionBar({
           {onEdit ? (
             <>
               <Divider />
-              <Button onClick={onEdit} size="sm" variant="primary">
-                <Pencil />
-                Edit
-              </Button>
+              <Button intent="edit" onClick={onEdit} size="sm" variant="primary">Edit</Button>
             </>
           ) : null}
         </div>

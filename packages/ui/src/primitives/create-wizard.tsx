@@ -1,11 +1,29 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, RotateCcw, Save } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCcw, Save, Trash2 } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Panel } from "@orgframe/ui/primitives/panel";
 import { Popup } from "@orgframe/ui/primitives/popup";
 import { useConfirmDialog } from "@orgframe/ui/primitives/confirm-dialog";
+
+/**
+ * Optional delete affordance for a wizard. When provided, the wizard renders
+ * a Trash2 icon-only button on the left of the footer; clicking it shows a
+ * confirm dialog and, on confirmation, calls `onDelete`. Typically only
+ * provided in edit-mode wizards.
+ */
+export type WizardDeleteConfig = {
+  onDelete: () => void | Promise<void>;
+  /** Confirmation dialog title. Defaults to "Delete?" */
+  confirmTitle?: string;
+  /** Confirmation dialog description. Defaults to "This cannot be undone." */
+  confirmDescription?: string;
+  /** Label on the destructive confirm button. Defaults to "Delete". */
+  confirmLabel?: string;
+  /** Aria label / tooltip for the icon button. Defaults to "Delete". */
+  ariaLabel?: string;
+};
 
 export type WizardStepRenderContext<TState> = {
   state: TState;
@@ -472,7 +490,42 @@ export type WizardChromeProps = {
   customFooter?: React.ReactNode;
   /** "create" (default) shows linear Back/Next/Submit and gates the stepper. "edit" lets the user jump freely between steps. */
   mode?: "create" | "edit";
+  /** Optional delete affordance — adds a trash icon button to the footer with a confirm dialog. Typically only set for edit-mode wizards. */
+  delete?: WizardDeleteConfig;
 };
+
+function FooterDeleteButton({ config, disabled }: { config: WizardDeleteConfig; disabled: boolean }) {
+  const { confirm } = useConfirmDialog();
+  const [running, setRunning] = React.useState(false);
+  const handleClick = async () => {
+    if (disabled || running) return;
+    const ok = await confirm({
+      title: config.confirmTitle ?? "Delete?",
+      description: config.confirmDescription ?? "This cannot be undone.",
+      confirmLabel: config.confirmLabel ?? "Delete",
+      cancelLabel: "Keep",
+      variant: "destructive"
+    });
+    if (!ok) return;
+    setRunning(true);
+    try {
+      await Promise.resolve(config.onDelete());
+    } finally {
+      setRunning(false);
+    }
+  };
+  return (
+    <Button
+      iconOnly
+      aria-label={config.ariaLabel ?? "Delete"}
+      disabled={disabled || running}
+      onClick={handleClick}
+      type="button"
+    >
+      <Trash2 />
+    </Button>
+  );
+}
 
 /**
  * Controlled wizard chrome. Renders the sidebar/popup frame, stepper, and
@@ -502,7 +555,8 @@ export function WizardChrome({
   popupSize = "lg",
   sidebarPushMode = "content",
   customFooter,
-  mode = "create"
+  mode = "create",
+  delete: deleteConfig
 }: WizardChromeProps) {
   const isEdit = mode === "edit";
   const currentIndex = Math.max(0, steps.findIndex((step) => step.id === currentStepId));
@@ -542,11 +596,13 @@ export function WizardChrome({
       </div>
     ) : null;
 
+  // Convention: panel footers do NOT include a Cancel button — the panel's X
+  // closes it. Keep footer actions to forward-progress only (Back/Next/Save).
+  // An optional Delete icon button sits on the left when `delete` is provided.
+  const deleteSlot = deleteConfig ? <FooterDeleteButton config={deleteConfig} disabled={submitting} /> : null;
   const defaultFooter = isEdit ? (
     <>
-      <Button onClick={onClose} type="button" variant="ghost" disabled={submitting}>
-        Cancel
-      </Button>
+      {deleteSlot}
       <div className="ml-auto flex items-center gap-2">
         <Button onClick={onSubmit} type="button" loading={submitting} disabled={submitting || !canAdvance}>
           <Save className="h-4 w-4" />
@@ -556,9 +612,7 @@ export function WizardChrome({
     </>
   ) : (
     <>
-      <Button onClick={onClose} type="button" variant="ghost" disabled={submitting}>
-        Cancel
-      </Button>
+      {deleteSlot}
       <div className="ml-auto flex items-center gap-2">
         {!isFirstStep ? (
           <Button onClick={onBack} type="button" variant="secondary" disabled={submitting}>
@@ -636,6 +690,12 @@ export type CreateWizardProps<TState> = {
    * an existing entity.
    */
   mode?: "create" | "edit";
+  /** Optional delete affordance — adds a trash icon button to the footer with a confirm dialog. Typically only set in edit mode. */
+  delete?: WizardDeleteConfig;
+  /** Forwarded to the underlying Panel header (sidebar frame only). */
+  headerShowAvatar?: boolean;
+  headerAvatarSlot?: React.ReactNode;
+  headerAvatarAlt?: string;
 };
 
 export function CreateWizard<TState>({
@@ -655,7 +715,11 @@ export function CreateWizard<TState>({
   popupSize = "lg",
   sidebarPushMode = "content",
   hideCancel = false,
-  mode = "create"
+  mode = "create",
+  delete: deleteConfig,
+  headerShowAvatar,
+  headerAvatarSlot,
+  headerAvatarAlt
 }: CreateWizardProps<TState>) {
   const isEdit = mode === "edit";
   const { confirm } = useConfirmDialog();
@@ -768,14 +832,15 @@ export function CreateWizard<TState>({
     </div>
   );
 
+  // Convention: panel footers do NOT include a Cancel/Close button — the
+  // panel's X closes it. The `hideCancel` prop is retained for API stability
+  // but is now a no-op; nothing renders a cancel button by default.
+  void hideCancel;
   const editSubmitLabel = submitLabel === "Create" ? "Save changes" : submitLabel;
+  const deleteSlot = deleteConfig ? <FooterDeleteButton config={deleteConfig} disabled={flow.submitting} /> : null;
   const footer = isEdit ? (
     <>
-      {hideCancel ? null : (
-        <Button onClick={requestClose} type="button" variant="ghost" disabled={flow.submitting}>
-          Close
-        </Button>
-      )}
+      {deleteSlot}
       <div className="ml-auto flex items-center gap-2">
         <Button
           disabled={flow.submitting || !flow.isDirty}
@@ -790,11 +855,7 @@ export function CreateWizard<TState>({
     </>
   ) : (
     <>
-      {hideCancel ? null : (
-        <Button onClick={requestClose} type="button" variant="ghost" disabled={flow.submitting}>
-          Cancel
-        </Button>
-      )}
+      {deleteSlot}
       <div className="ml-auto flex items-center gap-2">
         {!flow.isFirstStep ? (
           <Button onClick={flow.back} type="button" variant="secondary" disabled={flow.submitting}>
@@ -838,6 +899,9 @@ export function CreateWizard<TState>({
   return (
     <Panel
       footer={footer}
+      headerAvatarAlt={headerAvatarAlt}
+      headerAvatarSlot={headerAvatarSlot}
+      headerShowAvatar={headerShowAvatar}
       onClose={requestClose}
       open={open}
       pushMode={sidebarPushMode}

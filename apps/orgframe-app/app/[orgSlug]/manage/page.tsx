@@ -3,8 +3,9 @@ import { Alert } from "@orgframe/ui/primitives/alert";
 import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
 import { getSessionUser } from "@/src/features/core/auth/server/getSessionUser";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
-import { AiDashboard } from "@/src/features/manage-dashboard/components/AiDashboard";
+import { ManageDashboardClient, type WidgetInitialData } from "@/src/features/manage-dashboard/components/ManageDashboardClient";
+import { loadDashboardLayout } from "@/src/features/manage-dashboard/layout-storage";
+import { loadWidgetData } from "@/src/features/manage-dashboard/widgets/server-loaders";
 
 export const metadata: Metadata = {
   title: "Dashboard"
@@ -21,11 +22,27 @@ export default async function OrgManageDashboardPage({ params }: { params: Promi
     );
   }
 
+  const layout = await loadDashboardLayout({ userId: sessionUser.id, orgId: orgContext.orgId });
+
+  const initialDataEntries = await Promise.all(
+    layout.widgets.map(async (widget) => {
+      const data = await loadWidgetData(widget.type, {
+        orgId: orgContext.orgId,
+        orgSlug: orgContext.orgSlug,
+        permissions: orgContext.membershipPermissions,
+        settings: widget.settings
+      });
+      return [widget.id, data] as const;
+    })
+  );
+  const initialData: Record<string, WidgetInitialData> = Object.fromEntries(initialDataEntries);
+
   return (
-    <PageShell description="Overview of your organization's activity and quick links to management tools." title="Dashboard">
-      <ManageSection title="Dashboard">
-        <AiDashboard orgName={orgContext.orgName} orgSlug={orgContext.orgSlug} />
-      </ManageSection>
-    </PageShell>
+    <ManageDashboardClient
+      availablePermissions={orgContext.membershipPermissions}
+      initialData={initialData}
+      initialLayout={layout}
+      orgSlug={orgContext.orgSlug}
+    />
   );
 }

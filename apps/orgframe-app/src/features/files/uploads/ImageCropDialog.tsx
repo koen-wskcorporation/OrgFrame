@@ -190,9 +190,7 @@ export function ImageCropDialog({
     <Popup
       footer={
         <>
-          <Button disabled={isWorking} onClick={onClose} size="sm" variant="ghost">
-            Cancel
-          </Button>
+          <Button intent="cancel" disabled={isWorking} onClick={onClose} size="sm" variant="ghost">Cancel</Button>
           <Button disabled={isWorking || !src || !pixelArea} onClick={() => void handleSave()} size="sm">
             {isWorking ? "Saving..." : "Save"}
           </Button>

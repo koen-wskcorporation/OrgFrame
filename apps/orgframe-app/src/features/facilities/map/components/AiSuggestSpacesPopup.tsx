@@ -114,9 +114,7 @@ export function AiSuggestSpacesPopup({
             <span />
           )}
           <div className="flex items-center gap-2">
-            <Button onClick={onClose} variant="ghost">
-              Cancel
-            </Button>
+            <Button intent="cancel" onClick={onClose} variant="ghost">Cancel</Button>
             <Button
               disabled={acceptedCount === 0 || applying || loading}
               loading={applying}

@@ -33,10 +33,7 @@ export function OccurrenceEditDialog({
     <Popup
       footer={
         <>
-          <Button onClick={onClose} type="button" variant="ghost">
-            <X className="h-4 w-4" />
-            Cancel
-          </Button>
+          <Button intent="cancel" onClick={onClose} type="button" variant="ghost">Cancel</Button>
           <Button
             disabled={!canWrite || !draft || !draft.localDate || !draft.timezone}
             loading={isSaving}

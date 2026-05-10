@@ -191,9 +191,7 @@ export function CreateNodeWizard({
   const footer =
     step === "type" ? (
       <>
-        <Button disabled={submitting} onClick={requestClose} type="button" variant="ghost">
-          Cancel
-        </Button>
+        <Button intent="cancel" disabled={submitting} onClick={requestClose} type="button" variant="ghost">Cancel</Button>
         <Button className="ml-auto" disabled={!kind} onClick={handleNext} type="button">
           Next
         </Button>
@@ -201,9 +199,7 @@ export function CreateNodeWizard({
     ) : (
       <>
         {lockedToKind ? (
-          <Button disabled={submitting} onClick={requestClose} type="button" variant="ghost">
-            Cancel
-          </Button>
+          <Button intent="cancel" disabled={submitting} onClick={requestClose} type="button" variant="ghost">Cancel</Button>
         ) : (
           <Button disabled={submitting} onClick={handleBack} type="button" variant="ghost">
             <ChevronLeft className="h-4 w-4" />

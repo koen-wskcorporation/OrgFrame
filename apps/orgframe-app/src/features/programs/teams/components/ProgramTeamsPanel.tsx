@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Chip, RepeaterChip } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { Select } from "@orgframe/ui/primitives/select";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import type { ProgramNode, ProgramTeamSummary } from "@/src/features/programs/types";
 import { TeamDetailPanel } from "@/src/features/programs/teams/components/TeamDetailPanel";
 
@@ -85,7 +85,7 @@ export function ProgramTeamsPanel({ orgSlug, programId, canWrite, nodes, teamSum
         items={filteredTeams}
         viewKey="manage.program-teams"
         renderShell={({ toolbar, body }) => (
-          <ManageSection
+          <Section
             actions={
               <div className="flex flex-wrap items-center gap-2">
                 {toolbar}
@@ -119,7 +119,7 @@ export function ProgramTeamsPanel({ orgSlug, programId, canWrite, nodes, teamSum
               />
             </div>
             {body}
-          </ManageSection>
+          </Section>
         )}
         getItem={(summary) => {
             const divisionName = summary.node.parentId ? nodeById.get(summary.node.parentId)?.name ?? "" : "";
@@ -129,10 +129,10 @@ export function ProgramTeamsPanel({ orgSlug, programId, canWrite, nodes, teamSum
               chips: (
                 <>
                   <Chip color={summary.team.status === "active" ? "emerald" : "slate"} label={summary.team.status} />
-                  {divisionName ? <RepeaterChip label={divisionName} /> : null}
-                  {summary.team.levelLabel ? <RepeaterChip label={summary.team.levelLabel} /> : null}
-                  <RepeaterChip label={`Roster ${summary.memberCount}`} />
-                  <RepeaterChip label={`Staff ${summary.staffCount}`} />
+                  {divisionName ? <Chip status={false} label={divisionName} /> : null}
+                  {summary.team.levelLabel ? <Chip status={false} label={summary.team.levelLabel} /> : null}
+                  <Chip status={false} label={`Roster ${summary.memberCount}`} />
+                  <Chip status={false} label={`Staff ${summary.staffCount}`} />
                 </>
               ),
               meta: summary.team.teamCode ? <>/{summary.team.teamCode}</> : undefined,

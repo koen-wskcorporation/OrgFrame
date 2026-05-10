@@ -383,10 +383,7 @@ export function OrgSitePage({
         <Plus className="h-4 w-4" />
         Add block
       </Button>
-      <Button disabled={isSaving} onClick={cancelEditing} size="md" type="button" variant="ghost">
-        <X className="h-4 w-4" />
-        Cancel
-      </Button>
+      <Button intent="cancel" disabled={isSaving} onClick={cancelEditing} size="md" type="button" variant="ghost">Cancel</Button>
       <Button disabled={isSaving} loading={isSaving} onClick={saveDraft} size="md" type="button" variant="primary">
         Done
       </Button>

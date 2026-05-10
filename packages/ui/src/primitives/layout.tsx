@@ -1,18 +1,6 @@
 import * as React from "react";
 import { cn } from "./utils";
 
-type PageStackProps = React.HTMLAttributes<HTMLDivElement>;
-
-export function PageStack({ className, ...props }: PageStackProps) {
-  return <div className={cn("app-page-stack", className)} {...props} />;
-}
-
-type SectionStackProps = React.HTMLAttributes<HTMLDivElement>;
-
-export function SectionStack({ className, ...props }: SectionStackProps) {
-  return <div className={cn("app-section-stack", className)} {...props} />;
-}
-
 type CardGridProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function CardGrid({ className, ...props }: CardGridProps) {

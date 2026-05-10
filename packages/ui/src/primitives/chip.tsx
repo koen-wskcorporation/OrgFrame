@@ -6,16 +6,14 @@ import { Popover } from "./popover";
 import { resolveStatusColor, type StatusColor } from "./status-palette";
 import { cn } from "./utils";
 
-// Color: any palette slug, plus legacy aliases kept for back-compat with the
-// prior cva-based Chip (`neutral|green|yellow|red`). Aliases that don't exist
-// in the palette ("neutral") are remapped at render time.
+// Color: any palette slug, plus legacy alias `neutral` (mapped to `slate`).
 export type ChipColor = StatusColor | "neutral";
 
 const LEGACY_COLOR_ALIAS: Record<string, StatusColor> = {
   neutral: "slate"
 };
 
-// Semantic shortcuts inherited from the previous StatusChip.
+// Semantic shortcuts.
 export type ChipVariant = "neutral" | "success" | "warning" | "destructive";
 
 const VARIANT_ALIAS: Record<ChipVariant, StatusColor> = {
@@ -24,14 +22,6 @@ const VARIANT_ALIAS: Record<ChipVariant, StatusColor> = {
   warning: "amber",
   destructive: "rose"
 };
-
-// Old `regular|compact` accepted alongside `md|sm` for back-compat.
-export type ChipSize = "sm" | "md" | "regular" | "compact";
-
-function normalizeSize(size?: ChipSize): "sm" | "md" {
-  if (!size || size === "md" || size === "regular") return "md";
-  return "sm";
-}
 
 function resolveSlug(color?: ChipColor | string | null, variant?: ChipVariant): StatusColor {
   if (color) {
@@ -43,19 +33,65 @@ function resolveSlug(color?: ChipColor | string | null, variant?: ChipVariant): 
   return "slate";
 }
 
-const SHELL_BASE = "inline-flex items-center justify-center gap-1.5 rounded-full border font-semibold uppercase tracking-wide transition-colors";
+const SHELL_BASE =
+  "inline-flex items-center justify-center gap-1.5 rounded-full border font-semibold uppercase tracking-wide transition-colors";
+const SHELL_SIZE = "h-5 px-2 text-[10px]";
+const SHELL_ICON_ONLY = "h-[14px] w-[14px] px-0";
 
-function shellClass(size: "sm" | "md", iconOnly: boolean | undefined, chipPalette: string) {
-  const sizeClass = size === "sm" ? "h-4 px-1.5 text-[9px]" : "h-5 px-2 text-[10px]";
-  const iconSize = size === "sm" ? "h-3 w-3 px-0" : "h-[14px] w-[14px] px-0";
-  return cn(SHELL_BASE, chipPalette, iconOnly ? iconSize : sizeClass);
+function shellClass(iconOnly: boolean | undefined, chipPalette: string) {
+  return cn(SHELL_BASE, chipPalette, iconOnly ? SHELL_ICON_ONLY : SHELL_SIZE);
 }
+
+function resolveDot(
+  status: boolean | undefined,
+  showDot: boolean | undefined,
+  color: ChipColor | string | null | undefined,
+  variant: ChipVariant | undefined
+): boolean {
+  if (status !== undefined) return status;
+  return showDot ?? Boolean(color || variant);
+}
+
+function renderChipChildren(
+  slugDef: ReturnType<typeof resolveStatusColor>,
+  dotShown: boolean,
+  iconOnly: boolean | undefined,
+  label: string | undefined,
+  children: React.ReactNode
+) {
+  return (
+    <>
+      {dotShown && !iconOnly ? <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", slugDef.dot)} /> : null}
+      {label !== undefined ? <span className="truncate">{label}</span> : children}
+    </>
+  );
+}
+
+// ─── Picker config ────────────────────────────────────────────────────────────
+
+export type ChipOption = {
+  value: string;
+  label: string;
+  /** Palette slug. Accepts a plain string for callers loading from the DB. */
+  color: StatusColor | string;
+};
+
+export type ChipPickerConfig = {
+  value: string | null | undefined;
+  options: ChipOption[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  onManage?: () => void;
+  manageLabel?: string;
+  placeholder?: string;
+};
+
+// ─── Chip ─────────────────────────────────────────────────────────────────────
 
 type ChipBodyProps = {
   color?: ChipColor | string | null;
   variant?: ChipVariant;
   label?: string;
-  size?: ChipSize;
   /**
    * `true` → always show dot (this chip represents a status).
    * `false` → always hide dot.
@@ -69,104 +105,97 @@ type ChipBodyProps = {
   children?: React.ReactNode;
 };
 
-function resolveDot(status: boolean | undefined, showDot: boolean | undefined, color: ChipBodyProps["color"], variant: ChipBodyProps["variant"]): boolean {
-  if (status !== undefined) return status;
-  return showDot ?? Boolean(color || variant);
+export interface ChipProps
+  extends ChipBodyProps,
+    Omit<
+      React.HTMLAttributes<HTMLSpanElement> & React.ButtonHTMLAttributes<HTMLButtonElement>,
+      "color"
+    > {
+  /**
+   * When provided, renders an editable chip with a popover dropdown.
+   * The `color` and `label` props on the chip itself are ignored — the picker
+   * derives them from the selected option.
+   */
+  picker?: ChipPickerConfig;
 }
 
-function renderChipChildren(slugDef: ReturnType<typeof resolveStatusColor>, dotShown: boolean, iconOnly: boolean | undefined, label: string | undefined, children: React.ReactNode) {
-  return (
-    <>
-      {dotShown && !iconOnly ? <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", slugDef.dot)} /> : null}
-      {label !== undefined ? <span className="truncate">{label}</span> : children}
-    </>
-  );
-}
+export function Chip(props: ChipProps) {
+  const {
+    color,
+    variant,
+    label,
+    status,
+    showDot,
+    iconOnly,
+    className,
+    children,
+    picker,
+    onClick,
+    disabled,
+    type,
+    ...rest
+  } = props;
 
-export interface ChipProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, "color">, ChipBodyProps {}
+  if (picker) {
+    return <ChipPickerImpl {...picker} className={className} status={status} />;
+  }
 
-export function Chip({ color, variant, label, size, status, showDot, iconOnly, className, children, ...props }: ChipProps) {
   const slug = resolveSlug(color, variant);
   const def = resolveStatusColor(slug);
-  const normalized = normalizeSize(size);
   const dotShown = resolveDot(status, showDot, color, variant);
+  const body = renderChipChildren(def, dotShown, iconOnly, label, children);
+
+  const isInteractive = onClick !== undefined || disabled !== undefined || type !== undefined;
+
+  if (isInteractive) {
+    return (
+      <button
+        className={cn(
+          shellClass(iconOnly, def.chip),
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-55",
+          className
+        )}
+        disabled={disabled}
+        onClick={onClick}
+        type={type ?? "button"}
+        {...(rest as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+      >
+        {body}
+      </button>
+    );
+  }
+
   return (
-    <span className={cn(shellClass(normalized, iconOnly, def.chip), className)} {...props}>
-      {renderChipChildren(def, dotShown, iconOnly, label, children)}
+    <span
+      className={cn(shellClass(iconOnly, def.chip), className)}
+      {...(rest as React.HTMLAttributes<HTMLSpanElement>)}
+    >
+      {body}
     </span>
   );
 }
 
-export interface ChipButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "color">, ChipBodyProps {}
+// ─── Picker implementation ────────────────────────────────────────────────────
 
-export const ChipButton = React.forwardRef<HTMLButtonElement, ChipButtonProps>(
-  ({ color, variant, label, size, status, showDot, iconOnly, className, children, type = "button", ...props }, ref) => {
-    const slug = resolveSlug(color, variant);
-    const def = resolveStatusColor(slug);
-    const normalized = normalizeSize(size);
-    const dotShown = resolveDot(status, showDot, color, variant);
-    return (
-      <button
-        className={cn(
-          shellClass(normalized, iconOnly, def.chip),
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-55",
-          className
-        )}
-        ref={ref}
-        type={type}
-        {...props}
-      >
-        {renderChipChildren(def, dotShown, iconOnly, label, children)}
-      </button>
-    );
-  }
-);
-ChipButton.displayName = "ChipButton";
-
-// Editable chip with a popover dropdown — replaces the former StatusChipPicker.
-// Caller wires `value`/`options`/`onChange`; pass `onManage` to add a footer
-// action (e.g. "Manage statuses").
-export type ChipOption = {
-  value: string;
-  label: string;
-  /** Palette slug. Accepts a plain string for callers loading from the DB. */
-  color: StatusColor | string;
-};
-
-export type ChipPickerProps = {
-  value: string | null | undefined;
-  options: ChipOption[];
-  onChange: (value: string) => void;
-  disabled?: boolean;
-  onManage?: () => void;
-  manageLabel?: string;
-  size?: ChipSize;
-  placeholder?: string;
+type ChipPickerImplProps = ChipPickerConfig & {
   className?: string;
-  /**
-   * `true` → render the colored status dot in the trigger chip. Mirrors the
-   * `status` prop on `<Chip />`. Defaults to off so existing call-sites are
-   * unaffected.
-   */
   status?: boolean;
 };
 
-export function ChipPicker({
+function ChipPickerImpl({
   value,
   options,
   onChange,
   disabled = false,
   onManage,
   manageLabel = "Manage statuses",
-  size = "md",
   placeholder = "Set status",
   className,
   status
-}: ChipPickerProps) {
+}: ChipPickerImplProps) {
   const triggerRef = React.useRef<HTMLButtonElement | null>(null);
   const [open, setOpen] = React.useState(false);
   const selected = React.useMemo(() => options.find((opt) => opt.value === value) ?? null, [options, value]);
-  const normalized = normalizeSize(size);
 
   return (
     <>
@@ -184,7 +213,7 @@ export function ChipPicker({
         ref={triggerRef}
         type="button"
       >
-        <Chip color={selected ? selected.color : "slate"} size={normalized} status={status}>
+        <Chip color={selected ? selected.color : "slate"} status={status}>
           <span className="truncate">{selected ? selected.label : placeholder}</span>
           <ChevronDown
             aria-hidden
@@ -220,7 +249,7 @@ export function ChipPicker({
                     type="button"
                   >
                     <span className="min-w-0 flex-1">
-                      <Chip color={option.color} label={option.label} size="sm" />
+                      <Chip color={option.color} label={option.label} />
                     </span>
                     {isSelected ? <Check className="h-4 w-4 shrink-0 text-text-muted" /> : null}
                   </button>
@@ -247,24 +276,5 @@ export function ChipPicker({
       </Popover>
     </>
   );
-}
-
-// RepeaterChip — a data-label chip with no status dot. Use for non-status info
-// (counts, types, environment, division, etc.). Defaults to `slate` color so a
-// row of these chips reads as neutral metadata; the actual status chip in the
-// row stands out via its own color + dot.
-export interface RepeaterChipProps extends Omit<ChipProps, "status" | "showDot" | "variant"> {}
-
-export function RepeaterChip({ color = "slate", ...props }: RepeaterChipProps) {
-  return <Chip color={color} status={false} {...props} />;
-}
-
-// Badge — a label chip with no dot, fixed sm size.
-export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: ChipVariant;
-}
-
-export function Badge({ variant = "neutral", ...props }: BadgeProps) {
-  return <Chip status={false} size="sm" variant={variant} {...props} />;
 }
 

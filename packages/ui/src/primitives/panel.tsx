@@ -343,19 +343,38 @@ export function PanelContainer() {
   // content sits). When there is no AppShell on the page (e.g. auth routes),
   // fall back to "below the primary header by one layout-gap".
   //
-  // When a fullscreen Popup is open (`body[data-popup-count] > 0`), prefer
-  // the popup's own header bottom — the page's primary header is hidden
+  // When a FULLSCREEN Popup is open (`body[data-popup-fullscreen-count] > 0`),
+  // prefer the popup's own header bottom — the page's primary header is hidden
   // behind the popup, so docking under it would put panels right over the
-  // popup's title bar. Falls back to the page measurement when no popup
-  // is open or no `[role="dialog"]` matches.
+  // popup's title bar. Small popups (size != "full", e.g. confirm dialogs) do
+  // NOT trigger this — they should not affect panel layout at all.
   React.useEffect(() => {
     const measure = () => {
+      // Freeze the panel's position whenever ANY popup is open. Small confirm
+      // popups apply `overflow-hidden` to body, which causes the page
+      // scrollbar to disappear and trigger transient ResizeObserver firings on
+      // `.app__content`/topbar — those would otherwise be observed here and
+      // re-anchor the panel mid-popup, visibly compressing it. We bail out
+      // entirely so the panel keeps whatever position it had before the popup
+      // opened. (Fullscreen popups still need their own anchoring; that's
+      // handled below via `data-popup-fullscreen-count`.)
+      const popupCount = Number(document.body.getAttribute("data-popup-count") ?? "0");
+      const fullscreenPopupCount = Number(
+        document.body.getAttribute("data-popup-fullscreen-count") ?? "0"
+      );
+      if (popupCount > 0 && fullscreenPopupCount === 0) {
+        return;
+      }
+
       const layoutGap = readLayoutGapPx();
 
-      const popupCount = Number(document.body.getAttribute("data-popup-count") ?? "0");
-      if (popupCount > 0) {
-        // Topmost open dialog (the last one mounted is on top in DOM order).
-        const dialogs = document.querySelectorAll<HTMLElement>("[role='dialog'][aria-modal='true']");
+      if (fullscreenPopupCount > 0) {
+        // Topmost open fullscreen dialog (last in DOM order). Filtering by
+        // `data-popup-size="full"` ensures we ignore small confirm popups
+        // even if they're visually on top.
+        const dialogs = document.querySelectorAll<HTMLElement>(
+          "[role='dialog'][aria-modal='true'][data-popup-size='full']"
+        );
         const topDialog = dialogs[dialogs.length - 1];
         const dialogHeader = topDialog?.firstElementChild as HTMLElement | null;
         if (dialogHeader) {
@@ -395,17 +414,26 @@ export function PanelContainer() {
       if (header) observer.observe(header);
       if (body) observer.observe(body);
     }
-    // Re-measure when popups open or close so we can track their header.
+    // Re-measure when popup state changes:
+    //   - `data-popup-fullscreen-count` for tracking fullscreen popup headers
+    //   - `data-popup-count` so we re-measure once *after* a small popup
+    //     closes (`measure` itself bails out while a small popup is still
+    //     open, so opens are no-ops)
     const popupAttrObserver = new MutationObserver(measure);
-    popupAttrObserver.observe(document.body, { attributes: true, attributeFilter: ["data-popup-count"] });
+    popupAttrObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["data-popup-fullscreen-count", "data-popup-count"]
+    });
     // And when any new dialog mounts/unmounts so the ResizeObserver above
     // doesn't have to know about elements that didn't exist at setup time.
     const dialogTreeObserver = new MutationObserver(() => {
       measure();
-      // Hook the active dialog's header into the resize observer too — its
-      // size can change if subtitle wraps or the header reflows.
+      // Hook the active fullscreen dialog's header into the resize observer
+      // too — its size can change if subtitle wraps or the header reflows.
       if (!observer) return;
-      const dialogs = document.querySelectorAll<HTMLElement>("[role='dialog'][aria-modal='true']");
+      const dialogs = document.querySelectorAll<HTMLElement>(
+        "[role='dialog'][aria-modal='true'][data-popup-size='full']"
+      );
       const topDialog = dialogs[dialogs.length - 1];
       const dialogHeader = topDialog?.firstElementChild as HTMLElement | null;
       if (dialogHeader) observer.observe(dialogHeader);

@@ -6,6 +6,10 @@ import { SurfaceBody, SurfaceCloseButton, SurfaceFooter, SurfaceHeader } from "@
 import { cn } from "./utils";
 
 const POPUP_COUNT_ATTRIBUTE = "data-popup-count";
+// Tracks only fullscreen popups (size="full"). Used by Panel to decide whether
+// to re-anchor itself under the popup's header — small confirm/dialog popups
+// must NOT trigger panel repositioning.
+const POPUP_FULLSCREEN_COUNT_ATTRIBUTE = "data-popup-fullscreen-count";
 
 export type PopupProps = {
   open: boolean;
@@ -300,6 +304,10 @@ export function Popup({
     myPopupIndex.current = popupCount + 1;
     document.body.setAttribute(POPUP_COUNT_ATTRIBUTE, String(popupCount + 1));
     document.body.classList.add("overflow-hidden");
+    if (isFull) {
+      const fsCount = Number(document.body.getAttribute(POPUP_FULLSCREEN_COUNT_ATTRIBUTE) ?? "0");
+      document.body.setAttribute(POPUP_FULLSCREEN_COUNT_ATTRIBUTE, String(fsCount + 1));
+    }
 
     return () => {
       const nextCount = Math.max(0, Number(document.body.getAttribute(POPUP_COUNT_ATTRIBUTE) ?? "1") - 1);
@@ -309,16 +317,33 @@ export function Popup({
       } else {
         document.body.setAttribute(POPUP_COUNT_ATTRIBUTE, String(nextCount));
       }
+      if (isFull) {
+        const nextFs = Math.max(0, Number(document.body.getAttribute(POPUP_FULLSCREEN_COUNT_ATTRIBUTE) ?? "1") - 1);
+        if (nextFs === 0) {
+          document.body.removeAttribute(POPUP_FULLSCREEN_COUNT_ATTRIBUTE);
+        } else {
+          document.body.setAttribute(POPUP_FULLSCREEN_COUNT_ATTRIBUTE, String(nextFs));
+        }
+      }
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [ready]);
+  }, [ready, isFull]);
 
   if (!ready) {
     return null;
   }
 
+  // Z-index strategy:
+  //   - Fullscreen popups use 1200/1201. Panels (z-1300) deliberately sit
+  //     ABOVE them so editor flows can keep panels interactable on top of
+  //     a fullscreen editor popup.
+  //   - Non-fullscreen popups (small confirm/dialog) use 1400/1401 — they
+  //     sit ABOVE panels so the backdrop dims the panel and the dialog is
+  //     unambiguously on top. This is what users expect from a confirm.
+  const overlayZ = isFull ? "z-[1200]" : "z-[1400]";
+  const dialogZ = isFull ? "z-[1201]" : "z-[1401]";
   return createPortal(
-    <div className={cn("fixed inset-0 z-[1200] flex items-center justify-center", isFull ? "p-0" : "p-4 sm:p-6")}>
+    <div className={cn("fixed inset-0 flex items-center justify-center", overlayZ, isFull ? "p-0" : "p-4 sm:p-6")}>
       <button
         aria-hidden="true"
         className={cn(
@@ -335,13 +360,15 @@ export function Popup({
         aria-modal="true"
         className={cn(
           isFull
-            ? "relative z-[1201] flex h-screen w-screen flex-col overflow-hidden rounded-none border-0 bg-surface shadow-none"
-            : "relative z-[1201] flex max-h-[min(100vh-2rem,56rem)] w-full flex-col overflow-hidden rounded-card border bg-surface shadow-floating sm:max-h-[min(100vh-3rem,56rem)]",
+            ? "relative flex h-screen w-screen flex-col overflow-hidden rounded-none border-0 bg-surface shadow-none"
+            : "relative flex max-h-[min(100vh-2rem,56rem)] w-full flex-col overflow-hidden rounded-card border bg-surface shadow-floating sm:max-h-[min(100vh-3rem,56rem)]",
+          dialogZ,
           popupMotionClass,
           visible ? "translate-y-0 scale-100 opacity-100" : "translate-y-2 scale-[0.985] opacity-0",
           getPopupSizeClass(size),
           popupClassName
         )}
+        data-popup-size={size}
         role="dialog"
         ref={popupRef}
         style={popupStyle}

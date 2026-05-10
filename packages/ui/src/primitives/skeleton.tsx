@@ -17,7 +17,7 @@ export function PageLoadingSkeleton({
   blocks = ["h-40", "h-40", "h-40"]
 }: PageLoadingSkeletonProps) {
   return (
-    <div className={cn("app-section-stack", className)}>
+    <div className={cn("space-y-4", className)}>
       <Skeleton className={cn("h-8 rounded-control", titleClassName)} />
       {blocks.map((blockClassName, index) => (
         <Skeleton className={cn("rounded-card border", blockClassName)} key={`${blockClassName}-${index}`} />

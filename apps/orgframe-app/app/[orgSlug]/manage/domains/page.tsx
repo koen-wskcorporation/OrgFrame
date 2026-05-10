@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { getPlatformHost } from "@/src/shared/domains/customDomains";
 import { buildGoDaddyQuickConnect, type GoDaddyQuickConnect } from "@/src/shared/domains/domainConnect";
 import { getVercelDomainDnsInstructions, type VercelDnsInstruction } from "@/src/shared/domains/vercelProjectDomains";
@@ -165,7 +165,7 @@ export default async function OrgManageDomainsPage({
 
   return (
     <PageShell description="Connect your domain in a guided flow designed for non-technical users." title="Custom Domains">
-      <ManageSection
+      <Section
         contentClassName="p-5 md:p-6 space-y-4"
         description="Connect your domain in a guided flow designed for non-technical users."
         fill={false}
@@ -232,7 +232,7 @@ export default async function OrgManageDomainsPage({
             If your registrar cannot place a CNAME on the root domain, connect <span className="font-semibold">www</span> and forward the apex/root domain.
           </Alert>
         </div>
-      </ManageSection>
+      </Section>
 
       <DomainSetupModal
         canManage={canManage}
