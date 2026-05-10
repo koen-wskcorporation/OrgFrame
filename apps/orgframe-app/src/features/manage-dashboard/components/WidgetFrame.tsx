@@ -16,12 +16,12 @@ type WidgetFrameProps = {
 
 // All dashboard cards share this fixed height so the grid stays uniform
 // regardless of widget content size.
-const CARD_HEIGHT = "h-[112px]";
+const CARD_HEIGHT = "h-[124px]";
 
 export function WidgetFrame({ title, editing, dragHandleProps, dragHandleRef, onOpenSettings, children, className }: WidgetFrameProps) {
   return (
     <Card className={`${CARD_HEIGHT} flex flex-col ${className ?? ""}`.trim()}>
-      <CardHeader className="flex flex-row items-center justify-between gap-3 !px-4 !pb-2 !pt-3 md:!px-5 md:!pb-2 md:!pt-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 !px-4 !pb-2 !pt-4 md:!px-5 md:!pb-2 md:!pt-4">
         <CardTitle className="min-w-0 truncate">{title}</CardTitle>
         <div className="-mr-1 flex shrink-0 items-center gap-0.5">
           {editing ? (
@@ -41,7 +41,7 @@ export function WidgetFrame({ title, editing, dragHandleProps, dragHandleRef, on
           ) : null}
         </div>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden !px-4 !pb-4 !pt-0 md:!px-5 md:!pb-5">
+      <CardContent className="flex min-h-0 flex-1 flex-col justify-center overflow-hidden !px-4 !pb-4 !pt-0 md:!px-5 md:!pb-5">
         {children}
       </CardContent>
     </Card>
