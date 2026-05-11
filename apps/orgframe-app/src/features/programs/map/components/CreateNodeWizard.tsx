@@ -1,299 +1,251 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, Save } from "lucide-react";
-import { Button } from "@orgframe/ui/primitives/button";
-import { useConfirmDialog } from "@orgframe/ui/primitives/confirm-dialog";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
-import { Panel } from "@orgframe/ui/primitives/panel";
 import { Select } from "@orgframe/ui/primitives/select";
 import { SelectionBox } from "@orgframe/ui/primitives/selection-box";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { CreateWizard, type CreateWizardSubmitResult, type WizardStep } from "@/src/shared/components/CreateWizard";
 import { saveProgramHierarchyAction } from "@/src/features/programs/actions";
-import { computeSlugStatus, SlugField, slugify } from "@/src/features/programs/map/components/SlugField";
+import { computeSlugStatus } from "@/src/features/programs/map/slug-utils";
 import type { ProgramMapNode } from "@/src/features/programs/map/types";
 import type { ProgramNode } from "@/src/features/programs/types";
 
 type Kind = "division" | "team";
-type Step = "type" | "details";
+
+type CreateState = {
+  kind: Kind | null;
+  parentId: string;
+  name: string;
+  slug: string;
+  capacity: string;
+};
 
 type CreateNodeWizardProps = {
   open: boolean;
   onClose: () => void;
   orgSlug: string;
   programId: string;
+  /** Public-URL slug of the program — used to render the team slug's
+   *  inline path prefix (e.g. "/programs/spring-2026/"). */
+  programSlug: string;
   divisions: ProgramMapNode[];
   /** Pre-fills the team's parent picker. Used when the user had a division
    *  selected at the moment they clicked Add. */
   defaultParentId: string | null;
-  /** Pre-selects the kind and skips straight to the details step. Used by
-   *  the in-canvas "Add team" dashed slot inside a division. */
+  /** Pre-selects the kind and hides the "Type" step. Used by the in-canvas
+   *  "Add team" affordance inside a division card. */
   defaultKind?: Kind | null;
   existingSlugs: Set<string>;
   onCreated: (nextNodes: ProgramNode[]) => void;
 };
 
 /**
- * Two-step "Add to map" wizard:
+ * Sidebar wizard for adding a division or team to the program map. Steps:
  *
- *   1. Pick the kind — Division or Team.
- *   2. Fill the kind-specific details (name + slug for divisions; parent +
- *      name + slug + capacity for teams).
- *
- * Replaces the previous separate `CreateDivisionWizard` / `CreateTeamWizard`
- * panels and the picker-menu Add button — there's now a single Add affordance
- * on the canvas action bar that opens this wizard.
+ *   1. Type        — Division or Team (skipped when `defaultKind` is set)
+ *   2. Division    — pick the parent division (team only)
+ *   3. Identity    — name + slug
+ *   4. Capacity    — optional roster cap (team only)
  */
 export function CreateNodeWizard({
   open,
   onClose,
   orgSlug,
   programId,
+  programSlug,
   divisions,
   defaultParentId,
   defaultKind = null,
   existingSlugs,
   onCreated
 }: CreateNodeWizardProps) {
-  const toast = useToast();
-  const { confirm } = useConfirmDialog();
+  const { toast } = useToast();
 
-  const [step, setStep] = React.useState<Step>("type");
-  const [kind, setKind] = React.useState<Kind | null>(null);
-  const [parentId, setParentId] = React.useState<string>("");
-  const [name, setName] = React.useState("");
-  const [slug, setSlug] = React.useState("");
-  const [slugTouched, setSlugTouched] = React.useState(false);
-  const [capacity, setCapacity] = React.useState("");
-  const [submitting, setSubmitting] = React.useState(false);
-  const [errors, setErrors] = React.useState<{
-    parentId?: string;
-    name?: string;
-    slug?: string;
-    capacity?: string;
-  }>({});
+  const initialState = React.useMemo<CreateState>(
+    () => ({
+      kind: defaultKind ?? null,
+      parentId: defaultParentId ?? divisions[0]?.id ?? "",
+      name: "",
+      slug: "",
+      capacity: ""
+    }),
+    [defaultKind, defaultParentId, divisions]
+  );
 
-  // Reset on each open so a previous draft doesn't leak across launches.
-  React.useEffect(() => {
-    if (!open) return;
-    // When the caller pre-selected a kind (e.g. "Add team" slot inside a
-    // division card), skip the type-picker step entirely.
-    setStep(defaultKind ? "details" : "type");
-    setKind(defaultKind);
-    setParentId(defaultParentId ?? divisions[0]?.id ?? "");
-    setName("");
-    setSlug("");
-    setSlugTouched(false);
-    setCapacity("");
-    setSubmitting(false);
-    setErrors({});
-    // re-init each time we open
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, defaultParentId]);
-
-  const isDirty =
-    step !== "type" ||
-    kind !== null ||
-    name.trim().length > 0 ||
-    slugTouched ||
-    capacity.trim().length > 0;
-
-  const validateDetails = () => {
-    const next: typeof errors = {};
-    if (kind === "team" && !parentId) next.parentId = "Pick a division.";
-    if (!name.trim()) next.name = "Name is required.";
-    const finalSlug = slug.trim();
-    if (!finalSlug) next.slug = "Slug is required.";
-    else if (computeSlugStatus(finalSlug, existingSlugs) !== "available") {
-      next.slug = existingSlugs.has(finalSlug)
-        ? "That slug is already used."
-        : "Use 2-80 lowercase letters, numbers, and hyphens.";
+  const steps: WizardStep<CreateState>[] = [
+    {
+      id: "type",
+      label: "Type",
+      description: "What are you adding to the program map?",
+      skipWhen: () => defaultKind !== null,
+      validate: (state) => (state.kind ? null : { kind: "Pick a type." }),
+      render: ({ state, setField, fieldErrors }) => (
+        <div className="flex flex-col gap-2" role="radiogroup" aria-label="Pick what to add">
+          <SelectionBox
+            description="A top-level group that contains teams."
+            label="Division"
+            onSelectedChange={() => setField("kind", "division")}
+            selected={state.kind === "division"}
+          />
+          <SelectionBox
+            description={
+              divisions.length === 0 ? "Add a division first." : "A team lives inside a division."
+            }
+            disabled={divisions.length === 0}
+            label="Team"
+            onSelectedChange={() => setField("kind", "team")}
+            selected={state.kind === "team"}
+          />
+          {fieldErrors.kind ? (
+            <p className="text-xs text-destructive">{fieldErrors.kind}</p>
+          ) : null}
+        </div>
+      )
+    },
+    {
+      id: "parent",
+      label: "Division",
+      description: "Which division will this team belong to?",
+      skipWhen: (state) => state.kind !== "team",
+      validate: (state) =>
+        state.kind === "team" && !state.parentId ? { parentId: "Pick a division." } : null,
+      render: ({ state, setField, fieldErrors }) => (
+        <FormField error={fieldErrors.parentId} label="Division">
+          <Select
+            disabled={divisions.length === 0}
+            onChange={(event) => setField("parentId", event.target.value)}
+            options={divisions.map((division) => ({ value: division.id, label: division.name }))}
+            placeholder={divisions.length ? "Pick a division" : "Add a division first"}
+            value={state.parentId}
+          />
+        </FormField>
+      )
+    },
+    {
+      id: "identity",
+      label: "Identity",
+      description: "Name your division or team. The slug shows up in URLs and must be unique within the program.",
+      validate: (state) => {
+        const errors: Record<string, string> = {};
+        if (!state.name.trim()) errors.name = "Name is required.";
+        const finalSlug = state.slug.trim();
+        if (!finalSlug) {
+          errors.slug = "Slug is required.";
+        } else if (computeSlugStatus(finalSlug, existingSlugs) !== "available") {
+          errors.slug = existingSlugs.has(finalSlug)
+            ? "That slug is already used."
+            : "Use 2-80 lowercase letters, numbers, and hyphens.";
+        }
+        return Object.keys(errors).length ? errors : null;
+      },
+      render: ({ state, setField, fieldErrors }) => {
+        // For team nodes, nest the slug under the chosen division so the
+        // inline path prefix renders /programs/<programSlug>/<divisionSlug>/.
+        const divisionSlug =
+          state.kind === "team"
+            ? divisions.find((division) => division.id === state.parentId)?.slug
+            : undefined;
+        return (
+          <div className="flex flex-col gap-3">
+            <FormField error={fieldErrors.name} label="Name">
+              <Input
+                autoFocus
+                onChange={(event) => setField("name", event.target.value)}
+                placeholder={state.kind === "division" ? "U10 Boys, Spring League, …" : "Sharks, Lightning, …"}
+                value={state.name}
+              />
+            </FormField>
+            <FormField error={fieldErrors.slug} label="Slug">
+              <Input
+                onChange={(event) => setField("slug", event.target.value)}
+                onSlugAutoChange={(value) => setField("slug", value)}
+                slugAutoEnabled
+                slugAutoSource={state.name}
+                slugValidation={{
+                  kind: "program-node",
+                  orgSlug,
+                  programSlug,
+                  divisionSlug,
+                  existingSlugs
+                }}
+                value={state.slug}
+              />
+            </FormField>
+          </div>
+        );
+      }
+    },
+    {
+      id: "capacity",
+      label: "Capacity",
+      description: "Optional — cap how many players can be on this team.",
+      skipWhen: (state) => state.kind !== "team",
+      validate: (state) => {
+        if (state.capacity.trim() === "") return null;
+        const num = Number(state.capacity);
+        return Number.isFinite(num) && num >= 0
+          ? null
+          : { capacity: "Capacity must be a non-negative number." };
+      },
+      render: ({ state, setField, fieldErrors }) => (
+        <FormField error={fieldErrors.capacity} hint="Leave blank for no cap." label="Roster capacity">
+          <Input
+            inputMode="numeric"
+            min={0}
+            onChange={(event) => setField("capacity", event.target.value)}
+            placeholder="e.g. 12"
+            type="number"
+            value={state.capacity}
+          />
+        </FormField>
+      )
     }
-    if (kind === "team" && capacity.trim() !== "") {
-      const num = Number(capacity);
-      if (!Number.isFinite(num) || num < 0) next.capacity = "Capacity must be a non-negative number.";
+  ];
+
+  async function handleSubmit(state: CreateState): Promise<CreateWizardSubmitResult> {
+    if (!state.kind) {
+      return { ok: false, message: "Pick a type.", stepId: "type" };
     }
-    return Object.keys(next).length === 0 ? null : next;
-  };
-
-  const handleNext = () => {
-    if (!kind) return;
-    setStep("details");
-  };
-
-  const handleBack = () => {
-    setStep("type");
-    setErrors({});
-  };
-
-  const handleSubmit = async () => {
-    if (!kind) return;
-    const issues = validateDetails();
-    if (issues) {
-      setErrors(issues);
-      return;
-    }
-    setErrors({});
-    setSubmitting(true);
-    const finalSlug = slugTouched ? slugify(slug) : slug;
-    const cap = capacity.trim() === "" ? null : Number(capacity);
+    const finalSlug = state.slug.trim();
+    const cap = state.capacity.trim() === "" ? null : Number(state.capacity);
     const result = await saveProgramHierarchyAction({
       orgSlug,
       programId,
       action: "create",
-      name: name.trim(),
+      name: state.name.trim(),
       slug: finalSlug,
-      nodeKind: kind,
-      parentId: kind === "team" ? parentId : null,
-      capacity: kind === "team" && typeof cap === "number" && Number.isFinite(cap) ? cap : null,
+      nodeKind: state.kind,
+      parentId: state.kind === "team" ? state.parentId : null,
+      capacity:
+        state.kind === "team" && typeof cap === "number" && Number.isFinite(cap) ? cap : null,
       waitlistEnabled: false
     });
-    setSubmitting(false);
     if (!result.ok) {
-      toast.toast({
-        title: kind === "division" ? "Couldn't create division" : "Couldn't create team",
+      toast({
+        title: state.kind === "division" ? "Couldn't create division" : "Couldn't create team",
         description: result.error,
         variant: "destructive"
       });
-      return;
+      return { ok: false, message: result.error };
     }
-    toast.toast({ title: kind === "division" ? "Division created" : "Team created" });
+    toast({ title: state.kind === "division" ? "Division created" : "Team created", variant: "success" });
     onCreated(result.data.details.nodes);
-    onClose();
-  };
-
-  const requestClose = async () => {
-    if (!isDirty || submitting) {
-      onClose();
-      return;
-    }
-    const ok = await confirm({
-      title: "Discard?",
-      description: "Your unsaved details will be lost.",
-      confirmLabel: "Discard",
-      variant: "destructive"
-    });
-    if (ok) onClose();
-  };
-
-  const subtitle =
-    step === "type"
-      ? "What are you adding?"
-      : kind === "division"
-        ? "Top-level group that contains teams."
-        : "A team lives inside a division.";
-
-  // When the caller hard-selected a kind, the Back button has nowhere to
-  // return to — swap it for Cancel.
-  const lockedToKind = defaultKind !== null;
-
-  const footer =
-    step === "type" ? (
-      <>
-        <Button intent="cancel" disabled={submitting} onClick={requestClose} type="button" variant="ghost">Cancel</Button>
-        <Button className="ml-auto" disabled={!kind} onClick={handleNext} type="button">
-          Next
-        </Button>
-      </>
-    ) : (
-      <>
-        {lockedToKind ? (
-          <Button intent="cancel" disabled={submitting} onClick={requestClose} type="button" variant="ghost">Cancel</Button>
-        ) : (
-          <Button disabled={submitting} onClick={handleBack} type="button" variant="ghost">
-            <ChevronLeft className="h-4 w-4" />
-            Back
-          </Button>
-        )}
-        <Button
-          className="ml-auto"
-          disabled={submitting}
-          loading={submitting}
-          onClick={handleSubmit}
-          type="submit"
-        >
-          <Save className="h-4 w-4" />
-          Create {kind}
-        </Button>
-      </>
-    );
-
-  const divisionOptions = divisions.map((division) => ({ value: division.id, label: division.name }));
+    return { ok: true };
+  }
 
   return (
-    <Panel
-      footer={footer}
-      onClose={requestClose}
+    <CreateWizard<CreateState>
+      hideCancel
+      initialState={initialState}
+      onClose={onClose}
+      onSubmit={handleSubmit}
       open={open}
-      panelKey="program-map-create-node"
-      subtitle={subtitle}
+      steps={steps}
+      submitLabel="Create"
+      subtitle="Add a division or team to the program structure."
       title="Add to map"
-    >
-      {step === "type" ? (
-        <div className="flex flex-col gap-2" role="radiogroup" aria-label="Pick what to add">
-          <SelectionBox
-            description="Top-level group that contains teams."
-            label="Division"
-            onSelectedChange={() => setKind("division")}
-            selected={kind === "division"}
-          />
-          <SelectionBox
-            description={
-              divisions.length === 0 ? "Add a division first." : "A roster lives inside a division."
-            }
-            disabled={divisions.length === 0}
-            label="Team"
-            onSelectedChange={() => setKind("team")}
-            selected={kind === "team"}
-          />
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {kind === "team" ? (
-            <FormField error={errors.parentId} label="Division">
-              <Select
-                disabled={divisions.length === 0}
-                onChange={(event) => setParentId(event.target.value)}
-                options={divisionOptions}
-                placeholder={divisions.length ? "Pick a division" : "Add a division first"}
-                value={parentId}
-              />
-            </FormField>
-          ) : null}
-          <FormField error={errors.name} label="Name">
-            <Input
-              autoFocus
-              onChange={(event) => setName(event.target.value)}
-              placeholder={kind === "division" ? "U10 Boys, Spring League, …" : "Sharks, Lightning, …"}
-              value={name}
-            />
-          </FormField>
-          <SlugField
-            error={errors.slug}
-            existingSlugs={existingSlugs}
-            fallbackBase={kind ?? "item"}
-            kindLabel={kind === "division" ? "division name" : "team name"}
-            nameSource={name}
-            onChange={setSlug}
-            onTouchedChange={setSlugTouched}
-            touched={slugTouched}
-            value={slug}
-          />
-          {kind === "team" ? (
-            <FormField error={errors.capacity} hint="Optional. Max number of players." label="Capacity">
-              <Input
-                inputMode="numeric"
-                min={0}
-                onChange={(event) => setCapacity(event.target.value)}
-                type="number"
-                value={capacity}
-              />
-            </FormField>
-          ) : null}
-        </div>
-      )}
-    </Panel>
+    />
   );
 }
-

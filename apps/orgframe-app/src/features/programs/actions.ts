@@ -86,6 +86,24 @@ const duplicateProgramSchema = z.object({
   programId: z.string().uuid()
 });
 
+const externalRegistrationUrlSchema = z
+  .string()
+  .trim()
+  .max(2000)
+  .url("Enter a valid URL, including https://");
+
+const setExternalRegistrationSchema = z.object({
+  orgSlug: textSchema.min(1),
+  programId: z.string().uuid(),
+  url: externalRegistrationUrlSchema,
+  label: textSchema.max(120).optional()
+});
+
+const clearExternalRegistrationSchema = z.object({
+  orgSlug: textSchema.min(1),
+  programId: z.string().uuid()
+});
+
 const saveHierarchySchema = z.object({
   orgSlug: textSchema.min(1),
   programId: z.string().uuid(),
@@ -346,6 +364,101 @@ export async function updateProgramAction(input: z.input<typeof updateProgramSch
   } catch (error) {
     rethrowIfNavigationError(error);
     return asError("Unable to update this program right now.");
+  }
+}
+
+export async function setProgramExternalRegistrationAction(
+  input: z.input<typeof setExternalRegistrationSchema>
+): Promise<ProgramsActionResult<{ programId: string }>> {
+  const parsed = setExternalRegistrationSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError(parsed.error.issues[0]?.message ?? "Enter a valid registration URL.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireOrgPermission(payload.orgSlug, "programs.write");
+    const existingProgram = await getProgramById(org.orgId, payload.programId);
+    if (!existingProgram) {
+      return asError("Program not found.");
+    }
+
+    const nextSettings: Record<string, unknown> = { ...existingProgram.settingsJson };
+    nextSettings.externalRegistration = {
+      url: payload.url,
+      label: normalizeOptional(payload.label)
+    };
+
+    await updateProgramRecord({
+      orgId: org.orgId,
+      programId: existingProgram.id,
+      slug: existingProgram.slug,
+      name: existingProgram.name,
+      description: existingProgram.description,
+      programType: existingProgram.programType,
+      customTypeLabel: existingProgram.customTypeLabel,
+      status: existingProgram.status,
+      startDate: existingProgram.startDate,
+      endDate: existingProgram.endDate,
+      coverImagePath: existingProgram.coverImagePath,
+      registrationOpenAt: existingProgram.registrationOpenAt,
+      registrationCloseAt: existingProgram.registrationCloseAt,
+      settingsJson: nextSettings
+    });
+
+    revalidatePath(`/${org.orgSlug}/manage/programs/${existingProgram.id}`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${existingProgram.id}/registration`);
+
+    return { ok: true, data: { programId: existingProgram.id } };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to save the registration link right now.");
+  }
+}
+
+export async function clearProgramExternalRegistrationAction(
+  input: z.input<typeof clearExternalRegistrationSchema>
+): Promise<ProgramsActionResult<{ programId: string }>> {
+  const parsed = clearExternalRegistrationSchema.safeParse(input);
+  if (!parsed.success) {
+    return asError("Invalid request.");
+  }
+
+  try {
+    const payload = parsed.data;
+    const org = await requireOrgPermission(payload.orgSlug, "programs.write");
+    const existingProgram = await getProgramById(org.orgId, payload.programId);
+    if (!existingProgram) {
+      return asError("Program not found.");
+    }
+
+    const nextSettings: Record<string, unknown> = { ...existingProgram.settingsJson };
+    delete nextSettings.externalRegistration;
+
+    await updateProgramRecord({
+      orgId: org.orgId,
+      programId: existingProgram.id,
+      slug: existingProgram.slug,
+      name: existingProgram.name,
+      description: existingProgram.description,
+      programType: existingProgram.programType,
+      customTypeLabel: existingProgram.customTypeLabel,
+      status: existingProgram.status,
+      startDate: existingProgram.startDate,
+      endDate: existingProgram.endDate,
+      coverImagePath: existingProgram.coverImagePath,
+      registrationOpenAt: existingProgram.registrationOpenAt,
+      registrationCloseAt: existingProgram.registrationCloseAt,
+      settingsJson: nextSettings
+    });
+
+    revalidatePath(`/${org.orgSlug}/manage/programs/${existingProgram.id}`);
+    revalidatePath(`/${org.orgSlug}/manage/programs/${existingProgram.id}/registration`);
+
+    return { ok: true, data: { programId: existingProgram.id } };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return asError("Unable to remove the registration link right now.");
   }
 }
 

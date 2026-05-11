@@ -84,6 +84,10 @@ export type ChipPickerConfig = {
   onManage?: () => void;
   manageLabel?: string;
   placeholder?: string;
+  /** Omit the dropdown caret. Use in tight layouts (e.g. inline rows in a
+   *  narrow card) where the chevron's ~18px would crowd neighboring text.
+   *  The chip remains clickable and still opens the picker popover. */
+  hideCaret?: boolean;
 };
 
 // ─── Chip ─────────────────────────────────────────────────────────────────────
@@ -190,12 +194,27 @@ function ChipPickerImpl({
   onManage,
   manageLabel = "Manage statuses",
   placeholder = "Set status",
+  hideCaret = false,
   className,
   status
 }: ChipPickerImplProps) {
   const triggerRef = React.useRef<HTMLButtonElement | null>(null);
   const [open, setOpen] = React.useState(false);
-  const selected = React.useMemo(() => options.find((opt) => opt.value === value) ?? null, [options, value]);
+  // Optimistic display value: shown immediately when the user picks an
+  // option so the chip flips color/label without waiting for the parent's
+  // async onChange (server round-trip, store update, etc.) to settle.
+  // Clears whenever the parent's `value` prop changes — at that point the
+  // source of truth has caught up and the optimistic overlay is no longer
+  // needed (covers both "confirmed" and "rejected" outcomes).
+  const [optimisticValue, setOptimisticValue] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setOptimisticValue(null);
+  }, [value]);
+  const effectiveValue = optimisticValue ?? value;
+  const selected = React.useMemo(
+    () => options.find((opt) => opt.value === effectiveValue) ?? null,
+    [options, effectiveValue]
+  );
 
   return (
     <>
@@ -215,10 +234,12 @@ function ChipPickerImpl({
       >
         <Chip color={selected ? selected.color : "slate"} status={status}>
           <span className="truncate">{selected ? selected.label : placeholder}</span>
-          <ChevronDown
-            aria-hidden
-            className={cn("h-3 w-3 shrink-0 transition-transform", open ? "rotate-180" : "")}
-          />
+          {hideCaret ? null : (
+            <ChevronDown
+              aria-hidden
+              className={cn("h-3 w-3 shrink-0 transition-transform", open ? "rotate-180" : "")}
+            />
+          )}
         </Chip>
       </button>
       <Popover
@@ -234,7 +255,7 @@ function ChipPickerImpl({
             <li className="px-3 py-2 text-sm text-text-muted">No options</li>
           ) : (
             options.map((option) => {
-              const isSelected = option.value === value;
+              const isSelected = option.value === effectiveValue;
               return (
                 <li aria-selected={isSelected} key={option.value} role="option">
                   <button
@@ -243,6 +264,7 @@ function ChipPickerImpl({
                       isSelected ? "bg-surface-muted" : ""
                     )}
                     onClick={() => {
+                      setOptimisticValue(option.value);
                       onChange(option.value);
                       setOpen(false);
                     }}
