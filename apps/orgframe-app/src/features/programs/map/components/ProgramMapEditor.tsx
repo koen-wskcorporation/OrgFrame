@@ -2,27 +2,32 @@
 
 import * as React from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { Plus, Users } from "lucide-react";
+import { CircleDot, Shield, Users } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card } from "@orgframe/ui/primitives/card";
 import { Chip } from "@orgframe/ui/primitives/chip";
 import { cn } from "@orgframe/ui/primitives/utils";
-import {
-  CANVAS_GRID_SIZE,
-  CANVAS_HEIGHT,
-  CANVAS_WIDTH
-} from "@/src/features/canvas/core/constants";
-import { snapToGrid, sortNodesDeterministic } from "@/src/features/canvas/core/geometry";
+import { CANVAS_GRID_SIZE } from "@/src/features/canvas/core/constants";
+
+/** Round a world-space x/y to the nearest grid line. Used by connector
+ *  routing so the vertical stems sit ON the canvas grid even when the
+ *  parent's center falls between grid lines (program width is 408 ⇒
+ *  center at +204, which is 12px off a grid line). */
+function snapToGrid(value: number): number {
+  return Math.round(value / CANVAS_GRID_SIZE) * CANVAS_GRID_SIZE;
+}
 import type { CanvasBounds } from "@/src/features/canvas/core/types";
 import { EditorActionBar } from "@/src/features/canvas/components/EditorActionBar";
 import { MapSearchBar } from "@/src/features/canvas/components/MapSearchBar";
 import { usePanelOffset } from "@/src/features/canvas/core/usePanelOffset";
 import { computeWheelZoom } from "@/src/features/canvas/core/zoom";
 import {
-  DIVISION_HEADER_HEIGHT,
-  nestedTeamBounds
-} from "@/src/features/programs/map/autoLayout";
+  PROGRAM_ROOT_ID,
+  computeTreeLayout
+} from "@/src/features/programs/map/treeLayout";
 import type { ProgramMapNode } from "@/src/features/programs/map/types";
+import type { ProgramMapNodeCounts } from "@/src/features/programs/map/queries";
+import type { ProgramStatus } from "@/src/features/programs/types";
 
 const CANVAS_MIN_ZOOM = 0.1;
 const CANVAS_MAX_ZOOM = 16;
@@ -31,11 +36,7 @@ type EditorMode = "structure" | "assignments";
 
 type Pointer = { x: number; y: number };
 
-type Interaction =
-  | null
-  | { mode: "move"; nodeId: string; pointerWorldStart: Pointer; originalBounds: CanvasBounds }
-  | { mode: "resize"; nodeId: string; pointerWorldStart: Pointer; originalBounds: CanvasBounds }
-  | { mode: "pan"; pointerClientStart: Pointer; viewStart: View };
+type Interaction = null | { mode: "pan"; pointerClientStart: Pointer; viewStart: View };
 
 type View = {
   centerX: number;
@@ -43,29 +44,37 @@ type View = {
   zoom: number;
 };
 
+type ProgramStatusPicker = {
+  value: ProgramStatus;
+  onChange: (next: ProgramStatus) => void;
+  options: { value: string; label: string; color: string }[];
+  disabled?: boolean;
+};
+
 type ProgramMapEditorProps = {
   nodes: ProgramMapNode[];
   selectedNodeId: string | null;
   canWrite: boolean;
   mode: EditorMode;
+  /** Program-level info rendered in the central root node. */
+  programName: string;
+  programStatus: ProgramStatus;
+  programStatusPicker?: ProgramStatusPicker;
+  /** Per-node player / staff / assignment counts displayed on each card. */
+  nodeCounts: ProgramMapNodeCounts;
   isSaving: boolean;
-  isDirty?: boolean;
-  /** Read-only preview surface — disables drag/resize, hides action buttons,
+  /** Read-only preview surface — disables interactions, hides action buttons,
    *  and surfaces an "Edit" CTA on the action bar to open the popup. */
   readOnly?: boolean;
   onSelectNode: (nodeId: string | null) => void;
-  onChangeBounds: (nodeId: string, bounds: CanvasBounds) => void;
-  onBringToFront: (nodeId: string) => void;
-  /** Optional handlers for the action bar — when omitted, the bar hides those buttons. */
-  onSave?: () => void;
   /** Assignments panel state — drives the leading-slot toggle button. */
   assignmentsOpen?: boolean;
   onToggleAssignments?: () => void;
   /** Single Add button — opens the unified create wizard which then asks
    *  whether the user wants a Division or a Team. */
   onAdd?: () => void;
-  /** Click on the in-canvas dashed "Add team" slot inside a division — opens
-   *  the create wizard with kind=team and parent prefilled to that division. */
+  /** Click on the dashed "Add team" slot inside a division — opens the
+   *  create wizard with kind=team and parent prefilled to that division. */
   onAddTeamUnder?: (divisionId: string) => void;
   /** Toggle a node's `published` flag from the inline status chip. */
   onTogglePublished?: (nodeId: string, next: boolean) => void;
@@ -73,128 +82,133 @@ type ProgramMapEditorProps = {
   onEdit?: () => void;
 };
 
+// The world's origin is at (0, 0) and the tree layout offsets from there.
+// We default the view onto the upper-left region of the content extent —
+// the first render's auto-fit effect will recenter onto the actual nodes.
 const DEFAULT_VIEW: View = {
-  centerX: CANVAS_WIDTH / 2,
-  centerY: CANVAS_HEIGHT / 2,
-  zoom: 0.6
+  centerX: 0,
+  centerY: 0,
+  zoom: 1
 };
 
-function clientToWorld(
-  clientX: number,
-  clientY: number,
-  rect: DOMRect,
-  view: View,
-  /** Screen-px offset of the world's on-screen center from the rect's
-   *  geometric center. Negative when a side panel pushes the visible
-   *  center to the left. */
-  viewportOffsetX = 0
-): Pointer {
-  const offsetX = clientX - rect.left - rect.width / 2 - viewportOffsetX;
-  const offsetY = clientY - rect.top - rect.height / 2;
-  return {
-    x: view.centerX + offsetX / view.zoom,
-    y: view.centerY + offsetY / view.zoom
-  };
-}
+const NODE_STATUS_OPTIONS = [
+  { value: "draft", label: "Draft", color: "amber" },
+  { value: "published", label: "Published", color: "emerald" }
+] as const;
 
-function StatusChip({
+function NodeStatusChip({
   published,
   canWrite,
+  compact = false,
   onToggle
 }: {
   published: boolean;
   canWrite: boolean;
+  /** Hide the picker chevron so the chip footprint matches the static
+   *  variant. Used in team rows where the card is narrow and the extra
+   *  ~18px would push the team name into truncation. */
+  compact?: boolean;
   onToggle?: (next: boolean) => void;
 }) {
-  const label = published ? "Published" : "Draft";
   const variant = published ? "success" : "warning";
-  if (!canWrite || !onToggle) {
-    return <Chip label={label} status={true} variant={variant} />;
-  }
-  return (
+  const chip = canWrite && onToggle ? (
     <Chip
-      aria-label={`Status: ${label}. Click to toggle.`}
-      label={label}
-      onClick={(event) => {
-        // Don't bubble up to the surrounding card (which selects the node).
-        event.stopPropagation();
-        onToggle(!published);
+      picker={{
+        value: published ? "published" : "draft",
+        options: [...NODE_STATUS_OPTIONS],
+        onChange: (value) => onToggle(value === "published"),
+        hideCaret: compact
       }}
-      onPointerDown={(event) => event.stopPropagation()}
-      status={true}
-      title={published ? "Click to unpublish" : "Click to publish"}
-      variant={variant}
+      status
     />
+  ) : (
+    <Chip label={published ? "Published" : "Draft"} status variant={variant} />
+  );
+  // Inline-flex so the chip aligns to the flex row's middle instead of
+  // sitting on the text baseline (which produces a phantom gap above it).
+  // stopPropagation on the wrapper so clicking the dropdown doesn't
+  // select the surrounding card.
+  return (
+    <span
+      className="inline-flex shrink-0 items-center"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {chip}
+    </span>
   );
 }
 
-function DivisionCard({
-  node,
+function ProgramRootCard({
+  bounds,
+  programName,
+  programStatus,
+  picker,
   selected,
-  canWrite,
-  mode,
-  onPointerDownMove,
-  onClick,
-  onTogglePublished
+  onClick
 }: {
-  node: ProgramMapNode;
+  bounds: CanvasBounds;
+  programName: string;
+  programStatus: ProgramStatus;
+  picker?: ProgramStatusPicker;
   selected: boolean;
-  canWrite: boolean;
-  mode: EditorMode;
-  onPointerDownMove: (event: React.PointerEvent<HTMLDivElement>) => void;
   onClick: () => void;
-  onTogglePublished?: (nodeId: string, next: boolean) => void;
 }) {
+  const fallbackVariant = programStatus === "published" ? "success" : programStatus === "archived" ? "destructive" : "warning";
   return (
     <Card
       className={cn(
-        "absolute overflow-hidden p-0 transition-[box-shadow,transform] duration-150 select-none",
-        selected
-          ? "ring-2 ring-primary ring-offset-1 ring-offset-canvas shadow-floating"
-          : "hover:shadow-floating"
+        "absolute flex items-center justify-center gap-2 px-4 transition-shadow select-none",
+        selected ? "ring-2 ring-accent ring-offset-1 ring-offset-canvas shadow-floating" : "hover:shadow-floating"
       )}
       style={{
-        left: node.bounds.x,
-        top: node.bounds.y,
-        width: node.bounds.width,
-        height: node.bounds.height,
-        zIndex: node.zIndex,
-        cursor: canWrite && mode === "structure" ? "grab" : "default"
+        left: bounds.x,
+        top: bounds.y,
+        width: bounds.width,
+        // Force height to match the layout's reserved bounds so the
+        // connector line anchored at `bounds.y + bounds.height` lands
+        // exactly at the card's bottom edge — no visible gap.
+        height: bounds.height,
+        cursor: "pointer"
       }}
-      onPointerDown={canWrite && mode === "structure" ? onPointerDownMove : undefined}
       onClick={(event) => {
         event.stopPropagation();
         onClick();
       }}
+      data-program-node-box="true"
     >
-      {/* Header band — only the top is "draggable surface"; team children
-          render as siblings absolutely-positioned within division bounds. */}
-      <div
-        className="flex items-center gap-2 border-b border-border bg-surface-muted/40 px-3"
-        style={{ height: DIVISION_HEADER_HEIGHT }}
+      <span
+        className="min-w-0 truncate text-base font-semibold leading-tight text-text"
+        title={programName}
       >
-        <span
-          className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight text-text"
-          title={node.name}
-        >
-          {node.name}
-        </span>
-        <span className="shrink-0">
-          <StatusChip
-            canWrite={canWrite}
-            onToggle={onTogglePublished ? (next) => onTogglePublished(node.id, next) : undefined}
-            published={node.isPublished}
+        {programName}
+      </span>
+      <span
+        className="inline-flex shrink-0 items-center"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {picker ? (
+          <Chip
+            picker={{
+              value: picker.value,
+              options: picker.options,
+              onChange: (value) => picker.onChange(value as ProgramStatus),
+              disabled: picker.disabled
+            }}
+            status
           />
-        </span>
-      </div>
-      {/* Body is intentionally empty — nested teams render as separate
-          absolute boxes layered on top with higher z-index. */}
+        ) : (
+          <Chip label={programStatus} status variant={fallbackVariant} />
+        )}
+      </span>
     </Card>
   );
 }
 
 function TeamCard({
   node,
+  counts,
   selected,
   canWrite,
   mode,
@@ -202,6 +216,7 @@ function TeamCard({
   onTogglePublished
 }: {
   node: ProgramMapNode;
+  counts: { memberCount: number; staffCount: number } | undefined;
   selected: boolean;
   canWrite: boolean;
   mode: EditorMode;
@@ -214,87 +229,151 @@ function TeamCard({
     data: { nodeId: node.id, nodeKind: node.nodeKind }
   });
 
-  // Teams nest flush inside the division. They drop their own border / radius
-  // so the division card's edge reads as the only outer border, and use a
-  // top divider to separate stacked teams.
   return (
-    <div
-      ref={droppable.setNodeRef}
+    <Card
+      ref={droppable.setNodeRef as unknown as React.Ref<HTMLDivElement>}
       className={cn(
-        "absolute select-none border-t border-border bg-surface transition-colors duration-150",
+        "flex items-center gap-2 px-3 py-2 transition-colors duration-150 select-none",
         selected
-          ? "ring-2 ring-primary ring-offset-1 ring-offset-canvas shadow-floating"
+          ? "ring-2 ring-accent ring-offset-1 ring-offset-canvas"
           : droppable.isOver
             ? "ring-2 ring-success ring-offset-1 ring-offset-canvas"
             : "hover:bg-surface-muted/40"
       )}
-      style={{
-        left: node.bounds.x,
-        top: node.bounds.y,
-        width: node.bounds.width,
-        height: node.bounds.height,
-        zIndex: node.zIndex,
-        cursor: canWrite && mode === "structure" ? "pointer" : "default"
-      }}
+      style={{ cursor: "pointer" }}
       onClick={(event) => {
         event.stopPropagation();
         onClick();
       }}
+      data-program-node-box="true"
     >
-      <div className="flex h-full items-center gap-2 px-3">
-        <span
-          className="min-w-0 flex-1 truncate text-[13px] font-medium leading-tight text-text"
-          title={node.name}
-        >
-          {node.name}
-        </span>
-        {node.capacity !== null ? (
-          <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium text-text-muted">
-            <Users aria-hidden className="h-3 w-3" />
-            {node.capacity}
-          </span>
-        ) : null}
-        <span className="shrink-0">
-          <StatusChip
-            canWrite={canWrite}
-            onToggle={onTogglePublished ? (next) => onTogglePublished(node.id, next) : undefined}
-            published={node.isPublished}
-          />
-        </span>
-      </div>
+      <span
+        className="min-w-0 truncate text-sm font-medium leading-tight text-text"
+        title={node.name}
+      >
+        {node.name}
+      </span>
+      <NodeStatusChip
+        canWrite={canWrite}
+        onToggle={onTogglePublished ? (next) => onTogglePublished(node.id, next) : undefined}
+        published={node.isPublished}
+      />
+      <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-text-muted" title="Players">
+        <Users aria-hidden className="h-3.5 w-3.5" />
+        {counts?.memberCount ?? 0}
+        {node.capacity !== null ? `/${node.capacity}` : ""}
+      </span>
+      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-text-muted" title="Staff">
+        <Shield aria-hidden className="h-3.5 w-3.5" />
+        {counts?.staffCount ?? 0}
+      </span>
+    </Card>
+  );
+}
+
+function AddTeamContainer({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="flex justify-start">
+      <Button
+        intent="add"
+        object="team"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClick();
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+        size="sm"
+        variant="ghost"
+      />
     </div>
   );
 }
 
-function AddTeamSlot({
+function DivisionCard({
+  node,
   bounds,
-  zIndex,
-  onClick
+  counts,
+  teams,
+  teamCountsById,
+  selectedNodeId,
+  canWrite,
+  mode,
+  onClick,
+  onSelectNode,
+  onTogglePublished,
+  onAddTeamUnder
 }: {
+  node: ProgramMapNode;
   bounds: CanvasBounds;
-  zIndex: number;
+  counts: { assignedCount: number; unassignedCount: number } | undefined;
+  teams: ProgramMapNode[];
+  teamCountsById: ProgramMapNodeCounts["teams"];
+  selectedNodeId: string | null;
+  canWrite: boolean;
+  mode: EditorMode;
   onClick: () => void;
+  onSelectNode: (nodeId: string) => void;
+  onTogglePublished?: (nodeId: string, next: boolean) => void;
+  onAddTeamUnder?: (divisionId: string) => void;
 }) {
+  const selected = selectedNodeId === node.id;
   return (
-    <button
-      type="button"
-      className="absolute flex select-none items-center justify-center gap-1.5 border-t border-dashed border-border-muted bg-transparent text-[12px] font-medium text-text-muted transition-colors duration-150 hover:bg-surface-muted/40 hover:text-text"
+    <Card
+      className={cn(
+        "absolute flex flex-col gap-2 p-3 transition-shadow select-none",
+        selected ? "ring-2 ring-accent ring-offset-1 ring-offset-canvas shadow-floating" : "hover:shadow-floating"
+      )}
       style={{
         left: bounds.x,
         top: bounds.y,
         width: bounds.width,
-        height: bounds.height,
-        zIndex
+        cursor: "pointer"
       }}
-      onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation();
         onClick();
       }}
+      data-program-node-box="true"
     >
-      <Plus aria-hidden className="h-3.5 w-3.5" />
-      Add team
-    </button>
+      <div className="flex items-center gap-3">
+        <span
+          className="min-w-0 truncate text-base font-semibold leading-tight text-text"
+          title={node.name}
+        >
+          {node.name}
+        </span>
+        <NodeStatusChip
+          canWrite={canWrite}
+          onToggle={onTogglePublished ? (next) => onTogglePublished(node.id, next) : undefined}
+          published={node.isPublished}
+        />
+      </div>
+      <div className="flex items-center gap-4 text-xs font-medium text-text-muted">
+        <span className="inline-flex items-center gap-1" title="Assigned players">
+          <Users aria-hidden className="h-3.5 w-3.5" />
+          {counts?.assignedCount ?? 0} assigned
+        </span>
+        <span className="inline-flex items-center gap-1" title="Unassigned registrants">
+          <CircleDot aria-hidden className="h-3.5 w-3.5" />
+          {counts?.unassignedCount ?? 0} unassigned
+        </span>
+      </div>
+
+      {teams.map((team) => (
+        <TeamCard
+          key={team.id}
+          node={team}
+          counts={teamCountsById[team.id]}
+          selected={selectedNodeId === team.id}
+          canWrite={canWrite}
+          mode={mode}
+          onClick={() => onSelectNode(team.id)}
+          onTogglePublished={onTogglePublished}
+        />
+      ))}
+
+      {canWrite && onAddTeamUnder ? <AddTeamContainer onClick={() => onAddTeamUnder(node.id)} /> : null}
+    </Card>
   );
 }
 
@@ -303,41 +382,29 @@ export function ProgramMapEditor({
   selectedNodeId,
   canWrite,
   mode,
+  programName,
+  programStatus,
+  programStatusPicker,
+  nodeCounts,
   isSaving = false,
-  isDirty = false,
   readOnly = false,
   onSelectNode,
-  onChangeBounds,
-  onBringToFront,
-  onSave,
-  assignmentsOpen = false,
-  onToggleAssignments,
   onAdd,
   onAddTeamUnder,
   onEdit,
+  assignmentsOpen = false,
+  onToggleAssignments,
   onTogglePublished
 }: ProgramMapEditorProps) {
   const effectiveCanWrite = canWrite && !readOnly;
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const [view, setView] = React.useState<View>(DEFAULT_VIEW);
   const [interaction, setInteraction] = React.useState<Interaction>(null);
-  // Smooth panel offset in screen pixels — drives the world-transform
-  // centering, the grid background-position, the action-bar translate,
-  // and the fit/cursor math. All four read this same value so they stay
-  // perfectly aligned during the panel open/close animation. Read-only
-  // previews don't make space for panels (they're not in the dock).
   const rawPanelOffset = usePanelOffset();
   const panelOffset = readOnly ? 0 : rawPanelOffset;
-  // Track container pixel size so the transform's screen-center offset uses
-  // the actual visible width/height. CSS `translate(50%, 50%)` would resolve
-  // against the inner div's 3200x2000 box, which puts the "world center" at
-  // a fixed (1600, 1000)px from the container's top-left — that's why
-  // fit-to-content was placing nodes off-screen on narrower viewports.
   const [containerSize, setContainerSize] = React.useState<{ width: number; height: number }>({ width: 0, height: 0 });
-  // Visible center on screen — half of the non-occluded canvas area.
-  // The world's `view.centerX` renders here so a fit-to-content selection
-  // sits centered in the part of the canvas the user can actually see.
   const visibleCenterX = (containerSize.width - panelOffset) / 2;
+
   React.useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -354,48 +421,32 @@ export function ProgramMapEditor({
     return () => observer.disconnect();
   }, []);
 
-  const sorted = React.useMemo(() => sortNodesDeterministic(nodes), [nodes]);
-
-  const beginMove = (event: React.PointerEvent<HTMLDivElement>, nodeId: string) => {
-    if (!effectiveCanWrite || mode !== "structure") return;
-    event.stopPropagation();
-    event.preventDefault();
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const pointer = clientToWorld(event.clientX, event.clientY, rect, view, -panelOffset / 2);
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-    onBringToFront(nodeId);
-    onSelectNode(nodeId);
-    setInteraction({
-      mode: "move",
-      nodeId,
-      pointerWorldStart: pointer,
-      originalBounds: node.bounds
-    });
-    (event.target as Element).setPointerCapture?.(event.pointerId);
-  };
-
-  const beginResize = (event: React.PointerEvent<HTMLDivElement>, nodeId: string) => {
-    if (!effectiveCanWrite || mode !== "structure") return;
-    event.stopPropagation();
-    event.preventDefault();
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const pointer = clientToWorld(event.clientX, event.clientY, rect, view, -panelOffset / 2);
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-    setInteraction({
-      mode: "resize",
-      nodeId,
-      pointerWorldStart: pointer,
-      originalBounds: node.bounds
-    });
-    (event.target as Element).setPointerCapture?.(event.pointerId);
-  };
+  // Compute deterministic positions from the tree of nodes — overrides any
+  // stored map_* geometry. The map is now a layout, not a free canvas.
+  const layout = React.useMemo(
+    () =>
+      computeTreeLayout(
+        nodes.map((node) => ({
+          id: node.id,
+          programId: node.programId,
+          parentId: node.parentId,
+          name: node.name,
+          slug: node.slug,
+          nodeKind: node.nodeKind,
+          sortIndex: 0,
+          capacity: node.capacity,
+          waitlistEnabled: false,
+          settingsJson: { published: node.isPublished },
+          mapBounds: null,
+          mapZIndex: 0,
+          createdAt: "",
+          updatedAt: ""
+        }))
+      ),
+    [nodes]
+  );
 
   const beginPan = (event: React.PointerEvent<HTMLDivElement>) => {
-    // Pan only when starting on empty canvas. Middle-click and shift+left also pan.
     if (event.button !== 0 && event.button !== 1) return;
     if ((event.target as HTMLElement).closest("[data-program-node-box='true']")) return;
     onSelectNode(null);
@@ -409,9 +460,6 @@ export function ProgramMapEditor({
 
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!interaction) return;
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
     if (interaction.mode === "pan") {
       const dx = event.clientX - interaction.pointerClientStart.x;
       const dy = event.clientY - interaction.pointerClientStart.y;
@@ -420,35 +468,12 @@ export function ProgramMapEditor({
         centerX: interaction.viewStart.centerX - dx / interaction.viewStart.zoom,
         centerY: interaction.viewStart.centerY - dy / interaction.viewStart.zoom
       });
-      return;
-    }
-
-    const pointer = clientToWorld(event.clientX, event.clientY, rect, view, -panelOffset / 2);
-    const dx = pointer.x - interaction.pointerWorldStart.x;
-    const dy = pointer.y - interaction.pointerWorldStart.y;
-
-    if (interaction.mode === "move") {
-      onChangeBounds(interaction.nodeId, {
-        x: snapToGrid(interaction.originalBounds.x + dx),
-        y: snapToGrid(interaction.originalBounds.y + dy),
-        width: interaction.originalBounds.width,
-        height: interaction.originalBounds.height
-      });
-    } else if (interaction.mode === "resize") {
-      onChangeBounds(interaction.nodeId, {
-        x: interaction.originalBounds.x,
-        y: interaction.originalBounds.y,
-        width: snapToGrid(Math.max(96, interaction.originalBounds.width + dx)),
-        height: snapToGrid(Math.max(48, interaction.originalBounds.height + dy))
-      });
     }
   };
 
   const endInteraction = () => setInteraction(null);
 
   const onWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    // In read-only / preview mode let the page scroll through. Wheel-zoom
-    // only fires in the active editor.
     if (readOnly) return;
     event.preventDefault();
     const rect = containerRef.current?.getBoundingClientRect();
@@ -461,19 +486,17 @@ export function ProgramMapEditor({
     if (next) setView(next);
   };
 
-  // Pixel-based screen-center translate so world (centerX, centerY) lands
-  // at the *visible* center — accounts for the side panel pushing the
-  // visible center to the left of the geometric container center.
-  const childTransform = `translate(${visibleCenterX}px, ${containerSize.height / 2}px) scale(${view.zoom}) translate(${-view.centerX}px, ${-view.centerY}px)`;
+  // Cards live in world space and ride a single transform that pans and
+  // zooms the whole tree as one unit. The current "regular sizing" in
+  // treeLayout.ts is the zoom=1 baseline — at zoom 2 the cards (and their
+  // text, padding, strokes) appear twice as big, just like the old grid
+  // approach but anchored against the new layout dimensions.
+  const visibleCenterY = containerSize.height / 2;
+  const worldTransform = `translate(${visibleCenterX - view.centerX * view.zoom}px, ${visibleCenterY - view.centerY * view.zoom}px) scale(${view.zoom})`;
 
-  // Infinite grid: rendered on the outer (untransformed) container so it
-  // covers the full viewport regardless of pan. We tile a unit grid at the
-  // current zoom and place world origin at `visibleCenterX` on screen — the
-  // same anchor `childTransform` uses — so node corners stay on grid lines
-  // as the panel opens / closes.
   const gridCellPx = CANVAS_GRID_SIZE * view.zoom;
   const gridOriginX = visibleCenterX - view.centerX * view.zoom;
-  const gridOriginY = containerSize.height / 2 - view.centerY * view.zoom;
+  const gridOriginY = visibleCenterY - view.centerY * view.zoom;
 
   const zoomBy = (factor: number) => {
     const nextZoom = Math.max(CANVAS_MIN_ZOOM, Math.min(CANVAS_MAX_ZOOM, view.zoom * factor));
@@ -482,52 +505,47 @@ export function ProgramMapEditor({
 
   const fitToContent = React.useCallback(() => {
     const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect || nodes.length === 0) {
+    if (!rect) {
       setView(DEFAULT_VIEW);
       return;
     }
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const node of nodes) {
-      minX = Math.min(minX, node.bounds.x);
-      minY = Math.min(minY, node.bounds.y);
-      maxX = Math.max(maxX, node.bounds.x + node.bounds.width);
-      maxY = Math.max(maxY, node.bounds.y + node.bounds.height);
+    const c = layout.contentBounds;
+    if (c.width === 0 || c.height === 0) {
+      setView(DEFAULT_VIEW);
+      return;
     }
-    const pad = 64;
-    const w = Math.max(1, maxX - minX + pad * 2);
-    const h = Math.max(1, maxY - minY + pad * 2);
+    const pad = 96;
+    const w = c.width + pad * 2;
+    const h = c.height + pad * 2;
     const visibleWidth = Math.max(1, rect.width - panelOffset);
     const zoom = Math.max(
       CANVAS_MIN_ZOOM,
       Math.min(CANVAS_MAX_ZOOM, Math.min(visibleWidth / w, rect.height / h))
     );
-    setView({ centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, zoom });
-  }, [nodes, panelOffset]);
+    setView({ centerX: c.x + c.width / 2, centerY: c.y + c.height / 2, zoom });
+  }, [layout.contentBounds, panelOffset]);
 
-  // Zoom to a specific node's bounds with a comfortable surrounding pad.
-  // Used by the search bar to pop the user over to the matched item.
   const focusNode = React.useCallback(
     (nodeId: string) => {
-      const node = nodes.find((candidate) => candidate.id === nodeId);
-      if (!node) return;
+      const bounds = layout.nodeBounds.get(nodeId);
+      if (!bounds) return;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const pad = 96;
-      const w = Math.max(1, node.bounds.width + pad * 2);
-      const h = Math.max(1, node.bounds.height + pad * 2);
+      const w = bounds.width + pad * 2;
+      const h = bounds.height + pad * 2;
       const visibleWidth = Math.max(1, rect.width - panelOffset);
-      // Cap the zoom-in so a tiny node doesn't blow up to maximum zoom.
       const zoom = Math.max(
         CANVAS_MIN_ZOOM,
         Math.min(CANVAS_MAX_ZOOM, 1.4, Math.min(visibleWidth / w, rect.height / h))
       );
       setView({
-        centerX: node.bounds.x + node.bounds.width / 2,
-        centerY: node.bounds.y + node.bounds.height / 2,
+        centerX: bounds.x + bounds.width / 2,
+        centerY: bounds.y + bounds.height / 2,
         zoom
       });
     },
-    [nodes, panelOffset]
+    [layout.nodeBounds, panelOffset]
   );
 
   const handleSearchPick = React.useCallback(
@@ -548,75 +566,60 @@ export function ProgramMapEditor({
     [nodes]
   );
 
-  // First-paint fit + refit-on-grow: pull the view to enclose all current
-  // nodes whenever the count changes (e.g. a new division was just created)
-  // OR the container has just been measured (size goes from 0 → real). The
-  // initial fit MUST wait for measurement, otherwise the transform centers
-  // against width=0 and nodes render up in the corner. Tracked by a ref so
-  // we only refit on these specific transitions — pan/zoom/move actions
-  // don't fight the user.
-  const lastFitCountRef = React.useRef<number | null>(null);
+  // Auto-fit when content changes (e.g. division added) or the container
+  // settles at a noticeably different size. Re-fitting on size change is
+  // important inside the fullscreen Popup: the editor mounts while the
+  // popup is mid-animation, so the first measurement is an intermediate
+  // (smaller) rect. Without re-fitting, auto-fit picks a zoom calibrated
+  // for that mid-animation size and the cards end up smaller than they
+  // should be. The preview doesn't have this problem because it lives in
+  // a fixed-height (480px) card from mount.
+  const lastFitKeyRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (nodes.length === 0) return;
     if (containerSize.width === 0 || containerSize.height === 0) return;
-    if (nodes.length === lastFitCountRef.current) return;
-    lastFitCountRef.current = nodes.length;
+    // Round to 32px buckets so small layout reflows (scrollbars, focus
+    // rings, etc.) don't keep resetting the user's pan/zoom.
+    const w = Math.round(containerSize.width / 32);
+    const h = Math.round(containerSize.height / 32);
+    const key = `${w}x${h}:${nodes.length}`;
+    if (key === lastFitKeyRef.current) return;
+    lastFitKeyRef.current = key;
     fitToContent();
   }, [fitToContent, nodes.length, containerSize.width, containerSize.height]);
 
-  // Group teams by parent so we can position the per-division "Add team"
-  // dashed slot at the next free row inside each division.
-  const teamsByParent = React.useMemo(() => {
-    const map = new Map<string, ProgramMapNode[]>();
-    for (const node of nodes) {
-      if (node.nodeKind === "team" && node.parentId) {
-        const list = map.get(node.parentId) ?? [];
-        list.push(node);
-        map.set(node.parentId, list);
-      }
-    }
-    for (const list of map.values()) {
-      list.sort((a, b) => a.name.localeCompare(b.name));
-    }
-    return map;
-  }, [nodes]);
-
-  // Z-order: divisions sit at their stored zIndex; teams render with a
-  // higher z so they layer cleanly on top of their parent's body. Within
-  // a division, later siblings stack above earlier ones — matters when a
-  // user drags one to reorder.
-  const zByNode = React.useMemo(() => {
-    const map = new Map<string, number>();
-    for (const node of nodes) {
-      if (node.nodeKind === "division") {
-        map.set(node.id, node.zIndex);
-      }
-    }
-    const teamsByParent = new Map<string, ProgramMapNode[]>();
-    for (const node of nodes) {
-      if (node.nodeKind === "team" && node.parentId) {
-        const list = teamsByParent.get(node.parentId) ?? [];
-        list.push(node);
-        teamsByParent.set(node.parentId, list);
-      }
-    }
-    teamsByParent.forEach((siblings, parentId) => {
-      const parentZ = map.get(parentId) ?? 0;
-      siblings
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .forEach((team, index) => {
-          map.set(team.id, parentZ + 1 + index);
-        });
-    });
-    // Orphan teams (no parent in the set) keep their stored z.
-    for (const node of nodes) {
-      if (node.nodeKind === "team" && !map.has(node.id)) {
-        map.set(node.id, node.zIndex);
-      }
-    }
-    return map;
-  }, [nodes]);
+  // SVG connector paths in WORLD coordinates. The SVG itself lives inside
+  // the transformed wrapper, so the transform handles pan/zoom for us —
+  // endpoints anchor at the world position of each card's bottom-center
+  // and top-center. Stroke scales with the transform too, which is what
+  // we want now that everything resizes together.
+  const edgePaths = React.useMemo(() => {
+    const boundsOf = (id: string): CanvasBounds | null => {
+      if (id === PROGRAM_ROOT_ID) return layout.programBounds;
+      return layout.nodeBounds.get(id) ?? null;
+    };
+    return layout.edges
+      .map((edge) => {
+        const from = boundsOf(edge.from);
+        const to = boundsOf(edge.to);
+        if (!from || !to) return null;
+        const cx1 = from.x + from.width / 2;
+        const cx2 = to.x + to.width / 2;
+        const y1 = from.y + from.height;
+        const y2 = to.y;
+        // Snap the vertical stems to the nearest grid line. When the
+        // parent or child center isn't grid-aligned (e.g. a 408-wide
+        // program card has its center 12px off the grid), the stem
+        // would otherwise drift off-grid. A tiny horizontal jog at the
+        // parent's bottom and child's top keeps the line anchored to
+        // the cards' centers while the long stems ride a grid line.
+        const stemX1 = snapToGrid(cx1);
+        const stemX2 = snapToGrid(cx2);
+        const midY = (y1 + y2) / 2;
+        const path = `M ${cx1} ${y1} H ${stemX1} V ${midY} H ${stemX2} V ${y2} H ${cx2}`;
+        return { key: `${edge.from}->${edge.to}`, path };
+      })
+      .filter((entry): entry is { key: string; path: string } => entry !== null);
+  }, [layout]);
 
   return (
     <div
@@ -629,12 +632,6 @@ export function ProgramMapEditor({
       onPointerCancel={endInteraction}
       onWheel={onWheel}
     >
-      {/* Infinite grid layer. Fills the whole canvas (no squeeze) so the
-          grid runs edge-to-edge under any floating side panel. The bg
-          origin uses `gridOriginX/Y` — the same values `childTransform`
-          uses to position world (0,0) — so node corners always land on
-          grid lines, including mid-animation when `usePanelOffset` is
-          interpolating during a panel open/close. */}
       <div
         className="pointer-events-none absolute inset-0 bg-canvas"
         style={{
@@ -648,60 +645,63 @@ export function ProgramMapEditor({
         className="absolute inset-0 overflow-hidden"
         style={{ visibility: containerSize.width === 0 ? "hidden" : undefined }}
       >
-      <div
-        className="absolute left-0 top-0"
-        style={{
-          width: CANVAS_WIDTH,
-          height: CANVAS_HEIGHT,
-          transformOrigin: "0 0",
-          transform: childTransform
-        }}
-      >
-        {sorted.map((node) => {
-          const z = zByNode.get(node.id) ?? node.zIndex;
-          const layered: ProgramMapNode = node.zIndex === z ? node : { ...node, zIndex: z };
-          if (node.nodeKind === "division") {
-            const childCount = teamsByParent.get(node.id)?.length ?? 0;
-            const showAddSlot = effectiveCanWrite && mode === "structure" && !!onAddTeamUnder;
-            return (
-              <React.Fragment key={node.id}>
-                <div data-program-node-box="true">
-                  <DivisionCard
-                    node={layered}
-                    selected={selectedNodeId === node.id}
-                    canWrite={effectiveCanWrite}
-                    mode={mode}
-                    onPointerDownMove={(event) => beginMove(event, node.id)}
-                    onClick={() => onSelectNode(node.id)}
-                    onTogglePublished={onTogglePublished}
-                  />
-                </div>
-                {showAddSlot ? (
-                  <div data-program-node-box="true">
-                    <AddTeamSlot
-                      bounds={nestedTeamBounds(node.bounds, childCount)}
-                      zIndex={z + childCount + 1}
-                      onClick={() => onAddTeamUnder(node.id)}
-                    />
-                  </div>
-                ) : null}
-              </React.Fragment>
-            );
-          }
-          return (
-            <div key={node.id} data-program-node-box="true">
-              <TeamCard
-                node={layered}
-                selected={selectedNodeId === node.id}
+        {/* World layer — a single transform handles pan + zoom for every
+            card and connector. Cards live in world coordinates; the layout
+            constants in treeLayout.ts are the zoom=1 pixel sizes, and
+            zooming scales everything (text, padding, strokes) together. */}
+        <div
+          className="absolute left-0 top-0"
+          style={{ transformOrigin: "0 0", transform: worldTransform }}
+        >
+          {/* Connector lines — paths in world coordinates, rendered behind
+              the cards so card borders read as the dominant edge. */}
+          <svg
+            className="pointer-events-none absolute left-0 top-0"
+            style={{ width: 1, height: 1, overflow: "visible" }}
+          >
+            <g fill="none" stroke="currentColor" strokeWidth={2} className="text-border-strong/60">
+              {edgePaths.map((edge) => (
+                <path key={edge.key} d={edge.path} />
+              ))}
+            </g>
+          </svg>
+
+          <ProgramRootCard
+            bounds={layout.programBounds}
+            programName={programName}
+            programStatus={programStatus}
+            picker={programStatusPicker}
+            selected={selectedNodeId === PROGRAM_ROOT_ID}
+            onClick={() => onSelectNode(PROGRAM_ROOT_ID)}
+          />
+
+          {nodes
+            .filter((node) => node.nodeKind === "division")
+            .map((division) => {
+              const bounds = layout.nodeBounds.get(division.id);
+              if (!bounds) return null;
+              const teams = nodes.filter(
+                (n) => n.nodeKind === "team" && n.parentId === division.id
+              );
+              return (
+              <DivisionCard
+                key={division.id}
+                node={division}
+                bounds={bounds}
+                counts={nodeCounts.divisions[division.id]}
+                teams={teams}
+                teamCountsById={nodeCounts.teams}
+                selectedNodeId={selectedNodeId}
                 canWrite={effectiveCanWrite}
                 mode={mode}
-                onClick={() => onSelectNode(node.id)}
+                onClick={() => onSelectNode(division.id)}
+                onSelectNode={onSelectNode}
                 onTogglePublished={onTogglePublished}
+                onAddTeamUnder={onAddTeamUnder}
               />
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
       </div>
 
       {!readOnly ? (
@@ -712,42 +712,37 @@ export function ProgramMapEditor({
         />
       ) : null}
 
-      {/* Floating action bar — translated left by half the (smoothly
-          interpolated) panel offset so its centered pill sits in the
-          visible canvas, not behind the panel. */}
       <div
         className="pointer-events-none absolute inset-0"
         style={{ transform: `translateX(${-panelOffset / 2}px)` }}
       >
-      <EditorActionBar
-        readOnly={readOnly}
-        onEdit={onEdit}
-        canWrite={effectiveCanWrite}
-        isSaving={isSaving}
-        onSave={effectiveCanWrite && onSave ? onSave : undefined}
-        saveDisabled={!isDirty}
-        zoom={view.zoom}
-        onZoomIn={() => zoomBy(1.2)}
-        onZoomOut={() => zoomBy(1 / 1.2)}
-        onFit={fitToContent}
-        leadingSlot={
-          !readOnly && onToggleAssignments ? (
-            <Button
-              variant={assignmentsOpen ? "primary" : "ghost"}
-              size="sm"
-              onClick={onToggleAssignments}
-            >
-              <Users />
-              Assignments
-            </Button>
-          ) : undefined
-        }
-        trailingSlot={
-          !readOnly && effectiveCanWrite && onAdd ? (
-            <Button intent="add" onClick={onAdd} size="sm" variant="ghost">Add</Button>
-          ) : undefined
-        }
-      />
+        <EditorActionBar
+          readOnly={readOnly}
+          onEdit={onEdit}
+          canWrite={effectiveCanWrite}
+          isSaving={isSaving}
+          zoom={view.zoom}
+          onZoomIn={() => zoomBy(1.2)}
+          onZoomOut={() => zoomBy(1 / 1.2)}
+          onFit={fitToContent}
+          leadingSlot={
+            !readOnly && onToggleAssignments ? (
+              <Button
+                variant={assignmentsOpen ? "primary" : "ghost"}
+                size="sm"
+                onClick={onToggleAssignments}
+              >
+                <Users />
+                Assignments
+              </Button>
+            ) : undefined
+          }
+          trailingSlot={
+            !readOnly && effectiveCanWrite && onAdd ? (
+              <Button intent="add" onClick={onAdd} size="sm" variant="ghost">Add</Button>
+            ) : undefined
+          }
+        />
       </div>
     </div>
   );

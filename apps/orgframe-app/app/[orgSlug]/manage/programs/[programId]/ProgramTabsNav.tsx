@@ -10,7 +10,7 @@ type ProgramTabsNavProps = {
 
 export function ProgramTabsNav({ orgSlug, programId }: ProgramTabsNavProps) {
   const segment = useSelectedLayoutSegment();
-  const active = (segment ?? "structure") as "structure" | "schedule" | "registration" | "teams" | "settings";
+  const active = (segment ?? "structure") as "structure" | "registration";
   const items = [
     {
       key: "structure",
@@ -19,28 +19,10 @@ export function ProgramTabsNav({ orgSlug, programId }: ProgramTabsNavProps) {
       href: `/${orgSlug}/manage/programs/${programId}/structure`
     },
     {
-      key: "schedule",
-      label: "Schedule",
-      description: "Rules, sessions, and timeline",
-      href: `/${orgSlug}/manage/programs/${programId}/schedule`
-    },
-    {
       key: "registration",
       label: "Registration",
       description: "Forms, eligibility, and intake",
       href: `/${orgSlug}/manage/programs/${programId}/registration`
-    },
-    {
-      key: "teams",
-      label: "Teams",
-      description: "Roster and staff assignments",
-      href: `/${orgSlug}/manage/programs/${programId}/teams`
-    },
-    {
-      key: "settings",
-      label: "Settings",
-      description: "Metadata, media, and publish state",
-      href: `/${orgSlug}/manage/programs/${programId}/settings`
     }
   ] as const;
 

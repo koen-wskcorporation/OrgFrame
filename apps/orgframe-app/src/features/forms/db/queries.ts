@@ -634,6 +634,22 @@ export async function updateFormSubmissionEntryAnswersJson(input: {
   return mapSubmissionEntry(data as SubmissionEntryRow);
 }
 
+export async function listFormsForProgram(orgId: string, programId: string): Promise<OrgForm[]> {
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase
+    .schema("forms").from("org_forms")
+    .select(formSelect)
+    .eq("org_id", orgId)
+    .eq("program_id", programId)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to list forms for program: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => mapForm(row as OrgFormRow));
+}
+
 export async function listPublishedFormsForProgram(orgId: string, programId: string): Promise<OrgForm[]> {
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase
