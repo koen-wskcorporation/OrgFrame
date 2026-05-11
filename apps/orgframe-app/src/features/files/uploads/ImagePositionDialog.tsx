@@ -117,7 +117,6 @@ export function ImagePositionDialog({
       description={description}
       footer={
         <>
-          <Button intent="cancel" onClick={onClose} size="sm" variant="ghost">Cancel</Button>
           <Button onClick={onBack} size="sm" variant="secondary">
             <ArrowLeft className="h-4 w-4" />
             Back

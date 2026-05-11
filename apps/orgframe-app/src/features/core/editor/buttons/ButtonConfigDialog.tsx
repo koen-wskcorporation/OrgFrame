@@ -133,7 +133,6 @@ export function ButtonConfigDialog({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button intent="cancel" onClick={onClose} size="sm" variant="ghost">Cancel</Button>
               <Button onClick={handleSave} size="sm">
                 <Check className="h-4 w-4" />
                 Save Button

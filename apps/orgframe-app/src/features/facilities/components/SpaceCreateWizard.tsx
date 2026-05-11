@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { Archive } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { useConfirmDialog } from "@orgframe/ui/primitives/confirm-dialog";
@@ -247,33 +248,6 @@ export function SpaceCreateWizard(props: SpaceWizardProps) {
         </div>
       )
     },
-    ...(isEdit
-      ? [
-          {
-            id: "danger",
-            label: "Danger zone",
-            description: "Archive or remove this facility.",
-            render: () => (
-              <div className="rounded-control border border-destructive/40 bg-destructive/5 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Archive facility</p>
-                <p className="mt-1 text-sm text-text-muted">
-                  Archiving hides the facility from active lists. You can restore it from the archive later.
-                </p>
-                <div className="mt-3">
-                  <Button
-                    disabled={!canWrite || archiving}
-                    loading={archiving}
-                    onClick={handleArchive}
-                    variant="danger"
-                  >
-                    Archive facility
-                  </Button>
-                </div>
-              </div>
-            )
-          } as WizardStep<WizardState>
-        ]
-      : [])
   ];
 
   async function handleSubmit(state: WizardState): Promise<CreateWizardSubmitResult> {
@@ -324,8 +298,21 @@ export function SpaceCreateWizard(props: SpaceWizardProps) {
     return { ok: true };
   }
 
+  const footerLeading = isEdit && canWrite ? (
+    <Button
+      aria-label="Archive facility"
+      disabled={archiving}
+      iconOnly
+      loading={archiving}
+      onClick={handleArchive}
+    >
+      <Archive className="h-4 w-4 text-destructive" />
+    </Button>
+  ) : null;
+
   return (
     <CreateWizard
+      footerLeading={footerLeading}
       hideCancel
       initialState={initialState}
       mode={isEdit ? "edit" : "create"}

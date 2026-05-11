@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 import { Avatar } from "@orgframe/ui/primitives/avatar";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Chip } from "@orgframe/ui/primitives/chip";
@@ -15,8 +15,8 @@ import {
   emptyProfileWizardState,
   profileWizardStateFromProfile,
   type ProfileWizardState
-} from "@/src/features/people/account-profiles/ProfileWizardPanel";
-import type { AccountProfileRecord } from "@/src/features/people/account-profiles/server";
+} from "@/src/features/people/profiles/ProfileWizardPanel";
+import type { AccountProfileRecord } from "@/src/features/people/profiles/server";
 
 type WizardOpen =
   | { mode: "create" }
@@ -49,30 +49,27 @@ export function ProfilesPageClient({ records }: { records: AccountProfileRecord[
   return (
     <>
       <PageShell
-        description="Profiles you manage. Add yourself, your kids, or anyone else you help manage."
-        title="Profiles"
+        description="People you manage. Add yourself, your kids, or anyone else you help manage."
+        title="People"
       >
         <Repeater
-          emptyMessage="No profiles yet. Add yourself or someone you help manage to get started."
+          emptyMessage="No people yet. Add yourself or someone you help manage to get started."
           getSearchValue={(record) => record.profile.displayName}
           initialView="list"
           items={records}
-          searchPlaceholder="Search profiles"
+          searchPlaceholder="Search people"
           viewKey="account.profiles"
           renderShell={({ toolbar, body }) => (
             <Section
               actions={
                 <div className="flex flex-wrap items-center gap-2">
                   {toolbar}
-                  <Button onClick={() => setWizard({ mode: "create" })} type="button">
-                    <Plus className="h-4 w-4" />
-                    Add
-                  </Button>
+                  <Button intent="add" object="person" onClick={() => setWizard({ mode: "create" })} type="button" />
                 </div>
               }
-              description="Profiles attached to your account."
+              description="People tied to your account — yourself plus anyone you help manage."
               fill={false}
-              title="Profiles"
+              title="People"
             >
               {body}
             </Section>

@@ -24,7 +24,7 @@ type NavItem = {
 
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { href: "/", label: "Home", icon: Home },
-  { href: "/profiles", label: "Profiles", icon: Users },
+  { href: "/profiles", label: "People", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings }
 ];
 
