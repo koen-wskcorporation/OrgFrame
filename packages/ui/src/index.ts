@@ -1,8 +1,9 @@
 export { Avatar, initialsAvatarDataUri } from "./primitives/avatar";
 export { Button, buttonVariants } from "./primitives/button";
 export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardHeaderCompact, CardTitle } from "./primitives/card";
-export { AppPage, CardGrid, PageStack, SectionStack } from "./primitives/layout";
+export { AppPage, CardGrid } from "./primitives/layout";
 export { Panel } from "./primitives/panel";
+export { Section, SectionActions } from "./primitives/section";
 export { Popover } from "./primitives/popover";
 export { Popup } from "./primitives/popup";
 export { EntityChip, type EntityChipProps } from "./primitives/entity-chip";

@@ -51,7 +51,7 @@ export function SourcesRepeater({ items: itemsInput }: SourcesRepeaterProps) {
             {item.description ? <CardDescription className="line-clamp-2">{item.description}</CardDescription> : null}
             <div className="mt-2 flex flex-wrap gap-1.5">
               {item.tags.map((tag, idx) => (
-                <Chip key={`${item.fqKey}-tag-${idx}`} color={tag.tone ?? "neutral"} size="compact">
+                <Chip key={`${item.fqKey}-tag-${idx}`} color={tag.tone ?? "neutral"}>
                   {tag.label}
                 </Chip>
               ))}

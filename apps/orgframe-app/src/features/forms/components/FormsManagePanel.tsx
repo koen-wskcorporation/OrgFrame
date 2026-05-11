@@ -5,12 +5,12 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { RepeaterChip } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { PublishStatusIcon } from "@orgframe/ui/primitives/publish-status-icon";
 import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { publishFormVersionAction, saveFormDraftAction } from "@/src/features/forms/actions";
 import { FormCreatePanel } from "@/src/features/forms/components/FormCreatePanel";
 import type { OrgForm } from "@/src/features/forms/types";
@@ -97,7 +97,7 @@ export function FormsManagePanel({ orgSlug, forms, programs, canWrite = true }: 
           searchPlaceholder="Search forms"
           viewKey="manage.forms"
           renderShell={({ toolbar, body }) => (
-            <ManageSection
+            <Section
               actions={
                 <div className="flex flex-wrap items-center gap-2">
                   {toolbar}
@@ -112,7 +112,7 @@ export function FormsManagePanel({ orgSlug, forms, programs, canWrite = true }: 
               title="Forms"
             >
               {body}
-            </ManageSection>
+            </Section>
           )}
           getItem={(form) => ({
               id: form.id,
@@ -130,7 +130,7 @@ export function FormsManagePanel({ orgSlug, forms, programs, canWrite = true }: 
                     onToggle={() => toggleFormStatus(form)}
                     statusLabel={form.status === "published" ? `Published status for ${form.name}` : `Unpublished status for ${form.name}`}
                   />
-                  <RepeaterChip label={form.formKind === "program_registration" ? "Program registration" : "Generic"} />
+                  <Chip status={false} label={form.formKind === "program_registration" ? "Program registration" : "Generic"} />
                 </>
               ),
               meta: <>/register/{form.slug}</>,

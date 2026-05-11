@@ -77,6 +77,19 @@ export function EditNodeWizard({ open, onClose, orgSlug, programId, node, canWri
       subtitle={node.name}
       submitLabel="Save"
       initialState={initialState}
+      footerLeading={
+        canWrite ? (
+          <Button
+            aria-label={`Delete ${node.nodeKind}`}
+            disabled={deleting}
+            iconOnly
+            loading={deleting}
+            onClick={handleDelete}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        ) : null
+      }
       steps={[
         {
           id: "details",
@@ -117,14 +130,6 @@ export function EditNodeWizard({ open, onClose, orgSlug, programId, node, canWri
                   onChange={(event) => setField("capacity", event.target.value)}
                 />
               </FormField>
-              {canWrite ? (
-                <div className="mt-2 border-t border-border pt-3">
-                  <Button variant="ghost" onClick={handleDelete} disabled={deleting}>
-                    <Trash2 />
-                    Delete {node.nodeKind}
-                  </Button>
-                </div>
-              ) : null}
             </div>
           )
         }

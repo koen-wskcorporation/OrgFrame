@@ -2796,7 +2796,7 @@ function addSummaryCard() {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="app-section-stack px-5 pb-5 pt-2 md:px-6 md:pb-6">
+      <CardContent className="space-y-4 px-5 pb-5 pt-2 md:px-6 md:pb-6">
         {showGoogleSheetsUi && canWrite ? (
           <div className="ui-surface-block">
             <div className="flex items-center justify-between gap-2 rounded-control border bg-surface px-2 py-1.5">
@@ -2990,19 +2990,14 @@ function addSummaryCard() {
 
       <Panel
         footer={
-          <>
-            <Button onClick={() => setIsFiltersPanelOpen(false)} variant="ghost">
-              Close
-            </Button>
-            <Button
-              onClick={() => {
-                setViewFiltersDraft(DEFAULT_VIEW_FILTERS);
-              }}
-              variant="secondary"
-            >
-              Clear filters
-            </Button>
-          </>
+          <Button
+            onClick={() => {
+              setViewFiltersDraft(DEFAULT_VIEW_FILTERS);
+            }}
+            variant="secondary"
+          >
+            Clear filters
+          </Button>
         }
         onClose={() => setIsFiltersPanelOpen(false)}
         open={isFiltersPanelOpen}
@@ -3122,15 +3117,10 @@ function addSummaryCard() {
 
       <Panel
         footer={
-          <>
-            <Button onClick={() => setIsDataControlsPanelOpen(false)} variant="ghost">
-              Close
-            </Button>
-            <Button disabled={viewSummaryCardsDraft.length >= 5} onClick={addSummaryCard} variant="secondary">
-              <Plus className="h-4 w-4" />
-              Add card
-            </Button>
-          </>
+          <Button disabled={viewSummaryCardsDraft.length >= 5} onClick={addSummaryCard} variant="secondary">
+            <Plus className="h-4 w-4" />
+            Add card
+          </Button>
         }
         onClose={() => setIsDataControlsPanelOpen(false)}
         open={isDataControlsPanelOpen}
@@ -3251,25 +3241,20 @@ function addSummaryCard() {
 
       <Panel
         footer={
-          <>
-            <Button onClick={() => setIsGoogleSheetsSettingsOpen(false)} variant="ghost">
-              Close
+          googleSheetState ? (
+            <Button disabled={!canWrite || isSavingGoogleSheet} loading={isSavingGoogleSheet} onClick={handleSyncGoogleSheetNow} variant="secondary">
+              Sync Now
             </Button>
-            {googleSheetState ? (
-              <Button disabled={!canWrite || isSavingGoogleSheet} loading={isSavingGoogleSheet} onClick={handleSyncGoogleSheetNow} variant="secondary">
-                Sync Now
-              </Button>
-            ) : (
-              <Button
-                disabled={!canWrite || !googleSheetConfigured || isSavingGoogleSheet || isGoogleSheetsOauthInFlight}
-                loading={isSavingGoogleSheet || isGoogleSheetsOauthInFlight}
-                onClick={handleConnectGoogleSheet}
-                variant="secondary"
-              >
-                Connect Google Sheets
-              </Button>
-            )}
-          </>
+          ) : (
+            <Button
+              disabled={!canWrite || !googleSheetConfigured || isSavingGoogleSheet || isGoogleSheetsOauthInFlight}
+              loading={isSavingGoogleSheet || isGoogleSheetsOauthInFlight}
+              onClick={handleConnectGoogleSheet}
+              variant="secondary"
+            >
+              Connect Google Sheets
+            </Button>
+          )
         }
         onClose={() => setIsGoogleSheetsSettingsOpen(false)}
         open={isGoogleSheetsSettingsOpen}
@@ -3394,19 +3379,14 @@ function addSummaryCard() {
       <Panel
         footer={
           selectedSubmission ? (
-            <>
-              <Button onClick={() => setSelectedSubmissionId(null)} variant="ghost">
-                Close
-              </Button>
-              <Button
-                disabled={!canWrite || !isEditableMode || isSaving}
-                loading={activeSaveSubmissionId === selectedSubmission.id}
-                onClick={() => handleSave(selectedSubmission.id)}
-                variant="secondary"
-              >
-                Save Changes
-              </Button>
-            </>
+            <Button
+              disabled={!canWrite || !isEditableMode || isSaving}
+              loading={activeSaveSubmissionId === selectedSubmission.id}
+              onClick={() => handleSave(selectedSubmission.id)}
+              variant="secondary"
+            >
+              Save Changes
+            </Button>
           ) : null
         }
         onClose={() => setSelectedSubmissionId(null)}

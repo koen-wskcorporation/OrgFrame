@@ -642,7 +642,7 @@ function buildCallbackRedirectTo(context: { protocol: string; host: string; host
   const canonicalOrigin = canonicalHost ? `${context.protocol}://${canonicalHostWithPort}` : context.origin;
 
   const params = new URLSearchParams();
-  params.set("next", "/auth/reset?mode=update");
+  params.set("next", "/auth/password-reset?mode=update");
   if (context.host !== canonicalHost) {
     params.set("return_to", context.origin);
   }
@@ -690,12 +690,12 @@ export async function requestPasswordResetAction(formData: FormData) {
 
   if (!result.ok) {
     if (result.error.toLowerCase().includes("valid email")) {
-      redirect("/auth/reset?error=invalid_email");
+      redirect("/auth/password-reset?error=invalid_email");
     }
-    redirect(`/auth/reset?error=reset_request_failed&detail=${encodeURIComponent(result.error)}`);
+    redirect(`/auth/password-reset?error=reset_request_failed&detail=${encodeURIComponent(result.error)}`);
   }
 
-  redirect("/auth/reset?message=reset_email_sent");
+  redirect("/auth/password-reset?message=reset_email_sent");
 }
 
 export async function sendActivationEmail(input: { email: string }): Promise<SendActivationEmailResult> {
@@ -739,11 +739,11 @@ export async function updatePasswordFromResetAction(formData: FormData) {
   const confirmPassword = cleanValue(formData.get("confirmPassword"));
 
   if (password.length < 8) {
-    redirect("/auth/reset?mode=update&error=weak_password");
+    redirect("/auth/password-reset?mode=update&error=weak_password");
   }
 
   if (confirmPassword !== password) {
-    redirect("/auth/reset?mode=update&error=password_mismatch");
+    redirect("/auth/password-reset?mode=update&error=password_mismatch");
   }
 
   const supabase = await createSupabaseServer();
@@ -753,7 +753,7 @@ export async function updatePasswordFromResetAction(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    redirect("/auth/reset?error=reset_session_missing");
+    redirect("/auth/password-reset?error=reset_session_missing");
   }
 
   const { error } = await supabase.auth.updateUser({
@@ -761,7 +761,7 @@ export async function updatePasswordFromResetAction(formData: FormData) {
   });
 
   if (error) {
-    redirect("/auth/reset?mode=update&error=password_update_failed");
+    redirect("/auth/password-reset?mode=update&error=password_update_failed");
   }
 
   await supabase.auth.signOut();

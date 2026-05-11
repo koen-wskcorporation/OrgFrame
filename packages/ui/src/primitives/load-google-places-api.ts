@@ -49,9 +49,26 @@ export function loadGooglePlacesApi(apiKey: string): Promise<void> {
     script.id = GOOGLE_MAPS_SCRIPT_ID;
     script.async = true;
     script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places`;
+    // `loading=async` opts into the dynamic-loading pattern Google now
+    // recommends; the page-load warning Google logs without it is silenced.
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&loading=async&v=weekly`;
     script.addEventListener("load", () => {
       if (completeIfReady()) {
+        return;
+      }
+
+      // With loading=async, `google.maps.places` may not be on the global yet;
+      // call importLibrary so consumers can safely access the namespace.
+      const loadedGoogle = (window as Window & { google?: any }).google;
+      if (loadedGoogle?.maps?.importLibrary) {
+        loadedGoogle.maps
+          .importLibrary("places")
+          .then(() => {
+            if (!completeIfReady()) {
+              reject(new Error("Google Places API failed to initialize."));
+            }
+          })
+          .catch(() => reject(new Error("Failed to load Google Places API library.")));
         return;
       }
 

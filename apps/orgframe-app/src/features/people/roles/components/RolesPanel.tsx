@@ -1,14 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Card, CardContent, CardHeader, CardHeaderRow } from "@orgframe/ui/primitives/card";
-import { DataTable, type DataTableColumn } from "@orgframe/ui/primitives/data-table";
 import { Chip } from "@orgframe/ui/primitives/chip";
-import { RoleCreateWizard } from "@/src/features/people/roles/components/RoleCreateWizard";
-import { RoleEditPanel } from "@/src/features/people/roles/components/RoleEditPanel";
-import type { OrgRoleDefinition } from "@/src/features/people/roles/actions";
+import { Repeater } from "@orgframe/ui/primitives/repeater";
+import { Section } from "@orgframe/ui/primitives/section";
+import { RoleWizard } from "@/src/features/people/roles/components/RoleWizard";
+import {
+  listOrgRoleMembershipsAction,
+  type OrgRoleDefinition,
+  type OrgRoleMember
+} from "@/src/features/people/roles/actions";
 
 type RolesPanelProps = {
   orgSlug: string;
@@ -19,60 +22,35 @@ type RolesPanelProps = {
 
 export function RolesPanel({ orgSlug, initialRoles, canManageRoles, loadError }: RolesPanelProps) {
   const [roles, setRoles] = useState<OrgRoleDefinition[]>(initialRoles);
-  const [popupRole, setPopupRole] = useState<OrgRoleDefinition | null>(null);
+  const [activeRole, setActiveRole] = useState<OrgRoleDefinition | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const columns = useMemo<DataTableColumn<OrgRoleDefinition>[]>(
-    () => [
-      {
-        key: "label",
-        label: "Role",
-        defaultVisible: true,
-        sortable: true,
-        renderCell: (row) => (
-          <div>
-            <p className="font-semibold">{row.label}</p>
-            <p className="text-xs text-text-muted">
-              <code className="rounded bg-surface-muted px-1 py-0.5">{row.roleKey}</code>
-            </p>
-          </div>
-        ),
-        renderSearchValue: (row) => `${row.label} ${row.roleKey}`,
-        renderSortValue: (row) => row.label.toLowerCase()
-      },
-      {
-        key: "source",
-        label: "Source",
-        defaultVisible: true,
-        sortable: true,
-        renderCell: (row) => (
-          <Chip variant={row.source === "default" ? "neutral" : "success"}>
-            {row.source === "default" ? "Built-in" : "Custom"}
-          </Chip>
-        ),
-        renderSortValue: (row) => row.source
-      },
-      {
-        key: "permissions",
-        label: "Permissions",
-        defaultVisible: true,
-        sortable: true,
-        renderCell: (row) => <span>{row.permissions.length}</span>,
-        renderSortValue: (row) => row.permissions.length
-      },
-      {
-        key: "updated",
-        label: "Last updated",
-        defaultVisible: false,
-        sortable: true,
-        renderCell: (row) => (row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "—"),
-        renderSortValue: (row) => row.updatedAt ?? ""
-      }
-    ],
-    []
-  );
+  const [members, setMembers] = useState<OrgRoleMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(true);
+  const [membersError, setMembersError] = useState<string | null>(null);
 
-  const handleSaved = (role: OrgRoleDefinition) => {
+  const refreshMembers = async () => {
+    setMembersLoading(true);
+    const result = await listOrgRoleMembershipsAction({ orgSlug });
+    if (result.ok) {
+      setMembers(result.data.members);
+      setMembersError(null);
+    } else {
+      setMembersError(result.error);
+    }
+    setMembersLoading(false);
+  };
+
+  useEffect(() => {
+    void refreshMembers();
+  }, [orgSlug]);
+
+  const memberCountByRoleKey = members.reduce<Record<string, number>>((acc, m) => {
+    acc[m.roleKey] = (acc[m.roleKey] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const handleRoleSaved = (role: OrgRoleDefinition) => {
     setRoles((current) => {
       const without = current.filter((entry) => entry.id !== role.id);
       return [...without, role].sort((a, b) => {
@@ -80,60 +58,95 @@ export function RolesPanel({ orgSlug, initialRoles, canManageRoles, loadError }:
         return a.label.localeCompare(b.label);
       });
     });
+    setActiveRole((current) => (current && current.id === role.id ? role : current));
   };
 
-  const handleDeleted = (roleId: string) => {
+  const handleRoleDeleted = (roleId: string) => {
     setRoles((current) => current.filter((entry) => entry.id !== roleId));
+    setActiveRole((current) => (current && current.id === roleId ? null : current));
   };
 
   return (
-    <div className="ui-stack-page">
-      {loadError ? <Alert variant="warning">{loadError}</Alert> : null}
+    <>
+      {canManageRoles ? (
+        <Section.Actions>
+          <Button intent="add" object="Role" onClick={() => setCreateOpen(true)} />
+        </Section.Actions>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardHeaderRow
-            actions={
-              canManageRoles ? (
-                <Button onClick={() => setCreateOpen(true)} type="button">
-                  Create role
-                </Button>
-              ) : null
-            }
-            description="Built-in roles are managed by OrgFrame. Create custom roles to grant tailored permission sets."
-            title="Roles"
-          />
-        </CardHeader>
-        <CardContent className="px-5 pb-5 pt-2 md:px-6 md:pb-6">
-          <DataTable
-            ariaLabel="Org roles"
-            columns={columns}
-            data={roles}
-            defaultSort={{ columnKey: "label", direction: "asc" }}
-            emptyState="No roles yet."
-            onRowClick={(row) => setPopupRole(row)}
-            rowKey={(row) => row.id}
-            searchPlaceholder="Search roles"
-            storageKey={`people-roles-table:${orgSlug}`}
-          />
-        </CardContent>
-      </Card>
+      <div className="ui-stack-page">
+        {loadError ? <Alert variant="warning">{loadError}</Alert> : null}
 
-      <RoleEditPanel
-        onClose={() => setPopupRole(null)}
-        onDeleted={handleDeleted}
-        onSaved={handleSaved}
-        open={popupRole !== null}
-        orgSlug={orgSlug}
-        role={popupRole}
-      />
+        <Repeater<OrgRoleDefinition>
+          disableViewToggle
+          fixedView="list"
+          getItem={(role) => {
+            const memberCount = memberCountByRoleKey[role.roleKey] ?? 0;
+            return {
+              id: role.id,
+              title: role.label,
+              meta: (
+                <span>{memberCount} {memberCount === 1 ? "member" : "members"}</span>
+              ),
+              chips: (
+                <Chip
+                  className={
+                    role.source === "default"
+                      ? undefined
+                      : "border-accent/30 bg-accent/10 text-accent dark:text-accent"
+                  }
+                  status={false}
+                  variant={role.source === "default" ? "neutral" : undefined}
+                >
+                  {role.source === "default" ? "Built-in" : "Custom"}
+                </Chip>
+              ),
+              primaryAction: (
+                <Button
+                  intent="manage"
+                  object="Role"
+                  onClick={() => setActiveRole(role)}
+                  size="sm"
+                />
+              )
+            };
+          }}
+          getSearchValue={(role) => `${role.label} ${role.roleKey}`}
+          items={roles}
+          searchPlaceholder="Search roles"
+        />
+      </div>
 
-      <RoleCreateWizard
+      {activeRole ? (
+        <RoleWizard
+          allMembers={members}
+          membersLoadError={membersError}
+          membersLoading={membersLoading}
+          mode="edit"
+          onClose={() => setActiveRole(null)}
+          onDeleted={handleRoleDeleted}
+          onMembersChanged={() => void refreshMembers()}
+          onSaved={handleRoleSaved}
+          open={activeRole !== null}
+          orgSlug={orgSlug}
+          role={activeRole}
+        />
+      ) : null}
+
+      <RoleWizard
+        allMembers={members}
+        membersLoadError={membersError}
+        membersLoading={membersLoading}
+        mode="create"
         onClose={() => setCreateOpen(false)}
-        onCreated={handleSaved}
+        onCreated={(role) => {
+          handleRoleSaved(role);
+          void refreshMembers();
+        }}
+        onMembersChanged={() => void refreshMembers()}
         open={createOpen}
         orgSlug={orgSlug}
       />
-    </div>
+    </>
   );
 }

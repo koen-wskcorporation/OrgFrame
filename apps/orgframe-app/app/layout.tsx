@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 import { AppFooter } from "@/src/features/core/layout/components/AppFooter";
-import { PrimaryHeader } from "@/src/features/core/layout/components/PrimaryHeader";
+import { AppHeader } from "@/src/features/core/layout/components/AppHeader";
 import { ConfirmDialogProvider } from "@orgframe/ui/primitives/confirm-dialog";
 import { PanelContainer } from "@orgframe/ui/primitives/panel";
 import { ThemeModeProvider } from "@orgframe/ui/primitives/theme-mode";
@@ -135,7 +135,7 @@ export default async function RootLayout({
                 <FileManagerProvider prefetchOrgSlug={headerRouting.currentOrgSlug}>
                   <UploadProvider>
                     {showHeaders ? (
-                      <PrimaryHeader
+                      <AppHeader
                         currentOrgSlug={headerRouting.currentOrgSlug}
                         homeHref={headerRouting.homeHref}
                         initialAccountState={initialAccountState}

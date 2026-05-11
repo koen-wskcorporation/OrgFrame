@@ -32,22 +32,16 @@ export function OccurrenceEditDialog({
   return (
     <Popup
       footer={
-        <>
-          <Button onClick={onClose} type="button" variant="ghost">
-            <X className="h-4 w-4" />
-            Cancel
-          </Button>
-          <Button
-            disabled={!canWrite || !draft || !draft.localDate || !draft.timezone}
-            loading={isSaving}
-            onClick={onSave}
-            type="button"
-            variant="secondary"
-          >
-            <Check className="h-4 w-4" />
-            Save Occurrence
-          </Button>
-        </>
+        <Button
+          disabled={!canWrite || !draft || !draft.localDate || !draft.timezone}
+          loading={isSaving}
+          onClick={onSave}
+          type="button"
+          variant="secondary"
+        >
+          <Check className="h-4 w-4" />
+          Save Occurrence
+        </Button>
       }
       onClose={onClose}
       open={open}

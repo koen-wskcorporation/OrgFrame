@@ -214,7 +214,7 @@ export function ScheduleCalendar({
             >
               <p className="text-xs font-semibold text-text">{cell.date.getDate()}</p>
               {badgeText ? (
-                <Chip className="mt-1 inline-flex max-w-full truncate normal-case tracking-normal" color="neutral" size="compact">
+                <Chip className="mt-1 inline-flex max-w-full truncate normal-case tracking-normal" color="neutral">
                   {badgeText}
                 </Chip>
               ) : null}

@@ -4,7 +4,7 @@ import * as React from "react";
 import { Trash2 } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
-import { ChipPicker } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import {
@@ -126,12 +126,13 @@ function PublishStatusChip({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <ChipPicker
-      onChange={(value) => onChange(value === "published")}
-      options={PUBLISH_OPTIONS}
-      size="md"
+    <Chip
       status
-      value={isPublished ? "published" : "unpublished"}
+      picker={{
+        onChange: (value) => onChange(value === "published"),
+        options: PUBLISH_OPTIONS,
+        value: isPublished ? "published" : "unpublished"
+      }}
     />
   );
 }

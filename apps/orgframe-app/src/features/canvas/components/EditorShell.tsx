@@ -3,13 +3,13 @@
 import * as React from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Popup } from "@orgframe/ui/primitives/popup";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 
 /**
  * Shared chrome for canvas-style editors (facility map, program map, …).
  *
  * Provides two layers, both optional:
- * - **Preview card** — a read-only mini canvas inside a `ManageSection`. Click
+ * - **Preview card** — a read-only mini canvas inside a `Section`. Click
  *   the "Edit" affordance inside the editor body to open the full popup.
  * - **Fullscreen popup** — `<Popup size="full">` with an unsaved-changes guard
  *   on close (browser-level beforeunload + a confirm() on backdrop/close click).
@@ -141,7 +141,7 @@ export function EditorShell({
       ) : null}
 
       {!hidePreview ? (
-        <ManageSection
+        <Section
           contentClassName="flex flex-col"
           description={previewDescription}
           fill={false}
@@ -153,7 +153,7 @@ export function EditorShell({
           >
             {mounted ? renderEditor({ mode: "preview", popupSession, requestEdit }) : null}
           </div>
-        </ManageSection>
+        </Section>
       ) : null}
 
       <Popup

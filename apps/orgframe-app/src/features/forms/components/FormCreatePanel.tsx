@@ -153,15 +153,9 @@ export function FormCreatePanel({ open, onClose, orgSlug, programs, canWrite = t
   return (
     <CreateModal
       footer={
-        <>
-          <Button onClick={handleClose} type="button" variant="ghost">
-            <X className="h-4 w-4" />
-            Cancel
-          </Button>
-          <Button disabled={isSaveDisabled} form="create-form-form" loading={isSaving} type="submit">
-            {isSaving ? "Saving..." : "Create form"}
-          </Button>
-        </>
+        <Button disabled={isSaveDisabled} form="create-form-form" loading={isSaving} type="submit">
+          {isSaving ? "Saving..." : "Create form"}
+        </Button>
       }
       onClose={handleClose}
       open={open}

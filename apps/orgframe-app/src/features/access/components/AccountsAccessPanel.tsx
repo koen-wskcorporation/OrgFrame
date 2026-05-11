@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { Eye, KeyRound, Trash2 } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Badge } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { DataTable, type DataTableColumn } from "@orgframe/ui/primitives/data-table";
@@ -381,7 +381,7 @@ export function AccountsAccessPanel({
         label: "Role",
         defaultVisible: true,
         sortable: true,
-        renderCell: (member) => <Badge variant={roleBadgeVariant(member.role)}>{resolveRoleLabel(member.role)}</Badge>,
+        renderCell: (member) => <Chip status={false} variant={roleBadgeVariant(member.role)}>{resolveRoleLabel(member.role)}</Chip>,
         renderSearchValue: (member) => resolveRoleLabel(member.role),
         renderSortValue: (member) => resolveRoleLabel(member.role)
       },
@@ -390,7 +390,7 @@ export function AccountsAccessPanel({
         label: "Status",
         defaultVisible: true,
         sortable: true,
-        renderCell: (member) => <Badge variant={statusBadgeVariant(member.status)}>{statusLabel(member.status)}</Badge>,
+        renderCell: (member) => <Chip status={false} variant={statusBadgeVariant(member.status)}>{statusLabel(member.status)}</Chip>,
         renderSearchValue: (member) => statusLabel(member.status),
         renderSortValue: (member) => statusLabel(member.status)
       },
@@ -481,7 +481,7 @@ export function AccountsAccessPanel({
           <CardTitle>Invite user</CardTitle>
           <CardDescription>Add a user by email and assign their initial organization role.</CardDescription>
         </CardHeader>
-        <CardContent className="app-section-stack">
+        <CardContent className="space-y-4">
           <form className="grid gap-3 md:grid-cols-[2fr_1fr_auto]" onSubmit={handleInviteSubmit}>
             <FormField className="md:col-span-1" label="Email">
               <Input
@@ -582,20 +582,20 @@ export function AccountsAccessPanel({
         title={selectedMember ? displayUser(selectedMember) : "Member profile"}
       >
         {selectedMember ? (
-          <div className="app-section-stack">
+          <div className="space-y-4">
             <Card className="shadow-none">
               <CardContent className="grid gap-3 py-5 md:grid-cols-2">
                 <div>
                   <p className="ui-kv-label">Status</p>
-                  <Badge className="mt-1" variant={statusBadgeVariant(selectedMember.status)}>
+                  <Chip status={false} className="mt-1" variant={statusBadgeVariant(selectedMember.status)}>
                     {statusLabel(selectedMember.status)}
-                  </Badge>
+                  </Chip>
                 </div>
                 <div>
                   <p className="ui-kv-label">Role</p>
-                  <Badge className="mt-1" variant={roleBadgeVariant(selectedMember.role)}>
+                  <Chip status={false} className="mt-1" variant={roleBadgeVariant(selectedMember.role)}>
                     {resolveRoleLabel(selectedMember.role)}
-                  </Badge>
+                  </Chip>
                 </div>
                 <div>
                   <p className="ui-kv-label">Joined</p>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { can } from "@/src/shared/permissions/can";
 import { CalendarWorkspace } from "@/src/features/calendar/components/CalendarWorkspace";
@@ -70,7 +70,7 @@ export default async function ManageCalendarPage({ params }: { params: Promise<{
     >
       {!canWrite ? <Alert variant="info">You have read-only access to calendar data.</Alert> : null}
       {!workspaceData.ok ? <Alert variant="warning">Some calendar data could not be loaded. Showing available data only.</Alert> : null}
-      <ManageSection contentClassName="min-h-0 overflow-hidden p-0" description="Events, practices, games, and shared facility scheduling." title="Schedule">
+      <Section contentClassName="min-h-0 overflow-hidden p-0" description="Events, practices, games, and shared facility scheduling." title="Schedule">
         <CalendarWorkspace
           canWrite={canWrite}
           context={{ kind: "manage", activeTeams }}
@@ -78,7 +78,7 @@ export default async function ManageCalendarPage({ params }: { params: Promise<{
           initialReadModel={readModel}
           orgSlug={orgSlug}
         />
-      </ManageSection>
+      </Section>
     </PageShell>
   );
 }

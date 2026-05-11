@@ -1354,7 +1354,7 @@ export function FacilityMapEditor({
                           means stale rows (e.g. legacy bathrooms with
                           is_bookable=true) still don't show a chip. */}
                       {isKindBookable(node.spaceKind) && node.isBookable && statusDef && !replaceStatusChipBySpaceId?.has(node.id) ? (
-                        <Chip color={statusDef.color} label={statusDef.label} size="sm" status={true} />
+                        <Chip color={statusDef.color} label={statusDef.label} status={true} />
                       ) : null}
                       {nodeBadgeBySpaceId?.[node.id] ?? null}
                     </div>

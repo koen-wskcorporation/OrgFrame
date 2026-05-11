@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Badge } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Chip } from "@orgframe/ui/primitives/chip";
@@ -38,7 +37,7 @@ function GroupCard({ group }: { group: PeopleSystemGroupWorkspaceItem }) {
           <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-text">
             <span>{group.label}</span>
             <Tooltip content="Dynamic group. This is system-managed and cannot be renamed or deleted.">
-              <Chip color="yellow" size="compact">
+              <Chip color="yellow">
                 Dynamic
               </Chip>
             </Tooltip>
@@ -46,8 +45,8 @@ function GroupCard({ group }: { group: PeopleSystemGroupWorkspaceItem }) {
           <p className="text-xs text-text-muted">{group.description}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="neutral">{group.kind.replace("_", " ")}</Badge>
-          <Badge variant="neutral">{group.memberCount} members</Badge>
+          <Chip status={false} variant="neutral">{group.kind.replace("_", " ")}</Chip>
+          <Chip status={false} variant="neutral">{group.memberCount} members</Chip>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -55,7 +54,7 @@ function GroupCard({ group }: { group: PeopleSystemGroupWorkspaceItem }) {
           <p className="text-xs text-text-muted">No members.</p>
         ) : (
           group.previewMembers.map((member) => (
-            <Chip className="normal-case tracking-normal" color="neutral" key={member.userId} size="compact">
+            <Chip className="normal-case tracking-normal" color="neutral" key={member.userId}>
               {member.displayName}
             </Chip>
           ))
@@ -107,14 +106,14 @@ function TreeRow({
             )}
             <span className="truncate text-sm font-semibold text-text">{node.group.label}</span>
             <Tooltip content="Dynamic group. This is system-managed and cannot be renamed or deleted.">
-              <Chip color="yellow" size="compact">
+              <Chip color="yellow">
                 Dynamic
               </Chip>
             </Tooltip>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="neutral">{node.group.kind.replace("_", " ")}</Badge>
-            <Badge variant="neutral">{node.group.memberCount} members</Badge>
+            <Chip status={false} variant="neutral">{node.group.kind.replace("_", " ")}</Chip>
+            <Chip status={false} variant="neutral">{node.group.memberCount} members</Chip>
           </div>
         </div>
         <p className="mt-1 text-xs text-text-muted">{node.group.description}</p>
@@ -123,7 +122,7 @@ function TreeRow({
             <p className="text-xs text-text-muted">No members.</p>
           ) : (
             node.group.previewMembers.map((member) => (
-              <Chip className="normal-case tracking-normal" color="neutral" key={member.userId} size="compact">
+              <Chip className="normal-case tracking-normal" color="neutral" key={member.userId}>
                 {member.displayName}
               </Chip>
             ))

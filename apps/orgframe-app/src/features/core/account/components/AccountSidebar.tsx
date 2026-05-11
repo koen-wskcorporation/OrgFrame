@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, Inbox, Settings, Users, type LucideIcon } from "lucide-react";
+import { Home, Settings, Users, type LucideIcon } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { cn } from "@orgframe/ui/primitives/utils";
 import { EditableAvatar } from "@/src/features/core/account/components/EditableAvatar";
@@ -24,8 +24,7 @@ type NavItem = {
 
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { href: "/", label: "Home", icon: Home },
-  { href: "/profiles", label: "Profiles", icon: Users },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/profiles", label: "People", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings }
 ];
 

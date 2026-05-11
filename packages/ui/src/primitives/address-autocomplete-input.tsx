@@ -25,39 +25,19 @@ type AddressAutocompleteInputProps = Omit<React.InputHTMLAttributes<HTMLInputEle
    */
   onSelectPlace?: (place: SelectedPlace) => void;
   apiKey?: string;
+  /**
+   * Override the Google Places Autocomplete `types` parameter. Defaults to
+   * `["address"]`. Pass `["establishment"]` to bias toward businesses /
+   * schools / churches / venues. When set, the secondary fallback request
+   * is skipped — the caller's filter is honored exactly.
+   */
+  types?: string[];
 };
 
 type PlacesPrediction = {
   description: string;
   placeId: string;
 };
-
-function normalizePredictions(predictions: any[] | null | undefined): PlacesPrediction[] {
-  if (!Array.isArray(predictions)) {
-    return [];
-  }
-
-  return predictions
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-
-      const description = typeof item.description === "string" ? item.description : "";
-      const placeId = typeof item.place_id === "string" ? item.place_id : "";
-
-      if (!description || !placeId) {
-        return null;
-      }
-
-      return {
-        description,
-        placeId
-      } satisfies PlacesPrediction;
-    })
-    .filter((item): item is PlacesPrediction => Boolean(item))
-    .slice(0, 6);
-}
 
 export function AddressAutocompleteInput({
   className,
@@ -67,16 +47,28 @@ export function AddressAutocompleteInput({
   disabled,
   placeholder = "Start typing an address",
   apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+  types,
   ...props
 }: AddressAutocompleteInputProps) {
+  // The new AutocompleteSuggestion API requires `includedPrimaryTypes` to be
+  // real Place primary types — the legacy `"address"` table-of-contents value
+  // is rejected. Default to no filter so all suggestions surface; callers can
+  // narrow with the `types` prop (e.g. `["establishment"]` for schools).
+  const resolvedTypes = types ?? [];
+  const allowFallback = false;
   const [predictions, setPredictions] = React.useState<PlacesPrediction[]>([]);
   const [isOpen, setIsOpen] = React.useState(false);
   const [activeIndex, setActiveIndex] = React.useState<number>(-1);
   const [isReady, setIsReady] = React.useState(false);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
-  const autocompleteServiceRef = React.useRef<any>(null);
+  const autocompleteSuggestionRef = React.useRef<any>(null);
+  // Suggestions retain a `toPlace()` callback that we need when the user
+  // picks a prediction, so cache the live objects alongside the rendered
+  // shape. Reset on every fetch.
+  const suggestionByIdRef = React.useRef<Map<string, any>>(new Map());
   const requestIdRef = React.useRef(0);
+  const sessionTokenRef = React.useRef<any>(null);
 
   React.useEffect(() => {
     if (!apiKey || disabled) {
@@ -86,20 +78,37 @@ export function AddressAutocompleteInput({
     let isMounted = true;
 
     loadGooglePlacesApi(apiKey)
-      .then(() => {
+      .then(async () => {
         if (!isMounted) {
           return;
         }
 
         const googleValue = (window as Window & { google?: any }).google;
 
-        if (!googleValue?.maps?.places?.AutocompleteService) {
-          setLoadError("Address autocomplete unavailable right now.");
-          return;
-        }
+        try {
+          // Always go through importLibrary — when the script was already
+          // loaded the global `google.maps.places` namespace can be present
+          // but missing the new `AutocompleteSuggestion` class until the
+          // dynamic import completes. importLibrary is idempotent.
+          const placesLib = googleValue?.maps?.importLibrary
+            ? await googleValue.maps.importLibrary("places")
+            : googleValue?.maps?.places ?? null;
 
-        autocompleteServiceRef.current = new googleValue.maps.places.AutocompleteService();
-        setIsReady(true);
+          if (!placesLib?.AutocompleteSuggestion) {
+            setLoadError("Address autocomplete unavailable right now.");
+            return;
+          }
+
+          autocompleteSuggestionRef.current = placesLib.AutocompleteSuggestion;
+          if (placesLib.AutocompleteSessionToken) {
+            sessionTokenRef.current = new placesLib.AutocompleteSessionToken();
+          }
+          setIsReady(true);
+        } catch {
+          if (isMounted) {
+            setLoadError("Address autocomplete unavailable right now.");
+          }
+        }
       })
       .catch(() => {
         if (!isMounted) {
@@ -121,8 +130,8 @@ export function AddressAutocompleteInput({
       return;
     }
 
-    const service = autocompleteServiceRef.current;
-    if (!service?.getPlacePredictions) {
+    const AutocompleteSuggestion = autocompleteSuggestionRef.current;
+    if (!AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
       return;
     }
 
@@ -130,59 +139,60 @@ export function AddressAutocompleteInput({
     requestIdRef.current = requestId;
 
     const timer = window.setTimeout(() => {
-      const googleValue = (window as Window & { google?: any }).google;
-      const okStatus = googleValue?.maps?.places?.PlacesServiceStatus?.OK;
-
-      const applyResults = (results: any[] | null, status: string) => {
-        if (requestIdRef.current !== requestId) {
-          return;
+      const fetchSuggestions = async (typesForRequest: string[] | undefined) => {
+        const request: Record<string, unknown> = { input: value.trim() };
+        if (typesForRequest && typesForRequest.length > 0) {
+          request.includedPrimaryTypes = typesForRequest;
         }
+        if (sessionTokenRef.current) {
+          request.sessionToken = sessionTokenRef.current;
+        }
+        const response = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+        return Array.isArray(response?.suggestions) ? response.suggestions : [];
+      };
 
-        if (status !== okStatus || !results) {
+      (async () => {
+        try {
+          let suggestions = await fetchSuggestions(resolvedTypes);
+          if (suggestions.length === 0 && allowFallback) {
+            suggestions = await fetchSuggestions(undefined);
+          }
+          if (requestIdRef.current !== requestId) return;
+
+          const map = new Map<string, any>();
+          const normalized: PlacesPrediction[] = [];
+          for (const suggestion of suggestions) {
+            const prediction = suggestion?.placePrediction;
+            const placeId = prediction?.placeId;
+            const text =
+              typeof prediction?.text?.toString === "function"
+                ? prediction.text.toString()
+                : (prediction?.text ?? "");
+            if (!placeId || !text) continue;
+            map.set(placeId, suggestion);
+            normalized.push({ description: text, placeId });
+            if (normalized.length >= 6) break;
+          }
+
+          suggestionByIdRef.current = map;
+          setPredictions(normalized);
+          setIsOpen(normalized.length > 0);
+          setActiveIndex(-1);
+        } catch {
+          if (requestIdRef.current !== requestId) return;
           setPredictions([]);
           setIsOpen(false);
           setActiveIndex(-1);
-          return;
         }
-
-        const normalized = normalizePredictions(results);
-        setPredictions(normalized);
-        setIsOpen(normalized.length > 0);
-        setActiveIndex(-1);
-      };
-
-      const fallbackRequest = {
-        input: value.trim()
-      };
-
-      service.getPlacePredictions(
-        {
-          input: value.trim(),
-          types: ["address"]
-        },
-        (results: any[] | null, status: string) => {
-          if (requestIdRef.current !== requestId) {
-            return;
-          }
-
-          const normalized = normalizePredictions(results);
-          if (status === okStatus && normalized.length > 0) {
-            setPredictions(normalized);
-            setIsOpen(true);
-            setActiveIndex(-1);
-            return;
-          }
-
-          // Fallback to broader place suggestions (parks, facilities, venues).
-          service.getPlacePredictions(fallbackRequest, applyResults);
-        }
-      );
+      })();
     }, 220);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [isReady, value]);
+    // resolvedTypes is derived from types; key the effect on the joined string
+    // so identity-changing array literals don't retrigger needlessly.
+  }, [isReady, value, resolvedTypes.join("|"), allowFallback]);
 
   React.useEffect(() => {
     if (!isOpen) {
@@ -213,38 +223,34 @@ export function AddressAutocompleteInput({
 
     if (!onSelectPlace) return;
 
-    // Resolve geometry via Places Details so callers (location pickers etc.)
-    // can drop a marker. Fail silently — the caller still gets the
-    // description-only `SelectedPlace` and can fall back gracefully.
-    const googleValue = (window as Window & { google?: any }).google;
-    const PlacesService = googleValue?.maps?.places?.PlacesService;
-    if (!PlacesService) {
+    // Resolve geometry via the new Place class so callers (location pickers
+    // etc.) can drop a marker. Fail silently — callers still get the
+    // description-only `SelectedPlace` and can degrade gracefully.
+    const suggestion = suggestionByIdRef.current.get(prediction.placeId);
+    const placePrediction = suggestion?.placePrediction;
+    if (!placePrediction || typeof placePrediction.toPlace !== "function") {
       onSelectPlace({ description: prediction.description, placeId: prediction.placeId });
       return;
     }
-    try {
-      const dummyDiv = document.createElement("div");
-      const service = new PlacesService(dummyDiv);
-      service.getDetails(
-        { placeId: prediction.placeId, fields: ["geometry.location", "formatted_address", "name"] },
-        (place: any, status: string) => {
-          const okStatus = googleValue?.maps?.places?.PlacesServiceStatus?.OK;
-          if (status === okStatus && place?.geometry?.location) {
-            const lat = place.geometry.location.lat();
-            const lng = place.geometry.location.lng();
-            onSelectPlace({
-              description: prediction.description,
-              placeId: prediction.placeId,
-              location: { lat, lng }
-            });
-          } else {
-            onSelectPlace({ description: prediction.description, placeId: prediction.placeId });
-          }
+
+    (async () => {
+      try {
+        const place = placePrediction.toPlace();
+        await place.fetchFields({ fields: ["location", "displayName", "formattedAddress"] });
+        const location = place.location;
+        if (location && typeof location.lat === "function" && typeof location.lng === "function") {
+          onSelectPlace({
+            description: prediction.description,
+            placeId: prediction.placeId,
+            location: { lat: location.lat(), lng: location.lng() }
+          });
+          return;
         }
-      );
-    } catch {
+      } catch {
+        // fall through to description-only callback below
+      }
       onSelectPlace({ description: prediction.description, placeId: prediction.placeId });
-    }
+    })();
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {

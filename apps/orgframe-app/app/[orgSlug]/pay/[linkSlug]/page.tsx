@@ -5,7 +5,6 @@ import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
-import { PageStack } from "@orgframe/ui/primitives/layout";
 import { createCheckoutSessionForPublicPaymentLink, getPublicPaymentLink } from "@/src/features/billing/service";
 import { getOrgRequestContext } from "@/src/shared/org/getOrgRequestContext";
 import { rethrowIfNavigationError } from "@/src/shared/navigation/rethrowIfNavigationError";
@@ -65,7 +64,7 @@ export default async function PublicPaymentLinkPage({
   const errorText = query.error ?? "";
 
   return (
-    <PageStack className="mx-auto max-w-2xl py-8">
+    <div className="app-page-stack mx-auto max-w-2xl py-8">
       <Card>
         <CardHeader>
           <CardTitle>{link.title}</CardTitle>
@@ -93,6 +92,6 @@ export default async function PublicPaymentLinkPage({
           </form>
         </CardContent>
       </Card>
-    </PageStack>
+    </div>
   );
 }

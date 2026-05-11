@@ -4,7 +4,7 @@ import { listOrgPaymentLinks } from "@/src/features/billing/service";
 import { can } from "@/src/shared/permissions/can";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { ToolUnavailablePanel } from "../../ToolUnavailablePanel";
 import { PaymentsSectionNav } from "../PaymentsSectionNav";
 import { PaymentLinksManager } from "./PaymentLinksManager";
@@ -44,14 +44,14 @@ export default async function OrgPaymentLinksPage({ params }: { params: Promise<
     >
       {!canManage ? <Alert variant="warning">You do not have permission to manage payment links.</Alert> : null}
       {canManage ? (
-        <ManageSection
+        <Section
           contentClassName="space-y-4 p-5 md:p-6"
           description="Create shareable payment links for one-off charges and collections."
           fill={false}
           title="Payment Links"
         >
           <PaymentLinksManager initialLinks={links} orgSlug={orgSlug} />
-        </ManageSection>
+        </Section>
       ) : null}
     </PageShell>
   );

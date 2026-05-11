@@ -1052,17 +1052,12 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
         customFooter={
           editing ? (
             <>
-              <Button onClick={close} type="button" variant="ghost" disabled={isSaving}>
-                Cancel
-              </Button>
-              <Button
+              <Button intent="delete"
                 disabled={!canWrite || isSaving}
                 onClick={submitDelete}
                 type="button"
                 variant="ghost"
-              >
-                Delete
-              </Button>
+              >Delete</Button>
               <div className="ml-auto">
                 <Button disabled={!canWrite || isSaving} loading={isSaving} onClick={submit} type="button">
                   Save changes
@@ -1254,7 +1249,7 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
                         <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Selected spaces</p>
                         <div className="flex flex-wrap gap-2">
                           {facilitySelections.map((selection) => (
-                            <Chip className="normal-case tracking-normal" color="neutral" key={selection.spaceId} size="compact">
+                            <Chip className="normal-case tracking-normal" color="neutral" key={selection.spaceId}>
                               {spaceById.get(selection.spaceId)?.name ?? selection.spaceId}
                             </Chip>
                           ))}

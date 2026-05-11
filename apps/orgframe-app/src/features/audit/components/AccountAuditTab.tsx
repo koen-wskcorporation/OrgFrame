@@ -12,7 +12,7 @@ type AccountAuditTabProps = {
 };
 
 /**
- * Lazy-loaded per-user audit log embedded inside the AccountEditPanel.
+ * Lazy-loaded per-user audit log embedded inside account-management UI.
  * Silently hides itself if the viewer lacks `audit.read`.
  */
 export function AccountAuditTab({ orgSlug, userId }: AccountAuditTabProps) {

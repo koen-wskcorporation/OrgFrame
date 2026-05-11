@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, ChevronDown, Home, Inbox, LogOut, Monitor, Moon, Settings2, Sun, Users } from "lucide-react";
+import { Bell, ChevronDown, Home, LogOut, Monitor, Moon, Settings2, Sun, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Avatar } from "@orgframe/ui/primitives/avatar";
@@ -141,15 +141,9 @@ export function AccountMenu({
       },
       {
         href: toTenantBaseHref("/profiles", tenantBaseOrigin),
-        label: "Profiles",
+        label: "People",
         icon: Users,
         active: pathname === "/profiles" || pathname.startsWith("/profiles/")
-      },
-      {
-        href: toTenantBaseHref("/inbox", tenantBaseOrigin),
-        label: "Inbox",
-        icon: Inbox,
-        active: pathname === "/inbox" || pathname.startsWith("/inbox/")
       },
       {
         href: toTenantBaseHref("/settings", tenantBaseOrigin),
@@ -326,7 +320,7 @@ export function AccountMenu({
 
         {profiles.length > 0 ? (
           <div className="border-b border-border/70 p-2.5">
-            <p className="px-2.5 pb-1.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">Profiles</p>
+            <p className="px-2.5 pb-1.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">People</p>
             <ul className="space-y-0.5">
               {profiles.map((profile) => (
                 <li

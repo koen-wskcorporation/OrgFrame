@@ -36,7 +36,7 @@ import {
 } from "@dnd-kit/sortable";
 import { cn } from "@orgframe/ui/primitives/utils";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Chip, ChipPicker } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
@@ -499,7 +499,7 @@ export function WebsiteManagerProvider({
 }
 
 /**
- * Single "+ New" button. Slots into a `<ManageSection actions={…}>` so it
+ * Single "+ New" button. Slots into a `<Section actions={…}>` so it
  * lands in the section header. Must be rendered inside `WebsiteManagerProvider`.
  */
 export function WebsiteManagerActions() {
@@ -978,12 +978,14 @@ function TreeRow({ row }: TreeRowProps) {
   // of metadata, and uniform positioning makes it scannable across rows.
   const chips = (
     <>
-      <ChipPicker
-        disabled={!canWrite || locked}
-        onChange={(value) => toggleField(item, { isPublished: value === "published" })}
-        options={PUBLISH_OPTIONS}
+      <Chip
         status
-        value={item.isPublished ? "published" : "unpublished"}
+        picker={{
+          disabled: !canWrite || locked,
+          onChange: (value) => toggleField(item, { isPublished: value === "published" }),
+          options: PUBLISH_OPTIONS,
+          value: item.isPublished ? "published" : "unpublished"
+        }}
       />
       <Chip status={false} variant={typeLabel.variant}>
         {typeLabel.label}
@@ -1021,15 +1023,9 @@ function TreeRow({ row }: TreeRowProps) {
   const primaryAction = (
     <div className="flex items-center gap-2">
       {editorHref ? (
-        <Button disabled={!canWrite || locked} onClick={onEdit} size="sm" variant="secondary">
-          <Pencil />
-          Edit
-        </Button>
+        <Button intent="edit" disabled={!canWrite || locked} onClick={onEdit} size="sm" variant="secondary">Edit</Button>
       ) : null}
-      <Button disabled={!canWrite || locked} onClick={onManage} size="sm" variant="secondary">
-        <Settings2 />
-        Manage
-      </Button>
+      <Button intent="manage" disabled={!canWrite || locked} onClick={onManage} size="sm" variant="secondary">Manage</Button>
     </div>
   );
 
@@ -1233,17 +1229,10 @@ function EditItemDialog({
       description="Edit title, URL, and visibility."
       footer={
         <div className="flex items-center gap-2">
-          <Button disabled={pending} onClick={onDelete} size="sm" variant="danger">
-            <Trash2 />
-            Delete
-          </Button>
+          <Button intent="delete" disabled={pending} onClick={onDelete} size="sm" variant="danger">Delete</Button>
           <div className="ml-auto flex items-center gap-2">
-            <Button onClick={onClose} size="sm" variant="ghost">
-              Cancel
-            </Button>
-            <Button disabled={pending || !title.trim()} onClick={submit} size="sm">
-              Save
-            </Button>
+            <Button intent="cancel" onClick={onClose} size="sm" variant="ghost">Cancel</Button>
+            <Button intent="save" disabled={pending || !title.trim()} onClick={submit} size="sm">Save</Button>
           </div>
         </div>
       }

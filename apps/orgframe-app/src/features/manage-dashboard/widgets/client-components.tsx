@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Badge } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
@@ -62,9 +62,9 @@ function FormsSummaryWidget({ data, orgSlug, settings }: RenderProps) {
       ) : null}
       {showStatuses ? (
         <div className="flex flex-wrap gap-2">
-          <Badge variant="success">Published {f.published}</Badge>
-          <Badge variant="neutral">Draft {f.draft}</Badge>
-          <Badge variant="neutral">Archived {f.archived}</Badge>
+          <Chip status={false} variant="success">Published {f.published}</Chip>
+          <Chip status={false} variant="neutral">Draft {f.draft}</Chip>
+          <Chip status={false} variant="neutral">Archived {f.archived}</Chip>
         </div>
       ) : null}
       <div>
@@ -105,9 +105,9 @@ function ProgramsSummaryWidget({ data, orgSlug, settings }: RenderProps) {
       {showTotal ? <Metric label="Programs" value={p.totalPrograms} /> : null}
       {showStatuses ? (
         <div className="flex flex-wrap gap-2">
-          <Badge variant="success">Published {p.published}</Badge>
-          <Badge variant="neutral">Draft {p.draft}</Badge>
-          <Badge variant="neutral">Archived {p.archived}</Badge>
+          <Chip status={false} variant="success">Published {p.published}</Chip>
+          <Chip status={false} variant="neutral">Draft {p.draft}</Chip>
+          <Chip status={false} variant="neutral">Archived {p.archived}</Chip>
         </div>
       ) : null}
       <div>

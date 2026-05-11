@@ -3,7 +3,7 @@
 import { Pencil, Plus, X } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
-import { Badge } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { FormField } from "@orgframe/ui/primitives/form-field";
@@ -179,7 +179,7 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
     startCreating(async () => {
       const result = await createPlayerAction({
         firstName: payload.firstName ?? payload.displayName.split(" ")[0] ?? "",
-        lastName: payload.lastName ?? payload.displayName.split(" ").slice(1).join(" ") ?? "Profile",
+        lastName: payload.lastName ?? payload.displayName.split(" ").slice(1).join(" ") ?? "Person",
         dateOfBirth: payload.dob
       });
 
@@ -299,7 +299,7 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
           <div className="flex items-start justify-between gap-3">
             <div>
               <CardTitle>Players</CardTitle>
-              <CardDescription>Add and manage player profiles for registrations.</CardDescription>
+              <CardDescription>Add and manage players for registrations.</CardDescription>
             </div>
             <Button onClick={() => setIsCreateOpen(true)} type="button">
               <Plus className="h-4 w-4" />
@@ -332,19 +332,19 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
                 </Button>
               }
               badges={[
-                <Badge key="type" variant="neutral">
-                  Player Profile
-                </Badge>,
+                <Chip status={false} key="type" variant="neutral">
+                  Player
+                </Chip>,
                 ...(isSelf
                   ? [
-                      <Badge key="you" variant="success">
+                      <Chip status={false} key="you" variant="success">
                         You
-                      </Badge>
+                      </Chip>
                     ]
                   : [])
               ]}
               name={`${item.player.firstName} ${item.player.lastName}`}
-              subtitle={item.player.preferredName ? `Preferred: ${item.player.preferredName}` : "Linked profile"}
+              subtitle={item.player.preferredName ? `Preferred: ${item.player.preferredName}` : "Linked person"}
               sections={[
                 {
                   key: "identity",
@@ -377,7 +377,7 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
               ]}
             >
                 <div className="space-y-2 text-sm">
-                  <p className="text-xs text-text-muted">Profile ID: {item.player.id}</p>
+                  <p className="text-xs text-text-muted">Person ID: {item.player.id}</p>
                 </div>
             </PersonCard>
           );
@@ -391,26 +391,20 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
         onClose={closeCreate}
         onSubmit={handleCreateProfile}
         open={isCreateOpen}
-        subtitle="Create a new player profile for registration."
-        title="Add profile"
+        subtitle="Add a new player for registration."
+        title="Add player"
       />
 
       <ContextPanel
         footer={
-          <>
-            <Button disabled={isSavingEdit} onClick={closeEdit} type="button" variant="ghost">
-              <X className="h-4 w-4" />
-              Cancel
-            </Button>
-            <Button disabled={isSavingEdit} form="edit-player-form" loading={isSavingEdit} type="submit">
-              {isSavingEdit ? "Saving..." : "Save player"}
-            </Button>
-          </>
+          <Button disabled={isSavingEdit} form="edit-player-form" loading={isSavingEdit} type="submit">
+            {isSavingEdit ? "Saving..." : "Save player"}
+          </Button>
         }
         onClose={closeEdit}
         open={isEditOpen}
-        subtitle={editingPlayer ? `${editingPlayer.firstName} ${editingPlayer.lastName}` : "Update player details."}
-        title="Edit player"
+        subtitle={editingPlayer ? "Player" : "Update player details."}
+        title={editingPlayer ? `${editingPlayer.firstName} ${editingPlayer.lastName}`.trim() || "Player" : "Player"}
       >
         <form className="grid gap-3 md:grid-cols-2" id="edit-player-form" onSubmit={handleUpdatePlayer}>
           <FormField label="First name">
@@ -474,20 +468,14 @@ export function PlayersAccountPanel({ currentUserId, initialPlayers }: PlayersAc
 
       <CreateModal
         footer={
-          <>
-            <Button disabled={isLinkingGuardian} onClick={closeGuardianLinkDialog} type="button" variant="ghost">
-              <X className="h-4 w-4" />
-              Cancel
-            </Button>
-            <Button
-              disabled={!guardianLinkPlayerId || !guardianLinkEmail || isLinkingGuardian}
-              loading={isLinkingGuardian}
-              onClick={handleLinkGuardian}
-              type="button"
-            >
-              {isLinkingGuardian ? "Linking..." : "Link guardian"}
-            </Button>
-          </>
+          <Button
+            disabled={!guardianLinkPlayerId || !guardianLinkEmail || isLinkingGuardian}
+            loading={isLinkingGuardian}
+            onClick={handleLinkGuardian}
+            type="button"
+          >
+            {isLinkingGuardian ? "Linking..." : "Link guardian"}
+          </Button>
         }
         onClose={closeGuardianLinkDialog}
         open={isLinkGuardianOpen}

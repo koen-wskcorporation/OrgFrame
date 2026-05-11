@@ -360,10 +360,6 @@ body.panel-resizing * {
     min-height: 0;
   }
 
-  .app-section-stack {
-    @apply space-y-4;
-  }
-
   .ui-stack-page {
     display: flex;
     min-width: 0;
@@ -530,6 +526,51 @@ body.panel-resizing * {
 
   .ui-list-row-actions {
     @apply ml-auto flex flex-wrap items-center gap-2;
+  }
+
+  /* Wizard stepper bar. Wraps the step pills in a sticky strip at the top
+   * of the wizard's scrollable body so it stays visible while the step
+   * content scrolls. Negative horizontal margins cancel the SurfaceBody
+   * padding so the bar reaches edge-to-edge; the bar then re-adds the
+   * same horizontal padding inside. */
+  .ui-wizard-stepper-bar {
+    @apply sticky top-0 z-10 bg-surface p-2;
+  }
+
+  /* Repeater toolbar uses container queries so the search bar responds to
+   * the toolbar's own width rather than the viewport. In a wide container
+   * (Section card on desktop) the search is capped at 16rem; in a narrow
+   * container (Panel body, wizard step) it fills the full row. */
+  .ui-repeater-toolbar {
+    container-type: inline-size;
+  }
+  .ui-repeater-search {
+    width: 100%;
+  }
+  @container (min-width: 32rem) {
+    .ui-repeater-search {
+      width: 16rem;
+    }
+  }
+
+  /* Repeater "flush at narrow" mode. Applied automatically by <Repeater>
+   * when `disableViewToggle` is set in list view. Below the sm breakpoint
+   * the rows lose their per-row rounded border + shadow + horizontal
+   * spacing and stack as a continuous divided list — the conventional
+   * mobile pattern. Rows fill the parent's full content width without
+   * negative margins, so this works inside any container (Section card,
+   * Panel body, Popup, wizard step). Above sm the rows keep their
+   * card-row chrome. */
+  @media (max-width: 639px) {
+    .ui-list-flush-on-narrow {
+      @apply space-y-0;
+    }
+    .ui-list-flush-on-narrow > .ui-list-row {
+      @apply rounded-none border-x-0 shadow-none;
+    }
+    .ui-list-flush-on-narrow > .ui-list-row + .ui-list-row {
+      @apply border-t-0;
+    }
   }
 
   .ui-repeat-card {

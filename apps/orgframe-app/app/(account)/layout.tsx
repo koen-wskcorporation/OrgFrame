@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/src/features/core/layout/components/AppShell";
-import { SidebarShell } from "@/src/features/core/layout/components/SidebarShell";
 import { AccountSidebar } from "@/src/features/core/account/components/AccountSidebar";
 import { getCurrentUser } from "@/src/features/core/account/server/getCurrentUser";
 import { requireAuth } from "@/src/features/core/auth/server/requireAuth";
@@ -18,20 +17,19 @@ export default async function AccountAreaLayout({ children }: { children: React.
   ]);
 
   return (
-    <AppShell topbar={null}>
-      <SidebarShell
-        sidebar={
-          <AccountSidebar
-            avatarUrl={currentUser?.avatarUrl ?? null}
-            email={currentUser?.email ?? sessionUser.email ?? null}
-            firstName={currentUser?.firstName ?? null}
-            lastName={currentUser?.lastName ?? null}
-            orgCount={memberships.length}
-          />
-        }
-      >
-        {children}
-      </SidebarShell>
+    <AppShell
+      topbar={null}
+      sidebar={
+        <AccountSidebar
+          avatarUrl={currentUser?.avatarUrl ?? null}
+          email={currentUser?.email ?? sessionUser.email ?? null}
+          firstName={currentUser?.firstName ?? null}
+          lastName={currentUser?.lastName ?? null}
+          orgCount={memberships.length}
+        />
+      }
+    >
+      {children}
     </AppShell>
   );
 }

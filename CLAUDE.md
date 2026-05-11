@@ -65,6 +65,108 @@ Single-responsibility modules organized by business domain, NOT by technical lay
 - CVA for component variants
 - CSS variables injected per-org for branding
 
+### UI Conventions
+
+**No Cancel/Close buttons in panel/popup/modal footers.** Every `<Panel>`,
+`<Popup>`, `<CreateModal>`, `<ContextPanel>`, and `<EditorSettingsDialog>`
+already renders an X close button in the top-right via `SurfaceCloseButton`.
+Footers contain only positive/destructive actions (Save, Create, Delete,
+Next, Back). Cancellation is the X. This applies to every panel/popup the
+app ships — no exceptions.
+
+**Destructive entity actions go in the footer's leading slot, not the
+body.** When a `<Panel>`, `<Popup>`, or `<CreateWizard>` edits a single
+existing entity that can be deleted, archived, or otherwise destroyed,
+the affordance is an **icon-only `<Button iconOnly>`** (the icon picks
+the verb — `Trash2` for delete, `Archive` for archive, etc., colored
+with `text-destructive`) rendered via the container's `footerLeading`
+prop. `Panel`, `Popup`, and `CreateWizard` all expose `footerLeading`;
+it sits on the **left side of the footer** opposite the primary Save.
+Never render a "Danger zone" card, a `variant="danger"` text button, or
+any inline `Delete X` / `Archive X` button in the step/panel body —
+destructive actions live in the footer, the same canonical position
+across every editing surface. Confirm before destroying (e.g.
+`window.confirm` or `useConfirmDialog`). This rule does NOT apply to
+list-row-level deletes (e.g. removing one row from a list rendered
+inside a panel) or to bulk "Delete selected" toolbar actions — those
+are scoped to the row/selection, not to the panel's entity.
+
+Allowed Cancel exceptions: inline mode-toggles that aren't dismissing a
+container — e.g., a "Cancel editing" button in a sticky page-edit toolbar,
+or a "Cancel" inside a sub-form rendered in a popup body that returns the
+popup to a list view. If in doubt, the rule is: a button that calls the
+container's `onClose` does **not** belong in the footer.
+
+**Panel z-index**: panels render *below* popups (z-1100 vs popup z-1200).
+Opening a popup covers panels with the popup backdrop — clear modal
+precedence and full panel height retained. Don't add panel-side logic
+that re-measures height/position around open dialogs.
+
+**Section action buttons**: render via `<SectionActions>` (slot-portaled
+into the Section header) so every Section's actions sit in the same
+canonical position regardless of which descendant component owns the
+state. Never render a section's action button inline in the body.
+
+**Person/account vocabulary**: account = login (auth identity);
+person/people = registerable identity (the row in `people.profiles`).
+Never use "profile" in user-facing copy when referring to the people
+record — the database/code can keep the term, but UI copy should say
+"person" / "people". `profile_links` and `ProfileWizardPanel` filenames
+are internal.
+
+**Entity-named panel titles**: when a panel edits a named entity
+(person, role, team, space), the panel `title` prop is the entity's
+name (e.g. "Koen Stewart"), not "Edit person". Subtitle holds the
+type label if needed.
+
+**Action buttons use `intent`**: `<Button intent="add" object="Player" />`
+not hand-written `<Button><Plus />Add Player</Button>`. See
+`packages/ui/CLAUDE.md` for the full intent catalog.
+
+**Create and Edit share one wizard, not two**: when an entity has a
+"Create X" wizard, the "Manage X" / "Edit X" flow must use the **same**
+`CreateWizard` component with `mode="edit"` — same steps, same step
+labels, same field renderers. Never build a separate Panel/form for
+editing what a wizard creates. The wizard primitive natively supports
+`mode: "create" | "edit"` (free step navigation, single Save button,
+no draft persistence) — use it. This applies to roles, programs, forms,
+spaces, and every other entity with a multi-step creation flow.
+
+If the form has only one logical group of fields, use a `Panel` with a
+single Save button instead — don't fake "steps" to justify a wizard.
+The rule is "creating and editing the same entity look the same," not
+"every form is a wizard."
+
+**Repeater for any rendered list of items**: when you're rendering a
+list of items with optional search/filtering — permissions in a role
+wizard, members in a panel, sections in an editor — use `<Repeater>`
+from `@orgframe/ui/primitives/repeater`. Don't hand-roll a `.map(...)`
+over labeled `<div>` rows. Use `fixedView="list"` + `disableViewToggle`
+when you don't want the grid/list toggle. The Repeater gives consistent
+search, empty state, and row chrome across the app.
+
+**Entity selection always uses `<Select multiple>`**: any "search a
+list, pick one or more, see them as chips below" UI — people, teams,
+programs, divisions, anything with an id + label — uses the existing
+`<Select>` primitive (`@orgframe/ui/primitives/select`) with the
+`multiple`, `values`, `onValuesChange` props. Multi-select forces
+`searchable=true`, keeps the popover open after each toggle, and
+renders selected items as chips beneath the field. Never hand-roll an
+`Input + Popover + chip-list` pattern, and never wrap a custom
+container inside a Popover — the listbox lives directly in the
+Select's own popover.
+
+Item richness lives on each `SelectOption`, not on a separate
+component. For entity-style rows, supply `avatar: { name, src }` and
+`subtext`; for plain dropdowns, keep using `label` / `chip` / `meta` /
+`statusDot`. The same `<Select>` covers everything — there is no
+separate `EntitySelect` / `EntityPicker` / `MultiSelect` primitive.
+
+Exceptions for richer share-target pickers (type-filter chips + manual
+free-text email + per-recipient permission) belong in
+`UniversalSharePopup`; do not duplicate that chrome elsewhere — extend
+it if you need similar behavior.
+
 ## Architecture Highlights
 
 ### Multi-Tenancy

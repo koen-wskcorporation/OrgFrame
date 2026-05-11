@@ -6,7 +6,7 @@ import { SourcesRepeater, type SourceItem } from "@/src/features/data/components
 import { can } from "@/src/shared/permissions/can";
 import type { ResolvedDataSource } from "@/src/features/data/registry/types";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 
 function kindOrder(source: ResolvedDataSource): number {
   if (source.kind === "collection") return source.pinned ? 0 : 1;
@@ -50,7 +50,7 @@ export default async function DataPage({
 
   return (
     <PageShell description="Unified dashboards, tables, and your own pinned collections." title="Data">
-      <ManageSection
+      <Section
         actions={
           canWrite ? (
             <Button href={`/${orgSlug}/manage/data/new`} size="sm">
@@ -64,7 +64,7 @@ export default async function DataPage({
         title="Data"
       >
         <SourcesRepeater items={sources.map((src) => toSourceItem(orgSlug, src))} />
-      </ManageSection>
+      </Section>
     </PageShell>
   );
 }

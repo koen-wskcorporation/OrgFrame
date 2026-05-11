@@ -194,15 +194,9 @@ export function LinkPickerDialog({
       contentClassName="space-y-4"
       description={description}
       footer={
-        <>
-          <Button onClick={onClose} size="sm" variant="ghost">
-            <X className="h-4 w-4" />
-            Cancel
-          </Button>
-          <Button onClick={handleConfirm} size="sm">
-            Use Link
-          </Button>
-        </>
+        <Button onClick={handleConfirm} size="sm">
+          Use Link
+        </Button>
       }
       onClose={onClose}
       open={open}

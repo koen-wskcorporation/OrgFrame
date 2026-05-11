@@ -33,10 +33,7 @@ export function EditorSettingsDialog({
       contentClassName={cn("break-words [&_*]:max-w-full [&_*]:min-w-0", contentClassName)}
       footer={
         footer ?? (
-          <Button onClick={onClose} size="sm">
-            <Check className="h-4 w-4" />
-            Save
-          </Button>
+          <Button intent="save" onClick={onClose} size="sm">Save</Button>
         )
       }
       onClose={onClose}

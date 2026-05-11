@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
-import { ChipButton } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { cn } from "@orgframe/ui/primitives/utils";
 
 type AiComposerVariant = "card" | "inline" | "compact";
@@ -159,14 +159,13 @@ export function AiComposer({
       {suggestions.length > 0 ? (
         <div className="flex flex-wrap gap-1.5 border-t border-border/70 px-2.5 py-2">
           {suggestions.map((suggestion) => (
-            <ChipButton
+            <Chip
               className="normal-case tracking-normal"
               key={suggestion}
               onClick={() => onChange(suggestion)}
-              size="compact"
             >
               {suggestion}
-            </ChipButton>
+            </Chip>
           ))}
         </div>
       ) : null}

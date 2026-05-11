@@ -42,9 +42,6 @@ export function SetLocationPopup({
     <Popup
       footer={
         <div className="flex w-full items-center justify-end gap-2">
-          <Button onClick={onClose} variant="ghost">
-            Cancel
-          </Button>
           <Button disabled={!value || saving} loading={saving} onClick={handleSave} variant="primary">
             Save location
           </Button>

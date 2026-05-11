@@ -3,12 +3,12 @@
 import { useEffect, useState, useTransition } from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Button } from "@orgframe/ui/primitives/button";
-import { Chip, RepeaterChip } from "@orgframe/ui/primitives/chip";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { Repeater } from "@orgframe/ui/primitives/repeater";
 import { RepeaterItem } from "@orgframe/ui/primitives/repeater-item";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { ArrowLeft } from "lucide-react";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { connectFacebookPageAction, disconnectInboxIntegrationAction, getInboxConnectionsDataAction } from "@/src/features/communications/actions";
 import type { CommChannelIntegration } from "@/src/features/communications/types";
 
@@ -216,8 +216,8 @@ export function InboxConnectionsWorkspace({ orgSlug, canWrite, initialIntegratio
     <div className="ui-stack-page">
       {isMutating ? <Alert variant="info">Updating connections...</Alert> : null}
 
-      <ManageSection
-        contentClassName="app-section-stack"
+      <Section
+        contentClassName="space-y-4"
         description="Connect one or more Facebook Pages for this organization. Webhook events route to this org by connected Page ID."
         title="Facebook Messenger Connection"
       >
@@ -259,7 +259,7 @@ export function InboxConnectionsWorkspace({ orgSlug, canWrite, initialIntegratio
               ))}
             </div>
           ) : null}
-      </ManageSection>
+      </Section>
 
       <Repeater
         emptyMessage="No connected pages yet."
@@ -269,13 +269,13 @@ export function InboxConnectionsWorkspace({ orgSlug, canWrite, initialIntegratio
         searchPlaceholder="Search connections"
         viewKey="manage.inbox-connections"
         renderShell={({ toolbar, body }) => (
-          <ManageSection
+          <Section
             actions={toolbar ? <div className="flex flex-wrap items-center gap-2">{toolbar}</div> : undefined}
             description="Per-org page connections used for routing Messenger webhooks."
             title="Connected Pages"
           >
             {body}
-          </ManageSection>
+          </Section>
         )}
         getItem={(integration) => ({
             id: integration.id,
@@ -286,7 +286,7 @@ export function InboxConnectionsWorkspace({ orgSlug, canWrite, initialIntegratio
                   color={integration.status === "active" ? "emerald" : integration.status === "error" ? "red" : "slate"}
                   label={integration.status}
                 />
-                <RepeaterChip label={`Token ${integration.tokenHint ?? "not stored"}`} />
+                <Chip status={false} label={`Token ${integration.tokenHint ?? "not stored"}`} />
               </>
             ),
             meta: (

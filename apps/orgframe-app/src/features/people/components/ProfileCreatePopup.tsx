@@ -33,8 +33,8 @@ export function ProfileCreatePopup({
   onClose,
   onSubmit,
   loading = false,
-  title = "Create profile",
-  subtitle = "Create a player or staff profile.",
+  title = "Add person",
+  subtitle = "Add a player or staff person.",
   canSetAccountUserId = true,
   allowedProfileTypes = ["player", "staff"]
 }: ProfileCreatePopupProps) {
@@ -80,15 +80,9 @@ export function ProfileCreatePopup({
   return (
     <CreateModal
       footer={
-        <>
-          <Button disabled={loading} onClick={onClose} type="button" variant="ghost">
-            <X className="h-4 w-4" />
-            Cancel
-          </Button>
-          <Button disabled={loading} form="profile-create-form" loading={loading} type="submit">
-            {loading ? "Creating..." : "Create profile"}
-          </Button>
-        </>
+        <Button disabled={loading} form="profile-create-form" loading={loading} type="submit">
+          {loading ? "Adding..." : "Add person"}
+        </Button>
       }
       onClose={onClose}
       open={open}
@@ -101,7 +95,7 @@ export function ProfileCreatePopup({
             <Input disabled={loading} onChange={(event) => setAccountUserId(event.target.value)} value={accountUserId} />
           </FormField>
         ) : null}
-        <FormField label="Profile type">
+        <FormField label="Person type">
           <Select
             disabled={loading}
             onChange={(event) => setProfileType(event.target.value as "player" | "staff")}

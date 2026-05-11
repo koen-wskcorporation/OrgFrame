@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!exchangeSucceeded) {
-    return NextResponse.redirect(new URL("/auth/reset?error=callback_failed", request.url), { status: 303 });
+    return NextResponse.redirect(new URL("/auth/password-reset?error=callback_failed", request.url), { status: 303 });
   }
 
   if (returnToRaw) {

@@ -85,7 +85,7 @@ export function AccountPaymentMethodsCard({ paymentMethods }: { paymentMethods: 
             </div>
 
             <div className="flex items-center gap-2">
-              {method.isDefault ? <Chip color="green" size="compact">Default</Chip> : null}
+              {method.isDefault ? <Chip color="green">Default</Chip> : null}
               {!method.isDefault ? (
                 <Button disabled={isPending} onClick={() => handleSetDefault(method.id)} size="sm" variant="secondary">
                   Set default

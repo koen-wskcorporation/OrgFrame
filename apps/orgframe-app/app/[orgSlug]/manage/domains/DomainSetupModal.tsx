@@ -167,9 +167,7 @@ export function DomainSetupModal({
             {!canManage ? <Alert variant="warning">You have read-only access to this setting.</Alert> : null}
 
             <div className="flex items-center justify-end gap-2">
-              <Button href={`/manage/domains`} variant="ghost">
-                Cancel
-              </Button>
+              <Button intent="cancel" href={`/manage/domains`} variant="ghost">Cancel</Button>
               <SubmitButton disabled={!canManage}>
                 Save and continue
               </SubmitButton>

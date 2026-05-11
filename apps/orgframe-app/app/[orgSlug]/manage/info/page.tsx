@@ -10,7 +10,7 @@ import { requireOrgPermission } from "@/src/shared/permissions/requireOrgPermiss
 import { isOrgToolEnabled } from "@/src/features/core/config/tools";
 import { getRoleLabel } from "@/src/features/core/access";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { OrgInfoPageToasts } from "./OrgInfoPageToasts";
 import { saveOrgInfoAction } from "./actions";
 import { ToolUnavailablePanel } from "../ToolUnavailablePanel";
@@ -72,7 +72,7 @@ export default async function OrgInfoPage({
   return (
     <PageShell description="View and manage organization identity details used across public and staff routes." title="Org Info">
       <OrgInfoPageToasts errorMessage={errorMessage} successMessage={successMessage} />
-      <ManageSection
+      <Section
         contentClassName="space-y-4 p-5 md:p-6"
         description="Identity details used across public and staff routes."
         fill={false}
@@ -133,7 +133,7 @@ export default async function OrgInfoPage({
             <Alert variant="warning">You have read-only access to these organization settings.</Alert>
           )}
         </form>
-      </ManageSection>
+      </Section>
     </PageShell>
   );
 }

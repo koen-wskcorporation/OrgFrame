@@ -3,7 +3,7 @@
 import { Eye, Pencil, Share2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { Button } from "@orgframe/ui/primitives/button";
-import { ManageSection } from "@/src/features/core/layout/components/ManageSection";
+import { Section } from "@orgframe/ui/primitives/section";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { saveFormDraftAction } from "@/src/features/forms/actions";
 import { FormFieldsVisualEditor } from "@/src/features/forms/components/FormFieldsVisualEditor";
@@ -71,7 +71,7 @@ export function FormEditorPanel({ orgSlug, form, programs, programNodes, canWrit
   }
 
   return (
-    <ManageSection
+    <Section
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => setSharingOpen(true)} type="button" variant="secondary">
@@ -87,7 +87,7 @@ export function FormEditorPanel({ orgSlug, form, programs, programNodes, canWrit
           </Button>
         </div>
       }
-      contentClassName="app-section-stack pt-2"
+      contentClassName="space-y-4 pt-2"
       description="Build and preview your form pages and fields visually."
       fill={false}
       title="Form Editor"
@@ -104,6 +104,6 @@ export function FormEditorPanel({ orgSlug, form, programs, programNodes, canWrit
             view={builderView}
           />
       <FormSharingPanel formId={form.id} formSlug={form.slug} onClose={() => setSharingOpen(false)} open={sharingOpen} orgSlug={orgSlug} />
-    </ManageSection>
+    </Section>
   );
 }
