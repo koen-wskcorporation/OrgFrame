@@ -64,12 +64,9 @@ export function UploadDialog({
     <EditorSettingsDialog
       description={description}
       footer={
-        <>
-          <Button intent="cancel" onClick={onClose} size="sm" variant="ghost">Cancel</Button>
-          <Button disabled={!canSave || isSaving} loading={isSaving} onClick={onSave} size="sm">
-            {isSaving ? "Saving..." : saveLabel}
-          </Button>
-        </>
+        <Button disabled={!canSave || isSaving} loading={isSaving} onClick={onSave} size="sm">
+          {isSaving ? "Saving..." : saveLabel}
+        </Button>
       }
       onClose={onClose}
       open={open}

@@ -9,7 +9,13 @@ import {
   createSupabaseServer
 } from "@/src/shared/data-api/server";
 import { createProfileRecord, linkProfileRecord, updateProfileRecord } from "@/src/features/people/db/queries";
-import { findAuthUserByEmail } from "@/src/features/people/account-profiles/server";
+import {
+  findAuthUserByEmail,
+  getAccountSelfProfileForUser,
+  type AccountProfileRecord
+} from "@/src/features/people/profiles/server";
+import { getOrgAuthContext } from "@/src/shared/org/getOrgAuthContext";
+import { can } from "@/src/shared/permissions/can";
 
 const addressSchema = z
   .object({
@@ -418,5 +424,110 @@ export async function deleteAccountProfileAction(
   } catch (error) {
     rethrowIfNavigationError(error);
     return fail(error instanceof Error ? error.message : "Could not delete profile.");
+  }
+}
+
+// ── Org-admin variants ──────────────────────────────────────────────────────
+// Same wizard powers the user-side /profiles flow AND the org-manage People
+// edit flow. The actions below mirror the user-side ones but operate as the
+// org admin acting on another account's self-profile, gated by people.write.
+
+const orgUpdateSchema = updateSchema.extend({
+  orgSlug: z.string().trim().min(1),
+  targetUserId: z.string().uuid()
+});
+
+const orgGetSchema = z.object({
+  orgSlug: z.string().trim().min(1),
+  targetUserId: z.string().uuid()
+});
+
+async function requireOrgPeopleWrite(orgSlug: string) {
+  const ctx = await getOrgAuthContext(orgSlug);
+  if (!ctx.membershipRole) throw new Error("Not a member of this organization.");
+  if (!can(ctx.membershipPermissions, "people.write")) {
+    throw new Error("You don't have permission to edit accounts in this org.");
+  }
+  return ctx;
+}
+
+export async function getOrgAccountProfileAction(
+  input: z.input<typeof orgGetSchema>
+): Promise<ActionResult<{ record: AccountProfileRecord | null }>> {
+  const parsed = orgGetSchema.safeParse(input);
+  if (!parsed.success) return fail("Invalid request.");
+  try {
+    await requireOrgPeopleWrite(parsed.data.orgSlug);
+    const record = await getAccountSelfProfileForUser(parsed.data.targetUserId);
+    return { ok: true, data: { record } };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return fail(error instanceof Error ? error.message : "Could not load profile.");
+  }
+}
+
+export async function updateOrgAccountProfileAction(
+  input: z.input<typeof orgUpdateSchema>
+): Promise<ActionResult<{ profileId: string }>> {
+  const parsed = orgUpdateSchema.safeParse(input);
+  if (!parsed.success) return fail("Invalid input.");
+  try {
+    await requireOrgPeopleWrite(parsed.data.orgSlug);
+    const data = parsed.data;
+    const service = createOptionalSupabaseServiceRoleClient();
+    if (!service) return fail("Server is not configured (missing SUPABASE_SERVICE_ROLE_KEY).");
+
+    // Sanity-check: this profile must be the target's self-profile.
+    const { data: ownerLink } = await service
+      .schema("people")
+      .from("profile_links")
+      .select("relationship_type, account_user_id")
+      .eq("profile_id", data.profileId)
+      .eq("account_user_id", data.targetUserId)
+      .is("org_id", null)
+      .maybeSingle();
+    if (!ownerLink || ownerLink.relationship_type !== "self") {
+      return fail("Profile is not the account holder's self-profile.");
+    }
+
+    const firstName = data.firstName;
+    const lastName = data.lastName;
+    const avatarPath = emptyToNull(data.avatarPath);
+
+    await updateProfileRecord({
+      profileId: data.profileId,
+      displayName: buildDisplayName(firstName, lastName),
+      firstName,
+      lastName,
+      dob: emptyToNull(data.dob),
+      sex: emptyToNull(data.sex),
+      school: emptyToNull(data.school),
+      grade: emptyToNull(data.grade),
+      avatarPath,
+      addressJson: data.address ?? {},
+      ...(data.metadata !== undefined ? { metadataJson: data.metadata as Record<string, unknown> } : {}),
+      supabase: service
+    });
+
+    // Mirror name + avatar back into people.users so directory / sidebar
+    // stay in sync (parallels the self-edit path on the user side).
+    await service
+      .schema("people")
+      .from("users")
+      .upsert(
+        {
+          user_id: data.targetUserId,
+          first_name: firstName,
+          last_name: lastName,
+          avatar_path: avatarPath
+        },
+        { onConflict: "user_id" }
+      );
+
+    revalidatePath(`/${parsed.data.orgSlug}/manage/people`);
+    return { ok: true, data: { profileId: data.profileId } };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return fail(error instanceof Error ? error.message : "Could not update profile.");
   }
 }

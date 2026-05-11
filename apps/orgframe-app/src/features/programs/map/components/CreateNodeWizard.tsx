@@ -190,17 +190,12 @@ export function CreateNodeWizard({
 
   const footer =
     step === "type" ? (
-      <>
-        <Button intent="cancel" disabled={submitting} onClick={requestClose} type="button" variant="ghost">Cancel</Button>
-        <Button className="ml-auto" disabled={!kind} onClick={handleNext} type="button">
-          Next
-        </Button>
-      </>
+      <Button className="ml-auto" disabled={!kind} onClick={handleNext} type="button">
+        Next
+      </Button>
     ) : (
       <>
-        {lockedToKind ? (
-          <Button intent="cancel" disabled={submitting} onClick={requestClose} type="button" variant="ghost">Cancel</Button>
-        ) : (
+        {lockedToKind ? null : (
           <Button disabled={submitting} onClick={handleBack} type="button" variant="ghost">
             <ChevronLeft className="h-4 w-4" />
             Back

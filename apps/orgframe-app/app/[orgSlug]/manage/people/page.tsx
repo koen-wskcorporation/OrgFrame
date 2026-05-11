@@ -32,7 +32,7 @@ export default async function OrgPeoplePage({
   if (!isOrgToolEnabled(data.toolAvailability, "people")) {
     return (
       <PageShell
-        description="Manage accounts, linked player/staff profiles, and relationship access."
+        description="Manage accounts and the people they manage."
         tabs={<PeoplePageTabs active="directory" orgSlug={orgSlug} />}
         title="People"
       >
@@ -43,13 +43,13 @@ export default async function OrgPeoplePage({
 
   return (
     <PageShell
-      description="Manage accounts, linked player/staff profiles, and relationship access."
+      description="Manage accounts and the people they manage."
       tabs={<PeoplePageTabs active="directory" orgSlug={data.orgSlug} />}
       title="People"
 
     >
       <Section
-        description="Manage accounts, linked player/staff profiles, and relationship access."
+        description="Manage accounts and the people they manage."
         fill={false}
         title="Directory"
       >

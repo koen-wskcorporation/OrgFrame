@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Trash2 } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { useConfirmDialog } from "@orgframe/ui/primitives/confirm-dialog";
@@ -323,6 +324,19 @@ export function FacilitySpacePanel({
           </div>
         ) : null
       }
+      footerLeading={
+        space && canWrite ? (
+          <Button
+            aria-label="Delete space"
+            disabled={deleting}
+            iconOnly
+            loading={deleting}
+            onClick={handleDelete}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        ) : null
+      }
       onClose={onClose}
       open={open}
       subtitle={space ? `${space.spaceKind} · ${space.slug}` : undefined}
@@ -396,16 +410,6 @@ export function FacilitySpacePanel({
               Bookable space
             </label>
           ) : null}
-
-          <div className="rounded-control border border-destructive/40 bg-destructive/5 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-destructive">Danger zone</p>
-            <p className="mt-1 text-xs text-text-muted">Permanently removes the space and its polygon. This can't be undone.</p>
-            <div className="mt-3">
-              <Button disabled={!canWrite || deleting} loading={deleting} onClick={handleDelete} variant="danger">
-                Delete space
-              </Button>
-            </div>
-          </div>
         </div>
       )}
     </Panel>
