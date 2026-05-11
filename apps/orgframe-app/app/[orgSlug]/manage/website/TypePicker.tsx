@@ -3,7 +3,7 @@
 import * as React from "react";
 import { SelectionBox } from "@orgframe/ui/primitives/selection-box";
 
-export type ItemType = "page" | "dropdown" | "link";
+export type ItemType = "page" | "dropdown" | "link" | "dynamic";
 
 type Option = {
   type: ItemType;
@@ -26,6 +26,11 @@ const OPTIONS: Option[] = [
     type: "link",
     label: "External link",
     description: "A nav item that links to an external URL."
+  },
+  {
+    type: "dynamic",
+    label: "Dynamic page",
+    description: "A page that auto-lists org content (programs, events, teams, facilities)."
   }
 ];
 

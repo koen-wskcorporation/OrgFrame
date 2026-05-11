@@ -5,9 +5,9 @@ import { Alert } from "@orgframe/ui/primitives/alert";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { FormField } from "@orgframe/ui/primitives/form-field";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Select } from "@orgframe/ui/primitives/select";
-import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { defaultInternalHref, resolveButtonHref } from "@/src/shared/links";
 import type { CalendarPublicCatalogItem } from "@/src/features/calendar/types";
 import { asBody, asButtons, asNumber, asObject, asText } from "@/src/features/site/blocks/helpers";
@@ -155,19 +155,42 @@ function formatEventRange(event: CalendarPublicCatalogItem) {
   return `${formatter.format(start)} to ${formatter.format(end)}`;
 }
 
-export function EventsBlockRender({ block, context, runtimeData }: BlockRenderProps<"events">) {
+export function EventsBlockRender({ block, context, runtimeData, isEditing, onChange }: BlockRenderProps<"events">) {
   const now = new Date();
   const sourceEvents = sortEvents(runtimeData.publicCalendarItems ?? runtimeData.eventsCatalogItems ?? []);
   const events = block.config.showPastEvents ? sourceEvents : sourceEvents.filter((event) => !isPastEvent(event, now));
+  const canInlineEdit = isEditing && Boolean(onChange);
 
   return (
     <section id="events">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          {canInlineEdit ? (
+            <InlineText
+              as="h3"
+              className="text-2xl font-semibold leading-tight tracking-tight text-text"
+              maxLength={120}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, title: next } })}
+              placeholder="Title"
+              value={block.config.title}
+            />
+          ) : (
+            <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          {canInlineEdit ? (
+            <InlineText
+              multiline
+              className="text-sm text-text-muted md:text-base"
+              maxLength={500}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, body: next } })}
+              placeholder="Body"
+              value={block.config.body}
+            />
+          ) : (
+            <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          )}
 
           {block.config.style === "calendar" ? (
             events.length === 0 ? (
@@ -222,25 +245,6 @@ export function EventsBlockEditor({ block, onChange, context }: BlockEditorProps
 
   return (
     <div className="space-y-4">
-      <FormField label="Title">
-        <Input
-          onChange={(event) => {
-            updateConfig({ title: event.target.value });
-          }}
-          value={block.config.title}
-        />
-      </FormField>
-
-      <FormField label="Body">
-        <Textarea
-          className="min-h-[90px]"
-          onChange={(event) => {
-            updateConfig({ body: event.target.value });
-          }}
-          value={block.config.body}
-        />
-      </FormField>
-
       <FormField label="Display style">
         <Select
           onChange={(event) => {

@@ -19,9 +19,12 @@ import {
   listOrgPagesForManage,
   listOrgSiteStructureNodesForManage,
   reorderOrgSiteStructureNodes,
+  saveOrgPageAndBlocks,
   updateOrgPageSettingsById,
   updateOrgSiteStructureNodeById
 } from "@/src/features/site/db/queries";
+import { createDefaultBlock } from "@/src/features/site/blocks/registry";
+import { findDynamicPagePreset } from "@/src/features/site/dynamicPagePresets";
 import type { OrgManagePage, OrgSiteStructureItem } from "@/src/features/site/types";
 
 export type WebsiteManagerSnapshot = {
@@ -57,13 +60,16 @@ function validateNotReserved(slug: string): string | null {
 // Create page
 // ---------------------------------------------------------------------------
 
+// `showInMenu` was retired as a user-controllable field — it now mirrors
+// `isPublished` (one truth: published = visible everywhere, unpublished =
+// hidden everywhere). Every create/update path forces the two to match;
+// see migration `202605100001_*` for the historical backfill.
 const createPageSchema = z.object({
   orgSlug: z.string().trim().min(1),
   parentId: z.string().trim().uuid().nullable(),
   title: z.string().trim().min(1).max(120),
   slug: z.string().trim().max(120).optional(),
-  isPublished: z.boolean().optional(),
-  showInMenu: z.boolean().optional()
+  isPublished: z.boolean().optional()
 });
 
 export async function createWebsitePageAction(
@@ -118,6 +124,7 @@ export async function createWebsitePageAction(
       });
     }
 
+    const published = payload.isPublished ?? true;
     await createOrgSiteStructureNode({
       orgId: org.orgId,
       parentId: payload.parentId,
@@ -125,8 +132,8 @@ export async function createWebsitePageAction(
       title,
       slug: desiredSlug,
       urlPath: desiredSlug === "home" ? "/" : `/${desiredSlug}`,
-      showInMenu: payload.showInMenu ?? true,
-      isPublished: payload.isPublished ?? true,
+      showInMenu: published,
+      isPublished: published,
       linkTargetJson: { kind: "page", pageSlug: desiredSlug }
     });
 
@@ -145,8 +152,7 @@ export async function createWebsitePageAction(
 const createDropdownSchema = z.object({
   orgSlug: z.string().trim().min(1),
   parentId: z.string().trim().uuid().nullable(),
-  title: z.string().trim().min(1).max(120),
-  showInMenu: z.boolean().optional()
+  title: z.string().trim().min(1).max(120)
 });
 
 export async function createWebsiteDropdownAction(
@@ -169,7 +175,7 @@ export async function createWebsiteDropdownAction(
       title: payload.title.trim(),
       slug,
       urlPath: "",
-      showInMenu: payload.showInMenu ?? true,
+      showInMenu: true,
       isPublished: true,
       linkTargetJson: { kind: "none" }
     });
@@ -191,8 +197,7 @@ const createExternalLinkSchema = z.object({
   parentId: z.string().trim().uuid().nullable(),
   title: z.string().trim().min(1).max(120),
   url: z.string().trim().url(),
-  openInNewTab: z.boolean().optional(),
-  showInMenu: z.boolean().optional()
+  openInNewTab: z.boolean().optional()
 });
 
 export async function createWebsiteExternalLinkAction(
@@ -215,7 +220,7 @@ export async function createWebsiteExternalLinkAction(
       title: payload.title.trim(),
       slug,
       urlPath: payload.url,
-      showInMenu: payload.showInMenu ?? true,
+      showInMenu: true,
       isPublished: true,
       openInNewTab: payload.openInNewTab ?? true,
       linkTargetJson: { kind: "external", url: payload.url }
@@ -230,6 +235,100 @@ export async function createWebsiteExternalLinkAction(
 }
 
 // ---------------------------------------------------------------------------
+// Create dynamic page — a regular content page seeded with a single locked
+// block (program_catalog / events / teams_directory / facility_space_list).
+// The slug is reserved per `dynamicPagePresets`, so once one of these pages
+// exists the slug can never be re-used by anything else.
+// ---------------------------------------------------------------------------
+
+const createDynamicPageSchema = z.object({
+  orgSlug: z.string().trim().min(1),
+  parentId: z.string().trim().uuid().nullable(),
+  presetKey: z.string().trim().min(1),
+  isPublished: z.boolean().optional()
+});
+
+export async function createWebsiteDynamicPageAction(
+  input: z.infer<typeof createDynamicPageSchema>
+): Promise<WebsiteManagerActionResult> {
+  const parsed = createDynamicPageSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Pick a dynamic page type to add." };
+  }
+
+  try {
+    const payload = parsed.data;
+    const preset = findDynamicPagePreset(payload.presetKey);
+    if (!preset) {
+      return { ok: false, error: "That dynamic page type isn't recognized." };
+    }
+
+    const org = await requireOrgPermission(payload.orgSlug, "org.pages.write");
+
+    // The slug is reserved by definition, so the only way it'd already exist
+    // is if this dynamic page was already created. Detect and refuse.
+    const existingPage = await getEditableOrgPageBySlug({
+      orgId: org.orgId,
+      pageSlug: preset.slug,
+      context: { orgSlug: org.orgSlug, orgName: org.orgName, pageSlug: preset.slug }
+    });
+    if (existingPage) {
+      return { ok: false, error: `A ${preset.title} page already exists.` };
+    }
+
+    if (payload.parentId) {
+      const parent = await getOrgSiteStructureNodeById(org.orgId, payload.parentId);
+      if (!parent) {
+        return { ok: false, error: "The parent item no longer exists." };
+      }
+    }
+
+    const blockContext = {
+      orgSlug: org.orgSlug,
+      orgName: org.orgName,
+      pageSlug: preset.slug
+    };
+
+    // Seed the page with one block of the preset's type. Once the block
+    // editor enforces locked-root semantics, this block will be undeletable.
+    // TODO(website-manager): mark the seed block as `lockedRoot: true` once
+    // OrgPageBlock supports a meta field, and have OrgPageEditor refuse to
+    // delete it. For now there's nothing actually preventing removal — the
+    // user can manually delete it from the editor and lose the dynamic
+    // listing.
+    const seedBlock = createDefaultBlock(preset.blockType, blockContext);
+    const published = payload.isPublished ?? true;
+
+    await saveOrgPageAndBlocks({
+      orgId: org.orgId,
+      pageSlug: preset.slug,
+      title: preset.title,
+      isPublished: published,
+      blocks: [{ id: seedBlock.id, type: seedBlock.type, config: seedBlock.config }],
+      context: blockContext
+    });
+
+    await createOrgSiteStructureNode({
+      orgId: org.orgId,
+      parentId: payload.parentId,
+      type: "page",
+      title: preset.title,
+      slug: preset.slug,
+      urlPath: `/${preset.slug}`,
+      showInMenu: published,
+      isPublished: published,
+      linkTargetJson: { kind: "page", pageSlug: preset.slug }
+    });
+
+    bumpRevalidate(org.orgSlug);
+    return { ok: true, snapshot: await loadSnapshot(org.orgId) };
+  } catch (error) {
+    rethrowIfNavigationError(error);
+    return { ok: false, error: "Unable to create dynamic page right now." };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Update item — partial updates for inline toggles + edit dialog
 // ---------------------------------------------------------------------------
 
@@ -240,7 +339,6 @@ const updateItemSchema = z.object({
     title: z.string().trim().min(1).max(120).optional(),
     slug: z.string().trim().max(120).optional(),
     description: z.string().trim().max(500).nullable().optional(),
-    showInMenu: z.boolean().optional(),
     isPublished: z.boolean().optional(),
     openInNewTab: z.boolean().optional(),
     externalUrl: z.string().trim().url().optional(),
@@ -276,8 +374,12 @@ export async function updateWebsiteItemAction(
 
     if (payload.patch.title !== undefined) updates.title = payload.patch.title.trim();
     if (payload.patch.description !== undefined) updates.description = payload.patch.description;
-    if (payload.patch.showInMenu !== undefined) updates.showInMenu = payload.patch.showInMenu;
-    if (payload.patch.isPublished !== undefined) updates.isPublished = payload.patch.isPublished;
+    if (payload.patch.isPublished !== undefined) {
+      // Single source of truth: published === visible in nav. Always keep
+      // show_in_menu in lockstep with is_published.
+      updates.isPublished = payload.patch.isPublished;
+      updates.showInMenu = payload.patch.isPublished;
+    }
     if (payload.patch.openInNewTab !== undefined) updates.openInNewTab = payload.patch.openInNewTab;
 
     // Slug edit only valid for type=page with linked page

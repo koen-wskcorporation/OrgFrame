@@ -14,6 +14,7 @@ type OrgPageEditorProps = {
   context: BlockContext;
   runtimeData: OrgSiteRuntimeData;
   onChangeBlocks: (blocks: OrgPageBlock[]) => void;
+  onChangeBlock: (block: OrgPageBlock) => void;
   onSelectBlock: (blockId: string) => void;
   onRemoveBlock: (blockId: string) => void;
 };
@@ -22,11 +23,12 @@ type SortableBlockItemProps = {
   block: OrgPageBlock;
   context: BlockContext;
   runtimeData: OrgSiteRuntimeData;
+  onChangeBlock: (block: OrgPageBlock) => void;
   onSelectBlock: (blockId: string) => void;
   onRemoveBlock: (blockId: string) => void;
 };
 
-function SortableBlockItem({ block, context, runtimeData, onSelectBlock, onRemoveBlock }: SortableBlockItemProps) {
+function SortableBlockItem({ block, context, runtimeData, onChangeBlock, onSelectBlock, onRemoveBlock }: SortableBlockItemProps) {
   const definition = getBlockDefinition(block.type);
   const Render = definition.Render;
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: block.id });
@@ -50,26 +52,38 @@ function SortableBlockItem({ block, context, runtimeData, onSelectBlock, onRemov
             <GripVertical />
           </Button>
           <p className="text-sm font-semibold text-text">{definition.displayName}</p>
+          {/*
+            Order: Remove first (least primary, lives near the title where the
+            block identity is read), Settings second (rightmost — the
+            "primary" per-section action, where the eye lands at the end of
+            the toolbar).
+          */}
           <div className="ml-auto flex items-center gap-2">
-            <Button onClick={() => onSelectBlock(block.id)} size="sm" variant="secondary">
-              <Settings2 className="h-4 w-4" />
-              Settings
-            </Button>
             <Button onClick={() => onRemoveBlock(block.id)} size="sm" variant="ghost">
               <Trash2 className="h-4 w-4" />
               Remove
             </Button>
+            <Button onClick={() => onSelectBlock(block.id)} size="sm" variant="secondary">
+              <Settings2 className="h-4 w-4" />
+              Settings
+            </Button>
           </div>
         </div>
         <div className="p-4 md:p-5">
-          <Render block={block as never} context={context} isEditing runtimeData={runtimeData} />
+          <Render
+            block={block as never}
+            context={context}
+            isEditing
+            onChange={(next) => onChangeBlock(next as OrgPageBlock)}
+            runtimeData={runtimeData}
+          />
         </div>
       </Card>
     </div>
   );
 }
 
-export function OrgPageEditor({ blocks, context, runtimeData, onChangeBlocks, onSelectBlock, onRemoveBlock }: OrgPageEditorProps) {
+export function OrgPageEditor({ blocks, context, runtimeData, onChangeBlocks, onChangeBlock, onSelectBlock, onRemoveBlock }: OrgPageEditorProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -91,6 +105,7 @@ export function OrgPageEditor({ blocks, context, runtimeData, onChangeBlocks, on
                 block={block}
                 context={context}
                 key={block.id}
+                onChangeBlock={onChangeBlock}
                 onRemoveBlock={onRemoveBlock}
                 onSelectBlock={onSelectBlock}
                 runtimeData={runtimeData}

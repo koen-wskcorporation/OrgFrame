@@ -2,13 +2,17 @@
 
 import { AssetTile } from "@orgframe/ui/primitives/asset-tile";
 import { Button } from "@orgframe/ui/primitives/button";
-import { RichTextEditor } from "@/src/features/core/editor/components/RichTextEditor";
 import { ButtonListEditor } from "@/src/features/core/editor/buttons/ButtonListEditor";
 import { FormField } from "@orgframe/ui/primitives/form-field";
-import { Input } from "@orgframe/ui/primitives/input";
 import { getOrgSiteAssetPublicUrl } from "@/src/features/site/storage";
 import type { BlockEditorProps, HeroBlockConfig } from "@/src/features/site/types";
 
+/**
+ * Hero block settings editor. Headline and subheadline are edited inline on
+ * the page itself (via `<InlineText>` in `HeroBlockRender`) and intentionally
+ * omitted from this panel — keeping a duplicate set of fields here would
+ * just give the user two places to change the same value.
+ */
 export function HeroBlockEditorClient({ block, context, onChange }: BlockEditorProps<"hero">) {
   const imageUrl = getOrgSiteAssetPublicUrl(block.config.backgroundImagePath);
 
@@ -24,25 +28,6 @@ export function HeroBlockEditorClient({ block, context, onChange }: BlockEditorP
 
   return (
     <div className="space-y-4">
-      <FormField label="Headline">
-        <Input
-          onChange={(event) => {
-            updateConfig({ headline: event.target.value });
-          }}
-          value={block.config.headline}
-        />
-      </FormField>
-
-      <FormField label="Subheadline">
-        <RichTextEditor
-          minHeight={120}
-          onChange={(next) => {
-            updateConfig({ subheadline: next });
-          }}
-          value={block.config.subheadline}
-        />
-      </FormField>
-
       <ButtonListEditor
         addButtonLabel="Add button"
         emptyStateText="No buttons yet."

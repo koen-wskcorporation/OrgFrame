@@ -2,8 +2,8 @@ import { Alert } from "@orgframe/ui/primitives/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { FormField } from "@orgframe/ui/primitives/form-field";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { Input } from "@orgframe/ui/primitives/input";
-import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { asBody, asNumber, asObject, asText } from "@/src/features/site/blocks/helpers";
 import type {
   BlockContext,
@@ -85,8 +85,9 @@ function formatNextAvailable(value: string | null, timezone: string) {
   }).format(parsed);
 }
 
-export function FacilitySpaceListBlockRender({ block, runtimeData }: BlockRenderProps<"facility_space_list">) {
+export function FacilitySpaceListBlockRender({ block, runtimeData, isEditing, onChange }: BlockRenderProps<"facility_space_list">) {
   const snapshot = runtimeData.facilityAvailability;
+  const canInlineEdit = isEditing && Boolean(onChange);
 
   if (!snapshot) {
     return (
@@ -111,10 +112,32 @@ export function FacilitySpaceListBlockRender({ block, runtimeData }: BlockRender
     <section id="facility-space-list">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          {canInlineEdit ? (
+            <InlineText
+              as="h3"
+              className="text-2xl font-semibold leading-tight tracking-tight text-text"
+              maxLength={120}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, title: next } })}
+              placeholder="Title"
+              value={block.config.title}
+            />
+          ) : (
+            <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          {canInlineEdit ? (
+            <InlineText
+              multiline
+              className="text-sm text-text-muted md:text-base"
+              maxLength={500}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, body: next } })}
+              placeholder="Body"
+              value={block.config.body}
+            />
+          ) : (
+            <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          )}
           {spaces.length === 0 ? <Alert variant="info">{block.config.emptyMessage}</Alert> : null}
           <FacilitySpaceListRepeater
             items={spaces.map((space) => ({
@@ -145,12 +168,6 @@ export function FacilitySpaceListBlockEditor({ block, onChange }: BlockEditorPro
 
   return (
     <div className="space-y-4">
-      <FormField label="Title">
-        <Input onChange={(event) => updateConfig({ title: event.target.value })} value={block.config.title} />
-      </FormField>
-      <FormField label="Body">
-        <Textarea className="min-h-[90px]" onChange={(event) => updateConfig({ body: event.target.value })} value={block.config.body} />
-      </FormField>
       <FormField label="Max items">
         <Input
           min={1}

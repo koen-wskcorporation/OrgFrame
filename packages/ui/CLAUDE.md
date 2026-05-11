@@ -55,3 +55,58 @@ Do NOT for action buttons:
 - Hand-write `<Button><Pencil />Edit</Button>` — use `<Button intent="edit" />`.
 - Use Title Case ("Save Changes" → prefer `intent="save"` / `<Button intent="save">Save changes</Button>`).
 - Mix bespoke icons across screens for the same intent.
+
+## Status / visibility chips — inline with the title in the panel header
+
+Any wizard or settings panel that controls an entity with a status MUST
+render that status as an interactive `<Chip>` inline with the wizard title,
+via the `headerTitleAccessory` slot — **not** as a separate "Visibility" /
+"Status" step or form field inside the wizard body.
+
+```tsx
+<CreateWizard<EditState>
+  title={`Edit "${item.title}"`}
+  headerTitleAccessory={({ state, setField }) => (
+    <Chip
+      status
+      picker={{
+        onChange: (value) => setField("isPublished", value === "published"),
+        options: PUBLISH_OPTIONS,
+        value: state.isPublished ? "published" : "unpublished"
+      }}
+    />
+  )}
+  // ...
+/>
+```
+
+The same `headerTitleAccessory` prop is forwarded by `<Panel>` and
+`<Popup>`, so any custom panel built directly on those primitives uses the
+same slot name.
+
+Rules:
+- The chip is the **single source of truth** for the entity's status in
+  that wizard. Drop any redundant status step / field in the body.
+- Accepts either a static `ReactNode` or a render function
+  `({ state, setField }) => ReactNode`. Use the function form when the
+  chip reflects in-flight wizard state (the common case).
+- For multi-type wizards (e.g. "Page / Dropdown / External link") where
+  only some types have status, return `null` from the render function for
+  the types without one — don't hide it with an empty chip.
+- Save-on-change vs save-on-submit follows the wizard's `mode`:
+  - `mode="create"`: the chip drives `state.isPublished` (or equivalent),
+    persisted with the rest of the form on submit.
+  - `mode="edit"`: same shape — the chip mutates wizard state, and the
+    explicit Save button commits. Inline auto-save is reserved for the
+    row-level chip in list views (see `WebsiteManager.tsx`).
+- Status colour conventions: `emerald` for the live/published state,
+  `slate` for unpublished / draft / inactive, `rose` for archived. Keep
+  the live state first in the option list so the popover puts it on top.
+
+Do NOT:
+- Render a "Visibility" or "Status" step inside `<CreateWizard>` for an
+  entity whose status already shows in the header.
+- Hide the chip behind a click — it must be visible whenever the wizard
+  is open.
+- Use a `<Select>` or radio group for status. The chip popover is the
+  pattern.

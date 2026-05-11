@@ -142,9 +142,20 @@ const reservedPageSlugs = new Set([
   "forbidden",
   "manage",
   "icon",
-  "programs",
   "register",
-  "tools"
+  "tools",
+  // Trailing-segment "edit" is the website manager's handoff into the
+  // editor (see `app/[orgSlug]/[...slug]/page.tsx`'s edit suffix logic).
+  // A user-defined page slug of "edit" would shadow that route.
+  "edit",
+  // Dynamic-page slugs (see `dynamicPagePresets.ts`). Reserved so a static
+  // page can't claim them — the dynamic-page wizard creates regular pages
+  // at these slugs whose seed blocks (program_catalog / events / etc.) make
+  // them auto-listing pages.
+  "programs",
+  "events",
+  "teams",
+  "facilities"
 ]);
 
 export function isReservedPageSlug(slug: string) {

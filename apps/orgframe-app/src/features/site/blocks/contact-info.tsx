@@ -1,9 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { FormField } from "@orgframe/ui/primitives/form-field";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { Input } from "@orgframe/ui/primitives/input";
-import { RichTextEditor } from "@/src/features/core/editor/components/RichTextEditor";
 import { asObject, asText } from "@/src/features/site/blocks/helpers";
-import { sanitizeRichTextHtml } from "@/src/features/site/blocks/rich-text";
+import { plainTextToRichTextHtml, richTextHtmlToPlainText, sanitizeRichTextHtml } from "@/src/features/site/blocks/rich-text";
 import type { BlockContext, BlockEditorProps, BlockRenderProps, ContactInfoBlockConfig } from "@/src/features/site/types";
 
 function defaultConfig(context: BlockContext): ContactInfoBlockConfig {
@@ -32,15 +32,39 @@ export function sanitizeContactInfoConfig(config: unknown, context: BlockContext
   };
 }
 
-export function ContactInfoBlockRender({ block }: BlockRenderProps<"contact_info">) {
+export function ContactInfoBlockRender({ block, isEditing, onChange }: BlockRenderProps<"contact_info">) {
+  const canInlineEdit = isEditing && Boolean(onChange);
   return (
     <section>
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          {canInlineEdit ? (
+            <InlineText
+              as="h3"
+              className="text-2xl font-semibold leading-tight tracking-tight text-text"
+              maxLength={120}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, title: next } })}
+              placeholder="Title"
+              value={block.config.title}
+            />
+          ) : (
+            <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="prose max-w-none text-sm text-text-muted" dangerouslySetInnerHTML={{ __html: block.config.body }} />
+          {canInlineEdit ? (
+            <InlineText
+              multiline
+              className="prose block max-w-none text-sm text-text-muted"
+              onCommit={(next) =>
+                onChange?.({ ...block, config: { ...block.config, body: plainTextToRichTextHtml(next) } })
+              }
+              placeholder="Description"
+              value={richTextHtmlToPlainText(block.config.body)}
+            />
+          ) : (
+            <div className="prose max-w-none text-sm text-text-muted" dangerouslySetInnerHTML={{ __html: block.config.body }} />
+          )}
           {block.config.email ? (
             <p className="text-sm">
               Email:{" "}
@@ -70,12 +94,6 @@ export function ContactInfoBlockEditor({ block, onChange }: BlockEditorProps<"co
 
   return (
     <div className="space-y-4">
-      <FormField label="Title">
-        <Input onChange={(event) => updateConfig({ title: event.target.value })} value={block.config.title} />
-      </FormField>
-      <FormField label="Description">
-        <RichTextEditor minHeight={120} onChange={(next) => updateConfig({ body: next })} value={block.config.body} />
-      </FormField>
       <FormField label="Email">
         <Input onChange={(event) => updateConfig({ email: event.target.value })} value={block.config.email} />
       </FormField>

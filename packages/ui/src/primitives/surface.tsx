@@ -12,11 +12,18 @@ type SurfaceHeaderProps = {
   /** Custom avatar element (e.g. EditableAvatar). Wins over avatarUrl when provided. */
   avatarSlot?: React.ReactNode;
   topAction?: React.ReactNode;
+  /**
+   * Inline accessory rendered immediately to the right of the title — the
+   * canonical home for the controlled item's status chip in wizards and
+   * settings panels. Keeps the chip readable in one glance with the entity
+   * name and removes the need for a separate "Visibility" step.
+   */
+  titleAccessory?: React.ReactNode;
   titleId?: string;
   className?: string;
 };
 
-export function SurfaceHeader({ title, subtitle, showAvatar = false, avatarUrl = null, avatarAlt, avatarSlot, topAction, titleId, className }: SurfaceHeaderProps) {
+export function SurfaceHeader({ title, subtitle, showAvatar = false, avatarUrl = null, avatarAlt, avatarSlot, topAction, titleAccessory, titleId, className }: SurfaceHeaderProps) {
   const avatarSizePx = subtitle ? 44 : 36;
   const titleString = typeof title === "string" ? title : null;
 
@@ -29,10 +36,13 @@ export function SurfaceHeader({ title, subtitle, showAvatar = false, avatarUrl =
             <Avatar alt={avatarAlt ?? (titleString ? `${titleString} avatar` : "Header avatar")} name={titleString} sizePx={avatarSizePx} src={avatarUrl} />
           )
         ) : null}
-        <div className="min-w-0">
-          <h2 className="truncate text-lg font-semibold leading-tight text-text" id={titleId}>
-            {title}
-          </h2>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="truncate text-lg font-semibold leading-tight text-text" id={titleId}>
+              {title}
+            </h2>
+            {titleAccessory ? <div className="flex-none">{titleAccessory}</div> : null}
+          </div>
           {subtitle ? <p className="truncate text-sm leading-relaxed text-text-muted">{subtitle}</p> : null}
         </div>
       </div>

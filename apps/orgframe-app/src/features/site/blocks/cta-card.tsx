@@ -2,9 +2,10 @@
 
 import { buttonVariants } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { cn } from "@/src/shared/utils";
 import { asButtons, asNumber, asObject, asOptionalStoragePath, asText } from "@/src/features/site/blocks/helpers";
-import { sanitizeRichTextHtml } from "@/src/features/site/blocks/rich-text";
+import { plainTextToRichTextHtml, richTextHtmlToPlainText, sanitizeRichTextHtml } from "@/src/features/site/blocks/rich-text";
 import { CtaCardBlockEditorClient } from "@/src/features/site/blocks/cta-card-editor.client";
 import { getOrgSiteAssetPublicUrl } from "@/src/features/site/storage";
 import type { BlockContext, BlockRenderProps, CtaCardBlockConfig } from "@/src/features/site/types";
@@ -62,8 +63,9 @@ export function sanitizeCtaCardConfig(config: unknown, context: BlockContext): C
   };
 }
 
-export function CtaCardBlockRender({ block, context }: BlockRenderProps<"cta_card">) {
+export function CtaCardBlockRender({ block, context, isEditing, onChange }: BlockRenderProps<"cta_card">) {
   const imageUrl = getOrgSiteAssetPublicUrl(block.config.imagePath);
+  const canInlineEdit = isEditing && Boolean(onChange);
 
   return (
     <section>
@@ -82,10 +84,33 @@ export function CtaCardBlockRender({ block, context }: BlockRenderProps<"cta_car
           </div>
         ) : null}
         <CardHeader>
-          <CardTitle className="text-2xl">{block.config.heading}</CardTitle>
+          {canInlineEdit ? (
+            <InlineText
+              as="h3"
+              className="text-2xl font-semibold leading-tight tracking-tight text-text"
+              maxLength={120}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, heading: next } })}
+              placeholder="Heading"
+              value={block.config.heading}
+            />
+          ) : (
+            <CardTitle className="text-2xl">{block.config.heading}</CardTitle>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="prose max-w-none text-sm text-text-muted md:text-base" dangerouslySetInnerHTML={{ __html: block.config.body }} />
+          {canInlineEdit ? (
+            <InlineText
+              multiline
+              className="prose block max-w-none text-sm text-text-muted md:text-base"
+              onCommit={(next) =>
+                onChange?.({ ...block, config: { ...block.config, body: plainTextToRichTextHtml(next) } })
+              }
+              placeholder="Body"
+              value={richTextHtmlToPlainText(block.config.body)}
+            />
+          ) : (
+            <div className="prose max-w-none text-sm text-text-muted md:text-base" dangerouslySetInnerHTML={{ __html: block.config.body }} />
+          )}
           <div className="flex flex-wrap gap-2">
             {block.config.buttons.map((button) => (
               <a

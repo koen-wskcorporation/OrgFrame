@@ -472,6 +472,8 @@ export type WizardChromeProps = {
   customFooter?: React.ReactNode;
   /** "create" (default) shows linear Back/Next/Submit and gates the stepper. "edit" lets the user jump freely between steps. */
   mode?: "create" | "edit";
+  /** Inline status accessory rendered next to the title — typically a `<Chip>`. */
+  headerTitleAccessory?: React.ReactNode;
 };
 
 /**
@@ -502,7 +504,8 @@ export function WizardChrome({
   popupSize = "lg",
   sidebarPushMode = "content",
   customFooter,
-  mode = "create"
+  mode = "create",
+  headerTitleAccessory
 }: WizardChromeProps) {
   const isEdit = mode === "edit";
   const currentIndex = Math.max(0, steps.findIndex((step) => step.id === currentStepId));
@@ -588,14 +591,14 @@ export function WizardChrome({
 
   if (frame === "popup") {
     return (
-      <Popup footer={footer} onClose={onClose} open={open} size={popupSize} subtitle={resolvedSubtitle} title={title} viewKey={currentStepId}>
+      <Popup footer={footer} headerTitleAccessory={headerTitleAccessory} onClose={onClose} open={open} size={popupSize} subtitle={resolvedSubtitle} title={title} viewKey={currentStepId}>
         {body}
       </Popup>
     );
   }
 
   return (
-    <Panel footer={footer} onClose={onClose} open={open} pushMode={sidebarPushMode} subtitle={resolvedSubtitle} title={title}>
+    <Panel footer={footer} headerTitleAccessory={headerTitleAccessory} onClose={onClose} open={open} pushMode={sidebarPushMode} subtitle={resolvedSubtitle} title={title}>
       {body}
     </Panel>
   );
@@ -636,6 +639,19 @@ export type CreateWizardProps<TState> = {
   headerShowAvatar?: boolean;
   headerAvatarSlot?: React.ReactNode;
   headerAvatarAlt?: string;
+  /**
+   * Inline status accessory (typically a `<Chip>`) rendered next to the
+   * title in the wizard header. Convention: any wizard controlling an
+   * entity with a status MUST render that status here, not as a separate
+   * "Visibility" / "Status" step. See `packages/ui/CLAUDE.md`.
+   *
+   * Accepts either a static node or a render function that receives the
+   * live wizard state — use the function form when the chip needs to
+   * reflect / drive the in-flight wizard state (the common case).
+   */
+  headerTitleAccessory?:
+    | React.ReactNode
+    | ((ctx: { state: TState; setField: <K extends keyof TState>(key: K, value: TState[K]) => void }) => React.ReactNode);
 };
 
 export function CreateWizard<TState>({
@@ -658,7 +674,8 @@ export function CreateWizard<TState>({
   mode = "create",
   headerShowAvatar,
   headerAvatarSlot,
-  headerAvatarAlt
+  headerAvatarAlt,
+  headerTitleAccessory
 }: CreateWizardProps<TState>) {
   const isEdit = mode === "edit";
   const { confirm } = useConfirmDialog();
@@ -819,11 +836,16 @@ export function CreateWizard<TState>({
   );
 
   const resolvedSubtitle = subtitle ?? flow.currentStep?.description;
+  const resolvedTitleAccessory =
+    typeof headerTitleAccessory === "function"
+      ? headerTitleAccessory({ state: flow.state, setField: flow.setField })
+      : headerTitleAccessory;
 
   if (frame === "popup") {
     return (
       <Popup
         footer={footer}
+        headerTitleAccessory={resolvedTitleAccessory}
         onClose={requestClose}
         open={open}
         size={popupSize}
@@ -842,6 +864,7 @@ export function CreateWizard<TState>({
       headerAvatarAlt={headerAvatarAlt}
       headerAvatarSlot={headerAvatarSlot}
       headerShowAvatar={headerShowAvatar}
+      headerTitleAccessory={resolvedTitleAccessory}
       onClose={requestClose}
       open={open}
       pushMode={sidebarPushMode}

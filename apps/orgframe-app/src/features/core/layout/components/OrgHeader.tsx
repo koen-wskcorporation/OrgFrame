@@ -294,15 +294,23 @@ export function OrgHeader({
             ) : null}
           </div>
 
-          {!isPageContentEditing && topLevelNavItems.length > 0 ? (
+          {topLevelNavItems.length > 0 ? (
             <nav aria-label="Organization pages" className="hidden min-w-0 flex-1 md:block">
               <div className="flex min-w-0 items-center justify-end gap-1 overflow-x-auto">
                 {topLevelNavItems.map((item) => {
-                  const href = navItemHref(item, orgSlug);
-                  if (!href) return null;
+                  const baseHref = navItemHref(item, orgSlug);
+                  if (!baseHref) return null;
+                  // While editing, route internal nav clicks through the
+                  // `/edit` suffix so the destination opens in edit state too.
+                  const href =
+                    isPageContentEditing && item.linkType === "internal"
+                      ? item.pageSlug === "home"
+                        ? `/${orgSlug}/edit`
+                        : `${baseHref}/edit`
+                      : baseHref;
                   return (
                     <NavItem
-                      active={isActivePrefixPath(currentPathname, href)}
+                      active={isActivePrefixPath(currentPathname, baseHref)}
                       href={href}
                       key={item.id}
                       target={item.openInNewTab ? "_blank" : undefined}
@@ -318,7 +326,7 @@ export function OrgHeader({
             <div className="flex-1" />
           )}
 
-          {!isPageContentEditing && topLevelNavItems.length > 0 && canManageOrg ? (
+          {topLevelNavItems.length > 0 && canManageOrg && !isPageContentEditing ? (
             <div aria-hidden className="hidden h-6 w-px shrink-0 bg-border md:block" />
           ) : null}
 
@@ -334,13 +342,6 @@ export function OrgHeader({
                 <Pencil />
                 Edit Page
               </Button>
-            ) : null}
-
-            {canEditPages && isPageContentEditing ? (
-              <div
-                className="flex flex-wrap items-center gap-2"
-                id={ORG_HEADER_EDITOR_TOOLBAR_SLOT_ID}
-              />
             ) : null}
 
             {!isPageContentEditing && canManageOrg ? (
@@ -365,6 +366,15 @@ export function OrgHeader({
             ) : null}
           </div>
         </div>
+
+        {canEditPages && isPageContentEditing ? (
+          <div className="border-t bg-surface-muted/40 px-3 py-2 md:px-5">
+            <div
+              className="flex flex-wrap items-center gap-2"
+              id={ORG_HEADER_EDITOR_TOOLBAR_SLOT_ID}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

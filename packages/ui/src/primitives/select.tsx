@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronDown, Search, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, Search, X, type LucideIcon } from "lucide-react";
+import { Avatar } from "./avatar";
 import { Chip, type ChipColor } from "./chip";
+import { EntityChip } from "./entity-chip";
 import { formControlDisabledClass, formControlFocusClass, formControlInlineClass, formControlShellClass } from "./form-control";
 import { Popover } from "./popover";
 import { cn } from "./utils";
@@ -19,16 +21,53 @@ export type SelectOption = {
   meta?: string;
   /** Chip rendered after the label (trigger + listbox). When `status` is true, the chip renders with a status dot. */
   chip?: { label: string; color?: ChipColor | string; status?: boolean };
+  /**
+   * Avatar rendered before the label (trigger + listbox). Use this for
+   * entity-style options (people, teams, programs) instead of `imageSrc`.
+   * Falls back to initials when `src` is null/undefined.
+   */
+  avatar?: { name: string; src?: string | null };
+  /**
+   * Secondary line rendered below the label inside the listbox row. Used
+   * for entity-style options to show email / slug / description.
+   */
+  subtext?: string;
 };
 
-type SelectProps = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "children" | "onChange"> & {
+type SelectMultiProps = {
+  /** Enable multi-select. The trigger becomes a search input and selected items render as chips beneath it. */
+  multiple: true;
+  /** Controlled list of selected option values. */
+  values: string[];
+  /** Fires on every add/remove with the new selection. */
+  onValuesChange: (values: string[]) => void;
+  value?: never;
+  onChange?: never;
+};
+
+type SelectSingleProps = {
+  multiple?: false;
+  values?: never;
+  onValuesChange?: never;
+  onChange?: (event: React.ChangeEvent<HTMLSelectElement>) => void;
+};
+
+type SelectBaseProps = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "children" | "onChange" | "multiple" | "value"> & {
   options: SelectOption[];
   placeholder?: string;
   variant?: "default" | "inline";
-  onChange?: (event: React.ChangeEvent<HTMLSelectElement>) => void;
-  /** When true, replaces the trigger button with a search input that filters options as the user types. */
+  /** When true, replaces the trigger button with a search input that filters options as the user types. Forced on in multi-select. */
   searchable?: boolean;
+  /** Notified whenever the internal search query changes. Useful for callers that synthesize options from typed text (e.g. a "use this URL" row). */
+  onQueryChange?: (query: string) => void;
+  /** Optional helper text rendered under the selection chips in multi-select mode. */
+  multiHelperText?: string;
+  /** Message rendered when nothing is selected (multi-select only). */
+  multiEmptyMessage?: string;
+  value?: string;
 };
+
+type SelectProps = SelectBaseProps & (SelectSingleProps | SelectMultiProps);
 
 function resolveInitialValue(options: SelectOption[], providedValue: string | undefined) {
   if (providedValue !== undefined) {
@@ -75,6 +114,12 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       variant = "default",
       id,
       searchable = false,
+      onQueryChange,
+      multiple = false,
+      values,
+      onValuesChange,
+      multiHelperText,
+      multiEmptyMessage,
       ...props
     },
     ref
@@ -86,24 +131,43 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     );
     const [open, setOpen] = React.useState(false);
     const [highlightedIndex, setHighlightedIndex] = React.useState<number>(-1);
-    const [query, setQuery] = React.useState("");
+    const [query, setQueryState] = React.useState("");
+    const setQuery = React.useCallback(
+      (next: string) => {
+        setQueryState(next);
+        onQueryChange?.(next);
+      },
+      [onQueryChange]
+    );
     const rootRef = React.useRef<HTMLDivElement | null>(null);
     const buttonTriggerRef = React.useRef<HTMLButtonElement | null>(null);
     const inputTriggerRef = React.useRef<HTMLInputElement | null>(null);
-    const triggerRef = (searchable ? inputTriggerRef : buttonTriggerRef) as React.RefObject<HTMLElement | null>;
+    // Multi-select forces the search-input trigger — anything else would
+    // force the trigger to render N selected labels in a non-scaling string.
+    const effectiveSearchable = searchable || multiple;
+    const triggerRef = (effectiveSearchable ? inputTriggerRef : buttonTriggerRef) as React.RefObject<HTMLElement | null>;
     const selectRef = React.useRef<HTMLSelectElement | null>(null);
     const listboxId = React.useId();
     const selectedValue = String(isControlled ? value ?? "" : uncontrolledValue);
+    const selectedSet = React.useMemo(() => new Set(multiple ? values ?? [] : []), [multiple, values]);
     const enabledOptionIndexes = React.useMemo(() => getEnabledOptionIndexes(options), [options]);
     const selectedIndex = options.findIndex((option) => option.value === selectedValue);
     const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : null;
+    const selectedMultiOptions = React.useMemo(() => {
+      if (!multiple) return [] as SelectOption[];
+      const byValue = new Map(options.map((option) => [option.value, option] as const));
+      return (values ?? []).map((v) => byValue.get(v)).filter((opt): opt is SelectOption => Boolean(opt));
+    }, [multiple, options, values]);
 
     const filteredOptions = React.useMemo(() => {
-      if (!searchable) return options;
+      if (!effectiveSearchable) return options;
       const q = query.trim().toLowerCase();
       if (!q) return options;
-      return options.filter((option) => option.label.toLowerCase().includes(q));
-    }, [options, query, searchable]);
+      return options.filter((option) => {
+        const haystack = `${option.label} ${option.subtext ?? ""} ${option.avatar?.name ?? ""}`.toLowerCase();
+        return haystack.includes(q);
+      });
+    }, [options, query, effectiveSearchable]);
 
     React.useEffect(() => {
       if (!open) {
@@ -197,6 +261,17 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     }
 
     function selectValue(nextValue: string) {
+      if (multiple) {
+        const current = values ?? [];
+        const next = current.includes(nextValue)
+          ? current.filter((v) => v !== nextValue)
+          : [...current, nextValue];
+        onValuesChange?.(next);
+        setOpen(false);
+        setQuery("");
+        return;
+      }
+
       if (!isControlled) {
         setUncontrolledValue(nextValue);
       }
@@ -204,11 +279,17 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       emitChange(nextValue);
       setOpen(false);
       setQuery("");
-      if (searchable) {
+      if (effectiveSearchable) {
         inputTriggerRef.current?.focus();
       } else {
         buttonTriggerRef.current?.focus();
       }
+    }
+
+    function removeMultiValue(targetValue: string) {
+      if (!multiple) return;
+      const current = values ?? [];
+      onValuesChange?.(current.filter((v) => v !== targetValue));
     }
 
     function handleTriggerKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
@@ -288,7 +369,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           ))}
         </select>
 
-        {searchable ? (
+        {effectiveSearchable ? (
           <div
             className={cn(
               variant === "inline"
@@ -328,12 +409,12 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                   handleTriggerKeyDown(event as unknown as React.KeyboardEvent<HTMLButtonElement>);
                 }
               }}
-              placeholder={selectedOption?.label ?? placeholder}
+              placeholder={multiple ? placeholder : selectedOption?.label ?? placeholder}
               ref={inputTriggerRef}
               type="search"
               value={query}
             />
-            {selectedOption?.chip && !query ? (
+            {!multiple && selectedOption?.chip && !query ? (
               <Chip color={selectedOption.chip.color} status={selectedOption.chip.status} showDot={selectedOption.chip.status ? undefined : false}>
                 {selectedOption.chip.label}
               </Chip>
@@ -415,7 +496,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             ) : null}
             {filteredOptions.map((option) => {
               const index = options.indexOf(option);
-              const isSelected = option.value === selectedValue;
+              const isSelected = multiple ? selectedSet.has(option.value) : option.value === selectedValue;
               const isHighlighted = index === highlightedIndex;
               const itemDisabled = Boolean(option.disabled);
 
@@ -438,7 +519,9 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                     }}
                     type="button"
                   >
-                    {option.imageSrc ? (
+                    {option.avatar ? (
+                      <Avatar alt={`${option.avatar.name} avatar`} name={option.avatar.name} sizePx={24} src={option.avatar.src ?? null} />
+                    ) : option.imageSrc ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         alt={option.imageAlt ?? ""}
@@ -448,7 +531,10 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                     ) : null}
                     {option.icon ? <option.icon className="h-4 w-4 shrink-0 text-text-muted" /> : null}
                     {option.statusDot ? <span className={cn("h-2 w-2 shrink-0 rounded-full", resolveStatusDotClass(option.statusDot))} /> : null}
-                    <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{option.label}</span>
+                      {option.subtext ? <span className="block truncate text-xs text-text-muted">{option.subtext}</span> : null}
+                    </span>
                     {option.chip ? (
                       <Chip color={option.chip.color} status={option.chip.status} showDot={option.chip.status ? undefined : false}>
                         {option.chip.label}
@@ -462,6 +548,54 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             })}
           </ul>
         </Popover>
+
+        {multiple ? (
+          <div className="mt-3 space-y-2">
+            {multiHelperText ? <p className="text-xs text-text-muted">{multiHelperText}</p> : null}
+            {selectedMultiOptions.length === 0 ? (
+              <p className="rounded-control border border-dashed px-3 py-3 text-sm text-text-muted">
+                {multiEmptyMessage ?? "Nothing selected yet."}
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {selectedMultiOptions.map((option) => {
+                  if (option.avatar) {
+                    return (
+                      <EntityChip
+                        key={option.value}
+                        avatarUrl={option.avatar.src ?? null}
+                        name={option.avatar.name}
+                        {...(option.chip ? { status: { label: option.chip.label, variant: "neutral" as const, showDot: false } } : {})}
+                        {...(disabled ? {} : { onRemove: () => removeMultiValue(option.value) })}
+                        removeAriaLabel={`Remove ${option.avatar.name}`}
+                      />
+                    );
+                  }
+                  return (
+                    <Chip
+                      className="inline-flex items-center gap-1"
+                      color={option.chip?.color}
+                      key={option.value}
+                      showDot={false}
+                    >
+                      {option.label}
+                      {disabled ? null : (
+                        <button
+                          aria-label={`Remove ${option.label}`}
+                          className="-mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-surface-muted"
+                          onClick={() => removeMultiValue(option.value)}
+                          type="button"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </Chip>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
     );
   }

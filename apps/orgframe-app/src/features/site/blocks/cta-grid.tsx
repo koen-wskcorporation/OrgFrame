@@ -1,5 +1,6 @@
 import { Button } from "@orgframe/ui/primitives/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { Trash2 } from "lucide-react";
 import { RichTextEditor } from "@/src/features/core/editor/components/RichTextEditor";
 import { FormField } from "@orgframe/ui/primitives/form-field";
@@ -49,10 +50,22 @@ export function sanitizeCtaGridConfig(config: unknown, context: BlockContext): C
   };
 }
 
-export function CtaGridBlockRender({ block, context }: BlockRenderProps<"cta_grid">) {
+export function CtaGridBlockRender({ block, context, isEditing, onChange }: BlockRenderProps<"cta_grid">) {
+  const canInlineEdit = isEditing && Boolean(onChange);
   return (
     <section className="space-y-4">
-      <h2 className="text-2xl font-semibold text-text">{block.config.title}</h2>
+      {canInlineEdit ? (
+        <InlineText
+          as="h2"
+          className="text-2xl font-semibold text-text"
+          maxLength={120}
+          onCommit={(next) => onChange?.({ ...block, config: { ...block.config, title: next } })}
+          placeholder="Section title"
+          value={block.config.title}
+        />
+      ) : (
+        <h2 className="text-2xl font-semibold text-text">{block.config.title}</h2>
+      )}
       <CtaGridRepeater
         items={block.config.items.map((item) => ({
           description: item.description,
@@ -118,15 +131,6 @@ export function CtaGridBlockEditor({ block, context, onChange }: BlockEditorProp
 
   return (
     <div className="space-y-4">
-      <FormField label="Section title">
-        <Input
-          onChange={(event) => {
-            updateConfig({ title: event.target.value });
-          }}
-          value={block.config.title}
-        />
-      </FormField>
-
       <div className="space-y-3">
         {block.config.items.map((item, index) => (
           <Card key={item.id}>

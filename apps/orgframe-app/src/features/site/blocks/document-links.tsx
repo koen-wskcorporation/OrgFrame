@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Button } from "@orgframe/ui/primitives/button";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { RichTextEditor } from "@/src/features/core/editor/components/RichTextEditor";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
@@ -44,10 +45,22 @@ export function sanitizeDocumentLinksConfig(config: unknown, _context: BlockCont
   };
 }
 
-export function DocumentLinksBlockRender({ block }: BlockRenderProps<"document_links">) {
+export function DocumentLinksBlockRender({ block, isEditing, onChange }: BlockRenderProps<"document_links">) {
+  const canInlineEdit = isEditing && Boolean(onChange);
   return (
     <section className="space-y-4">
-      <h2 className="text-2xl font-semibold text-text">{block.config.title}</h2>
+      {canInlineEdit ? (
+        <InlineText
+          as="h2"
+          className="text-2xl font-semibold text-text"
+          maxLength={120}
+          onCommit={(next) => onChange?.({ ...block, config: { ...block.config, title: next } })}
+          placeholder="Section title"
+          value={block.config.title}
+        />
+      ) : (
+        <h2 className="text-2xl font-semibold text-text">{block.config.title}</h2>
+      )}
       <div className="space-y-3">
         {block.config.items.map((item) => (
           <Card key={item.id}>
@@ -80,9 +93,6 @@ export function DocumentLinksBlockEditor({ block, onChange }: BlockEditorProps<"
 
   return (
     <div className="space-y-4">
-      <FormField label="Section title">
-        <Input onChange={(event) => updateConfig({ title: event.target.value })} value={block.config.title} />
-      </FormField>
       <div className="space-y-3">
         {block.config.items.map((item) => (
           <Card key={item.id}>
