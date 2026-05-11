@@ -32,10 +32,11 @@ export default async function OrgManageProgramStructurePage({
     <ProgramMapWorkspace
       orgSlug={data.org.orgSlug}
       programId={data.program.id}
-      programName={data.program.name}
+      program={data.program}
       canWrite={data.org.canWrite}
       initialNodes={data.nodes}
       teamIdByNodeId={data.teamIdByNodeId}
+      nodeCounts={data.nodeCounts}
       assignmentDock={data.assignmentDock}
     />
   );

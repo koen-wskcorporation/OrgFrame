@@ -189,18 +189,38 @@ export async function listPeopleDirectoryForOrg(input: {
   const memberships = (membershipsData ?? []) as MembershipRow[];
   const accountIds = memberships.map((membership) => membership.user_id);
 
-  const { data: linksData, error: linksError } = await supabase
-    .schema("people")
-    .from("profile_links")
-    .select(LINK_COLUMNS)
-    .eq("org_id", input.orgId)
-    .in("account_user_id", accountIds.length > 0 ? accountIds : ["00000000-0000-0000-0000-000000000000"]);
+  const noAccountSentinel = ["00000000-0000-0000-0000-000000000000"];
+  const accountIdFilter = accountIds.length > 0 ? accountIds : noAccountSentinel;
 
-  if (linksError) {
-    throw new Error(`Failed to list profile links: ${linksError.message}`);
+  // Pull both org-scoped links AND each member's account-scoped links
+  // (org_id IS NULL). The account-scoped links are where each user's
+  // self-profile + dependents live — those are the "profile" the user
+  // sees in /profiles, and the org directory should surface them too.
+  const [orgLinksRes, accountLinksRes] = await Promise.all([
+    supabase
+      .schema("people")
+      .from("profile_links")
+      .select(LINK_COLUMNS)
+      .eq("org_id", input.orgId)
+      .in("account_user_id", accountIdFilter),
+    supabase
+      .schema("people")
+      .from("profile_links")
+      .select(LINK_COLUMNS)
+      .is("org_id", null)
+      .in("account_user_id", accountIdFilter)
+  ]);
+
+  if (orgLinksRes.error) {
+    throw new Error(`Failed to list profile links: ${orgLinksRes.error.message}`);
+  }
+  if (accountLinksRes.error) {
+    throw new Error(`Failed to list account-scoped profile links: ${accountLinksRes.error.message}`);
   }
 
-  const links = (linksData ?? []).map((row) => mapLink(row as LinkRow));
+  const orgLinks = (orgLinksRes.data ?? []).map((row) => mapLink(row as LinkRow));
+  const accountLinks = (accountLinksRes.data ?? []).map((row) => mapLink(row as LinkRow));
+  const links = [...orgLinks, ...accountLinks];
   const profileIds = Array.from(new Set(links.map((link) => link.profileId)));
   const userProfiles =
     accountIds.length === 0
@@ -219,6 +239,9 @@ export async function listPeopleDirectoryForOrg(input: {
           return (data ?? []) as UserProfileRow[];
         })();
 
+  // Fetch every linked profile by id — both org-scoped and account-scoped
+  // (org_id IS NULL) — since `links` now contains both kinds. The link
+  // tying each profile to its account already lives in `profile_links`.
   const profiles =
     profileIds.length === 0
       ? []
@@ -227,8 +250,7 @@ export async function listPeopleDirectoryForOrg(input: {
             .schema("people")
             .from("profiles")
             .select(PROFILE_COLUMNS)
-            .in("id", profileIds)
-            .eq("org_id", input.orgId);
+            .in("id", profileIds);
 
           if (error) {
             throw new Error(`Failed to list profiles: ${error.message}`);

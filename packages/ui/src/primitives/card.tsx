@@ -13,6 +13,27 @@ export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDi
   }
 );
 
+/**
+ * Empty-state card — a dashed, low-emphasis surface used to advertise
+ * something the user can create or connect that doesn't exist yet
+ * (e.g. "no registration form connected"). Same padding/shape as Card,
+ * but no shadow and a dashed muted border.
+ */
+export const GhostCard = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  function GhostCard({ className, ...props }, ref) {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          "rounded-card border border-dashed border-border bg-surface-muted/40 text-text",
+          className
+        )}
+        {...props}
+      />
+    );
+  }
+);
+
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("space-y-1.5 px-5 pb-4 pt-5 md:px-6 md:pb-5 md:pt-6", className)} {...props} />;
 }

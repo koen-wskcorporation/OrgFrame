@@ -146,7 +146,6 @@ export function UniversalSharePopup({
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-text-muted">{targets.length} recipients selected</div>
           <div className="flex gap-2">
-            <Button intent="cancel" onClick={onClose} type="button" variant="ghost">Cancel</Button>
             <Button
               onClick={() => {
                 onApply({ targets, permission });

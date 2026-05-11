@@ -2,25 +2,25 @@ import type { Metadata } from "next";
 import { PageShell } from "@/src/features/core/layout/components/PageShell";
 import { Section } from "@orgframe/ui/primitives/section";
 import { gateManageSection } from "@/src/features/core/layout/gateManageSection";
-import { listPeopleSystemGroupsWorkspace } from "@/src/features/org-share/server";
 import { PeoplePageTabs } from "@/src/features/people/components/PeoplePageTabs";
-import { PeopleSystemGroupsTree } from "@/src/features/people/components/PeopleSystemGroupsTree";
+import { RolesPanel } from "@/src/features/people/roles/components/RolesPanel";
+import { getOrgRolesPageData } from "@/src/features/people/roles/actions";
 import { ToolUnavailablePanel } from "../../ToolUnavailablePanel";
 
 export const metadata: Metadata = {
-  title: "People — Groups"
+  title: "People — Roles"
 };
 
-export default async function OrgPeopleGroupsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
+export default async function OrgPeopleRolesPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
-  const { orgContext, unavailable } = await gateManageSection(orgSlug, {
-    permission: "org.manage.read",
+  const { unavailable } = await gateManageSection(orgSlug, {
+    permission: "people.read",
     tool: "people"
   });
 
   const unavailableShellProps = {
     description: "Manage accounts and the people they manage.",
-    tabs: <PeoplePageTabs active="groups" orgSlug={orgSlug} />,
+    tabs: <PeoplePageTabs active="roles" orgSlug={orgSlug} />,
     title: "People"
   };
 
@@ -28,21 +28,25 @@ export default async function OrgPeopleGroupsPage({ params }: { params: Promise<
     return <PageShell {...unavailableShellProps}><ToolUnavailablePanel title="People" /></PageShell>;
   }
 
-  const groups = await listPeopleSystemGroupsWorkspace(orgContext.orgId).catch(() => []);
+  const data = await getOrgRolesPageData(orgSlug);
 
   return (
     <PageShell
       description="Manage accounts and the people they manage."
-      tabs={<PeoplePageTabs active="groups" orgSlug={orgSlug} />}
+      tabs={<PeoplePageTabs active="roles" orgSlug={data.orgSlug} />}
       title="People"
-
     >
       <Section
-        description="Manage accounts and the people they manage."
+        description="Built-in roles are managed by OrgFrame. Create custom roles to grant tailored permission sets and assign them to members."
         fill={false}
-        title="Groups"
+        title="Roles"
       >
-        <PeopleSystemGroupsTree groups={groups} />
+        <RolesPanel
+          canManageRoles={data.canManageRoles}
+          initialRoles={data.roles}
+          loadError={data.loadError}
+          orgSlug={data.orgSlug}
+        />
       </Section>
     </PageShell>
   );

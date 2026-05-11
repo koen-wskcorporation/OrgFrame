@@ -31,28 +31,44 @@ function isPortFree(port) {
 const preferredPort = 3000;
 const fallbackPort = 3001;
 const appDevHost = "orgframe.test";
-const preferredFree = await isPortFree(preferredPort);
-const fallbackFree = await isPortFree(fallbackPort);
 
 /** @type {Map<string, number>} */
 const portByTarget = new Map();
 
-if (rawTargets.length === 1) {
-  if (!preferredFree && !fallbackFree) {
-    console.error("Both ports 3000 and 3001 are in use. Free one of them and try again.");
+// If PORT env var is set, use it explicitly (worktree script sets this).
+const envPort = process.env.PORT ? Number(process.env.PORT) : null;
+
+if (envPort && Number.isFinite(envPort)) {
+  if (rawTargets.length === 2) {
+    console.error("PORT env var only works with a single target (app OR web).");
     process.exit(1);
   }
-
-  portByTarget.set(rawTargets[0], preferredFree ? preferredPort : fallbackPort);
+  if (!(await isPortFree(envPort))) {
+    console.error(`Port ${envPort} (from PORT env var) is in use. Free it or choose another.`);
+    process.exit(1);
+  }
+  portByTarget.set(rawTargets[0], envPort);
 } else {
-  if (!preferredFree || !fallbackFree) {
-    console.error("To run both apps at once, ports 3000 and 3001 must both be free.");
-    process.exit(1);
-  }
+  const preferredFree = await isPortFree(preferredPort);
+  const fallbackFree = await isPortFree(fallbackPort);
 
-  // Order-sensitive: first target gets 3000, second gets 3001.
-  portByTarget.set(rawTargets[0], preferredPort);
-  portByTarget.set(rawTargets[1], fallbackPort);
+  if (rawTargets.length === 1) {
+    if (!preferredFree && !fallbackFree) {
+      console.error("Both ports 3000 and 3001 are in use. Set PORT=<n> or free one and try again.");
+      process.exit(1);
+    }
+
+    portByTarget.set(rawTargets[0], preferredFree ? preferredPort : fallbackPort);
+  } else {
+    if (!preferredFree || !fallbackFree) {
+      console.error("To run both apps at once, ports 3000 and 3001 must both be free.");
+      process.exit(1);
+    }
+
+    // Order-sensitive: first target gets 3000, second gets 3001.
+    portByTarget.set(rawTargets[0], preferredPort);
+    portByTarget.set(rawTargets[1], fallbackPort);
+  }
 }
 
 const children = [];

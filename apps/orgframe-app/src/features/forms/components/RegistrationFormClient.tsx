@@ -1093,7 +1093,7 @@ export function RegistrationFormClient({ orgSlug, formSlug, form, players, progr
         onClose={() => setPlayerModalOpen(false)}
         open={playerModalOpen}
         size="full"
-        subtitle="Create a player profile and continue registration."
+        subtitle="Add a player and continue registration."
         title="Add player"
       >
         <form className="space-y-3" id="registration-create-player-form" onSubmit={handleCreatePlayer}>

@@ -311,9 +311,9 @@ export function Repeater<TItem>(props: RepeaterProps<TItem>) {
   const showSelectionToolbar = selectable && selectedIds.length > 0;
 
   const toolbarNode = showToolbar ? (
-    <div className={cn("flex flex-wrap items-center gap-2", toolbarClassName)}>
+    <div className={cn("ui-repeater-toolbar flex flex-wrap items-center gap-2", toolbarClassName)}>
       {showSearch ? (
-        <div className="relative w-full sm:w-64">
+        <div className="ui-repeater-search relative">
           <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <Input
             className="pl-8"
@@ -383,6 +383,7 @@ export function Repeater<TItem>(props: RepeaterProps<TItem>) {
     )
   ) : reorderable && resolvedView === "list" ? (
     <ReorderableList<TItem>
+      flushOnNarrow={disableViewToggle}
       getItemId={getReorderItemId}
       items={filteredItems}
       listClassName={listClassName}
@@ -391,7 +392,21 @@ export function Repeater<TItem>(props: RepeaterProps<TItem>) {
       resolveKey={resolveKey}
     />
   ) : (
-    <div className={cn(resolvedView === "grid" ? cn("ui-card-grid", gridClassName) : cn("space-y-3", listClassName))}>
+    <div
+      className={cn(
+        resolvedView === "grid"
+          ? cn("ui-card-grid", gridClassName)
+          : cn(
+              "space-y-3",
+              // When the caller has locked the view to list (`disableViewToggle`),
+              // collapse the per-row chrome on narrow viewports for the
+              // conventional flush mobile list. See `.ui-list-flush-on-narrow`
+              // in globals.css.
+              disableViewToggle && "ui-list-flush-on-narrow",
+              listClassName
+            )
+      )}
+    >
       {filteredItems.map((item, index) => (
         <React.Fragment key={resolveKey(item, index)}>{renderOne(item, index)}</React.Fragment>
       ))}
@@ -434,6 +449,7 @@ type ReorderableListProps<TItem> = {
   renderOne: (item: TItem, index: number, drag?: RepeaterDragHandle) => React.ReactNode;
   resolveKey: (item: TItem, index: number) => React.Key;
   listClassName?: string;
+  flushOnNarrow?: boolean;
 };
 
 function ReorderableList<TItem>({
@@ -442,7 +458,8 @@ function ReorderableList<TItem>({
   onReorder,
   renderOne,
   resolveKey,
-  listClassName
+  listClassName,
+  flushOnNarrow
 }: ReorderableListProps<TItem>) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -470,7 +487,7 @@ function ReorderableList<TItem>({
   return (
     <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd} sensors={sensors}>
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <div className={cn("space-y-3", listClassName)}>
+        <div className={cn("space-y-3", flushOnNarrow && "ui-list-flush-on-narrow", listClassName)}>
           {items.map((item, index) => {
             const id = getItemId(item, index);
             if (id == null) {

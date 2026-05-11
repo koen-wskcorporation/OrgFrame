@@ -181,7 +181,7 @@ function buildUiContext(input: { pathname: string; orgSlug: string | null; sourc
 function buildSuggestions(value: string) {
   const text = value.toLowerCase().trim();
   if (text.length < 2) {
-    return ["Show player profile", "Open account access", "Reschedule this event", "Open calendar timeline"];
+    return ["Show player", "Open account access", "Reschedule this event", "Open calendar timeline"];
   }
 
   if (text.includes("schedule") || text.includes("calendar")) {
@@ -189,14 +189,14 @@ function buildSuggestions(value: string) {
   }
 
   if (text.includes("player")) {
-    return ["Show player profile", "Link guardian access", "View active players"];
+    return ["Show player", "Link guardian access", "View active players"];
   }
 
   if (text.includes("account")) {
     return ["Open account details", "Show linked players", "Review guardian access"];
   }
 
-  return ["Show player profile", "Open account access", "Reschedule this event"];
+  return ["Show player", "Open account access", "Reschedule this event"];
 }
 
 export function OrgAiCommandCenter({ initialOrgSlug = null, orgOptions, disabled = false }: OrgAiCommandCenterProps) {

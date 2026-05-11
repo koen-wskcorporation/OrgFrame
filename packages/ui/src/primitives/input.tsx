@@ -4,14 +4,25 @@ import * as React from "react";
 import { formControlDisabledClass, formControlFocusClass, formControlInlineClass, formControlShellClass } from "./form-control";
 import { cn } from "./utils";
 
-export type SlugValidationKind = "org" | "page" | "program" | "form" | "space";
+export type SlugValidationKind = "org" | "page" | "program" | "form" | "space" | "program-node";
 
 type SlugValidationConfig = {
   kind: SlugValidationKind;
   orgSlug?: string;
+  /** Program slug — drives the inline path prefix on `program-node` (e.g.
+   *  "/programs/spring-2026/"). */
+  programSlug?: string;
+  /** Division slug — when set on a `program-node` validation, the inline
+   *  prefix becomes `/programs/<programSlug>/<divisionSlug>/`. Used for
+   *  team nodes so their URL nests under their parent division. */
+  divisionSlug?: string;
   currentSlug?: string;
   debounceMs?: number;
   enabled?: boolean;
+  /** When provided, validate uniqueness against this in-memory set instead
+   *  of calling /api/slugs/availability. Used by `program-node` where the
+   *  full set of sibling slugs is already loaded client-side. */
+  existingSlugs?: Set<string>;
 };
 
 type SlugValidationStatus = "idle" | "checking" | "available" | "taken" | "invalid" | "error";
@@ -70,7 +81,12 @@ function isValidAvailabilityResponse(value: unknown): value is SlugAvailabilityR
 
   return (
     payload.ok === true &&
-    (payload.kind === "org" || payload.kind === "page" || payload.kind === "program" || payload.kind === "form" || payload.kind === "space") &&
+    (payload.kind === "org" ||
+      payload.kind === "page" ||
+      payload.kind === "program" ||
+      payload.kind === "form" ||
+      payload.kind === "space" ||
+      payload.kind === "program-node") &&
     typeof payload.normalizedSlug === "string" &&
     typeof payload.available === "boolean" &&
     (typeof payload.message === "string" || payload.message === null)
@@ -97,6 +113,16 @@ function resolveSlugPathPrefix(slugValidation: SlugValidationConfig | undefined,
 
   if (slugValidation.kind === "page" && orgSlug) {
     return "/";
+  }
+
+  if (slugValidation.kind === "program-node") {
+    const programSlug = slugValidation.programSlug?.trim();
+    if (programSlug) {
+      const divisionSlug = slugValidation.divisionSlug?.trim();
+      return divisionSlug
+        ? `/programs/${programSlug}/${divisionSlug}/`
+        : `/programs/${programSlug}/`;
+    }
   }
 
   return undefined;
@@ -130,9 +156,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const [slugMessage, setSlugMessage] = React.useState<string | null>(null);
     const slugValidationKind = slugValidation?.kind;
     const slugValidationOrgSlug = slugValidation?.orgSlug;
+    const slugValidationProgramSlug = slugValidation?.programSlug;
     const slugValidationCurrentSlug = slugValidation?.currentSlug;
     const slugValidationEnabled = slugValidation?.enabled;
     const slugValidationDebounceMs = slugValidation?.debounceMs;
+    const slugValidationExistingSlugs = slugValidation?.existingSlugs;
     const isSlugField = Boolean(slugValidation && slugValidationEnabled !== false);
     const resolvedPrefix = resolveSlugPathPrefix(slugValidation, persistentPrefix);
 
@@ -179,6 +207,20 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         return;
       }
 
+      // In-memory check — used when the caller already has the full set of
+      // sibling slugs (e.g. program-node uniqueness inside a program).
+      // Skips the API and resolves synchronously.
+      if (slugValidationExistingSlugs) {
+        if (slugValidationExistingSlugs.has(normalizedInput)) {
+          setSlugStatus("taken");
+          setSlugMessage("That slug is already used.");
+        } else {
+          setSlugStatus("available");
+          setSlugMessage("Slug is available.");
+        }
+        return;
+      }
+
       const requestId = latestRequestId.current + 1;
       latestRequestId.current = requestId;
       setSlugStatus("checking");
@@ -194,6 +236,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             body: JSON.stringify({
               kind: slugValidationKind,
               orgSlug: slugValidationOrgSlug,
+              programSlug: slugValidationProgramSlug,
               currentSlug: slugValidationCurrentSlug,
               slug: inputValue
             }),
@@ -232,9 +275,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       inputValue,
       slugValidationKind,
       slugValidationOrgSlug,
+      slugValidationProgramSlug,
       slugValidationCurrentSlug,
       slugValidationEnabled,
       slugValidationDebounceMs,
+      slugValidationExistingSlugs,
       hasSlugBeenEdited
     ]);
 

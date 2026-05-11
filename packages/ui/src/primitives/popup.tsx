@@ -23,6 +23,13 @@ export type PopupProps = {
   viewKey?: string | number;
   viewDirection?: "forward" | "back";
   footer?: React.ReactNode;
+  /**
+   * Left-aligned slot in the footer. Use for destructive entity actions
+   * (e.g. an icon-only `<Button iconOnly>` with `Trash2`) so they sit
+   * opposite the primary Save — never inline in the popup body. See
+   * "Entity deletion in wizards/panels goes in the footer" in CLAUDE.md.
+   */
+  footerLeading?: React.ReactNode;
   contentClassName?: string;
   popupClassName?: string;
   popupStyle?: React.CSSProperties;
@@ -57,6 +64,7 @@ export function Popup({
   viewKey,
   viewDirection = "forward",
   footer,
+  footerLeading,
   contentClassName,
   popupClassName,
   popupStyle,
@@ -372,7 +380,18 @@ export function Popup({
           </div>
         </SurfaceBody>
 
-        {footer ? <SurfaceFooter footerRef={footerRef}>{footer}</SurfaceFooter> : null}
+        {footer || footerLeading ? (
+          <SurfaceFooter footerRef={footerRef}>
+            {footerLeading ? (
+              <>
+                {footerLeading}
+                <div className="ml-auto flex flex-wrap items-center gap-2">{footer}</div>
+              </>
+            ) : (
+              footer
+            )}
+          </SurfaceFooter>
+        ) : null}
       </section>
     </div>,
     document.body

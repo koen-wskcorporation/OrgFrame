@@ -516,32 +516,34 @@ export function WizardChrome({
 
   const stepper =
     steps.length > 1 ? (
-      <div className="flex flex-wrap items-center gap-1.5 px-1 text-xs text-text-muted">
-        {steps.map((step, index) => {
-          const isComplete = index < currentIndex;
-          const isCurrent = index === currentIndex;
-          const reachable = isEdit ? true : index <= currentIndex;
-          return (
-            <React.Fragment key={step.id}>
-              <button
-                className={
-                  "rounded-full border px-2.5 py-1 text-xs font-medium transition " +
-                  (isCurrent
-                    ? "border-accent/40 bg-accent/10 text-text"
-                    : isComplete && !isEdit
-                      ? "border-success/40 bg-success/5 text-success"
-                      : "border-border bg-surface text-text-muted hover:bg-surface-muted/60")
-                }
-                disabled={!reachable || submitting}
-                onClick={() => onStepChange(step.id)}
-                type="button"
-              >
-                {isEdit ? null : <span className="font-medium">{index + 1}. </span>}{step.label}
-              </button>
-              {index < steps.length - 1 ? <span className="text-text-muted/60">›</span> : null}
-            </React.Fragment>
-          );
-        })}
+      <div className="ui-wizard-stepper-bar">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
+          {steps.map((step, index) => {
+            const isComplete = index < currentIndex;
+            const isCurrent = index === currentIndex;
+            const reachable = isEdit ? true : index <= currentIndex;
+            return (
+              <React.Fragment key={step.id}>
+                <button
+                  className={
+                    "rounded-full border px-2.5 py-1 text-xs font-medium transition " +
+                    (isCurrent
+                      ? "border-accent/40 bg-accent/10 text-text"
+                      : isComplete && !isEdit
+                        ? "border-success/40 bg-success/5 text-success"
+                        : "border-border bg-surface text-text-muted hover:bg-surface-muted/60")
+                  }
+                  disabled={!reachable || submitting}
+                  onClick={() => onStepChange(step.id)}
+                  type="button"
+                >
+                  {isEdit ? null : <span className="font-medium">{index + 1}. </span>}{step.label}
+                </button>
+                {index < steps.length - 1 ? <span className="text-text-muted/60">›</span> : null}
+              </React.Fragment>
+            );
+          })}
+        </div>
       </div>
     ) : null;
 
@@ -652,6 +654,12 @@ export type CreateWizardProps<TState> = {
   headerTitleAccessory?:
     | React.ReactNode
     | ((ctx: { state: TState; setField: <K extends keyof TState>(key: K, value: TState[K]) => void }) => React.ReactNode);
+  /**
+   * Optional left-aligned slot in the footer. Use this for destructive entity
+   * actions (e.g. an icon-only Delete) so they sit opposite the primary Save —
+   * not inline in a step body.
+   */
+  footerLeading?: React.ReactNode;
 };
 
 export function CreateWizard<TState>({
@@ -675,7 +683,8 @@ export function CreateWizard<TState>({
   headerShowAvatar,
   headerAvatarSlot,
   headerAvatarAlt,
-  headerTitleAccessory
+  headerTitleAccessory,
+  footerLeading
 }: CreateWizardProps<TState>) {
   const isEdit = mode === "edit";
   const { confirm } = useConfirmDialog();
@@ -730,35 +739,37 @@ export function CreateWizard<TState>({
 
   const stepper =
     flow.totalVisible > 1 ? (
-      <div className="flex flex-wrap items-center gap-1.5 px-1 text-xs text-text-muted">
-        {flow.visibleSteps.map((step, index) => {
-          const isComplete = index < flow.currentIndex;
-          const isCurrent = index === flow.currentIndex;
-          // In edit mode every step is reachable; in create mode you only
-          // unlock the steps you've already advanced through.
-          const reachable = isEdit ? true : index <= flow.currentIndex;
-          return (
-            <React.Fragment key={step.id}>
-              <button
-                className={
-                  "rounded-full border px-2.5 py-1 text-xs font-medium transition " +
-                  (isCurrent
-                    ? "border-accent/40 bg-accent/10 text-text"
-                    : isComplete && !isEdit
-                      ? "border-success/40 bg-success/5 text-success"
-                      : "border-border bg-surface text-text-muted hover:bg-surface-muted/60")
-                }
-                disabled={!reachable || flow.submitting}
-                onClick={() => flow.goToIndex(index)}
-                type="button"
-              >
-                {isEdit ? null : <span className="font-medium">{index + 1}. </span>}
-                {step.label}
-              </button>
-              {index < flow.visibleSteps.length - 1 ? <span className="text-text-muted/60">›</span> : null}
-            </React.Fragment>
-          );
-        })}
+      <div className="ui-wizard-stepper-bar">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
+          {flow.visibleSteps.map((step, index) => {
+            const isComplete = index < flow.currentIndex;
+            const isCurrent = index === flow.currentIndex;
+            // In edit mode every step is reachable; in create mode you only
+            // unlock the steps you've already advanced through.
+            const reachable = isEdit ? true : index <= flow.currentIndex;
+            return (
+              <React.Fragment key={step.id}>
+                <button
+                  className={
+                    "rounded-full border px-2.5 py-1 text-xs font-medium transition " +
+                    (isCurrent
+                      ? "border-accent/40 bg-accent/10 text-text"
+                      : isComplete && !isEdit
+                        ? "border-success/40 bg-success/5 text-success"
+                        : "border-border bg-surface text-text-muted hover:bg-surface-muted/60")
+                  }
+                  disabled={!reachable || flow.submitting}
+                  onClick={() => flow.goToIndex(index)}
+                  type="button"
+                >
+                  {isEdit ? null : <span className="font-medium">{index + 1}. </span>}
+                  {step.label}
+                </button>
+                {index < flow.visibleSteps.length - 1 ? <span className="text-text-muted/60">›</span> : null}
+              </React.Fragment>
+            );
+          })}
+        </div>
       </div>
     ) : null;
 
@@ -796,6 +807,7 @@ export function CreateWizard<TState>({
           Close
         </Button>
       )}
+      {footerLeading}
       <div className="ml-auto flex items-center gap-2">
         <Button
           disabled={flow.submitting || !flow.isDirty}
@@ -813,6 +825,7 @@ export function CreateWizard<TState>({
       {hideCancel ? null : (
         <Button intent="cancel" onClick={requestClose} type="button" variant="ghost" disabled={flow.submitting}>Cancel</Button>
       )}
+      {footerLeading}
       <div className="ml-auto flex items-center gap-2">
         {!flow.isFirstStep ? (
           <Button onClick={flow.back} type="button" variant="secondary" disabled={flow.submitting}>

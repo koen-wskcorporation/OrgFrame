@@ -341,30 +341,11 @@ export function PanelContainer() {
 
   // Track panel-top — align to the top of `.app__content` (the row where page
   // content sits). When there is no AppShell on the page (e.g. auth routes),
-  // fall back to "below the primary header by one layout-gap".
-  //
-  // When a fullscreen Popup is open (`body[data-popup-count] > 0`), prefer
-  // the popup's own header bottom — the page's primary header is hidden
-  // behind the popup, so docking under it would put panels right over the
-  // popup's title bar. Falls back to the page measurement when no popup
-  // is open or no `[role="dialog"]` matches.
+  // fall back to "below the primary header by one layout-gap". Panels render
+  // BEHIND popups (lower z-index), so we never need to dodge popup headers.
   React.useEffect(() => {
     const measure = () => {
       const layoutGap = readLayoutGapPx();
-
-      const popupCount = Number(document.body.getAttribute("data-popup-count") ?? "0");
-      if (popupCount > 0) {
-        // Topmost open dialog (the last one mounted is on top in DOM order).
-        const dialogs = document.querySelectorAll<HTMLElement>("[role='dialog'][aria-modal='true']");
-        const topDialog = dialogs[dialogs.length - 1];
-        const dialogHeader = topDialog?.firstElementChild as HTMLElement | null;
-        if (dialogHeader) {
-          const headerBottom = dialogHeader.getBoundingClientRect().bottom;
-          const next = Math.max(0, Math.round(headerBottom + layoutGap));
-          setPanelTop((current) => (current === next ? current : next));
-          return;
-        }
-      }
 
       // Floor the panel at "one layout-gap below the sticky topbar" so it
       // can never rise above the pinned topbar on scroll. When there is
@@ -395,28 +376,10 @@ export function PanelContainer() {
       if (header) observer.observe(header);
       if (body) observer.observe(body);
     }
-    // Re-measure when popups open or close so we can track their header.
-    const popupAttrObserver = new MutationObserver(measure);
-    popupAttrObserver.observe(document.body, { attributes: true, attributeFilter: ["data-popup-count"] });
-    // And when any new dialog mounts/unmounts so the ResizeObserver above
-    // doesn't have to know about elements that didn't exist at setup time.
-    const dialogTreeObserver = new MutationObserver(() => {
-      measure();
-      // Hook the active dialog's header into the resize observer too — its
-      // size can change if subtitle wraps or the header reflows.
-      if (!observer) return;
-      const dialogs = document.querySelectorAll<HTMLElement>("[role='dialog'][aria-modal='true']");
-      const topDialog = dialogs[dialogs.length - 1];
-      const dialogHeader = topDialog?.firstElementChild as HTMLElement | null;
-      if (dialogHeader) observer.observe(dialogHeader);
-    });
-    dialogTreeObserver.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, { passive: true });
     return () => {
       observer?.disconnect();
-      popupAttrObserver.disconnect();
-      dialogTreeObserver.disconnect();
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure);
     };
@@ -562,12 +525,10 @@ export function PanelContainer() {
         top: panelTop ? `${panelTop}px` : "var(--layout-gap)",
         bottom: "var(--layout-gap)",
         width: `${containerTotalWidth}px`,
-        // Sit above fullscreen Popup (z-1200/1201) so panels overlay
-        // editor popups instead of disappearing behind them. Smaller
-        // confirm/dialog popups opened from inside a panel still render
-        // centered (the centered dialog body is visible above the panels'
-        // dock area, just without the backdrop tinting the panels).
-        zIndex: 1300
+        // Panels live BELOW Popup (z-1200/1201). Opening a popup covers
+        // panels with the popup backdrop — clear modal precedence and no
+        // height reflow.
+        zIndex: 1100
       }}
     >
       {showResizeHandle ? (
@@ -743,6 +704,13 @@ export type PanelProps = {
   headerTitleAccessory?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  /**
+   * Left-aligned slot in the footer. Use for destructive entity actions
+   * (e.g. an icon-only `<Button iconOnly>` with `Trash2`) so they sit
+   * opposite the primary Save — never inline in the panel body. See
+   * "Entity deletion in wizards/panels goes in the footer" in CLAUDE.md.
+   */
+  footerLeading?: React.ReactNode;
   panelClassName?: string;
   contentClassName?: string;
   panelStyle?: React.CSSProperties;
@@ -772,6 +740,7 @@ export function Panel({
   headerTitleAccessory,
   children,
   footer,
+  footerLeading,
   panelClassName,
   contentClassName,
   panelStyle,
@@ -996,7 +965,18 @@ export function Panel({
       )}
       <SurfaceCloseButton className="z-[101]" label="Close panel" onClick={onClose} />
       <SurfaceBody className={contentClassName}>{children}</SurfaceBody>
-      {footer ? <SurfaceFooter footerRef={footerRef}>{footer}</SurfaceFooter> : null}
+      {footer || footerLeading ? (
+        <SurfaceFooter footerRef={footerRef}>
+          {footerLeading ? (
+            <>
+              {footerLeading}
+              <div className="ml-auto flex flex-wrap items-center gap-2">{footer}</div>
+            </>
+          ) : (
+            footer
+          )}
+        </SurfaceFooter>
+      ) : null}
     </aside>,
     portalTarget
   );

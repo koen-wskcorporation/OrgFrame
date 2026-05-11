@@ -15,9 +15,11 @@ import {
   type ProgramNodeMapUpdate
 } from "@/src/features/programs/db/queries";
 import {
+  getProgramMapNodeCounts,
   getTeamIdByNodeIdMap,
   listUnassignedCoachDockItems,
-  listUnassignedPlayerDockItems
+  listUnassignedPlayerDockItems,
+  type ProgramMapNodeCounts
 } from "@/src/features/programs/map/queries";
 import type { ProgramNode } from "@/src/features/programs/types";
 import type { AssignmentCandidate } from "@/src/features/programs/map/types";
@@ -58,6 +60,7 @@ export type ProgramMapPageData = {
   program: NonNullable<Awaited<ReturnType<typeof getProgramDetailsById>>>["program"];
   nodes: ProgramNode[];
   teamIdByNodeId: Record<string, string>;
+  nodeCounts: ProgramMapNodeCounts;
   assignmentDock: {
     players: AssignmentCandidate[];
     coaches: AssignmentCandidate[];
@@ -80,10 +83,11 @@ export async function getProgramMapPageData(
   const details = await getProgramDetailsById(orgContext.orgId, programId);
   if (!details) return null;
 
-  const [teamIdMap, players, coaches] = await Promise.all([
+  const [teamIdMap, players, coaches, nodeCounts] = await Promise.all([
     getTeamIdByNodeIdMap(programId),
     listUnassignedPlayerDockItems(programId),
-    listUnassignedCoachDockItems(programId)
+    listUnassignedCoachDockItems(programId),
+    getProgramMapNodeCounts(programId)
   ]);
 
   return {
@@ -95,6 +99,7 @@ export async function getProgramMapPageData(
     program: details.program,
     nodes: details.nodes,
     teamIdByNodeId: Object.fromEntries(teamIdMap.entries()),
+    nodeCounts,
     assignmentDock: { players, coaches }
   };
 }

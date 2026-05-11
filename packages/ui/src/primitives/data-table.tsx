@@ -13,9 +13,9 @@ import {
   type ReactNode
 } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
+import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowDown, ArrowUp, ArrowUpDown, Eye, EyeOff, GripVertical, Pencil, Pin, Search, Settings2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye, EyeOff, GripVertical, MoreHorizontal, Pencil, Pin, Search, Settings2, X } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { Input } from "@orgframe/ui/primitives/input";
@@ -138,7 +138,7 @@ type CellPoint = {
 
 type ColumnContextMenuState = {
   columnKey: string;
-  anchorPoint: { x: number; y: number };
+  anchorEl: HTMLElement;
 };
 
 function isLockedSelectionColumn(columnKey: string) {
@@ -299,8 +299,9 @@ type SortableHeaderCellProps = {
   onMount?: (node: HTMLTableCellElement | null) => void;
   onResizeStart: (columnKey: string, event: ReactPointerEvent<HTMLButtonElement>) => void;
   onSortToggle: (columnKey: string) => void;
-  onContextMenu?: (columnKey: string, event: MouseEvent<HTMLTableCellElement>) => void;
+  onMenuOpen?: (columnKey: string, anchor: HTMLElement) => void;
   canReorder: boolean;
+  showMenu: boolean;
 };
 
 function SortableHeaderCell({
@@ -316,8 +317,9 @@ function SortableHeaderCell({
   onMount,
   onResizeStart,
   onSortToggle,
-  onContextMenu,
-  canReorder
+  onMenuOpen,
+  canReorder,
+  showMenu
 }: SortableHeaderCellProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: columnKey,
@@ -345,56 +347,70 @@ function SortableHeaderCell({
         setNodeRef(node);
         onMount?.(node);
       }}
-      onContextMenu={
-        onContextMenu
-          ? (event) => {
-              onContextMenu(columnKey, event);
-            }
-          : undefined
-      }
       style={style}
-      title="Right-click for column options"
     >
-      <div className="relative flex min-w-0 items-center justify-between gap-2 pr-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          {canReorder ? (
+      {/* Icon-only headers (e.g. selection checkbox) skip the drag/sort
+          chrome and render their content centered across the cell. */}
+      {!canReorder && !sortable && renderHeader ? (
+        <div className="flex h-full w-full items-center justify-center">
+          {renderHeader()}
+        </div>
+      ) : (
+        <div className="relative flex min-w-0 items-center justify-between gap-2 pr-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            {canReorder ? (
+              <button
+                aria-label={`Drag ${label} column`}
+                className={cn(headerIconButtonClassName, "h-6 w-6 shrink-0 opacity-35 group-hover:opacity-100 group-focus-within:opacity-100")}
+                title={`Drag ${label} column`}
+                type="button"
+                {...attributes}
+                {...listeners}
+              >
+                <GripVertical aria-hidden className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            {sortable ? (
+              <button
+                aria-label={isSorted ? `Sort ${label} (${sortDirection === "asc" ? "ascending" : "descending"})` : `Sort ${label}`}
+                className="inline-flex min-w-0 items-center gap-1 rounded-control px-1 py-0.5 text-left text-[12px] font-semibold tracking-wide text-text transition-colors hover:bg-surface-muted/60 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-surface"
+                onClick={() => onSortToggle(columnKey)}
+                title={isSorted ? `Sorted ${sortDirection === "asc" ? "ascending" : "descending"}` : "Sort"}
+                type="button"
+              >
+                <span className="truncate">{label}</span>
+                {isSorted ? (
+                  sortDirection === "asc" ? (
+                    <ArrowUp aria-hidden className="h-3.5 w-3.5 shrink-0 text-text" />
+                  ) : (
+                    <ArrowDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-text" />
+                  )
+                ) : (
+                  <ArrowUpDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-muted/70" />
+                )}
+              </button>
+            ) : renderHeader ? (
+              <div className="min-w-0">{renderHeader()}</div>
+            ) : (
+              <span className="block truncate whitespace-nowrap text-[12px] font-semibold tracking-wide text-text">{label}</span>
+            )}
+          </div>
+          {showMenu && onMenuOpen ? (
             <button
-              aria-label={`Drag ${label} column`}
-              className={cn(headerIconButtonClassName, "h-6 w-6 shrink-0 opacity-35 group-hover:opacity-100 group-focus-within:opacity-100")}
-              title={`Drag ${label} column`}
+              aria-label={`${label} column options`}
+              className={cn(
+                headerIconButtonClassName,
+                "h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-80 group-focus-within:opacity-80 hover:!opacity-100"
+              )}
+              onClick={(event) => onMenuOpen(columnKey, event.currentTarget)}
+              title="Column options"
               type="button"
-              {...attributes}
-              {...listeners}
             >
-              <GripVertical aria-hidden className="h-3.5 w-3.5" />
+              <MoreHorizontal aria-hidden className="h-3.5 w-3.5" />
             </button>
           ) : null}
-          {sortable ? (
-            <button
-              aria-label={isSorted ? `Sort ${label} (${sortDirection === "asc" ? "ascending" : "descending"})` : `Sort ${label}`}
-              className="inline-flex min-w-0 items-center gap-1 rounded-control px-1 py-0.5 text-left text-[12px] font-semibold tracking-wide text-text transition-colors hover:bg-surface-muted/60 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-surface"
-              onClick={() => onSortToggle(columnKey)}
-              title={isSorted ? `Sorted ${sortDirection === "asc" ? "ascending" : "descending"}` : "Sort"}
-              type="button"
-            >
-              <span className="truncate">{label}</span>
-              {isSorted ? (
-                sortDirection === "asc" ? (
-                  <ArrowUp aria-hidden className="h-3.5 w-3.5 shrink-0 text-text" />
-                ) : (
-                  <ArrowDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-text" />
-                )
-              ) : (
-                <ArrowUpDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-muted/70" />
-              )}
-            </button>
-          ) : renderHeader ? (
-            <div className="min-w-0">{renderHeader()}</div>
-          ) : (
-            <span className="block truncate whitespace-nowrap text-[12px] font-semibold tracking-wide text-text">{label}</span>
-          )}
         </div>
-      </div>
+      )}
       <button
         aria-label={`Resize ${label} column`}
         className="absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none rounded-r-control bg-transparent transition-colors hover:bg-accent/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -444,7 +460,14 @@ export function DataTable<TItem>({
   const dndContextId = useId();
   const [searchQuery, setSearchQuery] = useState("");
   const [isColumnsDialogOpen, setIsColumnsDialogOpen] = useState(false);
+  const [columnsPanelSearch, setColumnsPanelSearch] = useState("");
+
+  useEffect(() => {
+    if (!isColumnsDialogOpen) setColumnsPanelSearch("");
+  }, [isColumnsDialogOpen]);
   const [columnContextMenu, setColumnContextMenu] = useState<ColumnContextMenuState | null>(null);
+  const columnMenuAnchorRef = useRef<HTMLElement | null>(null);
+  columnMenuAnchorRef.current = columnContextMenu?.anchorEl ?? null;
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -499,8 +522,8 @@ export function DataTable<TItem>({
       defaultVisible: true,
       sortable: false,
       searchable: false,
-      className: "!w-[44px] !min-w-[44px] !max-w-[44px] !px-2",
-      headerClassName: "!w-[44px] !min-w-[44px] !max-w-[44px] !px-2",
+      className: "!w-[44px] !min-w-[44px] !max-w-[44px] !px-2 !text-center",
+      headerClassName: "!w-[44px] !min-w-[44px] !max-w-[44px] !px-2 !text-center",
       renderHeader: () => {
         const ctx = rowSelectionContextRef.current;
         const allKeys = ctx.visibleRows.map((row) => ctx.rowKeyFn(row));
@@ -508,7 +531,7 @@ export function DataTable<TItem>({
         const allSelected = allKeys.length > 0 && selectedCountInVisible === allKeys.length;
         const someSelected = selectedCountInVisible > 0 && !allSelected;
         return (
-          <span className="inline-flex items-center justify-center" data-row-action="true">
+          <span className="flex w-full items-center justify-center" data-row-action="true">
             <Checkbox
               aria-label={allSelected ? "Deselect all rows" : "Select all rows"}
               checked={allSelected}
@@ -525,7 +548,7 @@ export function DataTable<TItem>({
         const rowIndex = context?.rowIndex ?? 0;
         return (
           <span
-            className="inline-flex items-center justify-center"
+            className="flex w-full items-center justify-center"
             data-row-action="true"
             onClick={(event) => {
               event.stopPropagation();
@@ -1304,20 +1327,12 @@ export function DataTable<TItem>({
     return null;
   }
 
-  function handleHeaderContextMenu(columnKey: string, event: MouseEvent<HTMLTableCellElement>) {
-    event.preventDefault();
-
+  function handleHeaderMenuOpen(columnKey: string, anchorEl: HTMLElement) {
     if (isLockedSelectionColumn(columnKey)) {
       setColumnContextMenu(null);
       return;
     }
-    setColumnContextMenu({
-      columnKey,
-      anchorPoint: {
-        x: event.clientX,
-        y: event.clientY
-      }
-    });
+    setColumnContextMenu({ columnKey, anchorEl });
   }
 
   function handleHeaderPinAction(columnKey: string, action: "pin-left" | "pin-right" | "unpin-left" | "unpin-right") {
@@ -1389,6 +1404,33 @@ export function DataTable<TItem>({
 
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
+  }
+
+  function handleColumnsPanelReorder(event: DragEndEvent) {
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : null;
+    if (!overId || activeId === overId || isLockedSelectionColumn(activeId) || isLockedSelectionColumn(overId)) {
+      return;
+    }
+    setColumnOrderKeys((current) => {
+      const oldIndex = current.indexOf(activeId);
+      const newIndex = current.indexOf(overId);
+      if (oldIndex < 0 || newIndex < 0) return current;
+      return arrayMove(current, oldIndex, newIndex);
+    });
+  }
+
+  function setColumnPin(columnKey: string, target: "off" | "left" | "right") {
+    if (target === "off") {
+      if (effectivePinnedLeftSet.has(columnKey)) handleColumnPinLeftToggle(columnKey);
+      if (effectivePinnedRightSet.has(columnKey)) handleColumnPinRightToggle(columnKey);
+    } else if (target === "left") {
+      if (effectivePinnedRightSet.has(columnKey)) handleColumnPinRightToggle(columnKey);
+      if (!effectivePinnedLeftSet.has(columnKey)) handleColumnPinLeftToggle(columnKey);
+    } else {
+      if (effectivePinnedLeftSet.has(columnKey)) handleColumnPinLeftToggle(columnKey);
+      if (!effectivePinnedRightSet.has(columnKey)) handleColumnPinRightToggle(columnKey);
+    }
   }
 
   function handleInlineHeaderReorder(event: DragEndEvent) {
@@ -1532,14 +1574,6 @@ export function DataTable<TItem>({
   const normalizedSearchQuery = searchQuery.trim();
   const hasActiveSearch = normalizedSearchQuery.length > 0;
   const rowSummary = formatRowSummary(filteredAndSortedRows.length, data.length);
-  const hasCustomColumnLayout =
-    !areArraysEqual(columnOrderKeys, allColumnKeys) ||
-    !areArraysEqual(visibleColumnKeys, defaultVisibleColumns) ||
-    !areArraysEqual(pinnedLeftColumnKeys, defaultPinnedLeftColumns) ||
-    !areArraysEqual(pinnedRightColumnKeys, defaultPinnedRightColumns) ||
-    Object.keys(columnWidthOverrides).length > 0;
-  const hasCustomSort = sortColumnKey !== (defaultSort?.columnKey ?? null) || sortDirection !== (defaultSort?.direction ?? "asc");
-  const hasActiveCustomizations = hasActiveSearch || hasCustomColumnLayout || hasCustomSort;
   const contextMenuColumnKey = columnContextMenu?.columnKey ?? null;
   const contextMenuColumn = contextMenuColumnKey ? columnByKey.get(contextMenuColumnKey) ?? null : null;
   const contextMenuCanHide = contextMenuColumnKey ? canHideColumn(contextMenuColumnKey) : false;
@@ -1547,17 +1581,6 @@ export function DataTable<TItem>({
   const tableGridClass = showCellGrid
     ? "[&_th]:border-b [&_th]:border-border/75 [&_td]:border-b [&_td]:border-border/60 [&_th:not(:last-child)]:border-r [&_th:not(:last-child)]:border-border/60 [&_td:not(:last-child)]:border-r [&_td:not(:last-child)]:border-border/50"
     : "[&_th]:border-b [&_th]:border-border/65 [&_td]:border-b [&_td]:border-border/45 [&_th:not(:last-child)]:border-r [&_th:not(:last-child)]:border-border/45 [&_td:not(:last-child)]:border-r [&_td:not(:last-child)]:border-border/30";
-
-  function resetTableView() {
-    setColumnOrderKeys(allColumnKeys);
-    setVisibleColumnKeys(defaultVisibleColumns);
-    setPinnedLeftColumnKeys(defaultPinnedLeftColumns);
-    setPinnedRightColumnKeys(defaultPinnedRightColumns);
-    setColumnWidthOverrides({});
-    setSortColumnKey(defaultSort?.columnKey ?? null);
-    setSortDirection(defaultSort?.direction ?? "asc");
-    setSearchQuery("");
-  }
 
   return (
     <>
@@ -1639,9 +1662,6 @@ export function DataTable<TItem>({
             <Settings2 aria-hidden className="h-3.5 w-3.5" />
             Columns
           </Button>
-          <Button disabled={!hasActiveCustomizations} onClick={resetTableView} size="sm" variant="ghost">
-            Reset
-          </Button>
         </div>
       </div>
 
@@ -1700,13 +1720,14 @@ export function DataTable<TItem>({
                         label={column.label}
                         renderHeader={column.renderHeader}
                         onMount={(node) => setHeaderCellRef(column.key, node)}
-                        onContextMenu={handleHeaderContextMenu}
+                        onMenuOpen={handleHeaderMenuOpen}
                         onResizeStart={handleColumnResizeStart}
                         onSortToggle={handleSortToggle}
                         canReorder={!isLockedSelectionColumn(column.key)}
                         pinnedClassName={getPinnedColumnCellClass(column.key)}
                         sortDirection={sortDirection}
                         sortable={Boolean(column.sortable)}
+                        showMenu={!isLockedSelectionColumn(column.key)}
                       />
                     ))}
                     {renderRowActions ? (
@@ -1821,63 +1842,85 @@ export function DataTable<TItem>({
           >
             <TableHeader className="sticky top-0 z-[5] border-b border-border bg-surface-muted/95 backdrop-blur supports-[backdrop-filter]:bg-surface-muted/80">
               <TableRow>
-                {visibleColumns.map((column) => (
-                  <th
-                    className={cn(
-                      "group relative h-12 px-3 text-left align-middle text-[12px] font-semibold md:px-4",
-                      column.headerClassName,
-                      getPinnedColumnCellClass(column.key)
-                    )}
-                    aria-sort={column.sortable && sortColumnKey === column.key ? (sortDirection === "asc" ? "ascending" : "descending") : undefined}
-                    key={column.key}
-                    onContextMenu={(event) => handleHeaderContextMenu(column.key, event)}
-                    ref={(node) => setHeaderCellRef(column.key, node)}
-                    style={getPinnedColumnCellStyle(column.key)}
-                    title="Right-click for column options"
-                  >
-                    <div className="relative flex min-w-0 items-center justify-between gap-2 pr-2">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        {!isLockedSelectionColumn(column.key) ? (
-                          <span className={cn(headerIconButtonClassName, "h-6 w-6 shrink-0 opacity-35 group-hover:opacity-100")}>
-                            <GripVertical aria-hidden className="h-3.5 w-3.5" />
-                          </span>
-                        ) : null}
-                        {column.sortable ? (
-                          <button
-                            aria-label={sortColumnKey === column.key ? `Sort ${column.label} (${sortDirection === "asc" ? "ascending" : "descending"})` : `Sort ${column.label}`}
-                            className="inline-flex min-w-0 items-center gap-1 rounded-control px-1 py-0.5 text-left text-[12px] font-semibold tracking-wide text-text transition-colors hover:bg-surface-muted/60 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-surface"
-                            onClick={() => handleSortToggle(column.key)}
-                            title={sortColumnKey === column.key ? `Sorted ${sortDirection === "asc" ? "ascending" : "descending"}` : "Sort"}
-                            type="button"
-                          >
-                            <span className="truncate">{column.label}</span>
-                            {sortColumnKey === column.key ? (
-                              sortDirection === "asc" ? (
-                                <ArrowUp aria-hidden className="h-3.5 w-3.5 shrink-0 text-text" />
-                              ) : (
-                                <ArrowDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-text" />
-                              )
+                {visibleColumns.map((column) => {
+                  const isIconOnlyHeader =
+                    isLockedSelectionColumn(column.key) && !column.sortable && Boolean(column.renderHeader);
+                  return (
+                    <th
+                      className={cn(
+                        "group relative h-12 px-3 text-left align-middle text-[12px] font-semibold md:px-4",
+                        column.headerClassName,
+                        getPinnedColumnCellClass(column.key)
+                      )}
+                      aria-sort={column.sortable && sortColumnKey === column.key ? (sortDirection === "asc" ? "ascending" : "descending") : undefined}
+                      key={column.key}
+                      ref={(node) => setHeaderCellRef(column.key, node)}
+                      style={getPinnedColumnCellStyle(column.key)}
+                    >
+                      {isIconOnlyHeader ? (
+                        <div className="flex h-full w-full items-center justify-center">
+                          {column.renderHeader!()}
+                        </div>
+                      ) : (
+                        <div className="relative flex min-w-0 items-center justify-between gap-2 pr-2">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            {!isLockedSelectionColumn(column.key) ? (
+                              <span className={cn(headerIconButtonClassName, "h-6 w-6 shrink-0 opacity-35 group-hover:opacity-100")}>
+                                <GripVertical aria-hidden className="h-3.5 w-3.5" />
+                              </span>
+                            ) : null}
+                            {column.sortable ? (
+                              <button
+                                aria-label={sortColumnKey === column.key ? `Sort ${column.label} (${sortDirection === "asc" ? "ascending" : "descending"})` : `Sort ${column.label}`}
+                                className="inline-flex min-w-0 items-center gap-1 rounded-control px-1 py-0.5 text-left text-[12px] font-semibold tracking-wide text-text transition-colors hover:bg-surface-muted/60 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-surface"
+                                onClick={() => handleSortToggle(column.key)}
+                                title={sortColumnKey === column.key ? `Sorted ${sortDirection === "asc" ? "ascending" : "descending"}` : "Sort"}
+                                type="button"
+                              >
+                                <span className="truncate">{column.label}</span>
+                                {sortColumnKey === column.key ? (
+                                  sortDirection === "asc" ? (
+                                    <ArrowUp aria-hidden className="h-3.5 w-3.5 shrink-0 text-text" />
+                                  ) : (
+                                    <ArrowDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-text" />
+                                  )
+                                ) : (
+                                  <ArrowUpDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-muted/70" />
+                                )}
+                              </button>
+                            ) : column.renderHeader ? (
+                              <div className="min-w-0">{column.renderHeader()}</div>
                             ) : (
-                              <ArrowUpDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-text-muted/70" />
+                              <span className="block truncate whitespace-nowrap text-[12px] font-semibold tracking-wide text-text">{column.label}</span>
                             )}
-                          </button>
-                        ) : column.renderHeader ? (
-                          <div className="min-w-0">{column.renderHeader()}</div>
-                        ) : (
-                          <span className="block truncate whitespace-nowrap text-[12px] font-semibold tracking-wide text-text">{column.label}</span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      aria-label={`Resize ${column.label} column`}
-                      className="absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none rounded-r-control bg-transparent transition-colors hover:bg-accent/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      data-resize-handle="true"
-                      onPointerDown={(event) => handleColumnResizeStart(column.key, event)}
-                      title={`Resize ${column.label}`}
-                      type="button"
-                    />
-                  </th>
-                ))}
+                          </div>
+                          {!isLockedSelectionColumn(column.key) ? (
+                            <button
+                              aria-label={`${column.label} column options`}
+                              className={cn(
+                                headerIconButtonClassName,
+                                "h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-80 group-focus-within:opacity-80 hover:!opacity-100"
+                              )}
+                              onClick={(event) => handleHeaderMenuOpen(column.key, event.currentTarget)}
+                              title="Column options"
+                              type="button"
+                            >
+                              <MoreHorizontal aria-hidden className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
+                      <button
+                        aria-label={`Resize ${column.label} column`}
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none rounded-r-control bg-transparent transition-colors hover:bg-accent/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        data-resize-handle="true"
+                        onPointerDown={(event) => handleColumnResizeStart(column.key, event)}
+                        title={`Resize ${column.label}`}
+                        type="button"
+                      />
+                    </th>
+                  );
+                })}
                 {renderRowActions ? (
                   <th
                     className={cn("h-12 px-3 text-right align-middle text-[12px] font-semibold tracking-wide text-text md:px-4", rowActionsPinnedClassName)}
@@ -1981,11 +2024,12 @@ export function DataTable<TItem>({
       </div>
 
       <Popover
-        anchorPoint={columnContextMenu?.anchorPoint ?? null}
+        anchorRef={columnMenuAnchorRef}
         className="w-56 p-1"
+        offset={6}
         onClose={() => setColumnContextMenu(null)}
         open={Boolean(columnContextMenu && contextMenuColumn)}
-        placement="bottom-start"
+        placement="bottom-end"
       >
         {contextMenuColumn ? (
           <div className="space-y-1">
@@ -2055,87 +2099,304 @@ export function DataTable<TItem>({
 
       <Panel
         footer={
-          <>
-            <Button
-              onClick={() => {
-                setColumnOrderKeys(allColumnKeys);
-                setVisibleColumnKeys(defaultVisibleColumns);
-                setPinnedLeftColumnKeys(defaultPinnedLeftColumns);
-                setPinnedRightColumnKeys(defaultPinnedRightColumns);
-                setColumnWidthOverrides({});
-              }}
-              variant="ghost"
-            >
-              Reset defaults
-            </Button>
-            <Button onClick={() => setIsColumnsDialogOpen(false)} variant="secondary">
-              Done
-            </Button>
-          </>
+          <Button
+            onClick={() => {
+              setColumnOrderKeys(allColumnKeys);
+              setVisibleColumnKeys(defaultVisibleColumns);
+              setPinnedLeftColumnKeys(defaultPinnedLeftColumns);
+              setPinnedRightColumnKeys(defaultPinnedRightColumns);
+              setColumnWidthOverrides({});
+            }}
+            variant="ghost"
+          >
+            Reset to defaults
+          </Button>
         }
         onClose={() => setIsColumnsDialogOpen(false)}
         open={isColumnsDialogOpen}
         panelKey={storageKey ? `columns:${storageKey}` : "data-table-columns"}
-        subtitle="Show or hide columns. Drag headers inline to reorder. Sort from each column label."
+        subtitle="Show, hide, pin, and reorder columns. Changes apply immediately."
         title="Table columns"
       >
-        <div className="space-y-4">
-          {orderedColumnGroups.map(([groupLabel, groupColumns]) => (
-            <section className="space-y-2" key={groupLabel}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{groupLabel}</p>
-              {groupColumns.map((column) => {
-                const checked = visibleColumnKeys.includes(column.key);
-                const isLocked = isLockedSelectionColumn(column.key);
-                const pinnedLeft = effectivePinnedLeftSet.has(column.key);
-                const pinnedRight = effectivePinnedRightSet.has(column.key);
-                const disablePinLeft = !checked || (!pinnedLeft && !canPinLeft(column.key)) || (pinnedLeft && !canUnpinLeft(column.key));
-                const disablePinRight = !checked || (!pinnedRight && !canPinRight(column.key)) || (pinnedRight && !canUnpinRight(column.key));
-
-                return (
-                  <div
-                    className={cn(
-                      "flex items-center justify-between gap-3 rounded-control border border-border/80 bg-surface px-3 py-2.5 text-sm",
-                      !checked && !isLocked ? "opacity-80" : undefined
-                    )}
-                    key={column.key}
-                  >
-                    <span className="font-medium text-text">{column.label}</span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        aria-label={`Pin ${column.label} left`}
-                        disabled={disablePinLeft}
-                        onClick={() => handleColumnPinLeftToggle(column.key)}
-                        size="sm"
-                        variant={pinnedLeft ? "secondary" : "ghost"}
-                        title={pinnedLeft ? `Unpin ${column.label} from left` : `Pin ${column.label} left`}
-                      >
-                        <Pin aria-hidden className="h-3.5 w-3.5" />
-                        Left
-                      </Button>
-                      <Button
-                        aria-label={`Pin ${column.label} right`}
-                        disabled={disablePinRight}
-                        onClick={() => handleColumnPinRightToggle(column.key)}
-                        size="sm"
-                        variant={pinnedRight ? "secondary" : "ghost"}
-                        title={pinnedRight ? `Unpin ${column.label} from right` : `Pin ${column.label} right`}
-                      >
-                        <Pin aria-hidden className="h-3.5 w-3.5" />
-                        Right
-                      </Button>
-                      <Checkbox
-                        checked={isLocked ? true : checked}
-                        disabled={isLocked}
-                        onChange={(event) => handleColumnToggle(column.key, event.target.checked)}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </section>
-          ))}
-        </div>
+        <ColumnsPanelBody
+          allColumnKeys={allColumnKeys}
+          orderedColumns={orderedColumns}
+          search={columnsPanelSearch}
+          onSearchChange={setColumnsPanelSearch}
+          visibleColumnKeys={visibleColumnKeys}
+          effectivePinnedLeftSet={effectivePinnedLeftSet}
+          effectivePinnedRightSet={effectivePinnedRightSet}
+          canPinLeft={canPinLeft}
+          canPinRight={canPinRight}
+          canUnpinLeft={canUnpinLeft}
+          canUnpinRight={canUnpinRight}
+          onToggleVisibility={handleColumnToggle}
+          onSetPin={setColumnPin}
+          onReorder={handleColumnsPanelReorder}
+          sensors={sensors}
+          dndContextId={dndContextId}
+        />
       </Panel>
     </>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// ColumnsPanelBody — search + drag-to-reorder + per-row pin/visibility controls.
+// Pulled out of the main DataTable render so the row component can use the
+// `useSortable` hook (one hook per row).
+// -----------------------------------------------------------------------------
+
+type PinTarget = "off" | "left" | "right";
+
+type ColumnsPanelBodyProps<TItem> = {
+  allColumnKeys: string[];
+  orderedColumns: DataTableColumn<TItem>[];
+  search: string;
+  onSearchChange: (next: string) => void;
+  visibleColumnKeys: string[];
+  effectivePinnedLeftSet: Set<string>;
+  effectivePinnedRightSet: Set<string>;
+  canPinLeft: (columnKey: string) => boolean;
+  canPinRight: (columnKey: string) => boolean;
+  canUnpinLeft: (columnKey: string) => boolean;
+  canUnpinRight: (columnKey: string) => boolean;
+  onToggleVisibility: (columnKey: string, nextChecked: boolean) => void;
+  onSetPin: (columnKey: string, target: PinTarget) => void;
+  onReorder: (event: DragEndEvent) => void;
+  sensors: ReturnType<typeof useSensors>;
+  dndContextId: string;
+};
+
+function ColumnsPanelBody<TItem>({
+  allColumnKeys: _allColumnKeys,
+  orderedColumns,
+  search,
+  onSearchChange,
+  visibleColumnKeys,
+  effectivePinnedLeftSet,
+  effectivePinnedRightSet,
+  canPinLeft,
+  canPinRight,
+  canUnpinLeft,
+  canUnpinRight,
+  onToggleVisibility,
+  onSetPin,
+  onReorder,
+  sensors,
+  dndContextId
+}: ColumnsPanelBodyProps<TItem>) {
+  const trimmed = search.trim().toLowerCase();
+  const filteredColumns = useMemo(() => {
+    if (trimmed.length === 0) return orderedColumns;
+    return orderedColumns.filter((column) => column.label.toLowerCase().includes(trimmed));
+  }, [orderedColumns, trimmed]);
+
+  // Group filtered columns, preserving group display order from orderedColumns.
+  const filteredGroups = useMemo(() => {
+    const grouped = new Map<string, DataTableColumn<TItem>[]>();
+    filteredColumns.forEach((column) => {
+      const key = column.group ?? "Columns";
+      const current = grouped.get(key) ?? [];
+      current.push(column);
+      grouped.set(key, current);
+    });
+    return Array.from(grouped.entries());
+  }, [filteredColumns]);
+
+  const reorderableIds = useMemo(
+    () => orderedColumns.filter((column) => !isLockedSelectionColumn(column.key)).map((column) => column.key),
+    [orderedColumns]
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <Search aria-hidden className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+        <Input
+          aria-label="Search columns"
+          className="pl-8"
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search columns"
+          value={search}
+        />
+      </div>
+
+      {filteredGroups.length === 0 ? (
+        <p className="rounded-control border border-dashed border-border/70 px-3 py-6 text-center text-sm text-text-muted">
+          No columns match &ldquo;{search}&rdquo;.
+        </p>
+      ) : (
+        <DndContext collisionDetection={closestCenter} id={`${dndContextId}-columns-panel`} onDragEnd={onReorder} sensors={sensors}>
+          <SortableContext items={reorderableIds} strategy={verticalListSortingStrategy}>
+            <div className="space-y-3">
+              {filteredGroups.map(([groupLabel, groupColumns]) => (
+                <section className="space-y-1.5" key={groupLabel}>
+                  {filteredGroups.length > 1 || groupLabel !== "Columns" ? (
+                    <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">{groupLabel}</p>
+                  ) : null}
+                  <div className="space-y-1">
+                    {groupColumns.map((column) => {
+                      const isLocked = isLockedSelectionColumn(column.key);
+                      const checked = isLocked ? true : visibleColumnKeys.includes(column.key);
+                      const pinnedLeft = effectivePinnedLeftSet.has(column.key);
+                      const pinnedRight = effectivePinnedRightSet.has(column.key);
+                      const pinState: PinTarget = pinnedLeft ? "left" : pinnedRight ? "right" : "off";
+                      const disableLeft = !checked || (pinnedLeft ? !canUnpinLeft(column.key) : !canPinLeft(column.key));
+                      const disableRight = !checked || (pinnedRight ? !canUnpinRight(column.key) : !canPinRight(column.key));
+                      return (
+                        <ColumnsPanelRow
+                          checked={checked}
+                          column={column}
+                          disableLeft={disableLeft}
+                          disableRight={disableRight}
+                          isLocked={isLocked}
+                          key={column.key}
+                          onSetPin={onSetPin}
+                          onToggleVisibility={onToggleVisibility}
+                          pinState={pinState}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
+    </div>
+  );
+}
+
+type ColumnsPanelRowProps<TItem> = {
+  column: DataTableColumn<TItem>;
+  checked: boolean;
+  isLocked: boolean;
+  pinState: PinTarget;
+  disableLeft: boolean;
+  disableRight: boolean;
+  onSetPin: (columnKey: string, target: PinTarget) => void;
+  onToggleVisibility: (columnKey: string, nextChecked: boolean) => void;
+};
+
+function ColumnsPanelRow<TItem>({
+  column,
+  checked,
+  isLocked,
+  pinState,
+  disableLeft,
+  disableRight,
+  onSetPin,
+  onToggleVisibility
+}: ColumnsPanelRowProps<TItem>) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: column.key,
+    disabled: isLocked
+  });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 5 : undefined
+  };
+  const segmentBase =
+    "h-7 px-2 inline-flex items-center justify-center text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40";
+
+  return (
+    <div
+      className={cn(
+        "group flex items-center gap-2 rounded-control border border-border/80 bg-surface px-2 py-1.5 text-sm",
+        isDragging ? "shadow-floating ring-1 ring-accent/30" : undefined,
+        !checked && !isLocked ? "opacity-70" : undefined
+      )}
+      ref={setNodeRef}
+      style={style}
+    >
+      <button
+        aria-label={isLocked ? `${column.label} (locked)` : `Drag ${column.label}`}
+        className={cn(
+          headerIconButtonClassName,
+          "h-6 w-6 shrink-0 cursor-grab opacity-40 group-hover:opacity-100 active:cursor-grabbing",
+          isLocked ? "!cursor-not-allowed !opacity-25" : undefined
+        )}
+        disabled={isLocked}
+        title={isLocked ? "Locked" : "Drag to reorder"}
+        type="button"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical aria-hidden className="h-3.5 w-3.5" />
+      </button>
+
+      <span className="min-w-0 flex-1 truncate font-medium text-text">{column.label}</span>
+
+      <div
+        aria-label={`Pin ${column.label}`}
+        className="inline-flex shrink-0 items-stretch overflow-hidden rounded-full border border-border/80 bg-surface-muted/40"
+        role="group"
+      >
+        <button
+          aria-label={`Pin ${column.label} left`}
+          aria-pressed={pinState === "left"}
+          className={cn(
+            segmentBase,
+            "rounded-l-full",
+            pinState === "left" ? "bg-accent/15 text-text" : "text-text-muted hover:bg-surface-muted"
+          )}
+          disabled={pinState !== "left" && disableLeft}
+          onClick={() => onSetPin(column.key, pinState === "left" ? "off" : "left")}
+          title={pinState === "left" ? "Unpin" : "Pin left"}
+          type="button"
+        >
+          <Pin aria-hidden className="h-3 w-3 -scale-x-100" />
+        </button>
+        <button
+          aria-label={`Don't pin ${column.label}`}
+          aria-pressed={pinState === "off"}
+          className={cn(
+            segmentBase,
+            "border-x border-border/60 px-2.5",
+            pinState === "off" ? "bg-surface text-text" : "text-text-muted hover:bg-surface-muted"
+          )}
+          onClick={() => onSetPin(column.key, "off")}
+          title="Don't pin"
+          type="button"
+        >
+          <span className="text-[10px] font-semibold uppercase tracking-wide">Off</span>
+        </button>
+        <button
+          aria-label={`Pin ${column.label} right`}
+          aria-pressed={pinState === "right"}
+          className={cn(
+            segmentBase,
+            "rounded-r-full",
+            pinState === "right" ? "bg-accent/15 text-text" : "text-text-muted hover:bg-surface-muted"
+          )}
+          disabled={pinState !== "right" && disableRight}
+          onClick={() => onSetPin(column.key, pinState === "right" ? "off" : "right")}
+          title={pinState === "right" ? "Unpin" : "Pin right"}
+          type="button"
+        >
+          <Pin aria-hidden className="h-3 w-3" />
+        </button>
+      </div>
+
+      <button
+        aria-label={checked ? `Hide ${column.label}` : `Show ${column.label}`}
+        aria-pressed={checked}
+        className={cn(
+          headerIconButtonClassName,
+          "h-7 w-7 shrink-0 transition-colors",
+          isLocked ? "!cursor-not-allowed text-text-muted/50" : undefined,
+          checked ? "text-text" : "text-text-muted/60"
+        )}
+        disabled={isLocked}
+        onClick={() => onToggleVisibility(column.key, !checked)}
+        title={isLocked ? "Locked" : checked ? "Hide column" : "Show column"}
+        type="button"
+      >
+        {checked ? <Eye aria-hidden className="h-4 w-4" /> : <EyeOff aria-hidden className="h-4 w-4" />}
+      </button>
+    </div>
   );
 }

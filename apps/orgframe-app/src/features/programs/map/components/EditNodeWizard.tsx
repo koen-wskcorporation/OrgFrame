@@ -1,14 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Trash2 } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { useConfirmDialog } from "@orgframe/ui/primitives/confirm-dialog";
-import { CreateWizard } from "@orgframe/ui/primitives/create-wizard";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { useToast } from "@orgframe/ui/primitives/toast";
+import { CreateWizard, type CreateWizardSubmitResult, type WizardStep } from "@/src/shared/components/CreateWizard";
 import { saveProgramHierarchyAction } from "@/src/features/programs/actions";
+import { computeSlugStatus } from "@/src/features/programs/map/slug-utils";
 import type { ProgramMapNode } from "@/src/features/programs/map/types";
 
 type EditNodeWizardProps = {
@@ -16,23 +16,59 @@ type EditNodeWizardProps = {
   onClose: () => void;
   orgSlug: string;
   programId: string;
+  /** Public-URL slug of the program — used to render the team slug's
+   *  inline path prefix (e.g. "/programs/spring-2026/"). */
+  programSlug: string;
   node: ProgramMapNode;
+  /** Slug of the team's parent division. Used to nest the inline path
+   *  prefix as /programs/<programSlug>/<divisionSlug>/. Null for divisions
+   *  (which sit directly under /programs/<programSlug>/). */
+  parentDivisionSlug: string | null;
   canWrite: boolean;
+  /** All program slugs in use, minus the current node's slug — drives the
+   *  uniqueness checker on the Identity step. */
+  existingSlugs: Set<string>;
   onMutated: () => void;
 };
 
-type State = {
+type EditState = {
   name: string;
   slug: string;
   capacity: string;
 };
 
-export function EditNodeWizard({ open, onClose, orgSlug, programId, node, canWrite, onMutated }: EditNodeWizardProps) {
-  const toast = useToast();
+/**
+ * Edit panel for a division or team. Multi-step so each concern owns its
+ * step and the user can jump freely between them.
+ *
+ *   Division: Identity → Danger zone
+ *   Team:     Identity → Roster → Danger zone
+ */
+export function EditNodeWizard({
+  open,
+  onClose,
+  orgSlug,
+  programId,
+  programSlug,
+  node,
+  parentDivisionSlug,
+  canWrite,
+  existingSlugs,
+  onMutated
+}: EditNodeWizardProps) {
+  const { toast } = useToast();
   const { confirm } = useConfirmDialog();
   const [deleting, setDeleting] = React.useState(false);
 
-  const initialState = React.useMemo<State>(
+  // Editing this node's own slug shouldn't trip "already used" — drop it
+  // from the conflict set before passing to the validator.
+  const slugConflicts = React.useMemo(() => {
+    const next = new Set(existingSlugs);
+    next.delete(node.slug);
+    return next;
+  }, [existingSlugs, node.slug]);
+
+  const initialState = React.useMemo<EditState>(
     () => ({
       name: node.name,
       slug: node.slug,
@@ -41,11 +77,14 @@ export function EditNodeWizard({ open, onClose, orgSlug, programId, node, canWri
     [node.id, node.name, node.slug, node.capacity]
   );
 
-  const handleDelete = async () => {
+  const handleDelete = React.useCallback(async () => {
     if (!canWrite) return;
     const ok = await confirm({
       title: `Delete ${node.nodeKind} "${node.name}"?`,
-      description: "This cannot be undone. Children of this node will also be removed.",
+      description:
+        node.nodeKind === "division"
+          ? "This cannot be undone. Any teams inside this division will also be removed."
+          : "This cannot be undone.",
       confirmLabel: "Delete",
       cancelLabel: "Keep",
       variant: "destructive"
@@ -60,23 +99,165 @@ export function EditNodeWizard({ open, onClose, orgSlug, programId, node, canWri
     });
     setDeleting(false);
     if (!result.ok) {
-      toast.toast({ title: "Couldn't delete", description: result.error, variant: "destructive" });
+      toast({ title: "Couldn't delete", description: result.error, variant: "destructive" });
       return;
     }
-    toast.toast({ title: "Deleted" });
+    toast({ title: `${node.nodeKind === "division" ? "Division" : "Team"} deleted`, variant: "success" });
     onMutated();
     onClose();
-  };
+  }, [canWrite, confirm, node.id, node.name, node.nodeKind, onClose, onMutated, orgSlug, programId, toast]);
+
+  const steps: WizardStep<EditState>[] = [
+    {
+      id: "identity",
+      label: "Identity",
+      description: "Update the display name and slug.",
+      validate: (state) => {
+        const errors: Record<string, string> = {};
+        if (!state.name.trim()) errors.name = "Name is required.";
+        const slug = state.slug.trim();
+        if (!slug) {
+          errors.slug = "Slug is required.";
+        } else if (computeSlugStatus(slug, slugConflicts) !== "available") {
+          errors.slug = slugConflicts.has(slug)
+            ? "That slug is already used."
+            : "Use 2-80 lowercase letters, numbers, and hyphens.";
+        }
+        return Object.keys(errors).length ? errors : null;
+      },
+      render: ({ state, setField, fieldErrors }) => (
+        <div className="flex flex-col gap-3">
+          <FormField error={fieldErrors.name} label="Name">
+            <Input
+              disabled={!canWrite}
+              onChange={(event) => setField("name", event.target.value)}
+              value={state.name}
+            />
+          </FormField>
+          <FormField error={fieldErrors.slug} label="Slug">
+            <Input
+              disabled={!canWrite}
+              onChange={(event) => setField("slug", event.target.value)}
+              slugValidation={{
+                kind: "program-node",
+                orgSlug,
+                programSlug,
+                divisionSlug: parentDivisionSlug ?? undefined,
+                existingSlugs: slugConflicts,
+                currentSlug: node.slug
+              }}
+              value={state.slug}
+            />
+          </FormField>
+        </div>
+      )
+    },
+    {
+      id: "roster",
+      label: "Roster",
+      description: "Configure the team's roster.",
+      skipWhen: () => node.nodeKind !== "team",
+      validate: (state) => {
+        if (state.capacity.trim() === "") return null;
+        const num = Number(state.capacity);
+        return Number.isFinite(num) && num >= 0
+          ? null
+          : { capacity: "Capacity must be a non-negative number." };
+      },
+      render: ({ state, setField, fieldErrors }) => (
+        <FormField error={fieldErrors.capacity} hint="Leave blank for no cap." label="Roster capacity">
+          <Input
+            disabled={!canWrite}
+            inputMode="numeric"
+            min={0}
+            onChange={(event) => setField("capacity", event.target.value)}
+            placeholder="e.g. 12"
+            type="number"
+            value={state.capacity}
+          />
+        </FormField>
+      )
+    },
+    {
+      id: "danger",
+      label: "Danger zone",
+      description:
+        node.nodeKind === "division"
+          ? "Permanently remove this division and the teams inside it."
+          : "Permanently remove this team and its roster.",
+      skipWhen: () => !canWrite,
+      render: () => (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-text-muted">
+            {node.nodeKind === "division"
+              ? "Deleting a division also removes every team inside it. This can't be undone."
+              : "Deleting a team also removes its players and staff assignments. This can't be undone."}
+          </p>
+          <div>
+            <Button disabled={deleting} intent="delete" loading={deleting} onClick={handleDelete}>
+              Delete {node.nodeKind}
+            </Button>
+          </div>
+        </div>
+      )
+    }
+  ];
+
+  async function handleSubmit(state: EditState): Promise<CreateWizardSubmitResult> {
+    if (!canWrite) {
+      return { ok: false, message: "Read-only access." };
+    }
+    const capacity = state.capacity.trim() === "" ? null : Number(state.capacity);
+    const result = await saveProgramHierarchyAction({
+      orgSlug,
+      programId,
+      action: "update",
+      nodeId: node.id,
+      name: state.name.trim(),
+      slug: state.slug.trim(),
+      nodeKind: node.nodeKind,
+      capacity:
+        node.nodeKind === "team" && typeof capacity === "number" && Number.isFinite(capacity)
+          ? capacity
+          : null,
+      waitlistEnabled: false
+    });
+    if (!result.ok) {
+      toast({ title: "Couldn't save", description: result.error, variant: "destructive" });
+      return { ok: false, message: result.error, stepId: "identity" };
+    }
+    toast({ title: "Saved", variant: "success" });
+    onMutated();
+    return { ok: true };
+  }
 
   return (
-    <CreateWizard<State>
-      open={open}
-      onClose={onClose}
+    <CreateWizard<EditState>
+      hideCancel
+      initialState={initialState}
       mode="edit"
-      title={`${node.nodeKind === "division" ? "Division" : "Team"} settings`}
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      open={open}
+      steps={steps}
+      submitLabel="Save changes"
       subtitle={node.name}
+      title={node.nodeKind === "division" ? "Division settings" : "Team settings"}
       submitLabel="Save"
       initialState={initialState}
+      footerLeading={
+        canWrite ? (
+          <Button
+            aria-label={`Delete ${node.nodeKind}`}
+            disabled={deleting}
+            iconOnly
+            loading={deleting}
+            onClick={handleDelete}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        ) : null
+      }
       steps={[
         {
           id: "details",
@@ -117,14 +298,6 @@ export function EditNodeWizard({ open, onClose, orgSlug, programId, node, canWri
                   onChange={(event) => setField("capacity", event.target.value)}
                 />
               </FormField>
-              {canWrite ? (
-                <div className="mt-2 border-t border-border pt-3">
-                  <Button variant="ghost" onClick={handleDelete} disabled={deleting}>
-                    <Trash2 />
-                    Delete {node.nodeKind}
-                  </Button>
-                </div>
-              ) : null}
             </div>
           )
         }

@@ -25,8 +25,9 @@ import {
   createAccountProfileAction,
   removeProfileShareAction,
   shareAccountProfileAction,
-  updateAccountProfileAction
-} from "@/src/features/people/account-profiles/actions";
+  updateAccountProfileAction,
+  updateOrgAccountProfileAction
+} from "@/src/features/people/profiles/actions";
 import type {
   PeopleProfile,
   PeopleProfileAddress,
@@ -73,7 +74,7 @@ const RELATIONSHIP_OPTIONS: Array<{
   {
     value: "self",
     title: "Myself",
-    description: "This profile represents you. You can only have one Myself profile."
+    description: "This person represents you. You can only have one Myself entry."
   },
   {
     value: "guardian",
@@ -190,6 +191,14 @@ type ProfileWizardPanelProps = {
   initialState?: ProfileWizardState;
   profileId?: string;
   onSaved?: () => void;
+  /**
+   * When set, the wizard operates in org-admin mode: edits go through the
+   * org-context update action (gated by people.write) instead of the
+   * account-self action. `targetUserId` is the account being edited and
+   * is required when `orgSlug` is provided.
+   */
+  orgSlug?: string;
+  targetUserId?: string;
 };
 
 function isChildRelationship(state: ProfileWizardState) {
@@ -202,7 +211,9 @@ export function ProfileWizardPanel({
   mode,
   initialState,
   profileId,
-  onSaved
+  onSaved,
+  orgSlug,
+  targetUserId
 }: ProfileWizardPanelProps) {
   const { toast } = useToast();
   const { confirm } = useConfirmDialog();
@@ -224,7 +235,7 @@ export function ProfileWizardPanel({
       {
         id: "relationship",
         label: "Relationship",
-        description: "Who is this profile for?",
+        description: "Who are you adding?",
         // The Myself profile is auto-managed from the account — skip the
         // relationship picker entirely when editing it.
         skipWhen: (state) => state.relationshipType === "self",
@@ -247,10 +258,10 @@ export function ProfileWizardPanel({
               {fieldErrors.relationshipType ? <Alert variant="destructive">{fieldErrors.relationshipType}</Alert> : null}
               {isEdit && isSelf ? (
                 <Alert>
-                  This is your Myself profile. It mirrors your account and can't be removed.
+                  This is your Myself entry. It mirrors your account and can't be removed.
                 </Alert>
               ) : null}
-              <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Who is this profile for">
+              <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Who are you adding">
                 {visibleOptions.map((option) => (
                   <SelectionBox
                     description={option.description}
@@ -279,7 +290,7 @@ export function ProfileWizardPanel({
       {
         id: "basics",
         label: "Basic info",
-        description: "A few details about this profile.",
+        description: "A few details about this person.",
         validate: (state) => {
           const errors: Record<string, string> = {};
           if (!state.firstName.trim()) errors.firstName = "First name is required.";
@@ -403,7 +414,7 @@ export function ProfileWizardPanel({
       {
         id: "share",
         label: "Sharing",
-        description: "Invite other accounts to view or manage this profile.",
+        description: "Invite other accounts to view or manage this person.",
         // Self profiles aren't shareable — they belong to the account holder.
         skipWhen: (state) => state.relationshipType === "self",
         render: ({ state, setState }) => (
@@ -454,19 +465,35 @@ export function ProfileWizardPanel({
             .map((s) => ({ email: s.email.trim(), kinship: s.kinship }))
         });
         if (!result.ok) {
-          toast({ title: "Could not create profile", description: result.error, variant: "destructive" });
+          toast({ title: "Could not add person", description: result.error, variant: "destructive" });
           return { ok: false, message: result.error };
         }
-        toast({ title: "Profile created", variant: "success" });
+        toast({ title: "Person added", variant: "success" });
         onSaved?.();
         return { ok: true };
       }
 
       if (!profileId) {
-        return { ok: false, message: "Missing profile id." };
+        return { ok: false, message: "Missing person id." };
       }
 
-      const result = await updateAccountProfileAction({
+      const isOrgAdminMode = Boolean(orgSlug && targetUserId);
+      const result = isOrgAdminMode
+        ? await updateOrgAccountProfileAction({
+            orgSlug: orgSlug as string,
+            targetUserId: targetUserId as string,
+            profileId,
+            firstName: state.firstName,
+            lastName: state.lastName,
+            dob: state.dob || undefined,
+            sex: state.sex || undefined,
+            school: state.school || undefined,
+            grade: state.grade || undefined,
+            avatarPath: state.avatarPath || undefined,
+            address: state.address,
+            metadata
+          })
+        : await updateAccountProfileAction({
         profileId,
         firstName: state.firstName,
         lastName: state.lastName,
@@ -482,7 +509,7 @@ export function ProfileWizardPanel({
         toast({ title: "Could not save", description: result.error, variant: "destructive" });
         return { ok: false, message: result.error };
       }
-      toast({ title: "Profile updated", variant: "success" });
+      toast({ title: "Person updated", variant: "success" });
       onSaved?.();
       return { ok: true };
     }
@@ -490,7 +517,7 @@ export function ProfileWizardPanel({
 
   const headerName =
     [flow.state.firstName, flow.state.lastName].filter(Boolean).join(" ").trim() ||
-    (mode === "edit" ? "Profile" : "New profile");
+    (mode === "edit" ? "Person" : "New person");
 
   const requestClose = React.useCallback(async () => {
     if (flow.submitting) return;
@@ -554,47 +581,39 @@ export function ProfileWizardPanel({
       </div>
     ) : null;
 
-  const submitLabel = isEdit ? "Save changes" : "Create profile";
+  const submitLabel = isEdit ? "Save changes" : "Add person";
   const footer = isEdit ? (
-    <>
-      <Button disabled={flow.submitting} onClick={requestClose} type="button" variant="ghost">
-        Close
+    <div className="ml-auto flex items-center gap-2">
+      <Button
+        disabled={flow.submitting || !flow.isDirty}
+        loading={flow.submitting}
+        onClick={flow.submit}
+        type="button"
+      >
+        <Save className="h-4 w-4" />
+        {submitLabel}
       </Button>
-      <div className="ml-auto flex items-center gap-2">
-        <Button
-          disabled={flow.submitting || !flow.isDirty}
-          loading={flow.submitting}
-          onClick={flow.submit}
-          type="button"
-        >
+    </div>
+  ) : (
+    <div className="ml-auto flex items-center gap-2">
+      {!flow.isFirstStep ? (
+        <Button disabled={flow.submitting} onClick={flow.back} type="button" variant="secondary">
+          <ChevronLeft className="h-4 w-4" />
+          Back
+        </Button>
+      ) : null}
+      {flow.isLastStep ? (
+        <Button disabled={flow.submitting} loading={flow.submitting} onClick={flow.submit} type="button">
           <Save className="h-4 w-4" />
           {submitLabel}
         </Button>
-      </div>
-    </>
-  ) : (
-    <>
-      <Button intent="cancel" disabled={flow.submitting} onClick={requestClose} type="button" variant="ghost">Cancel</Button>
-      <div className="ml-auto flex items-center gap-2">
-        {!flow.isFirstStep ? (
-          <Button disabled={flow.submitting} onClick={flow.back} type="button" variant="secondary">
-            <ChevronLeft className="h-4 w-4" />
-            Back
-          </Button>
-        ) : null}
-        {flow.isLastStep ? (
-          <Button disabled={flow.submitting} loading={flow.submitting} onClick={flow.submit} type="button">
-            <Save className="h-4 w-4" />
-            {submitLabel}
-          </Button>
-        ) : (
-          <Button disabled={flow.submitting} onClick={flow.next} type="button">
-            Next
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-    </>
+      ) : (
+        <Button disabled={flow.submitting} onClick={flow.next} type="button">
+          Next
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
   );
 
   return (
@@ -635,7 +654,7 @@ export function ProfileWizardPanel({
       panelKey="account-profile-wizard"
       pushMode="content"
       subtitle={flow.currentStep?.description}
-      title={mode === "create" ? "New profile" : "Edit profile"}
+      title={headerName}
     >
       <div className="space-y-2">
         {stepper}
@@ -703,7 +722,7 @@ function ShareEditor({
           accountDisplayName: result.data.accountDisplayName ?? null
         }
       ]);
-      toast({ title: "Profile shared", variant: "success" });
+      toast({ title: "Access granted", variant: "success" });
     } else {
       onChange([...shares, { email: trimmed, kinship }]);
     }
@@ -730,8 +749,8 @@ function ShareEditor({
   return (
     <div className="space-y-3">
       <p className="text-xs text-text-muted">
-        Share this profile with another account by email. If they don't have an account yet, we'll mark
-        it as a pending invite tied to that email.
+        Give another account access to manage this person by email. If they don't have an account yet,
+        we'll mark it as a pending invite tied to that email.
       </p>
       {error ? <Alert variant="destructive">{error}</Alert> : null}
       <FormField label="Email">
@@ -752,7 +771,7 @@ function ShareEditor({
           value={email}
         />
       </FormField>
-      <FormField label="Their relationship to profile">
+      <FormField label="Their relationship to this person">
         <Select
           disabled={submitting}
           onChange={(e) => {

@@ -177,7 +177,7 @@ export function getOrgAdminNavItems(_orgSlug: string, visibility?: OrgAdminNavVi
       key: "people",
       label: "People",
       href: "/manage/people",
-      description: "Manage accounts, linked player/staff profiles, and relationships.",
+      description: "Manage accounts and the people they manage.",
       icon: "users",
       showInHome: true
     },
