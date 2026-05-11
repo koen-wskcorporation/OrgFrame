@@ -3,34 +3,50 @@
 import * as React from "react";
 import { Check, ChevronDown, Settings2 } from "lucide-react";
 import { Popover } from "./popover";
-import { resolveStatusColor, type StatusColor } from "./status-palette";
+import { resolveStatusColor, type StatusColor, type StatusColorDef } from "./status-palette";
 import { cn } from "./utils";
 
 // Color: any palette slug, plus legacy alias `neutral` (mapped to `slate`).
-export type ChipColor = StatusColor | "neutral";
+// `accent` resolves to the org's brand accent CSS variables, not a fixed slug.
+export type ChipColor = StatusColor | "neutral" | "accent";
 
 const LEGACY_COLOR_ALIAS: Record<string, StatusColor> = {
   neutral: "slate"
 };
 
-// Semantic shortcuts.
-export type ChipVariant = "neutral" | "success" | "warning" | "destructive";
+// Semantic shortcuts. `dynamic` paints with the org's accent color — use it
+// for chips that label org-defined / dynamic content so a single rule keeps
+// every "dynamic" badge in the app branded consistently.
+export type ChipVariant = "neutral" | "success" | "warning" | "destructive" | "dynamic";
 
-const VARIANT_ALIAS: Record<ChipVariant, StatusColor> = {
+const VARIANT_ALIAS: Record<Exclude<ChipVariant, "dynamic">, StatusColor> = {
   neutral: "slate",
   success: "emerald",
   warning: "amber",
   destructive: "rose"
 };
 
-function resolveSlug(color?: ChipColor | string | null, variant?: ChipVariant): StatusColor {
+// Synthetic def that paints from the `accent` Tailwind colour, which is wired
+// to `--accent` and overridden per-org. Not a member of the persisted
+// `StatusColor` palette; only reachable via the `accent` color or `dynamic`
+// variant on the Chip itself.
+const ACCENT_DEF: StatusColorDef = {
+  slug: "slate",
+  label: "Accent",
+  chip: "border-accent/30 bg-accent/10 text-accent",
+  dot: "bg-accent",
+  swatch: "bg-accent"
+};
+
+function resolveDef(color?: ChipColor | string | null, variant?: ChipVariant): StatusColorDef {
+  if (color === "accent") return ACCENT_DEF;
+  if (variant === "dynamic") return ACCENT_DEF;
   if (color) {
     const aliased = LEGACY_COLOR_ALIAS[color];
-    if (aliased) return aliased;
-    return color as StatusColor;
+    return resolveStatusColor(aliased ?? (color as StatusColor));
   }
-  if (variant) return VARIANT_ALIAS[variant];
-  return "slate";
+  if (variant) return resolveStatusColor(VARIANT_ALIAS[variant]);
+  return resolveStatusColor("slate");
 }
 
 const SHELL_BASE =
@@ -144,8 +160,7 @@ export function Chip(props: ChipProps) {
     return <ChipPickerImpl {...picker} className={className} status={status} />;
   }
 
-  const slug = resolveSlug(color, variant);
-  const def = resolveStatusColor(slug);
+  const def = resolveDef(color, variant);
   const dotShown = resolveDot(status, showDot, color, variant);
   const body = renderChipChildren(def, dotShown, iconOnly, label, children);
 

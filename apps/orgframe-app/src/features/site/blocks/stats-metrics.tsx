@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@orgframe/ui/primitives/card";
 import { Button } from "@orgframe/ui/primitives/button";
 import { FormField } from "@orgframe/ui/primitives/form-field";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { Input } from "@orgframe/ui/primitives/input";
 import { asObject, asText, createId } from "@/src/features/site/blocks/helpers";
 import type { BlockContext, BlockEditorProps, BlockRenderProps, StatsMetricsBlockConfig } from "@/src/features/site/types";
@@ -39,10 +40,22 @@ export function sanitizeStatsMetricsConfig(config: unknown, context: BlockContex
   };
 }
 
-export function StatsMetricsBlockRender({ block }: BlockRenderProps<"stats_metrics">) {
+export function StatsMetricsBlockRender({ block, isEditing, onChange }: BlockRenderProps<"stats_metrics">) {
+  const canInlineEdit = isEditing && Boolean(onChange);
   return (
     <section className="space-y-4">
-      <h2 className="text-2xl font-semibold text-text">{block.config.title}</h2>
+      {canInlineEdit ? (
+        <InlineText
+          as="h2"
+          className="text-2xl font-semibold text-text"
+          maxLength={120}
+          onCommit={(next) => onChange?.({ ...block, config: { ...block.config, title: next } })}
+          placeholder="Section title"
+          value={block.config.title}
+        />
+      ) : (
+        <h2 className="text-2xl font-semibold text-text">{block.config.title}</h2>
+      )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {block.config.items.map((item) => (
           <Card key={item.id}>
@@ -65,9 +78,6 @@ export function StatsMetricsBlockEditor({ block, onChange }: BlockEditorProps<"s
 
   return (
     <div className="space-y-4">
-      <FormField label="Section title">
-        <Input onChange={(event) => updateConfig({ title: event.target.value })} value={block.config.title} />
-      </FormField>
       <div className="space-y-3">
         {block.config.items.map((item) => (
           <Card key={item.id}>

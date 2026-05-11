@@ -15,6 +15,19 @@ function titleFromSegments(segments: string[]) {
     .join(" ");
 }
 
+/**
+ * If the URL ends in `/edit`, treat that as the website manager's "open in
+ * edit mode" handoff: strip the segment and tell the renderer to call
+ * `enterEditMode()` on mount. The "edit" slug is reserved so this never
+ * collides with a user-defined page.
+ */
+function takeEditSuffix(segments: string[]): { segments: string[]; editing: boolean } {
+  if (segments.length > 0 && segments[segments.length - 1].toLowerCase() === "edit") {
+    return { segments: segments.slice(0, -1), editing: true };
+  }
+  return { segments, editing: false };
+}
+
 async function resolveSlug(orgSlug: string, segments: string[]) {
   const urlPath = "/" + segments.map((s) => s.toLowerCase()).join("/");
   if (urlPath === "/" || urlPath === "/home") {
@@ -30,7 +43,7 @@ export async function generateMetadata({
   params: Promise<{ orgSlug: string; slug: string[] }>;
 }): Promise<Metadata> {
   const { orgSlug, slug } = await params;
-  const segments = slug ?? [];
+  const { segments } = takeEditSuffix(slug ?? []);
   const resolved = await resolveSlug(orgSlug, segments);
 
   if (resolved.kind !== "page") {
@@ -70,10 +83,11 @@ export default async function OrgPublicPageBySlug({
   params: Promise<{ orgSlug: string; slug: string[] }>;
 }) {
   const { orgSlug, slug } = await params;
-  const segments = slug ?? [];
+  const { segments, editing } = takeEditSuffix(slug ?? []);
 
   if (segments.length === 1 && segments[0].toLowerCase() === "home") {
-    redirect(`/${orgSlug}`);
+    // /orgSlug/home → /orgSlug; /orgSlug/home/edit → /orgSlug/edit.
+    redirect(editing ? `/${orgSlug}/edit` : `/${orgSlug}`);
   }
 
   const resolved = await resolveSlug(orgSlug, segments);
@@ -97,6 +111,7 @@ export default async function OrgPublicPageBySlug({
 
   return (
     <OrgSitePage
+      autoStartEditing={editing}
       canEdit={pageData.canEdit}
       initialBlocks={pageData.blocks}
       initialPage={pageData.page}

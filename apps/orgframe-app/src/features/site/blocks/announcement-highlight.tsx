@@ -1,10 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Button } from "@orgframe/ui/primitives/button";
-import { FormField } from "@orgframe/ui/primitives/form-field";
-import { Input } from "@orgframe/ui/primitives/input";
-import { RichTextEditor } from "@/src/features/core/editor/components/RichTextEditor";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { asObject, asText, createId } from "@/src/features/site/blocks/helpers";
-import { sanitizeRichTextHtml } from "@/src/features/site/blocks/rich-text";
+import { plainTextToRichTextHtml, richTextHtmlToPlainText, sanitizeRichTextHtml } from "@/src/features/site/blocks/rich-text";
 import type { AnnouncementHighlightBlockConfig, BlockContext, BlockEditorProps, BlockRenderProps } from "@/src/features/site/types";
 
 function defaultConfig(_context: BlockContext): AnnouncementHighlightBlockConfig {
@@ -44,19 +42,73 @@ export function sanitizeAnnouncementHighlightConfig(config: unknown, context: Bl
   };
 }
 
-export function AnnouncementHighlightBlockRender({ block }: BlockRenderProps<"announcement_highlight">) {
+export function AnnouncementHighlightBlockRender({ block, isEditing, onChange }: BlockRenderProps<"announcement_highlight">) {
+  const canInlineEdit = isEditing && Boolean(onChange);
+  const updateItem = (itemId: string, patch: Partial<AnnouncementHighlightBlockConfig["items"][number]>) => {
+    if (!onChange) return;
+    onChange({
+      ...block,
+      config: {
+        ...block.config,
+        items: block.config.items.map((entry) => (entry.id === itemId ? { ...entry, ...patch } : entry))
+      }
+    });
+  };
+
   return (
     <section className="space-y-4">
-      <h2 className="text-2xl font-semibold text-text">{block.config.title}</h2>
+      {canInlineEdit ? (
+        <InlineText
+          as="h2"
+          className="text-2xl font-semibold text-text"
+          maxLength={120}
+          onCommit={(next) => onChange?.({ ...block, config: { ...block.config, title: next } })}
+          placeholder="Section title"
+          value={block.config.title}
+        />
+      ) : (
+        <h2 className="text-2xl font-semibold text-text">{block.config.title}</h2>
+      )}
       <div className="grid gap-3 md:grid-cols-2">
         {block.config.items.map((item) => (
           <Card key={item.id}>
             <CardHeader>
-              <CardTitle className="text-base">{item.title}</CardTitle>
+              {canInlineEdit ? (
+                <InlineText
+                  as="h3"
+                  className="text-base font-semibold"
+                  maxLength={120}
+                  onCommit={(next) => updateItem(item.id, { title: next })}
+                  placeholder="Announcement title"
+                  value={item.title}
+                />
+              ) : (
+                <CardTitle className="text-base">{item.title}</CardTitle>
+              )}
             </CardHeader>
             <CardContent className="space-y-2">
-              {item.dateLabel ? <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{item.dateLabel}</p> : null}
-              <div className="prose max-w-none text-sm text-text-muted" dangerouslySetInnerHTML={{ __html: item.body }} />
+              {canInlineEdit ? (
+                <InlineText
+                  className="text-xs font-semibold uppercase tracking-wide text-text-muted"
+                  maxLength={60}
+                  onCommit={(next) => updateItem(item.id, { dateLabel: next })}
+                  placeholder="Date label (optional)"
+                  value={item.dateLabel}
+                />
+              ) : item.dateLabel ? (
+                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{item.dateLabel}</p>
+              ) : null}
+              {canInlineEdit ? (
+                <InlineText
+                  multiline
+                  className="prose max-w-none text-sm text-text-muted"
+                  onCommit={(next) => updateItem(item.id, { body: plainTextToRichTextHtml(next) })}
+                  placeholder="Body"
+                  value={richTextHtmlToPlainText(item.body)}
+                />
+              ) : (
+                <div className="prose max-w-none text-sm text-text-muted" dangerouslySetInnerHTML={{ __html: item.body }} />
+              )}
             </CardContent>
           </Card>
         ))}
@@ -65,6 +117,14 @@ export function AnnouncementHighlightBlockRender({ block }: BlockRenderProps<"an
   );
 }
 
+/**
+ * Announcement-highlight settings editor.
+ *
+ * The section title, per-item title, date label, and body are all
+ * inline-editable on the page itself (see `AnnouncementHighlightBlockRender`)
+ * so this panel only manages the count of announcements — the user adds or
+ * removes cards here, then fills them in directly on the page.
+ */
 export function AnnouncementHighlightBlockEditor({ block, onChange }: BlockEditorProps<"announcement_highlight">) {
   function updateConfig(patch: Partial<AnnouncementHighlightBlockConfig>) {
     onChange({
@@ -78,54 +138,12 @@ export function AnnouncementHighlightBlockEditor({ block, onChange }: BlockEdito
 
   return (
     <div className="space-y-4">
-      <FormField label="Section title">
-        <Input onChange={(event) => updateConfig({ title: event.target.value })} value={block.config.title} />
-      </FormField>
+      <p className="text-sm text-text-muted">
+        Tap the section title, card titles, date labels, and bodies on the page to
+        edit them in place. Use the controls below to add or remove cards.
+      </p>
 
-      <div className="space-y-3">
-        {block.config.items.map((item) => (
-          <Card key={item.id}>
-            <CardHeader>
-              <CardTitle className="text-sm">Announcement</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <FormField label="Title">
-                <Input
-                  onChange={(event) => {
-                    updateConfig({
-                      items: block.config.items.map((entry) => (entry.id === item.id ? { ...entry, title: event.target.value } : entry))
-                    });
-                  }}
-                  value={item.title}
-                />
-              </FormField>
-              <FormField label="Date label">
-                <Input
-                  onChange={(event) => {
-                    updateConfig({
-                      items: block.config.items.map((entry) => (entry.id === item.id ? { ...entry, dateLabel: event.target.value } : entry))
-                    });
-                  }}
-                  value={item.dateLabel}
-                />
-              </FormField>
-              <FormField label="Body">
-                <RichTextEditor
-                  minHeight={120}
-                  onChange={(next) => {
-                    updateConfig({
-                      items: block.config.items.map((entry) => (entry.id === item.id ? { ...entry, body: next } : entry))
-                    });
-                  }}
-                  value={item.body}
-                />
-              </FormField>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button
           disabled={block.config.items.length >= 6}
           onClick={() => {

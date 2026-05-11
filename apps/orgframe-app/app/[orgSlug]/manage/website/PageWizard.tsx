@@ -7,15 +7,18 @@ import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { Chip } from "@orgframe/ui/primitives/chip";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
+import { SelectionBox } from "@orgframe/ui/primitives/selection-box";
 import {
   CreateWizard,
   type CreateWizardSubmitResult,
   type WizardStep
 } from "@/src/shared/components/CreateWizard";
 import { sanitizePageSlug } from "@/src/features/site/blocks/helpers";
+import { DYNAMIC_PAGE_PRESETS } from "@/src/features/site/dynamicPagePresets";
 import type { OrgManagePage, OrgSiteStructureItem } from "@/src/features/site/types";
 import {
   createWebsiteDropdownAction,
+  createWebsiteDynamicPageAction,
   createWebsiteExternalLinkAction,
   createWebsitePageAction,
   updateWebsiteItemAction,
@@ -25,9 +28,13 @@ import { TypePicker, type ItemType } from "./TypePicker";
 
 export type { ItemType };
 
-// One unified state shape covers all three item types. Fields that don't apply
+// One unified state shape covers all four item types. Fields that don't apply
 // to the current `itemType` are simply ignored at submit time. SEO fields have
 // been removed for now — they can be re-added later as a separate step.
+//
+// `showInMenu` no longer lives in state: the data model couples it to
+// `isPublished`, and the user only ever toggles published status. Anywhere
+// the action layer needs `show_in_menu`, it derives it from `isPublished`.
 type CreateState = {
   itemType: ItemType;
   title: string;
@@ -35,14 +42,14 @@ type CreateState = {
   url: string; // link only
   openInNewTab: boolean; // link only
   isPublished: boolean;
-  showInMenu: boolean;
+  /** Selected predefined dynamic page (only used when itemType === "dynamic"). */
+  dynamicPresetKey: string | null;
 };
 
 type EditState = {
   title: string;
   slug: string;
   isPublished: boolean;
-  showInMenu: boolean;
 };
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -106,9 +113,9 @@ function buildParentPath(items: OrgSiteStructureItem[], parentId: string | null)
   return path;
 }
 
-function buildPrefix(displayHost: string, parentPath: string[]) {
+function buildPrefix(_displayHost: string, parentPath: string[]) {
   const segments = parentPath.filter(Boolean);
-  return `${displayHost}/${segments.length > 0 ? `${segments.join("/")}/` : ""}`;
+  return `/${segments.length > 0 ? `${segments.join("/")}/` : ""}`;
 }
 
 // ─── Status-chip toggle ──────────────────────────────────────────────────────
@@ -119,9 +126,11 @@ const PUBLISH_OPTIONS = [
 ];
 
 function PublishStatusChip({
+  disabled,
   isPublished,
   onChange
 }: {
+  disabled?: boolean;
   isPublished: boolean;
   onChange: (next: boolean) => void;
 }) {
@@ -129,6 +138,7 @@ function PublishStatusChip({
     <Chip
       status
       picker={{
+        disabled,
         onChange: (value) => onChange(value === "published"),
         options: PUBLISH_OPTIONS,
         value: isPublished ? "published" : "unpublished"
@@ -167,11 +177,33 @@ function CreateItemWizard({
       url: "",
       openInNewTab: true,
       isPublished: true,
-      showInMenu: true
+      dynamicPresetKey: null
     }),
     // Reset whenever the dialog opens (so re-opening gives a clean form).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [open, defaultType, defaultParentId]
+  );
+
+  // A preset's slug is reserved AND single-instance: once a Programs page
+  // exists, the Programs preset shouldn't be offered again. Hide any preset
+  // whose target slug is already used by an existing structure item or by
+  // its linked page.
+  const usedDynamicPresetKeys = React.useMemo(() => {
+    const used = new Set<string>();
+    for (const preset of DYNAMIC_PAGE_PRESETS) {
+      const slugInUse = parentItems.some((item) => {
+        if (item.slug === preset.slug) return true;
+        const linked = item.linkTargetJson?.pageSlug;
+        return typeof linked === "string" && linked === preset.slug;
+      });
+      if (slugInUse) used.add(preset.key);
+    }
+    return used;
+  }, [parentItems]);
+
+  const availableDynamicPresets = React.useMemo(
+    () => DYNAMIC_PAGE_PRESETS.filter((p) => !usedDynamicPresetKeys.has(p.key)),
+    [usedDynamicPresetKeys]
   );
 
   const steps: WizardStep<CreateState>[] = [
@@ -184,10 +216,56 @@ function CreateItemWizard({
       )
     },
     {
+      // Dynamic-only step: pick which predefined dynamic page to add. Skipped
+      // entirely for static pages, dropdowns, and external links.
+      id: "preset",
+      label: "Pick page",
+      description: "Pick a predefined dynamic page to add.",
+      skipWhen: (state) => state.itemType !== "dynamic",
+      validate: (state) => {
+        if (state.itemType !== "dynamic") return null;
+        if (!state.dynamicPresetKey) {
+          return { dynamicPresetKey: "Pick which dynamic page to add." };
+        }
+        return null;
+      },
+      render: ({ state, setField, fieldErrors }) => (
+        <div className="space-y-3">
+          {availableDynamicPresets.length === 0 ? (
+            <div className="rounded-control border bg-surface px-4 py-6 text-center text-sm text-text-muted">
+              You&apos;ve already added every dynamic page. Pick a different type, or
+              edit the existing one from the list.
+            </div>
+          ) : (
+            <div className="grid gap-2" role="radiogroup">
+              {availableDynamicPresets.map((preset) => (
+                <SelectionBox
+                  description={preset.description}
+                  key={preset.key}
+                  label={preset.title}
+                  onSelectedChange={(next) => {
+                    if (next) setField("dynamicPresetKey", preset.key);
+                  }}
+                  selected={state.dynamicPresetKey === preset.key}
+                />
+              ))}
+            </div>
+          )}
+          {fieldErrors.dynamicPresetKey ? (
+            <div className="text-xs text-destructive">{fieldErrors.dynamicPresetKey}</div>
+          ) : null}
+        </div>
+      )
+    },
+    {
       id: "details",
       label: "Details",
       description: "Title and destination.",
+      // Dynamic pages get their title/slug from the preset itself, so the
+      // details step is irrelevant for them.
+      skipWhen: (state) => state.itemType === "dynamic",
       validate: (state) => {
+        if (state.itemType === "dynamic") return null;
         const errors: Record<string, string> = {};
         if (state.title.trim().length < 1) {
           errors.title = "A title is required.";
@@ -262,51 +340,33 @@ function CreateItemWizard({
         </div>
       )
     },
-    {
-      id: "visibility",
-      label: "Visibility",
-      description: "Set the publish status and choose whether it appears in the navigation.",
-      render: ({ state, setField }) => (
-        <div className="space-y-5">
-          {state.itemType === "page" ? (
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-text">Status</div>
-              <PublishStatusChip
-                isPublished={state.isPublished}
-                onChange={(next) => setField("isPublished", next)}
-              />
-              <p className="text-xs text-text-muted">
-                Unpublished items are saved but won&apos;t render publicly. Click the chip to change.
-              </p>
-            </div>
-          ) : null}
-          <label className="flex items-start gap-2 text-sm">
-            <Checkbox
-              checked={state.showInMenu}
-              className="mt-0.5"
-              onCheckedChange={(checked) => setField("showInMenu", checked)}
-            />
-            <span>
-              <span className="font-medium text-text">Show in navigation</span>
-              <span className="block text-xs text-text-muted">
-                Add this to your site&apos;s top navigation. Hidden items are still reachable by URL.
-              </span>
-            </span>
-          </label>
-        </div>
-      )
-    }
+    // Visibility step removed by convention — status now lives inline with the
+    // wizard title (see `packages/ui/CLAUDE.md`). The header chip drives
+    // state.isPublished and is rendered via `headerTitleAccessory` below.
   ];
 
   const handleSubmit = async (state: CreateState): Promise<CreateWizardSubmitResult> => {
     const parentId = defaultParentId;
 
+    if (state.itemType === "dynamic") {
+      if (!state.dynamicPresetKey) {
+        return { ok: false, message: "Pick which dynamic page to add.", stepId: "preset" };
+      }
+      const res = await createWebsiteDynamicPageAction({
+        orgSlug,
+        parentId,
+        presetKey: state.dynamicPresetKey,
+        isPublished: state.isPublished
+      });
+      onResult(res);
+      return res.ok ? { ok: true } : { ok: false, message: res.error, stepId: "preset" };
+    }
+
     if (state.itemType === "dropdown") {
       const res = await createWebsiteDropdownAction({
         orgSlug,
         parentId,
-        title: state.title.trim(),
-        showInMenu: state.showInMenu
+        title: state.title.trim()
       });
       onResult(res);
       return res.ok ? { ok: true } : { ok: false, message: res.error, stepId: "details" };
@@ -318,8 +378,7 @@ function CreateItemWizard({
         parentId,
         title: state.title.trim(),
         url: state.url.trim(),
-        openInNewTab: state.openInNewTab,
-        showInMenu: state.showInMenu
+        openInNewTab: state.openInNewTab
       });
       onResult(res);
       return res.ok ? { ok: true } : { ok: false, message: res.error, stepId: "details" };
@@ -332,8 +391,7 @@ function CreateItemWizard({
       parentId,
       title: state.title.trim(),
       slug,
-      isPublished: state.isPublished,
-      showInMenu: state.showInMenu
+      isPublished: state.isPublished
     });
     if (!result.ok) {
       return { ok: false, message: result.error, stepId: "details" };
@@ -345,6 +403,17 @@ function CreateItemWizard({
   return (
     <CreateWizard<CreateState>
       draftId={`website-create.${orgSlug}`}
+      headerTitleAccessory={({ state, setField }) => {
+        // Dropdowns / external links don't have a public surface to publish
+        // to, so no status to control.
+        if (state.itemType === "dropdown" || state.itemType === "link") return null;
+        return (
+          <PublishStatusChip
+            isPublished={state.isPublished}
+            onChange={(next) => setField("isPublished", next)}
+          />
+        );
+      }}
       initialState={initialState}
       mode="create"
       onClose={onClose}
@@ -385,8 +454,7 @@ function EditPageWizard({
     () => ({
       title: editingItem.title,
       slug: linkedSlug ?? "",
-      isPublished: editingItem.isPublished,
-      showInMenu: editingItem.showInMenu
+      isPublished: editingItem.isPublished
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [editingItem.id]
@@ -435,47 +503,24 @@ function EditPageWizard({
         </div>
       )
     },
+    // Status moved to the header chip (see `headerTitleAccessory` below) —
+    // no separate visibility step. What's left is the danger-zone Delete
+    // button, which lives as its own step so it doesn't clutter Identity.
     {
-      id: "visibility",
-      label: "Visibility",
-      description: "Set the publish status and choose whether it appears in the navigation.",
-      render: ({ state, setField }) => (
-        <div className="space-y-5">
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-text">Status</div>
-            <PublishStatusChip
-              isPublished={state.isPublished}
-              onChange={(next) => setField("isPublished", next)}
-            />
-            <p className="text-xs text-text-muted">
-              Unpublished items are saved but won&apos;t render publicly. Click the chip to change.
-            </p>
-          </div>
-          <label className="flex items-start gap-2 text-sm">
-            <Checkbox
-              checked={state.showInMenu}
-              className="mt-0.5"
-              onCheckedChange={(checked) => setField("showInMenu", checked)}
-            />
-            <span>
-              <span className="font-medium text-text">Show in navigation</span>
-              <span className="block text-xs text-text-muted">
-                Add this page to your site&apos;s top navigation.
-              </span>
-            </span>
-          </label>
-          {onDelete ? (
-            <div className="space-y-2 border-t border-border pt-4">
-              <div className="text-sm font-medium text-text">Danger zone</div>
-              <p className="text-xs text-text-muted">
-                Removing this page deletes it permanently along with any blocks it contains.
-              </p>
-              <Button onClick={() => void onDelete()} size="sm" variant="danger">
-                <Trash2 className="h-4 w-4" />
-                Delete page
-              </Button>
-            </div>
-          ) : null}
+      id: "danger",
+      label: "Danger zone",
+      description: "Permanent actions for this page.",
+      skipWhen: () => !onDelete || slugLocked,
+      render: () => (
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-text">Delete this page</div>
+          <p className="text-xs text-text-muted">
+            Removing this page deletes it permanently along with any blocks it contains.
+          </p>
+          <Button onClick={() => void onDelete?.()} size="sm" variant="danger">
+            <Trash2 className="h-4 w-4" />
+            Delete page
+          </Button>
         </div>
       )
     }
@@ -485,8 +530,10 @@ function EditPageWizard({
     const slug = slugLocked ? "home" : sanitizePageSlug(state.slug.trim() || state.title);
     const patch: Parameters<typeof updateWebsiteItemAction>[0]["patch"] = {
       title: state.title.trim(),
-      isPublished: state.isPublished,
-      showInMenu: state.showInMenu
+      // Home is always published; force-true so a stale wizard state can't
+      // smuggle false through. Show-in-menu is no longer a separate field —
+      // the action couples it to isPublished server-side.
+      isPublished: slugLocked ? true : state.isPublished
     };
     if (!slugLocked && slug !== linkedSlug) {
       patch.slug = slug;
@@ -499,6 +546,13 @@ function EditPageWizard({
   return (
     <CreateWizard<EditState>
       hideCancel
+      headerTitleAccessory={({ state, setField }) => (
+        <PublishStatusChip
+          disabled={slugLocked}
+          isPublished={state.isPublished}
+          onChange={(next) => setField("isPublished", next)}
+        />
+      )}
       initialState={initialState}
       mode="edit"
       onClose={onClose}
@@ -506,7 +560,7 @@ function EditPageWizard({
       open={open}
       steps={steps}
       submitLabel="Save"
-      subtitle="Update title, URL, and visibility."
+      subtitle="Update title or URL."
       title={`Edit "${editingItem.title}"`}
     />
   );

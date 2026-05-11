@@ -4,9 +4,7 @@ import { AssetTile } from "@orgframe/ui/primitives/asset-tile";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { ButtonListEditor } from "@/src/features/core/editor/buttons/ButtonListEditor";
-import { RichTextEditor } from "@/src/features/core/editor/components/RichTextEditor";
 import { FormField } from "@orgframe/ui/primitives/form-field";
-import { Input } from "@orgframe/ui/primitives/input";
 import { getOrgSiteAssetPublicUrl } from "@/src/features/site/storage";
 import type { BlockEditorProps, CtaCardBlockConfig } from "@/src/features/site/types";
 
@@ -25,24 +23,6 @@ export function CtaCardBlockEditorClient({ block, onChange, context }: BlockEdit
 
   return (
     <div className="space-y-4">
-      <FormField label="Heading">
-        <Input
-          onChange={(event) => {
-            updateConfig({ heading: event.target.value });
-          }}
-          value={block.config.heading}
-        />
-      </FormField>
-      <FormField label="Body">
-        <RichTextEditor
-          minHeight={130}
-          onChange={(next) => {
-            updateConfig({ body: next });
-          }}
-          value={block.config.body}
-        />
-      </FormField>
-
       <FormField label="Accent highlight">
         <label className="inline-flex items-center gap-2 rounded-control border bg-surface px-3 py-2 text-sm">
           <Checkbox

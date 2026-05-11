@@ -1,9 +1,9 @@
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { FormField } from "@orgframe/ui/primitives/form-field";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Select } from "@orgframe/ui/primitives/select";
-import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { asBody, asObject, asText } from "@/src/features/site/blocks/helpers";
 import type {
@@ -81,9 +81,12 @@ function getReservationDateKey(startsAtUtc: string, timezone: string) {
 
 export function FacilityAvailabilityCalendarBlockRender({
   block,
-  runtimeData
+  runtimeData,
+  isEditing,
+  onChange
 }: BlockRenderProps<"facility_availability_calendar">) {
   const snapshot = runtimeData.facilityAvailability;
+  const canInlineEdit = isEditing && Boolean(onChange);
 
   if (!snapshot) {
     return (
@@ -117,10 +120,32 @@ export function FacilityAvailabilityCalendarBlockRender({
     <section id="facility-availability-calendar">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          {canInlineEdit ? (
+            <InlineText
+              as="h3"
+              className="text-2xl font-semibold leading-tight tracking-tight text-text"
+              maxLength={120}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, title: next } })}
+              placeholder="Title"
+              value={block.config.title}
+            />
+          ) : (
+            <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          {canInlineEdit ? (
+            <InlineText
+              multiline
+              className="text-sm text-text-muted md:text-base"
+              maxLength={500}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, body: next } })}
+              placeholder="Body"
+              value={block.config.body}
+            />
+          ) : (
+            <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          )}
 
           {sortedKeys.length === 0 ? <Alert variant="info">{block.config.emptyMessage}</Alert> : null}
           <div className="space-y-4">
@@ -180,14 +205,6 @@ export function FacilityAvailabilityCalendarBlockEditor({
 
   return (
     <div className="space-y-4">
-      <FormField label="Title">
-        <Input onChange={(event) => updateConfig({ title: event.target.value })} value={block.config.title} />
-      </FormField>
-
-      <FormField label="Body">
-        <Textarea className="min-h-[90px]" onChange={(event) => updateConfig({ body: event.target.value })} value={block.config.body} />
-      </FormField>
-
       <FormField label="Default calendar window">
         <Select
           onChange={(event) =>

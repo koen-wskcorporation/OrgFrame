@@ -2,9 +2,8 @@ import { Button } from "@orgframe/ui/primitives/button";
 import { Alert } from "@orgframe/ui/primitives/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { FormField } from "@orgframe/ui/primitives/form-field";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { Select } from "@orgframe/ui/primitives/select";
-import { Textarea } from "@orgframe/ui/primitives/textarea";
-import { Input } from "@orgframe/ui/primitives/input";
 import { LogIn } from "lucide-react";
 import { asBody, asObject, asText } from "@/src/features/site/blocks/helpers";
 import { RegistrationFormClient } from "@/src/features/forms/components/RegistrationFormClient";
@@ -42,20 +41,43 @@ function getPagePath(context: BlockContext) {
   return `/${context.orgSlug}/${context.pageSlug}`;
 }
 
-export function FormEmbedBlockRender({ block, context, runtimeData, isEditing }: BlockRenderProps<"form_embed">) {
+export function FormEmbedBlockRender({ block, context, runtimeData, isEditing, onChange }: BlockRenderProps<"form_embed">) {
   const formRuntime = runtimeData.formEmbed;
   const publishedForms = formRuntime?.publishedForms ?? [];
   const selectedForm = publishedForms.find((form) => form.id === block.config.formId) ?? null;
   const requireSignIn = selectedForm ? selectedForm.settingsJson.requireSignIn !== false : true;
+  const canInlineEdit = isEditing && Boolean(onChange);
 
   return (
     <section id="form-embed">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          {canInlineEdit ? (
+            <InlineText
+              as="h3"
+              className="text-2xl font-semibold leading-tight tracking-tight text-text"
+              maxLength={120}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, title: next } })}
+              placeholder="Title"
+              value={block.config.title}
+            />
+          ) : (
+            <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          {canInlineEdit ? (
+            <InlineText
+              multiline
+              className="text-sm text-text-muted md:text-base"
+              maxLength={320}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, body: next } })}
+              placeholder="Body"
+              value={block.config.body}
+            />
+          ) : (
+            <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          )}
 
           {!selectedForm ? (
             <Alert variant="info">Choose a published form in block settings to display it here.</Alert>
@@ -102,25 +124,6 @@ export function FormEmbedBlockEditor({ block, onChange, runtimeData }: BlockEdit
 
   return (
     <div className="space-y-4">
-      <FormField label="Title">
-        <Input
-          onChange={(event) => {
-            updateConfig({ title: event.target.value });
-          }}
-          value={block.config.title}
-        />
-      </FormField>
-
-      <FormField label="Body">
-        <Textarea
-          className="min-h-[90px]"
-          onChange={(event) => {
-            updateConfig({ body: event.target.value });
-          }}
-          value={block.config.body}
-        />
-      </FormField>
-
       <FormField label="Published form">
         <Select
           disabled={formOptions.length === 0}

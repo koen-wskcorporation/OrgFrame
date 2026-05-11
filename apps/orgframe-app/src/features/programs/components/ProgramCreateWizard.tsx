@@ -3,6 +3,7 @@
 import * as React from "react";
 import { AssetTile } from "@orgframe/ui/primitives/asset-tile";
 import { CalendarPicker } from "@orgframe/ui/primitives/calendar-picker";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { FormField } from "@orgframe/ui/primitives/form-field";
 import { Input } from "@orgframe/ui/primitives/input";
 import { Select } from "@orgframe/ui/primitives/select";
@@ -25,6 +26,15 @@ export type ProgramCreateInput = {
 type WizardState = ProgramCreateInput;
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+// Header status-chip options. Matches the ProgramCreateInput["status"] union
+// 1:1. Colours follow the convention from the website manager: emerald for
+// the "live" state, slate for unpublished/inactive, rose for archived.
+const PROGRAM_STATUS_OPTIONS = [
+  { value: "published", label: "Published", color: "emerald" as const },
+  { value: "draft", label: "Draft", color: "slate" as const },
+  { value: "archived", label: "Archived", color: "rose" as const }
+];
 
 function slugify(value: string) {
   return value
@@ -164,21 +174,10 @@ export function ProgramCreateWizard({ open, onClose, orgSlug, canWrite = true, o
     {
       id: "details",
       label: "Details",
-      description: "Add a description, cover photo, and publication status.",
+      description: "Add a description and cover photo.",
+      // Status moved to the header chip — see `headerTitleAccessory` below.
       render: ({ state, setField }) => (
         <div className="space-y-4">
-          <FormField label="Status">
-            <Select
-              disabled={!canWrite}
-              onChange={(event) => setField("status", event.target.value as WizardState["status"])}
-              options={[
-                { value: "draft", label: "Draft" },
-                { value: "published", label: "Published" },
-                { value: "archived", label: "Archived" }
-              ]}
-              value={state.status}
-            />
-          </FormField>
           <FormField label="Description">
             <Textarea
               className="min-h-[90px]"
@@ -240,6 +239,17 @@ export function ProgramCreateWizard({ open, onClose, orgSlug, canWrite = true, o
   return (
     <CreateWizard
       draftId={isEdit ? undefined : `program-create.${orgSlug}`}
+      headerTitleAccessory={({ state, setField }) => (
+        <Chip
+          status
+          picker={{
+            disabled: !canWrite,
+            onChange: (value) => setField("status", value as WizardState["status"]),
+            options: PROGRAM_STATUS_OPTIONS,
+            value: state.status
+          }}
+        />
+      )}
       hideCancel={isEdit}
       initialState={initialState}
       mode={isEdit ? "edit" : "create"}

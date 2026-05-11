@@ -1,8 +1,9 @@
 import { buttonVariants } from "@orgframe/ui/primitives/button";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { cn } from "@/src/shared/utils";
 import { defaultInternalHref, normalizeButtons, resolveButtonHref } from "@/src/shared/links";
 import { asObject, asText, defaultPageTitleFromSlug } from "@/src/features/site/blocks/helpers";
-import { sanitizeRichTextHtml } from "@/src/features/site/blocks/rich-text";
+import { plainTextToRichTextHtml, richTextHtmlToPlainText, sanitizeRichTextHtml } from "@/src/features/site/blocks/rich-text";
 import type { BlockContext, BlockRenderProps, SubheroBlockConfig } from "@/src/features/site/types";
 
 function defaultSubheroConfig(context: BlockContext): SubheroBlockConfig {
@@ -35,12 +36,39 @@ export function createDefaultSubheroConfig(context: BlockContext) {
   return defaultSubheroConfig(context);
 }
 
-export function SubheroBlockRender({ block, context }: BlockRenderProps<"subhero">) {
+export function SubheroBlockRender({ block, context, isEditing, onChange }: BlockRenderProps<"subhero">) {
+  const canInlineEdit = isEditing && Boolean(onChange);
+  const headlineClass = "text-3xl font-semibold text-text md:text-5xl";
+  const subheadlineClass = "prose max-w-none text-sm text-text-muted md:text-lg";
+
   return (
     <section className="rounded-card border bg-surface p-6 shadow-card md:p-10">
       <div className="w-full space-y-4">
-        <h1 className="text-3xl font-semibold text-text md:text-5xl">{block.config.headline}</h1>
-        <div className="prose max-w-none text-sm text-text-muted md:text-lg" dangerouslySetInnerHTML={{ __html: block.config.subheadline }} />
+        {canInlineEdit ? (
+          <InlineText
+            as="h1"
+            className={headlineClass}
+            maxLength={120}
+            onCommit={(next) => onChange?.({ ...block, config: { ...block.config, headline: next } })}
+            placeholder="Headline"
+            value={block.config.headline}
+          />
+        ) : (
+          <h1 className={headlineClass}>{block.config.headline}</h1>
+        )}
+        {canInlineEdit ? (
+          <InlineText
+            multiline
+            className={cn(subheadlineClass, "block")}
+            onCommit={(next) =>
+              onChange?.({ ...block, config: { ...block.config, subheadline: plainTextToRichTextHtml(next) } })
+            }
+            placeholder="Subheadline"
+            value={richTextHtmlToPlainText(block.config.subheadline)}
+          />
+        ) : (
+          <div className={subheadlineClass} dangerouslySetInnerHTML={{ __html: block.config.subheadline }} />
+        )}
         {block.config.buttons.length > 0 ? (
           <div className="flex flex-wrap gap-3">
             {block.config.buttons.map((button) => (

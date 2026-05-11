@@ -1,9 +1,10 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { buttonVariants } from "@orgframe/ui/primitives/button";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { cn } from "@/src/shared/utils";
 import { asButtons, asNumber, asObject, asOptionalStoragePath, asText } from "@/src/features/site/blocks/helpers";
-import { sanitizeRichTextHtml } from "@/src/features/site/blocks/rich-text";
+import { plainTextToRichTextHtml, richTextHtmlToPlainText, sanitizeRichTextHtml } from "@/src/features/site/blocks/rich-text";
 import { getOrgSiteAssetPublicUrl } from "@/src/features/site/storage";
 import type { BlockContext, BlockRenderProps, HeroBlockConfig } from "@/src/features/site/types";
 import { defaultInternalHref, resolveButtonHref } from "@/src/shared/links";
@@ -70,11 +71,22 @@ export function createDefaultHeroConfig(context: BlockContext) {
   return defaultHeroConfig(context);
 }
 
-export function HeroBlockRender({ block, context }: BlockRenderProps<"hero">) {
+
+export function HeroBlockRender({ block, context, isEditing, onChange }: BlockRenderProps<"hero">) {
   const imageUrl = getOrgSiteAssetPublicUrl(block.config.backgroundImagePath);
   const focalXPercent = Math.round(block.config.focalX * 100);
   const focalYPercent = Math.round(block.config.focalY * 100);
   const hasImage = Boolean(imageUrl);
+  // Inline editing is only wired up in the page editor. The public render
+  // gets static text (no event handlers, no JS for editing).
+  const canInlineEdit = isEditing && Boolean(onChange);
+
+  const headlineClass = hasImage
+    ? "text-3xl font-semibold text-white md:text-5xl"
+    : "text-3xl font-semibold text-text md:text-5xl";
+  const subheadlineWrapperClass = hasImage
+    ? "prose prose-invert max-w-none text-sm text-white/90 md:text-lg"
+    : "prose max-w-none text-sm text-text-muted md:text-lg";
 
   return (
     <section className="overflow-hidden rounded-card border bg-surface shadow-card">
@@ -97,13 +109,40 @@ export function HeroBlockRender({ block, context }: BlockRenderProps<"hero">) {
 
         <div className="relative z-10 flex min-h-[300px] items-center p-6 md:min-h-[360px] md:p-10">
           <div className="w-full space-y-4">
-            <h1 className={hasImage ? "text-3xl font-semibold text-white md:text-5xl" : "text-3xl font-semibold text-text md:text-5xl"}>
-              {block.config.headline}
-            </h1>
-            <div
-              className={hasImage ? "prose prose-invert max-w-none text-sm text-white/90 md:text-lg" : "prose max-w-none text-sm text-text-muted md:text-lg"}
-              dangerouslySetInnerHTML={{ __html: block.config.subheadline }}
-            />
+            {canInlineEdit ? (
+              <InlineText
+                as="h1"
+                className={headlineClass}
+                maxLength={120}
+                onCommit={(next) => onChange?.({ ...block, config: { ...block.config, headline: next } })}
+                placeholder="Headline"
+                value={block.config.headline}
+              />
+            ) : (
+              <h1 className={headlineClass}>{block.config.headline}</h1>
+            )}
+            {canInlineEdit ? (
+              // Inline-edit path: strip HTML to plain text for the editable
+              // surface. The Editor in the settings panel keeps the
+              // rich-text affordance; this is the quick in-place tweak.
+              <InlineText
+                multiline
+                className={cn(subheadlineWrapperClass, "block")}
+                onCommit={(next) =>
+                  onChange?.({
+                    ...block,
+                    config: { ...block.config, subheadline: plainTextToRichTextHtml(next) }
+                  })
+                }
+                placeholder="Subheadline"
+                value={richTextHtmlToPlainText(block.config.subheadline)}
+              />
+            ) : (
+              <div
+                className={subheadlineWrapperClass}
+                dangerouslySetInnerHTML={{ __html: block.config.subheadline }}
+              />
+            )}
             <div className="flex flex-wrap gap-3">
               {block.config.buttons.map((button) => (
                 <a

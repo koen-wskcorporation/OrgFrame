@@ -13,6 +13,12 @@ export type PopupProps = {
   onOpenSettled?: () => void;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
+  /**
+   * Inline status accessory (typically a `<Chip>`) rendered next to the
+   * title in the popup header. Use for wizards/settings popups that
+   * control an entity with a status — see `packages/ui/CLAUDE.md`.
+   */
+  headerTitleAccessory?: React.ReactNode;
   children: React.ReactNode;
   viewKey?: string | number;
   viewDirection?: "forward" | "back";
@@ -53,6 +59,7 @@ export function Popup({
   onOpenSettled,
   title,
   subtitle,
+  headerTitleAccessory,
   children,
   viewKey,
   viewDirection = "forward",
@@ -354,7 +361,7 @@ export function Popup({
         ref={popupRef}
         style={popupStyle}
       >
-        <SurfaceHeader title={title} subtitle={subtitle} titleId={titleId} />
+        <SurfaceHeader title={title} subtitle={subtitle} titleAccessory={headerTitleAccessory} titleId={titleId} />
         <SurfaceCloseButton className="z-[1202]" label="Close popup" onClick={requestClose} />
         <SurfaceBody className={contentClassName} padded={!isFull}>
           <div

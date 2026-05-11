@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { ArrowLeft, Plus, Settings2, X } from "lucide-react";
 import { Button } from "@orgframe/ui/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
+import { Chip } from "@orgframe/ui/primitives/chip";
 import { useToast } from "@orgframe/ui/primitives/toast";
 import { createDefaultRuntimeBlock, getRuntimeBlockDefinition } from "@/src/features/site/blocks/runtime-registry";
 import { loadOrgPageAction, saveOrgPageAction } from "@/src/features/site/actions";
@@ -53,6 +54,12 @@ type OrgSitePageProps = {
    * back into the tree they came from.
    */
   manageReturnHref?: string;
+  /**
+   * Server-side signal that this mount should open straight into edit
+   * mode. The routes at `/[orgSlug]/edit` and `/[orgSlug]/<slug>/edit`
+   * pass `true`; the standard view routes pass undefined.
+   */
+  autoStartEditing?: boolean;
 };
 
 function updateDraftBlock(blocks: OrgPageBlock[], nextBlock: OrgPageBlock) {
@@ -73,7 +80,8 @@ export function OrgSitePage({
   initialBlocks,
   initialRuntimeData,
   canEdit,
-  manageReturnHref
+  manageReturnHref,
+  autoStartEditing
 }: OrgSitePageProps) {
   const [page, setPage] = useState(initialPage);
   const [blocks, setBlocks] = useState(initialBlocks);
@@ -86,10 +94,23 @@ export function OrgSitePage({
 
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  // Page-settings panel hosts the shared <PageWizard> the website manager
+  // uses. We auto-open it whenever the user enters edit mode (see
+  // `enterEditMode` below) so editing a page surface always brings up the
+  // page settings pane by default.
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [isLoadingEditor, startLoadingEditor] = useTransition();
   const [isSaving, startSaving] = useTransition();
   const autoOpenHandledRef = useRef(false);
+
+  // Autosave state machine. Surfaced in the editor header via the
+  // `<AutosaveChip>` so users can see whether their latest keystroke has
+  // been persisted. The "saved" state lingers briefly after a successful
+  // save before relaxing to "idle" (still green), giving the user a clear
+  // visual confirmation pulse without nagging permanently.
+  type AutosaveStatus = "idle" | "saving" | "saved" | "error";
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>("idle");
 
   const { toast } = useToast();
 
@@ -139,6 +160,11 @@ export function OrgSitePage({
       setDraftBlocks(latest.blocks);
       setSelectedBlockId(null);
       setIsEditing(true);
+      // Always open the page-management panel when entering edit mode. The
+      // panel hosts the same wizard the website manager uses, so the editor
+      // and the website manager share one settings surface. The user can
+      // dismiss it; we only auto-open on edit-mode entry, not every render.
+      setSettingsOpen(true);
     });
   }, [orgSlug, pageSlug, startLoadingEditor, toast]);
 
@@ -197,8 +223,21 @@ export function OrgSitePage({
     }
 
     const pendingPath = sessionStorage.getItem(ORG_SITE_OPEN_EDITOR_REQUEST_KEY);
+    if (!pendingPath) {
+      return;
+    }
 
-    if (!pendingPath || pendingPath !== window.location.pathname) {
+    // Normalize both sides for the comparison: strip trailing slash + drop
+    // any query/hash. The setter (OrgHeader, WebsiteManager) writes
+    // pathname-only values, but a defensive normalize means the handshake
+    // also works if a future caller stores `/foo/` or `/foo?bar=1`.
+    const stripTrailing = (s: string) => (s.length > 1 && s.endsWith("/") ? s.slice(0, -1) : s);
+    const normalize = (raw: string) => {
+      const noQuery = raw.split("?")[0].split("#")[0];
+      return stripTrailing(noQuery);
+    };
+
+    if (normalize(pendingPath) !== normalize(window.location.pathname)) {
       return;
     }
 
@@ -206,6 +245,19 @@ export function OrgSitePage({
     sessionStorage.removeItem(ORG_SITE_OPEN_EDITOR_REQUEST_KEY);
     enterEditMode();
   }, [canEdit, enterEditMode]);
+
+  // Second auto-open path: the route mounted us at `/<slug>/edit` (or
+  // `/orgSlug/edit` for home). The server signals this via the
+  // `autoStartEditing` prop. We don't strip the segment from the URL —
+  // staying on `/<slug>/edit` means a refresh inside the editor keeps
+  // the editor open, which is the right default when the user explicitly
+  // navigated to an edit URL.
+  useEffect(() => {
+    if (!canEdit || autoOpenHandledRef.current) return;
+    if (!autoStartEditing) return;
+    autoOpenHandledRef.current = true;
+    enterEditMode();
+  }, [autoStartEditing, canEdit, enterEditMode]);
 
   useEffect(() => {
     if (!canEdit) {
@@ -340,6 +392,80 @@ export function OrgSitePage({
     enabled: hasUnsavedChanges
   });
 
+  // Debounced autosave. The effect schedules a flush ~800ms after the
+  // user's last edit; any further edit before the timer fires resets it.
+  // Refs hold the latest draft so the in-flight save always submits the
+  // current state without re-creating the timer on every keystroke (which
+  // would never let the debounce actually settle).
+  const draftRef = useRef({ title: draftTitle, isPublished: draftIsPublished, blocks: draftBlocks });
+  draftRef.current = { title: draftTitle, isPublished: draftIsPublished, blocks: draftBlocks };
+  const inFlightAutosaveRef = useRef(false);
+  const autosaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushAutosave = useCallback(async () => {
+    if (!canEdit || !isEditing) return;
+    if (inFlightAutosaveRef.current) return;
+    inFlightAutosaveRef.current = true;
+    setAutosaveStatus("saving");
+    const snapshot = draftRef.current;
+    try {
+      const result = await saveOrgPageAction({
+        orgSlug,
+        pageSlug,
+        title: snapshot.title,
+        isPublished: snapshot.isPublished,
+        blocks: snapshot.blocks.map((block) => ({
+          id: block.id,
+          type: block.type,
+          config: block.config
+        }))
+      });
+      if (!result.ok) {
+        setAutosaveStatus("error");
+        return;
+      }
+      // Update the "committed" copies so `hasUnsavedChanges` recomputes to
+      // false and the unsaved-changes warning detaches.
+      setPage(result.page);
+      setBlocks(result.blocks);
+      setAutosaveStatus("saved");
+      // Hold "saved" briefly so the user sees a confirmation flash, then
+      // relax to idle (still rendered green — the chip's idle state IS
+      // saved-and-quiet).
+      if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
+      savedFlashTimerRef.current = setTimeout(() => setAutosaveStatus("idle"), 1500);
+    } catch {
+      setAutosaveStatus("error");
+    } finally {
+      inFlightAutosaveRef.current = false;
+    }
+  }, [canEdit, isEditing, orgSlug, pageSlug]);
+
+  useEffect(() => {
+    if (!isEditing || !canEdit) return;
+    if (!hasUnsavedChanges) return;
+    if (autosaveDebounceRef.current) clearTimeout(autosaveDebounceRef.current);
+    autosaveDebounceRef.current = setTimeout(() => {
+      void flushAutosave();
+    }, 800);
+    return () => {
+      if (autosaveDebounceRef.current) {
+        clearTimeout(autosaveDebounceRef.current);
+        autosaveDebounceRef.current = null;
+      }
+    };
+  }, [canEdit, draftBlocks, draftIsPublished, draftTitle, flushAutosave, hasUnsavedChanges, isEditing]);
+
+  // Clean up timers on unmount so a slow save doesn't try to mutate state
+  // on a torn-down component.
+  useEffect(() => {
+    return () => {
+      if (autosaveDebounceRef.current) clearTimeout(autosaveDebounceRef.current);
+      if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
+    };
+  }, []);
+
   const [toolbarSlotEl, setToolbarSlotEl] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -365,8 +491,6 @@ export function OrgSitePage({
     };
   }, [canEdit, isEditing]);
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
   const editorToolbar = canEdit && isEditing ? (
     <div className="flex flex-wrap items-center gap-2">
       {manageReturnHref ? (
@@ -375,6 +499,7 @@ export function OrgSitePage({
           Back to website manager
         </Button>
       ) : null}
+      <AutosaveChip status={autosaveStatus} />
       <Button onClick={() => setSettingsOpen(true)} size="md" type="button" variant="secondary">
         <Settings2 className="h-4 w-4" />
         Page settings
@@ -383,7 +508,7 @@ export function OrgSitePage({
         <Plus className="h-4 w-4" />
         Add block
       </Button>
-      <Button intent="cancel" disabled={isSaving} onClick={cancelEditing} size="md" type="button" variant="ghost">Cancel</Button>
+      <Button intent="cancel" disabled={isSaving} onClick={cancelEditing} size="md" type="button" variant="secondary">Cancel</Button>
       <Button disabled={isSaving} loading={isSaving} onClick={saveDraft} size="md" type="button" variant="primary">
         Done
       </Button>
@@ -407,6 +532,7 @@ export function OrgSitePage({
             <OrgPageEditor
               blocks={draftBlocks}
               context={context}
+              onChangeBlock={(next) => setDraftBlocks((current) => updateDraftBlock(current, next))}
               onChangeBlocks={setDraftBlocks}
               onRemoveBlock={removeBlock}
               onSelectBlock={setSelectedBlockId}
@@ -457,5 +583,39 @@ export function OrgSitePage({
         pageSlug={page.slug}
       />
     </main>
+  );
+}
+
+/**
+ * Header status chip for the page-editor autosave flow.
+ *
+ * - `idle` / `saved`: emerald "Saved" — the user's draft is in sync with the
+ *   server.
+ * - `saving`: amber "Saving…" — flush in progress (debounced 800ms after the
+ *   last keystroke; see `flushAutosave` in `OrgSitePage`).
+ * - `error`: rose "Save failed" — the most recent flush rejected; the next
+ *   edit will retry.
+ */
+function AutosaveChip({ status }: { status: "idle" | "saving" | "saved" | "error" }) {
+  if (status === "saving") {
+    return (
+      <Chip status variant="warning">
+        Saving…
+      </Chip>
+    );
+  }
+  if (status === "error") {
+    return (
+      <Chip status variant="destructive">
+        Save failed
+      </Chip>
+    );
+  }
+  // `idle` and `saved` both render as the same green chip; `saved` is just
+  // the brief flash right after a successful flush before relaxing to idle.
+  return (
+    <Chip status variant="success">
+      Saved
+    </Chip>
   );
 }

@@ -429,6 +429,13 @@ export type BlockRenderProps<TType extends OrgSiteBlockType> = {
   context: BlockContext;
   runtimeData: OrgSiteRuntimeData;
   isEditing: boolean;
+  /**
+   * Set when the block is being rendered inside the page editor. Block
+   * renderers can use this to wire up inline-editable text (via
+   * `<InlineText>`) and other in-place affordances. Undefined on public
+   * page renders, so calls are gated behind `isEditing && onChange`.
+   */
+  onChange?: (block: OrgPageBlock<TType>) => void;
 };
 
 export type BlockEditorProps<TType extends OrgSiteBlockType> = {
@@ -450,5 +457,15 @@ export type BlockDefinition<TType extends OrgSiteBlockType> = {
   defaultConfig: (context: BlockContext) => OrgSiteBlockConfigMap[TType];
   sanitizeConfig: (config: unknown, context: BlockContext) => OrgSiteBlockConfigMap[TType];
   Render: ComponentType<BlockRenderProps<TType>>;
+  /**
+   * "Design" editor — appearance, copy, layout. Always rendered as the
+   * first step in the block-settings wizard.
+   */
   Editor: ComponentType<BlockEditorProps<TType>>;
+  /**
+   * Optional "Data" editor — data sources, filters, limits. When present,
+   * the block-settings wizard renders it as a second step. Omit for
+   * blocks whose configuration is purely visual.
+   */
+  DataEditor?: ComponentType<BlockEditorProps<TType>>;
 };

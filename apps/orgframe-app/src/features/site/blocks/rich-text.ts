@@ -1,3 +1,41 @@
+/**
+ * Convert sanitized rich-text HTML to plain text suitable for an inline
+ * editor (textarea). Preserves paragraph and list breaks as newlines and
+ * unescapes the basic named entities. Used by block renderers that swap
+ * a rich-text display for an `<InlineText multiline>` in edit mode.
+ */
+export function richTextHtmlToPlainText(html: string): string {
+  return html
+    .replace(/<\/(p|div|h[1-6]|li)>/gi, "\n")
+    .replace(/<br\s*\/?>(?!\n)/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+/**
+ * Inverse of `richTextHtmlToPlainText`. Wraps each blank-line-separated
+ * paragraph in `<p>`, converts single newlines to `<br>`, and escapes the
+ * basic special chars so the sanitizer doesn't have to. Output is safe to
+ * pass to `sanitizeRichTextHtml`.
+ */
+export function plainTextToRichTextHtml(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const escape = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return trimmed
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escape(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
 export function sanitizeRichTextHtml(value: unknown, fallback = ""): string {
   const raw = typeof value === "string" ? value : fallback;
   if (!raw.trim()) {

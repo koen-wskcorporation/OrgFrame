@@ -6,13 +6,8 @@ import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChevronRight,
-  Eye,
-  EyeOff,
   GripVertical,
-  Pencil,
   Plus,
-  Settings2,
-  Trash2,
   X
 } from "lucide-react";
 import {
@@ -44,6 +39,7 @@ import { useConfirmDialog } from "@orgframe/ui/primitives/confirm-dialog";
 import { RepeaterItem } from "@orgframe/ui/primitives/repeater-item";
 import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { EditorSettingsDialog } from "@/src/features/core/layout/components/EditorSettingsDialog";
+import { DYNAMIC_PAGE_PRESETS } from "@/src/features/site/dynamicPagePresets";
 import type { OrgManagePage, OrgSiteStructureItem } from "@/src/features/site/types";
 import {
   deleteWebsiteItemAction,
@@ -103,6 +99,33 @@ function getExternalUrl(item: OrgSiteStructureItem): string | null {
 
 function isLocked(item: OrgSiteStructureItem): boolean {
   return item.flagsJson?.locked === true || item.flagsJson?.systemGenerated === true;
+}
+
+/**
+ * The home page is the public root of every org site — deleting or hiding it
+ * would break the whole site, so we treat it as a protected item: not
+ * deletable, not hideable from nav, not unpublishable. The publish/visibility
+ * toggles are still rendered but disabled, so the user sees what's locked
+ * rather than wondering why a control silently no-ops.
+ */
+function isHomePage(item: OrgSiteStructureItem): boolean {
+  return item.type === "page" && getLinkedPageSlug(item) === "home";
+}
+
+const DYNAMIC_PRESET_SLUGS = new Set(DYNAMIC_PAGE_PRESETS.map((p) => p.slug));
+
+/**
+ * "Dynamic" pages are static pages at reserved slugs whose seed block is the
+ * data-driven listing (Programs catalog, Events list, etc.). We treat them as
+ * top-level navigation roots: nothing nests under them, and they themselves
+ * never nest under another item. The reasoning is content-shape — the seed
+ * block already produces a flat listing, so a sub-tree under one would either
+ * compete with the listing or get hidden by it. Easier to just disallow.
+ */
+function isDynamicPageItem(item: OrgSiteStructureItem): boolean {
+  if (item.type !== "page") return false;
+  const slug = getLinkedPageSlug(item);
+  return slug !== null && DYNAMIC_PRESET_SLUGS.has(slug);
 }
 
 function buildTree(items: OrgSiteStructureItem[]): TreeNode[] {
@@ -176,9 +199,12 @@ const PUBLISH_OPTIONS = [
   { value: "unpublished", label: "Unpublished", color: "slate" as const }
 ];
 
-type BadgeVariant = "neutral" | "success" | "warning" | "destructive";
+type BadgeVariant = "neutral" | "success" | "warning" | "destructive" | "dynamic";
 function rowTypeLabel(item: OrgSiteStructureItem): { label: string; variant: BadgeVariant } {
-  if (item.type === "dynamic") return { label: "Dynamic", variant: "neutral" };
+  // Dynamic items render in the org accent colour so they read as
+  // first-class branded content, not generic neutral metadata. The chip
+  // primitive owns the colour mapping via `variant="dynamic"`.
+  if (item.type === "dynamic") return { label: "Dynamic", variant: "dynamic" };
   if (item.type === "placeholder") return { label: "Dropdown", variant: "neutral" };
   const link = getLinkKind(item);
   if (link === "external") return { label: "Link", variant: "neutral" };
@@ -197,7 +223,7 @@ type WebsiteManagerContextValue = {
   error: string | null;
   setError: (next: string | null) => void;
   toggleCollapse: (id: string) => void;
-  toggleField: (item: OrgSiteStructureItem, patch: { showInMenu?: boolean; isPublished?: boolean }) => void;
+  toggleField: (item: OrgSiteStructureItem, patch: { isPublished?: boolean }) => void;
   indent: (item: OrgSiteStructureItem) => void;
   outdent: (item: OrgSiteStructureItem) => void;
   handleDelete: (item: OrgSiteStructureItem) => void | Promise<void>;
@@ -283,17 +309,22 @@ export function WebsiteManagerProvider({
 
   /**
    * Move the active item to be the last child of `newParentId`. Pass `null` to
-   * promote it to the top level. Skips no-ops and rejects nesting under
-   * a `dynamic` item.
+   * promote it to the top level. Skips no-ops and rejects nesting under a
+   * legacy `dynamic` item or a current dynamic-page (Programs/Events/etc.) —
+   * dynamic pages are top-level only and can't host children.
    */
   const handleNest = (activeId: string, newParentId: string | null) => {
     const newParent = newParentId ? items.find((i) => i.id === newParentId) : null;
-    if (newParentId && (!newParent || newParent.type === "dynamic")) {
-      setError("Cannot nest under that item.");
+    if (newParentId && (!newParent || newParent.type === "dynamic" || isDynamicPageItem(newParent))) {
+      setError("Dynamic pages can't have items nested under them.");
       return;
     }
     const active = items.find((i) => i.id === activeId);
     if (!active) return;
+    if (isDynamicPageItem(active) && newParentId !== null) {
+      setError("Dynamic pages can only live at the top level.");
+      return;
+    }
     if (active.parentId === newParentId) {
       // Already under this parent; treat as a no-op.
       return;
@@ -324,6 +355,21 @@ export function WebsiteManagerProvider({
     if (!over || !active) return;
 
     const targetParentId = over.parentId;
+    // Dynamic pages live at top level only — refuse to slot one in beside a
+    // non-top-level row, since that would land it inside a parent.
+    if (isDynamicPageItem(active) && targetParentId !== null) {
+      setError("Dynamic pages can only live at the top level.");
+      return;
+    }
+    // Symmetrically, refuse to drop anything beside a child of a dynamic
+    // page (would put the active row under that dynamic page).
+    if (targetParentId) {
+      const targetParent = items.find((i) => i.id === targetParentId);
+      if (targetParent && isDynamicPageItem(targetParent)) {
+        setError("Dynamic pages can't have items nested under them.");
+        return;
+      }
+    }
     const siblings = items
       .filter((i) => i.parentId === targetParentId && i.id !== activeId)
       .sort((a, b) => a.orderIndex - b.orderIndex);
@@ -400,7 +446,14 @@ export function WebsiteManagerProvider({
     persistOrder(renumbered);
   };
 
-  const toggleField = (item: OrgSiteStructureItem, patch: { showInMenu?: boolean; isPublished?: boolean }) => {
+  const toggleField = (item: OrgSiteStructureItem, patch: { isPublished?: boolean }) => {
+    // Home page guard: refuse to unpublish home. The action layer also
+    // couples show_in_menu to is_published, so unpublishing would also
+    // remove home from the nav — even worse.
+    if (isHomePage(item) && patch.isPublished === false) {
+      setError("The home page can't be unpublished.");
+      return;
+    }
     startTransition(async () => {
       const res = await updateWebsiteItemAction({ orgSlug, itemId: item.id, patch });
       applyResult(res);
@@ -408,6 +461,10 @@ export function WebsiteManagerProvider({
   };
 
   const handleDelete = async (item: OrgSiteStructureItem) => {
+    if (isHomePage(item)) {
+      setError("The home page can't be deleted.");
+      return;
+    }
     const linkedSlug = getLinkedPageSlug(item);
     let alsoDeletePage = false;
     if (item.type === "page" && linkedSlug && linkedSlug !== "home") {
@@ -552,7 +609,7 @@ export function WebsiteManagerBody() {
         </Alert>
       ) : null}
 
-      <TreeRoot />
+      <ClientOnlyTree />
 
       <PageWizard
         defaultParentId={wizardParentId}
@@ -623,6 +680,42 @@ export function WebsiteManagerBody() {
 // (drop in the middle of a row). Each parent's children get their own
 // SortableContext, all under one DndContext so cross-level drags work too.
 // ---------------------------------------------------------------------------
+
+/**
+ * Gate that prevents `<TreeRoot>` from rendering on the server entirely.
+ *
+ * dnd-kit assigns `aria-describedby="DndDescribedBy-N"` IDs from a
+ * module-level counter that's consumed by `useSensors`, `useSortable`, etc.
+ * If anything else on the page also uses dnd-kit, the counter advances at
+ * different points between SSR and hydration → every sortable row hydrates
+ * with a different ID than the server rendered, throwing a hydration
+ * mismatch warning. Skipping SSR for this subtree means the counter only
+ * runs once, on the client, after mount.
+ *
+ * The fallback skeleton mirrors the rendered list's per-row height so the
+ * layout doesn't jump when `<TreeRoot>` swaps in.
+ */
+function ClientOnlyTree() {
+  const { treeNodes, collapsed } = useWebsiteManager();
+  const flatRows = React.useMemo(() => flattenTree(treeNodes, collapsed), [treeNodes, collapsed]);
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) {
+    return (
+      <div aria-hidden className="space-y-1">
+        {flatRows.map((row) => (
+          <div
+            className="h-12 rounded-control border border-border bg-surface"
+            key={row.item.id}
+          />
+        ))}
+      </div>
+    );
+  }
+  return <TreeRoot />;
+}
 
 type DropMode = "before" | "after" | "nest";
 
@@ -752,6 +845,44 @@ function TreeRoot() {
       return;
     }
 
+    // Dynamic-page constraints: the active item or the over row may make a
+    // particular drop illegal; suppress the preview when so. The drop
+    // handlers re-validate (defence in depth) but suppressing the preview
+    // gives the user the right visual signal — no green-light feedback for
+    // a drop that won't apply.
+    const overItem = itemsById.get(String(over.id));
+    const activeItem = itemsById.get(String(active.id));
+    const activeIsDynamic = activeItem ? isDynamicPageItem(activeItem) : false;
+    if (overItem) {
+      // Nesting *into* a dynamic page is never allowed — its seed block
+      // already produces a flat listing, sub-items would just confuse.
+      if (mode === "nest" && isDynamicPageItem(overItem)) {
+        setOver(null);
+        return;
+      }
+      // Nesting anything *into* a legacy `type === "dynamic"` item is also
+      // out (matches the action-layer guard).
+      if (mode === "nest" && overItem.type === "dynamic") {
+        setOver(null);
+        return;
+      }
+      // Dynamic pages live at top level only — refuse before/after that
+      // would resolve to a non-top-level parent.
+      if (activeIsDynamic && mode !== "nest" && overItem.parentId !== null) {
+        setOver(null);
+        return;
+      }
+      // And refuse before/after slotting beside a child of a dynamic page
+      // (would land the active row inside that dynamic page).
+      if (mode !== "nest" && overItem.parentId) {
+        const overParent = itemsById.get(overItem.parentId);
+        if (overParent && isDynamicPageItem(overParent)) {
+          setOver(null);
+          return;
+        }
+      }
+    }
+
     setOver({ id: String(over.id), mode });
   };
 
@@ -802,6 +933,13 @@ function TreeRoot() {
   return (
     <DndContext
       collisionDetection={collisionDetectionForTree}
+      // Stable id → bypasses dnd-kit's mutable module-level ID counter for
+      // the screen-reader description ID. Without this, every sortable row
+      // gets `aria-describedby="DndDescribedBy-N"` where N is sourced from
+      // a counter that React strict mode in dev advances at a different
+      // rate on the server vs. client, producing a hydration mismatch on
+      // every row.
+      id="orgframe-website-tree"
       onDragCancel={reset}
       onDragEnd={canWrite ? handleDragEnd : reset}
       onDragOver={handleDragOver}
@@ -864,9 +1002,7 @@ function TreeRow({ row }: TreeRowProps) {
   const {
     canWrite,
     collapsed,
-    handleDelete,
     orgSlug,
-    pending,
     setEditingItem,
     toggleCollapse,
     toggleField
@@ -898,24 +1034,44 @@ function TreeRow({ row }: TreeRowProps) {
   const linkedPageSlug = getLinkedPageSlug(item);
   const externalUrl = getExternalUrl(item);
   const locked = isLocked(item);
+  const homePage = isHomePage(item);
+  // Where the "Edit" button takes the user. Pages go to their linked slug;
+  // dynamic items go to their generated public path (`item.urlPath`); external
+  // links open the destination URL.
   const editorHref =
     item.type === "page" && linkedPageSlug
       ? linkedPageSlug === "home"
         ? `/${orgSlug}`
         : `/${orgSlug}/${linkedPageSlug}`
+      : item.type === "dynamic" && item.urlPath
+      ? item.urlPath.startsWith("/")
+        ? item.urlPath
+        : `/${item.urlPath}`
       : null;
-  const onDelete = () => handleDelete(item);
   // "Manage" opens the wizard panel for settings (was the old Edit behavior).
   const onManage = () => setEditingItem(item);
-  // "Edit" navigates to the live page. The user can open the editor from the
-  // page itself via the existing "Edit page" button in the org header — we
-  // intentionally don't auto-flip into edit mode on arrival.
+  // Always navigates somewhere useful so the Edit button is never a dead
+  // end: linked page → `/<page>/edit` (auto-opens the block editor on
+  // arrival) → external URL → manage panel as a final fallback for
+  // dropdowns / placeholders.
+  //
+  // The `/edit` suffix is consumed by the catchall route (and by
+  // `app/[orgSlug]/edit/page.tsx` for home) which strips it before
+  // resolving the page and passes `autoStartEditing={true}` to
+  // `OrgSitePage`. "edit" is reserved in `reservedPageSlugs` so no
+  // user-defined page can shadow it.
   const onEdit = () => {
-    if (!editorHref) return;
-    router.push(editorHref);
+    if (editorHref) {
+      router.push(`${editorHref}/edit`);
+      return;
+    }
+    if (externalUrl) {
+      window.open(externalUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    setEditingItem(item);
   };
   const onToggleCollapse = () => toggleCollapse(item.id);
-  const onToggleShowInMenu = () => toggleField(item, { showInMenu: !item.showInMenu });
 
   const titleText = editorHref ? (
     <Link className="truncate text-text hover:underline" href={editorHref}>
@@ -976,12 +1132,14 @@ function TreeRow({ row }: TreeRowProps) {
 
   // Status chip is always the leftmost chip — it's the most actionable piece
   // of metadata, and uniform positioning makes it scannable across rows.
+  // Note: there's no longer a separate "show in nav" chip or toggle. Nav
+  // visibility is coupled 1:1 with publish state on the backend.
   const chips = (
     <>
       <Chip
         status
         picker={{
-          disabled: !canWrite || locked,
+          disabled: !canWrite || locked || homePage,
           onChange: (value) => toggleField(item, { isPublished: value === "published" }),
           options: PUBLISH_OPTIONS,
           value: item.isPublished ? "published" : "unpublished"
@@ -990,11 +1148,6 @@ function TreeRow({ row }: TreeRowProps) {
       <Chip status={false} variant={typeLabel.variant}>
         {typeLabel.label}
       </Chip>
-      {!item.showInMenu ? (
-        <Chip status={false} variant="neutral">
-          Hidden in nav
-        </Chip>
-      ) : null}
       {locked ? (
         <Chip status={false} variant="neutral">
           Locked
@@ -1003,29 +1156,16 @@ function TreeRow({ row }: TreeRowProps) {
     </>
   );
 
-  // Order, left-to-right: Show/Hide → Edit → Manage. Delete now lives inside
-  // the Manage panel (in the wizard's Visibility step / dialog footer) — it's
-  // a destructive action and doesn't belong in the row's quick-actions.
-  const secondaryActions = (
-    <div className="flex items-center gap-2">
-      <Button
-        disabled={!canWrite || pending || locked}
-        onClick={onToggleShowInMenu}
-        size="sm"
-        variant="ghost"
-      >
-        {item.showInMenu ? <Eye /> : <EyeOff />}
-        {item.showInMenu ? "Hide" : "Show"}
-      </Button>
-    </div>
-  );
-
+  // Edit / Manage are always rendered on every row — even locked / dynamic /
+  // dropdown items — so the row's action footprint is uniform across the
+  // tree. Edit is a pure navigation; Manage is gated by `canWrite` since
+  // it opens a mutation surface.
   const primaryAction = (
     <div className="flex items-center gap-2">
-      {editorHref ? (
-        <Button intent="edit" disabled={!canWrite || locked} onClick={onEdit} size="sm" variant="secondary">Edit</Button>
-      ) : null}
-      <Button intent="manage" disabled={!canWrite || locked} onClick={onManage} size="sm" variant="secondary">Manage</Button>
+      <Button intent="edit" onClick={onEdit} size="sm" variant="secondary">
+        Edit
+      </Button>
+      <Button intent="manage" disabled={!canWrite} onClick={onManage} size="sm" variant="secondary">Manage</Button>
     </div>
   );
 
@@ -1038,8 +1178,12 @@ function TreeRow({ row }: TreeRowProps) {
         // `.ui-list-row` element via Tailwind's arbitrary-variant syntax so
         // the highlight wraps the actual visual card, not just an offset
         // outline outside it.
+        // Nest target: a clean focus-ring-style border highlight only — no
+        // background fade. The previous tinted-fill version was visually
+        // heavy and made the row's actual content harder to read while
+        // hovering.
         isNestTarget &&
-          "[&_.ui-list-row]:!border-accent [&_.ui-list-row]:!ring-2 [&_.ui-list-row]:!ring-accent [&_.ui-list-row]:!bg-accent/5"
+          "[&_.ui-list-row]:!border-accent [&_.ui-list-row]:!ring-2 [&_.ui-list-row]:!ring-accent [&_.ui-list-row]:!ring-offset-2 [&_.ui-list-row]:!ring-offset-canvas"
       )}
       ref={setNodeRef}
       style={dragStyle}
@@ -1067,7 +1211,6 @@ function TreeRow({ row }: TreeRowProps) {
             leading={leading}
             meta={metaText}
             primaryAction={primaryAction}
-            secondaryActions={secondaryActions}
             title={titleNode}
             view="list"
           />
@@ -1168,7 +1311,6 @@ function EditItemDialog({
   const [externalUrl, setExternalUrl] = React.useState("");
   const [openInNewTab, setOpenInNewTab] = React.useState(false);
   const [isPublished, setIsPublished] = React.useState(true);
-  const [showInMenu, setShowInMenu] = React.useState(true);
   const [seoTitle, setSeoTitle] = React.useState("");
   const [metaDescription, setMetaDescription] = React.useState("");
   const [ogImagePath, setOgImagePath] = React.useState("");
@@ -1182,7 +1324,6 @@ function EditItemDialog({
     setExternalUrl(initialUrl);
     setOpenInNewTab(item.openInNewTab);
     setIsPublished(item.isPublished);
-    setShowInMenu(item.showInMenu);
     setSeoTitle(linkedPage?.seoTitle ?? "");
     setMetaDescription(linkedPage?.metaDescription ?? "");
     setOgImagePath(linkedPage?.ogImagePath ?? "");
@@ -1205,7 +1346,6 @@ function EditItemDialog({
         title,
         description: description || null,
         isPublished,
-        showInMenu,
         openInNewTab
       };
       if (linkKind === "page" && slug && slug !== linkedSlug) {
@@ -1272,10 +1412,6 @@ function EditItemDialog({
           <label className="flex items-center gap-2 text-sm">
             <input checked={isPublished} onChange={(e) => setIsPublished(e.target.checked)} type="checkbox" />
             Published
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input checked={showInMenu} onChange={(e) => setShowInMenu(e.target.checked)} type="checkbox" />
-            Show in navigation
           </label>
           {linkKind === "external" ? (
             <label className="flex items-center gap-2 text-sm">

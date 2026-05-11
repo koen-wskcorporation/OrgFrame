@@ -696,6 +696,12 @@ export type PanelProps = {
   headerAvatarAlt?: string;
   headerAvatarSlot?: React.ReactNode;
   headerTopAction?: React.ReactNode;
+  /**
+   * Inline status accessory (typically a `<Chip>`) rendered next to the
+   * title in the panel header. Use for wizards/settings panels that
+   * control an entity with a status — see `packages/ui/CLAUDE.md`.
+   */
+  headerTitleAccessory?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
   /**
@@ -731,6 +737,7 @@ export function Panel({
   headerAvatarAlt,
   headerAvatarSlot,
   headerTopAction,
+  headerTitleAccessory,
   children,
   footer,
   footerLeading,
@@ -941,6 +948,7 @@ export function Panel({
             showAvatar={headerShowAvatar}
             subtitle={subtitle}
             title={title}
+            titleAccessory={headerTitleAccessory}
             topAction={headerTopAction}
           />
         </div>

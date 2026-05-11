@@ -1,9 +1,7 @@
 import { buttonVariants } from "@orgframe/ui/primitives/button";
 import { ButtonListEditor } from "@/src/features/core/editor/buttons/ButtonListEditor";
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
-import { FormField } from "@orgframe/ui/primitives/form-field";
-import { Input } from "@orgframe/ui/primitives/input";
-import { Textarea } from "@orgframe/ui/primitives/textarea";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { asBody, asButtons, asObject, asText } from "@/src/features/site/blocks/helpers";
 import type { BlockContext, BlockEditorProps, BlockRenderProps, SchedulePreviewBlockConfig } from "@/src/features/site/types";
 import { defaultInternalHref, resolveButtonHref } from "@/src/shared/links";
@@ -50,15 +48,38 @@ export function sanitizeSchedulePreviewConfig(config: unknown, context: BlockCon
   };
 }
 
-export function SchedulePreviewBlockRender({ block, context }: BlockRenderProps<"schedule_preview">) {
+export function SchedulePreviewBlockRender({ block, context, isEditing, onChange }: BlockRenderProps<"schedule_preview">) {
+  const canInlineEdit = isEditing && Boolean(onChange);
   return (
     <section id="schedule">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          {canInlineEdit ? (
+            <InlineText
+              as="h3"
+              className="text-2xl font-semibold leading-tight tracking-tight text-text"
+              maxLength={120}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, title: next } })}
+              placeholder="Title"
+              value={block.config.title}
+            />
+          ) : (
+            <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          {canInlineEdit ? (
+            <InlineText
+              multiline
+              className="text-sm text-text-muted md:text-base"
+              maxLength={320}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, body: next } })}
+              placeholder="Body"
+              value={block.config.body}
+            />
+          ) : (
+            <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          )}
           <div className="rounded-control border border-dashed bg-surface-muted p-6 text-sm text-text-muted">Schedule data will surface here.</div>
           <div className="flex flex-wrap gap-2">
             {block.config.buttons.map((button) => (
@@ -92,24 +113,6 @@ export function SchedulePreviewBlockEditor({ block, onChange, context }: BlockEd
 
   return (
     <div className="space-y-4">
-      <FormField label="Title">
-        <Input
-          onChange={(event) => {
-            updateConfig({ title: event.target.value });
-          }}
-          value={block.config.title}
-        />
-      </FormField>
-      <FormField label="Body">
-        <Textarea
-          className="min-h-[90px]"
-          onChange={(event) => {
-            updateConfig({ body: event.target.value });
-          }}
-          value={block.config.body}
-        />
-      </FormField>
-
       <ButtonListEditor
         maxButtons={3}
         onChange={(buttons) => {

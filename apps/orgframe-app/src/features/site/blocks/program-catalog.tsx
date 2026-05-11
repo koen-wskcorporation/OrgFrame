@@ -4,8 +4,8 @@ import { Alert } from "@orgframe/ui/primitives/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@orgframe/ui/primitives/card";
 import { Checkbox } from "@orgframe/ui/primitives/checkbox";
 import { FormField } from "@orgframe/ui/primitives/form-field";
+import { InlineText } from "@orgframe/ui/primitives/inline-text";
 import { Input } from "@orgframe/ui/primitives/input";
-import { Textarea } from "@orgframe/ui/primitives/textarea";
 import { asBody, asButtons, asNumber, asObject, asText } from "@/src/features/site/blocks/helpers";
 import type { BlockContext, BlockEditorProps, BlockRenderProps, ProgramCatalogBlockConfig } from "@/src/features/site/types";
 import { defaultInternalHref, resolveButtonHref } from "@/src/shared/links";
@@ -71,17 +71,40 @@ function toTypeLabel(type: string, customTypeLabel: string | null) {
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
-export function ProgramCatalogBlockRender({ block, context, runtimeData }: BlockRenderProps<"program_catalog">) {
+export function ProgramCatalogBlockRender({ block, context, runtimeData, isEditing, onChange }: BlockRenderProps<"program_catalog">) {
   const programs = (runtimeData.programCatalogItems ?? []).slice(0, block.config.maxItems);
+  const canInlineEdit = isEditing && Boolean(onChange);
 
   return (
     <section id="program-catalog">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          {canInlineEdit ? (
+            <InlineText
+              as="h3"
+              className="text-2xl font-semibold leading-tight tracking-tight text-text"
+              maxLength={120}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, title: next } })}
+              placeholder="Title"
+              value={block.config.title}
+            />
+          ) : (
+            <CardTitle className="text-2xl">{block.config.title}</CardTitle>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          {canInlineEdit ? (
+            <InlineText
+              multiline
+              className="text-sm text-text-muted md:text-base"
+              maxLength={320}
+              onCommit={(next) => onChange?.({ ...block, config: { ...block.config, body: next } })}
+              placeholder="Body"
+              value={block.config.body}
+            />
+          ) : (
+            <p className="text-sm text-text-muted md:text-base">{block.config.body}</p>
+          )}
 
           {programs.length === 0 ? (
             <Alert variant="info">No published programs are available right now.</Alert>
@@ -132,25 +155,6 @@ export function ProgramCatalogBlockEditor({ block, onChange, context }: BlockEdi
 
   return (
     <div className="space-y-4">
-      <FormField label="Title">
-        <Input
-          onChange={(event) => {
-            updateConfig({ title: event.target.value });
-          }}
-          value={block.config.title}
-        />
-      </FormField>
-
-      <FormField label="Body">
-        <Textarea
-          className="min-h-[90px]"
-          onChange={(event) => {
-            updateConfig({ body: event.target.value });
-          }}
-          value={block.config.body}
-        />
-      </FormField>
-
       <FormField label="Max items">
         <Input
           min={1}

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
-import { ButtonConfigDialog } from "@/src/features/core/editor/buttons/ButtonConfigDialog";
+import { ButtonWizard } from "@/src/features/core/editor/buttons/ButtonWizard";
 import type { ButtonConfig } from "@/src/features/core/editor/buttons/types";
 import { Button, buttonVariants } from "@orgframe/ui/primitives/button";
 import { cn } from "@orgframe/ui/primitives/utils";
@@ -101,41 +101,6 @@ export function ButtonListEditor({
     });
   }
 
-  function moveButton(index: number, direction: -1 | 1) {
-    const targetIndex = index + direction;
-
-    if (targetIndex < 0 || targetIndex >= buttons.length) {
-      return;
-    }
-
-    const next = [...buttons];
-    const current = next[index];
-    const target = next[targetIndex];
-
-    if (!current || !target) {
-      return;
-    }
-
-    next[index] = target;
-    next[targetIndex] = current;
-    apply(next);
-
-    setActiveDialog((currentDialog) => {
-      if (!currentDialog || currentDialog.mode !== "edit") {
-        return currentDialog;
-      }
-
-      if (currentDialog.index !== index) {
-        return currentDialog;
-      }
-
-      return {
-        ...currentDialog,
-        index: targetIndex
-      };
-    });
-  }
-
   return (
     <>
       <div className="w-full min-w-0 space-y-2">
@@ -180,30 +145,18 @@ export function ButtonListEditor({
       </div>
 
       {activeDialog ? (
-        <ButtonConfigDialog
-          canMoveDown={activeDialog.mode === "edit" ? activeDialog.index < buttons.length - 1 : false}
-          canMoveUp={activeDialog.mode === "edit" ? activeDialog.index > 0 : false}
+        <ButtonWizard
+          availableInternalLinks={availableInternalLinks}
           initialValue={activeDialog.button}
-          mode={activeDialog.mode}
+          // The wizard's mode prop matches `CreateWizard`'s "create" | "edit"
+          // — "add" maps to "create" here.
+          mode={activeDialog.mode === "add" ? "create" : "edit"}
           onClose={() => setActiveDialog(null)}
           onDelete={
             activeDialog.mode === "edit"
               ? () => {
                   removeButton(activeDialog.index);
-                }
-              : undefined
-          }
-          onMoveDown={
-            activeDialog.mode === "edit"
-              ? () => {
-                  moveButton(activeDialog.index, 1);
-                }
-              : undefined
-          }
-          onMoveUp={
-            activeDialog.mode === "edit"
-              ? () => {
-                  moveButton(activeDialog.index, -1);
+                  setActiveDialog(null);
                 }
               : undefined
           }
@@ -213,21 +166,12 @@ export function ButtonListEditor({
               setActiveDialog(null);
               return;
             }
-
             apply(
-              buttons.map((button, index) => {
-                if (index !== activeDialog.index) {
-                  return button;
-                }
-
-                return updated;
-              })
+              buttons.map((button, index) => (index === activeDialog.index ? updated : button))
             );
-
             setActiveDialog(null);
           }}
           open
-          availableInternalLinks={availableInternalLinks}
           orgSlug={orgSlug}
         />
       ) : null}
