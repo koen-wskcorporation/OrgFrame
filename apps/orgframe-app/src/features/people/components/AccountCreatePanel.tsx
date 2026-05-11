@@ -188,12 +188,9 @@ export function AccountCreatePanel({ open, onClose, orgSlug }: AccountCreatePane
   return (
     <Panel
       footer={
-        <>
-          <Button intent="cancel" disabled={isSaving} onClick={onClose} type="button" variant="ghost">Cancel</Button>
-          <Button disabled={submitDisabled} form="account-create-form" loading={isSaving} type="submit">
-            {isSaving ? "Saving..." : isExistingAccount ? "Add to org" : "Add account"}
-          </Button>
-        </>
+        <Button disabled={submitDisabled} form="account-create-form" loading={isSaving} type="submit">
+          {isSaving ? "Saving..." : isExistingAccount ? "Add to org" : "Add account"}
+        </Button>
       }
       headerAvatarAlt={previewName}
       headerAvatarSlot={headerAvatarSlot}
@@ -202,7 +199,7 @@ export function AccountCreatePanel({ open, onClose, orgSlug }: AccountCreatePane
       open={open}
       panelKey="people-add-account"
       subtitle="Add an existing OrgFrame account to this org, or create a new one."
-      title="Add account"
+      title={previewName}
     >
       <form className="space-y-4" id="account-create-form" onSubmit={handleSubmit}>
         {errorMessage ? <Alert variant="destructive">{errorMessage}</Alert> : null}

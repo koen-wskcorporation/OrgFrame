@@ -23,7 +23,7 @@ function extractTitleFromPrompt(prompt: string) {
 }
 
 function buildPlayerCard(input: { prompt: string; orgSlug?: string }) {
-  const title = extractTitleFromPrompt(input.prompt) ?? "Player profile";
+  const title = extractTitleFromPrompt(input.prompt) ?? "Player";
   const href = input.orgSlug ? `/${input.orgSlug}/manage/people` : "/profiles";
 
   const card: AiResultCard = {
@@ -38,7 +38,7 @@ function buildPlayerCard(input: { prompt: string; orgSlug?: string }) {
   const actions: AiSuggestedAction[] = [
     {
       id: makeId("action"),
-      label: "Open player profile",
+      label: "Open player",
       actionType: "navigate",
       payload: { href: "/profiles" }
     },

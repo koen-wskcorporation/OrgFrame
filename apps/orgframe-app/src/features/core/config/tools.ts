@@ -69,7 +69,7 @@ export const ORG_TOOLS: Record<OrgToolKey, OrgToolMetadata> = {
   people: {
     key: "people",
     label: "People",
-    description: "Manage accounts, linked player/staff profiles, and relationships.",
+    description: "Manage accounts and the people they manage.",
     icon: "users",
     enabledByDefault: true,
   },

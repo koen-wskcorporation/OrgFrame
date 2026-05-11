@@ -234,6 +234,61 @@ export function CreateNodeWizard({
     onCreated(result.data.details.nodes);
     return { ok: true };
   }
+    onClose();
+  };
+
+  const requestClose = async () => {
+    if (!isDirty || submitting) {
+      onClose();
+      return;
+    }
+    const ok = await confirm({
+      title: "Discard?",
+      description: "Your unsaved details will be lost.",
+      confirmLabel: "Discard",
+      variant: "destructive"
+    });
+    if (ok) onClose();
+  };
+
+  const subtitle =
+    step === "type"
+      ? "What are you adding?"
+      : kind === "division"
+        ? "Top-level group that contains teams."
+        : "A team lives inside a division.";
+
+  // When the caller hard-selected a kind, the Back button has nowhere to
+  // return to — swap it for Cancel.
+  const lockedToKind = defaultKind !== null;
+
+  const footer =
+    step === "type" ? (
+      <Button className="ml-auto" disabled={!kind} onClick={handleNext} type="button">
+        Next
+      </Button>
+    ) : (
+      <>
+        {lockedToKind ? null : (
+          <Button disabled={submitting} onClick={handleBack} type="button" variant="ghost">
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </Button>
+        )}
+        <Button
+          className="ml-auto"
+          disabled={submitting}
+          loading={submitting}
+          onClick={handleSubmit}
+          type="submit"
+        >
+          <Save className="h-4 w-4" />
+          Create {kind}
+        </Button>
+      </>
+    );
+
+  const divisionOptions = divisions.map((division) => ({ value: division.id, label: division.name }));
 
   return (
     <CreateWizard<CreateState>

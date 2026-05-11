@@ -1052,7 +1052,6 @@ export function useCalendarEntryComposer(options: UseCalendarEntryComposerOption
         customFooter={
           editing ? (
             <>
-              <Button intent="cancel" onClick={close} type="button" variant="ghost" disabled={isSaving}>Cancel</Button>
               <Button intent="delete"
                 disabled={!canWrite || isSaving}
                 onClick={submitDelete}

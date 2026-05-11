@@ -72,10 +72,10 @@ function ProfileResultCard({ card }: EntityResultCardProps) {
   const firstName = metadataString(card, "firstName");
   const lastName = metadataString(card, "lastName");
   const fullNameFromFields = [firstName, lastName].filter(Boolean).join(" ").trim();
-  const subtitle = card.subtitle ?? "Profile";
+  const subtitle = card.subtitle ?? "Person";
   const badges = [
     <Chip status={false} key={`${card.id}:type`} variant="neutral">
-      Profile
+      Person
     </Chip>,
     ...(card.badges ?? []).map((badge) => (
       <Chip status={false} key={`${card.id}:${badge}`} variant="neutral">

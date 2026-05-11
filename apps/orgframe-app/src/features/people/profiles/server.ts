@@ -294,3 +294,79 @@ export async function findAuthUserByEmail(email: string): Promise<{ id: string; 
 }
 
 export type ShareRelationshipType = Exclude<PeopleRelationshipType, "self">;
+
+/**
+ * Load the self-profile of an arbitrary account user (used by org admins
+ * to view/edit a member through the same wizard the user sees in their
+ * own /profiles area). Returns the profile + the owner's `self` link +
+ * any shares + a fresh signed avatar URL. Service-role required.
+ */
+export async function getAccountSelfProfileForUser(
+  targetUserId: string
+): Promise<AccountProfileRecord | null> {
+  await ensureSelfProfile(targetUserId);
+  const service = createOptionalSupabaseServiceRoleClient();
+  if (!service) return null;
+
+  const { data: selfLinkRow } = await service
+    .schema("people")
+    .from("profile_links")
+    .select(LINK_COLUMNS)
+    .eq("account_user_id", targetUserId)
+    .is("org_id", null)
+    .eq("relationship_type", "self")
+    .maybeSingle();
+  if (!selfLinkRow) return null;
+  const myLink = mapLink(selfLinkRow);
+
+  const { data: profileRow } = await service
+    .schema("people")
+    .from("profiles")
+    .select(PROFILE_COLUMNS)
+    .eq("id", myLink.profileId)
+    .maybeSingle();
+  if (!profileRow) return null;
+  const profile = mapProfile(profileRow);
+
+  const { data: allLinkRows } = await service
+    .schema("people")
+    .from("profile_links")
+    .select(LINK_COLUMNS)
+    .eq("profile_id", profile.id);
+  const allLinks = (allLinkRows ?? []).map(mapLink);
+
+  const sharedAccountIds = Array.from(
+    new Set(
+      allLinks
+        .filter((l) => l.accountUserId && l.id !== myLink.id)
+        .map((l) => l.accountUserId as string)
+    )
+  );
+  const nameByUserId = new Map<string, string>();
+  if (sharedAccountIds.length > 0) {
+    const { data } = await service
+      .schema("people")
+      .from("users")
+      .select("user_id, first_name, last_name")
+      .in("user_id", sharedAccountIds);
+    for (const row of (data ?? []) as Array<{ user_id: string; first_name: string | null; last_name: string | null }>) {
+      const full = [row.first_name, row.last_name].filter(Boolean).join(" ").trim();
+      if (full) nameByUserId.set(row.user_id, full);
+    }
+  }
+
+  const shares: AccountProfileShare[] = allLinks
+    .filter((l) => l.id !== myLink.id)
+    .map((link) => ({
+      link,
+      displayName: link.accountUserId ? (nameByUserId.get(link.accountUserId) ?? null) : null
+    }));
+
+  const avatarUrlByPath = await resolveAvatarUrls(profile.avatarPath ? [profile.avatarPath] : []);
+  return {
+    profile,
+    myLink,
+    shares,
+    avatarUrl: profile.avatarPath ? (avatarUrlByPath.get(profile.avatarPath) ?? null) : null
+  };
+}

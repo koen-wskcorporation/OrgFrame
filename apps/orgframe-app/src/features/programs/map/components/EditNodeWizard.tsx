@@ -243,6 +243,87 @@ export function EditNodeWizard({
       submitLabel="Save changes"
       subtitle={node.name}
       title={node.nodeKind === "division" ? "Division settings" : "Team settings"}
+      submitLabel="Save"
+      initialState={initialState}
+      footerLeading={
+        canWrite ? (
+          <Button
+            aria-label={`Delete ${node.nodeKind}`}
+            disabled={deleting}
+            iconOnly
+            loading={deleting}
+            onClick={handleDelete}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        ) : null
+      }
+      steps={[
+        {
+          id: "details",
+          label: "Details",
+          validate: (state) => {
+            const errors: Record<string, string> = {};
+            if (!state.name.trim()) errors.name = "Name is required.";
+            if (!state.slug.trim()) errors.slug = "Slug is required.";
+            if (state.capacity.trim() !== "") {
+              const num = Number(state.capacity);
+              if (!Number.isFinite(num) || num < 0) errors.capacity = "Capacity must be a non-negative number.";
+            }
+            return Object.keys(errors).length ? errors : null;
+          },
+          render: ({ state, setField, fieldErrors }) => (
+            <div className="flex flex-col gap-3">
+              <FormField label="Name" error={fieldErrors.name}>
+                <Input
+                  value={state.name}
+                  disabled={!canWrite}
+                  onChange={(event) => setField("name", event.target.value)}
+                />
+              </FormField>
+              <FormField label="Slug" error={fieldErrors.slug}>
+                <Input
+                  value={state.slug}
+                  disabled={!canWrite}
+                  onChange={(event) => setField("slug", event.target.value)}
+                />
+              </FormField>
+              <FormField label="Capacity" hint="Optional. Max number of players." error={fieldErrors.capacity}>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={state.capacity}
+                  disabled={!canWrite}
+                  onChange={(event) => setField("capacity", event.target.value)}
+                />
+              </FormField>
+            </div>
+          )
+        }
+      ]}
+      onSubmit={async (state) => {
+        if (!canWrite) return { ok: false, message: "Read-only access." };
+        const capacity = state.capacity.trim() === "" ? null : Number(state.capacity);
+        const result = await saveProgramHierarchyAction({
+          orgSlug,
+          programId,
+          action: "update",
+          nodeId: node.id,
+          name: state.name.trim(),
+          slug: state.slug.trim(),
+          nodeKind: node.nodeKind,
+          capacity: typeof capacity === "number" && Number.isFinite(capacity) ? capacity : null,
+          waitlistEnabled: false
+        });
+        if (!result.ok) {
+          toast.toast({ title: "Couldn't save", description: result.error, variant: "destructive" });
+          return { ok: false, message: result.error };
+        }
+        toast.toast({ title: "Saved" });
+        onMutated();
+        return { ok: true };
+      }}
     />
   );
 }
