@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Alert } from "@orgframe/ui/primitives/alert";
+import { PanelHostSlot } from "@orgframe/ui/primitives/panel";
 import { Popup } from "@orgframe/ui/primitives/popup";
 import { Section } from "@orgframe/ui/primitives/section";
 
@@ -14,11 +15,15 @@ import { Section } from "@orgframe/ui/primitives/section";
  * - **Fullscreen popup** — `<Popup size="full">` with an unsaved-changes guard
  *   on close (browser-level beforeunload + a confirm() on backdrop/close click).
  *
- * Side panels are NOT this component's concern. Callers render `<Panel>`
- * primitives at the top level of their workspace; those panels portal into
- * the global `<PanelContainer>` (which sits above the fullscreen popup via
- * z-index). The popup body shrinks via `padding-right: var(--panel-active-width)`
- * so the canvas leaves room for whatever panels the user has open.
+ * Side panels: callers render `<Panel>` primitives at the top level of
+ * their workspace as usual. While the popup is open this shell mounts a
+ * `<PanelHostSlot />` inside the popup body — the global `<PanelContainer>`
+ * sees the slot, portals its chrome (resize handle + dock + LayoutNode
+ * tree) into it, and the panels render as a flex sibling of the canvas.
+ * The canvas (`flex-1`) shrinks naturally so the centerpoint follows the
+ * remaining space. Panel stacking, drag-to-swap, gap toggles, and the
+ * resize handle work the same as on regular pages because it is the same
+ * chrome — only the DOM mount point moves while the popup is up.
  *
  * Both editors render their own canvas via `renderEditor`. The shell hands
  * back a `mode` ("preview" | "full") so callers can lock interaction in
@@ -165,15 +170,21 @@ export function EditorShell({
         subtitle={popupSubtitle}
         title={title}
       >
-        {/* Pure passthrough — the canvas fills the popup edge-to-edge so
-            its background (grid, satellite) keeps running behind the
-            floating side panel. Editors offset their content + floating
-            UI inwards using `usePanelOffset` from canvas/core; that one
-            JS-animated value drives the world-transform centering, grid
-            background position, and action-bar translation in lockstep
-            so nothing drifts during the panel open/close animation. */}
-        <div className="relative h-full w-full">
-          {renderEditor({ mode: "full", popupSession, requestEdit })}
+        {/* Flex-row: the canvas grows to fill remaining space, the panel
+            host slot sits to its right. The slot is sized imperatively by
+            <PanelContainer /> to `containerTotalWidth` (0 when no panels
+            are open, `units * unitWidth + gaps` otherwise). The canvas
+            shrinks on flex, which moves its centerpoint inward — no
+            JS-driven transform offset needed (usePanelOffset returns 0
+            because PanelContainer suppresses the body var while a host
+            slot is active). The slot's chrome carries its own resize
+            handle, drag-to-swap, and gap-orientation toggles since it is
+            the same chrome that ships at the page level. */}
+        <div className="relative flex h-full w-full min-h-0 min-w-0">
+          <div className="relative min-h-0 min-w-0 flex-1">
+            {renderEditor({ mode: "full", popupSession, requestEdit })}
+          </div>
+          <PanelHostSlot />
         </div>
       </Popup>
 

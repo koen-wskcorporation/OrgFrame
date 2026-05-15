@@ -1,4 +1,5 @@
 import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
 
 const config = [
   {
@@ -15,7 +16,8 @@ const config = [
             }
           }
         }
-      }
+      },
+      "react-hooks": reactHooks
     }
   },
   {

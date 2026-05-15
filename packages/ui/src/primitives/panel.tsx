@@ -17,9 +17,21 @@ import { cn } from "./utils";
 // and flex-col (stacked). Panels themselves do no positioning or registry —
 // they simply portal an <aside> into the container's dock.
 //
-// Popup-context panels (rendered inside Popup editors) keep the previous
-// behavior: they portal into popup-panel-dock with their own positioning, since
-// they aren't part of the global panel stack.
+// Repositioning via <PanelHostSlot />
+// ------------------------------------
+// Fullscreen popups (e.g. canvas editors via EditorShell) cover the
+// fixed-positioned PanelContainer entirely, which would otherwise leave
+// panels invisible while the popup is up. To keep stacking, grid layout,
+// resize, and centerpoint shift working inside such popups, the
+// PanelContainer's chrome (resize handle + dock + LayoutNode tree) portals
+// into a `<PanelHostSlot />` whenever one is mounted. The slot is a flex
+// child of the popup body sized to `containerTotalWidth`, so the canvas
+// (flex-1) shrinks naturally and the panels render alongside it as a
+// sibling — same drag-swap, same gap toggles, same resize handle, same
+// cell-registry portal target. There is still only one set of panel state
+// (orderState, gapOrientations, cellNodes) — only the DOM mount point of
+// the chrome moves. Closing the popup unmounts the slot, the chrome falls
+// back to its fixed-position mode, and panels follow their cells back out.
 // -----------------------------------------------------------------------------
 
 const UNIT_PANEL_WIDTH = 325;
@@ -297,8 +309,73 @@ function subscribeCellNodes(fn: () => void): () => void {
 }
 
 // -----------------------------------------------------------------------------
-// PanelContainer — the single fixed-positioned chrome that holds all panels.
-// Mounts once in the app shell. Everything layout-related lives here.
+// Active host — when a `<PanelHostSlot />` is mounted (e.g. inside a
+// fullscreen editor popup), the PanelContainer portals its chrome into that
+// slot's DOM node instead of rendering at its default fixed-position spot.
+// One slot at a time; mounting a second slot replaces the first (the
+// previous one's effect cleanup runs after the new one's effect, so we
+// guard `setActiveHost(null)` to only clear when the cleared node is still
+// the active one).
+// -----------------------------------------------------------------------------
+
+let activeHost: HTMLElement | null = null;
+const activeHostListeners = new Set<() => void>();
+
+function setActiveHost(node: HTMLElement | null) {
+  if (node === activeHost) return;
+  activeHost = node;
+  activeHostListeners.forEach((fn) => fn());
+}
+
+function subscribeActiveHost(fn: () => void): () => void {
+  activeHostListeners.add(fn);
+  return () => {
+    activeHostListeners.delete(fn);
+  };
+}
+
+/**
+ * Slot a popup or other ancestor declares to host the panel chrome inline.
+ * While this component is mounted, `<PanelContainer />` portals its chrome
+ * (resize handle + dock + layout tree) into the slot's div, sized to the
+ * current `containerTotalWidth` so it participates in the parent's flex
+ * layout (the canvas next to it shrinks via `flex-1`). On unmount, the
+ * chrome falls back to its default fixed-position mode.
+ *
+ * The slot itself does not size its child — `<PanelContainer />` sets the
+ * width imperatively when chromeWidth changes. The slot just provides a
+ * stable DOM mount point and reserves the flex item.
+ */
+export function PanelHostSlot({ className }: { className?: string }) {
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  const setRef = React.useCallback((node: HTMLDivElement | null) => {
+    ref.current = node;
+    if (node) {
+      setActiveHost(node);
+    } else if (activeHost && activeHost === ref.current) {
+      // Defensive — ref.current is already null by the time the cleanup
+      // runs in React 19, so this branch primarily guards against a stale
+      // identity match. The unmount cleanup below is the real signal.
+      setActiveHost(null);
+    }
+  }, []);
+  React.useEffect(() => {
+    return () => {
+      // On unmount, only clear if WE are still the active host. Another
+      // slot mounting before our unmount cleanup runs would have already
+      // taken over; don't clobber it.
+      if (activeHost === ref.current) {
+        setActiveHost(null);
+      }
+    };
+  }, []);
+  return <div className={cn("panel-host-slot relative flex min-h-0", className)} data-panel-host-slot="true" ref={setRef} />;
+}
+
+// -----------------------------------------------------------------------------
+// PanelContainer — the single chrome that holds all panels. Renders at its
+// default fixed-position spot when no `<PanelHostSlot />` is active, and
+// portals into the slot when one is mounted. Mounts once in the app shell.
 // -----------------------------------------------------------------------------
 
 export function PanelContainer() {
@@ -406,16 +483,46 @@ export function PanelContainer() {
       ? 0
       : horizontalUnits * unitWidth + Math.max(0, horizontalUnits - 1) * layoutGapPx;
 
-  // Update body var + class to push page content over.
+  // Subscribe to the active-host signal so this container re-renders when a
+  // popup mounts/unmounts a `<PanelHostSlot />`.
+  const [hostNode, setHostNode] = React.useState<HTMLElement | null>(null);
   React.useEffect(() => {
-    if (visiblePanels === 0) {
+    setHostNode(activeHost);
+    return subscribeActiveHost(() => setHostNode(activeHost));
+  }, []);
+
+  // Update body var + class to push page content over. When a host is
+  // active (popup mode), suppress the body-level shift entirely — the
+  // panels are now flex siblings of the in-popup canvas, which shrinks
+  // naturally, so the JS-driven `usePanelOffset` shift would double-count.
+  React.useEffect(() => {
+    if (visiblePanels === 0 || hostNode) {
       document.body.classList.remove("panel-open-content");
       document.body.style.removeProperty("--panel-active-width");
       return;
     }
     document.body.classList.add("panel-open-content");
     document.body.style.setProperty("--panel-active-width", `${containerTotalWidth}px`);
-  }, [containerTotalWidth, visiblePanels]);
+  }, [containerTotalWidth, hostNode, visiblePanels]);
+
+  // Keep the host slot's flex width in sync with the chrome's natural width
+  // so the popup's canvas (flex-1 sibling) shrinks/grows alongside the
+  // panels. Imperative because the host is owned by another React subtree;
+  // we don't want to round-trip through props.
+  React.useEffect(() => {
+    if (!hostNode) return;
+    if (visiblePanels === 0) {
+      hostNode.style.width = "0px";
+      hostNode.style.flex = "0 0 0px";
+    } else {
+      hostNode.style.width = `${containerTotalWidth}px`;
+      hostNode.style.flex = `0 0 ${containerTotalWidth}px`;
+    }
+    return () => {
+      hostNode.style.width = "";
+      hostNode.style.flex = "";
+    };
+  }, [containerTotalWidth, hostNode, visiblePanels]);
 
   // Resize handle — drag the container's left edge to change unitWidth. Imperative DOM update
   // during drag for frame-perfect feedback, then commit to React state on release.
@@ -439,7 +546,16 @@ export function PanelContainer() {
       const gap = Number.parseFloat(rootStyles.getPropertyValue("--layout-gap")) || 0;
       const total = units === 0 ? 0 : units * nextUnit + Math.max(0, units - 1) * gap;
       containerNode.style.width = `${total}px`;
-      document.body.style.setProperty("--panel-active-width", `${total}px`);
+      // Mirror the new width to the active host slot (popup mode) so its
+      // flex item resizes during drag too — keeps the canvas sibling
+      // shrinking/growing in lockstep with the chrome.
+      const host = activeHost;
+      if (host) {
+        host.style.width = `${total}px`;
+        host.style.flex = `0 0 ${total}px`;
+      } else {
+        document.body.style.setProperty("--panel-active-width", `${total}px`);
+      }
     };
 
     const onMove = (clientX: number) => {
@@ -512,25 +628,11 @@ export function PanelContainer() {
 
   const showResizeHandle = visiblePanels > 0;
 
-  return (
-    <div
-      aria-hidden={visiblePanels === 0}
-      className={cn(
-        "panel-container pointer-events-none fixed",
-        visiblePanels === 0 && "invisible"
-      )}
-      ref={containerRef}
-      style={{
-        right: "var(--layout-gap)",
-        top: panelTop ? `${panelTop}px` : "var(--layout-gap)",
-        bottom: "var(--layout-gap)",
-        width: `${containerTotalWidth}px`,
-        // Panels live BELOW Popup (z-1200/1201). Opening a popup covers
-        // panels with the popup backdrop — clear modal precedence and no
-        // height reflow.
-        zIndex: 1100
-      }}
-    >
+  // The chrome — same children either way. In default mode it lives inside
+  // the fixed-positioned wrapper below; in host-slot mode (popup) it
+  // portals into the slot's div as a flex item.
+  const chrome = (
+    <>
       {showResizeHandle ? (
         <div
           aria-hidden
@@ -547,6 +649,50 @@ export function PanelContainer() {
       >
         {tree ? <LayoutNode node={tree} /> : null}
       </div>
+    </>
+  );
+
+  if (hostNode) {
+    // Popup mode: the chrome fills the host slot, which is a flex item
+    // sized imperatively to `containerTotalWidth` (see the effect above).
+    // No fixed positioning, no z-index dance — it sits inline alongside
+    // the popup's canvas, which shrinks via `flex-1`.
+    return createPortal(
+      <div
+        aria-hidden={visiblePanels === 0}
+        className={cn(
+          "panel-container panel-container--inline pointer-events-auto relative flex h-full w-full min-h-0 min-w-0",
+          visiblePanels === 0 && "invisible"
+        )}
+        ref={containerRef}
+      >
+        {chrome}
+      </div>,
+      hostNode
+    );
+  }
+
+  return (
+    <div
+      aria-hidden={visiblePanels === 0}
+      className={cn(
+        "panel-container pointer-events-none fixed",
+        visiblePanels === 0 && "invisible"
+      )}
+      ref={containerRef}
+      style={{
+        right: "var(--layout-gap)",
+        top: panelTop ? `${panelTop}px` : "var(--layout-gap)",
+        bottom: "var(--layout-gap)",
+        width: `${containerTotalWidth}px`,
+        // Panels live BELOW Popup (z-1200/1201) when in default fixed mode.
+        // Inside a popup the chrome portals into a `<PanelHostSlot />`
+        // (above) and z-index is irrelevant since it's a flex sibling of
+        // the canvas.
+        zIndex: 1100
+      }}
+    >
+      {chrome}
     </div>
   );
 }
